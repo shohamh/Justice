@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: db_admin
+      POSTGRES_PASSWORD: db_admin_pw
+      POSTGRES_DB: cod2
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.docker-data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_admin -d cod2"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
