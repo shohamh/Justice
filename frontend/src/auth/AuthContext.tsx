@@ -1,27 +1,26 @@
 import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from "react";
 
-import { login as apiLogin, logout as apiLogout, LoginResponse } from "../api/auth";
+import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
 import { setAccessToken } from "../api/client";
 
-interface AuthState {
+interface AuthContextValue {
+  user: Me | null;
   loggedIn: boolean;
   mustChangePassword: boolean;
-}
-
-interface AuthContextValue extends AuthState {
   login: (personal_number: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ loggedIn: false, mustChangePassword: false });
+  const [user, setUser] = useState<Me | null>(null);
 
   const login = useCallback(async (personal_number: string, password: string) => {
-    const r: LoginResponse = await apiLogin(personal_number, password);
+    const r = await apiLogin(personal_number, password);
     setAccessToken(r.access_token);
-    setState({ loggedIn: true, mustChangePassword: r.must_change_password });
+    setUser(await fetchMe());
   }, []);
 
   const logout = useCallback(async () => {
@@ -29,11 +28,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiLogout();
     } finally {
       setAccessToken(null);
-      setState({ loggedIn: false, mustChangePassword: false });
+      setUser(null);
     }
   }, []);
 
-  const value = useMemo(() => ({ ...state, login, logout }), [state, login, logout]);
+  const changePassword = useCallback(async (current: string, next: string) => {
+    await apiChangePassword(current, next);
+    setUser(await fetchMe());
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({ user, loggedIn: user !== null, mustChangePassword: user?.must_change_password ?? false, login, logout, changePassword }),
+    [user, login, logout, changePassword],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
