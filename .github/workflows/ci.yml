@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install uv
+        run: pip install uv==0.4.18
+      - name: Install deps
+        working-directory: backend
+        run: uv sync --extra dev
+      - name: Lint
+        working-directory: backend
+        run: |
+          uv run ruff check app tests
+          uv run ruff format --check app tests
+      - name: Type check
+        working-directory: backend
+        run: uv run mypy app
+      - name: Tests
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-secret-32-bytes-of-padding-___xx
+        run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        working-directory: frontend
+        run: pnpm lint
+      - name: Type check
+        working-directory: frontend
+        run: pnpm exec tsc --noEmit
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm test
+      - name: Build
+        working-directory: frontend
+        run: pnpm build
