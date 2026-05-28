@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="http://localhost:5173", alias="ALLOWED_ORIGINS")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     login_rate_limit: str = Field(default="5/5minutes", alias="LOGIN_RATE_LIMIT")
+    cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
 
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"

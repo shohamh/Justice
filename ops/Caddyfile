@@ -1,0 +1,18 @@
+# SITE_ADDRESS is the public address Caddy serves and obtains TLS for.
+#   - prod:  an https hostname, e.g. 34.12.34.56.nip.io  (auto Let's Encrypt)
+#   - local: localhost                                   (Caddy internal CA / self-signed)
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# API: forward to the backend, preserving the /api prefix the app expects.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else: serve the SPA, falling back to index.html for client routes.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

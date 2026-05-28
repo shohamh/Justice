@@ -81,7 +81,7 @@ def login(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True,
-        secure=False,  # set to True behind TLS in slice 7; left False so local dev over http works
+        secure=settings.cookie_secure,  # True behind TLS in prod (COOKIE_SECURE=true); False for local http dev
         samesite="strict",
         path="/api/auth",
     )

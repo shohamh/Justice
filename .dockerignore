@@ -1,0 +1,16 @@
+# Repo-root build context (used by ops/Caddy.Dockerfile). Keep secrets and junk out.
+.git
+**/node_modules
+**/dist
+**/.venv
+**/.uv-cache
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.env
+**/.env.local
+backend/tests
+frontend/test-results
+frontend/playwright-report
+.docker-data

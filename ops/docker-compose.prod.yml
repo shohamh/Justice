@@ -1,0 +1,59 @@
+# Production stack for a single host (e.g. a GCP e2-micro Always Free VM).
+# Everything is served on one origin by Caddy, which terminates TLS and reverse-proxies
+# /api to the backend. Bring up with:
+#   docker compose --env-file ops/.env -f ops/docker-compose.prod.yml up -d --build
+# (ops/deploy.sh does this for you.)
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: db_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: cod2
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_admin -d cod2"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # Apply migrations (as db_admin), seed the first admin (idempotent), then serve.
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run python -m app.scripts.bootstrap &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    expose:
+      - "8000"
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: ops/Caddy.Dockerfile
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
