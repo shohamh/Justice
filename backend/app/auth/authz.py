@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -64,3 +65,10 @@ def can(
     if user.role == "commander":
         return action in _COMMANDER_ACTIONS and _node_in_scope(target_node, roots)
     return False  # plain soldier: management actions denied (self-reads handled at the route)
+
+
+def authorize(session: Session, user: Soldier, action: str, *, target_node: HierarchyNode | None) -> None:
+    """Raise 403 unless `user` may perform `action` against `target_node`'s subtree."""
+    roots = scope_root_ids(session, user)
+    if not can(user, action, target_node=target_node, roots=roots):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
