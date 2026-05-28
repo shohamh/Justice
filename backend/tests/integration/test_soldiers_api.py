@@ -8,8 +8,11 @@ def test_admin_onboards_without_password_gets_temp(client: TestClient, admin_ses
     admin = create_soldier(admin_session, personal_number="4000001", role="admin")
     d = create_node(admin_session, level="department", name="d")
     admin_session.commit()
-    r = client.post("/api/soldiers", headers=auth_headers(admin),
-                    json={"personal_number": "4100001", "full_name": "טוראי", "hierarchy_node_id": str(d.id)})
+    r = client.post(
+        "/api/soldiers",
+        headers=auth_headers(admin),
+        json={"personal_number": "4100001", "full_name": "טוראי", "hierarchy_node_id": str(d.id)},
+    )
     assert r.status_code == 201
     body = r.json()
     assert body["role"] == "soldier"
@@ -19,9 +22,16 @@ def test_admin_onboards_without_password_gets_temp(client: TestClient, admin_ses
 
 def test_onboard_with_password_no_temp_returned(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="4000002", role="admin")
-    r = client.post("/api/soldiers", headers=auth_headers(admin),
-                    json={"personal_number": "4100002", "full_name": "טוראי", "hierarchy_node_id": None,
-                          "password": "chosen-password-123"})
+    r = client.post(
+        "/api/soldiers",
+        headers=auth_headers(admin),
+        json={
+            "personal_number": "4100002",
+            "full_name": "טוראי",
+            "hierarchy_node_id": None,
+            "password": "chosen-password-123",
+        },
+    )
     assert r.status_code == 201
     assert r.json()["temp_password"] is None
 
@@ -30,13 +40,21 @@ def test_duty_manager_can_only_onboard_in_scope(client: TestClient, admin_sessio
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)
     other = create_node(admin_session, level="department", name="other")
-    dm = create_soldier(admin_session, personal_number="4000003", role="duty_manager", hierarchy_node_id=b.id)
+    dm = create_soldier(
+        admin_session, personal_number="4000003", role="duty_manager", hierarchy_node_id=b.id
+    )
     admin_session.commit()
-    ok = client.post("/api/soldiers", headers=auth_headers(dm),
-                     json={"personal_number": "4100003", "full_name": "x", "hierarchy_node_id": str(b.id)})
+    ok = client.post(
+        "/api/soldiers",
+        headers=auth_headers(dm),
+        json={"personal_number": "4100003", "full_name": "x", "hierarchy_node_id": str(b.id)},
+    )
     assert ok.status_code == 201
-    denied = client.post("/api/soldiers", headers=auth_headers(dm),
-                         json={"personal_number": "4100004", "full_name": "x", "hierarchy_node_id": str(other.id)})
+    denied = client.post(
+        "/api/soldiers",
+        headers=auth_headers(dm),
+        json={"personal_number": "4100004", "full_name": "x", "hierarchy_node_id": str(other.id)},
+    )
     assert denied.status_code == 403
 
 
@@ -52,12 +70,18 @@ def test_only_admin_assigns_role(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="4000006", role="admin")
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)
-    dm = create_soldier(admin_session, personal_number="4000007", role="duty_manager", hierarchy_node_id=b.id)
+    dm = create_soldier(
+        admin_session, personal_number="4000007", role="duty_manager", hierarchy_node_id=b.id
+    )
     target = create_soldier(admin_session, personal_number="4100006", hierarchy_node_id=b.id)
     admin_session.commit()
-    denied = client.post(f"/api/soldiers/{target.id}/role", headers=auth_headers(dm), json={"role": "commander"})
+    denied = client.post(
+        f"/api/soldiers/{target.id}/role", headers=auth_headers(dm), json={"role": "commander"}
+    )
     assert denied.status_code == 403
-    ok = client.post(f"/api/soldiers/{target.id}/role", headers=auth_headers(admin), json={"role": "commander"})
+    ok = client.post(
+        f"/api/soldiers/{target.id}/role", headers=auth_headers(admin), json={"role": "commander"}
+    )
     assert ok.status_code == 200
     assert ok.json()["role"] == "commander"
 

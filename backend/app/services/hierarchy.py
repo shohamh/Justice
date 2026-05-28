@@ -41,12 +41,16 @@ def create_node(
         if parent is None:
             raise HierarchyError("parent not found")
         if _expected_child_level(parent.level) != level:
-            raise HierarchyError(f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes")
+            raise HierarchyError(
+                f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes"
+            )
 
-    node = HierarchyNode(level=level, name=name, parent_id=parent_id, commander_id=commander_id, path_ids=[])
+    node = HierarchyNode(
+        level=level, name=name, parent_id=parent_id, commander_id=commander_id, path_ids=[]
+    )
     session.add(node)
     session.flush()  # populate node.id
-    node.path_ids = ([*parent.path_ids, node.id] if parent is not None else [node.id])
+    node.path_ids = [*parent.path_ids, node.id] if parent is not None else [node.id]
     session.flush()
     write_audit(
         session,
@@ -83,16 +87,20 @@ def move_node(
         if node.id in parent.path_ids:
             raise HierarchyError("cannot move a node under its own descendant")
         if _expected_child_level(parent.level) != node.level:
-            raise HierarchyError(f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes")
+            raise HierarchyError(
+                f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes"
+            )
         new_base = list(parent.path_ids)
 
     old_path = list(node.path_ids)
     old_prefix_len = len(old_path)  # old_path ends with node.id
     new_node_path = [*new_base, node.id]
 
-    descendants = session.execute(
-        select(HierarchyNode).where(HierarchyNode.path_ids.any(node_id))
-    ).scalars().all()
+    descendants = (
+        session.execute(select(HierarchyNode).where(HierarchyNode.path_ids.any(node_id)))  # type: ignore[arg-type]  # SQLAlchemy ARRAY.any() accepts scalar UUID
+        .scalars()
+        .all()
+    )
 
     before = {"parent_id": str(node.parent_id) if node.parent_id else None}
     node.parent_id = new_parent_id
@@ -113,18 +121,33 @@ def move_node(
     return node
 
 
-def rename_node(session: Session, *, node_id: uuid.UUID, name: str, actor_id: uuid.UUID | None = None) -> HierarchyNode:
+def rename_node(
+    session: Session, *, node_id: uuid.UUID, name: str, actor_id: uuid.UUID | None = None
+) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HierarchyError("node not found")
     before = {"name": node.name}
     node.name = name
-    write_audit(session, actor_id=actor_id, action="hierarchy_node.rename", entity_type="hierarchy_node",
-                entity_id=node.id, before=before, after={"name": name})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_node.rename",
+        entity_type="hierarchy_node",
+        entity_id=node.id,
+        before=before,
+        after={"name": name},
+    )
     return node
 
 
-def set_commander(session: Session, *, node_id: uuid.UUID, commander_id: uuid.UUID | None, actor_id: uuid.UUID | None = None) -> HierarchyNode:
+def set_commander(
+    session: Session,
+    *,
+    node_id: uuid.UUID,
+    commander_id: uuid.UUID | None,
+    actor_id: uuid.UUID | None = None,
+) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HierarchyError("node not found")
@@ -132,8 +155,15 @@ def set_commander(session: Session, *, node_id: uuid.UUID, commander_id: uuid.UU
         raise HierarchyError("commander not found")
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
-    write_audit(session, actor_id=actor_id, action="hierarchy_node.set_commander", entity_type="hierarchy_node",
-                entity_id=node.id, before=before, after={"commander_id": str(commander_id) if commander_id else None})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_node.set_commander",
+        entity_type="hierarchy_node",
+        entity_id=node.id,
+        before=before,
+        after={"commander_id": str(commander_id) if commander_id else None},
+    )
     return node
 
 
@@ -151,6 +181,12 @@ def delete_node(session: Session, *, node_id: uuid.UUID, actor_id: uuid.UUID | N
     ).first()
     if soldier is not None:
         raise HierarchyError("cannot delete a node that has soldiers assigned")
-    write_audit(session, actor_id=actor_id, action="hierarchy_node.delete", entity_type="hierarchy_node",
-                entity_id=node.id, before={"name": node.name, "level": node.level})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_node.delete",
+        entity_type="hierarchy_node",
+        entity_id=node.id,
+        before={"name": node.name, "level": node.level},
+    )
     session.delete(node)

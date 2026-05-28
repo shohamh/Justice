@@ -21,9 +21,13 @@ class Action:
 
 
 _DM_ACTIONS = {
-    Action.SOLDIER_CREATE, Action.SOLDIER_READ, Action.SOLDIER_UPDATE,
-    Action.SOLDIER_RESET_PASSWORD, Action.SOLDIER_DELETE,
-    Action.HIERARCHY_READ, Action.HIERARCHY_MANAGE,
+    Action.SOLDIER_CREATE,
+    Action.SOLDIER_READ,
+    Action.SOLDIER_UPDATE,
+    Action.SOLDIER_RESET_PASSWORD,
+    Action.SOLDIER_DELETE,
+    Action.HIERARCHY_READ,
+    Action.HIERARCHY_MANAGE,
 }
 _COMMANDER_ACTIONS = {Action.SOLDIER_READ, Action.HIERARCHY_READ}
 
@@ -38,9 +42,11 @@ def scope_root_ids(session: Session, user: Soldier) -> set[uuid.UUID]:
     roots: set[uuid.UUID] = set()
     if user.role == "duty_manager" and user.hierarchy_node_id is not None:
         roots.add(user.hierarchy_node_id)
-    commanded = session.execute(
-        select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id)
-    ).scalars().all()
+    commanded = (
+        session.execute(select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id))
+        .scalars()
+        .all()
+    )
     roots.update(commanded)
     return roots
 
@@ -67,7 +73,9 @@ def can(
     return False  # plain soldier: management actions denied (self-reads handled at the route)
 
 
-def authorize(session: Session, user: Soldier, action: str, *, target_node: HierarchyNode | None) -> None:
+def authorize(
+    session: Session, user: Soldier, action: str, *, target_node: HierarchyNode | None
+) -> None:
     """Raise 403 unless `user` may perform `action` against `target_node`'s subtree."""
     roots = scope_root_ids(session, user)
     if not can(user, action, target_node=target_node, roots=roots):

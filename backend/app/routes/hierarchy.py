@@ -41,18 +41,28 @@ class MoveNodeRequest(BaseModel):
 
 
 def _out(n: HierarchyNode) -> NodeOut:
-    return NodeOut(id=n.id, level=n.level, name=n.name, parent_id=n.parent_id,
-                   commander_id=n.commander_id, path_ids=list(n.path_ids))
+    return NodeOut(
+        id=n.id,
+        level=n.level,
+        name=n.name,
+        parent_id=n.parent_id,
+        commander_id=n.commander_id,
+        path_ids=list(n.path_ids),
+    )
 
 
 @router.post("/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
-def create_node(body: CreateNodeRequest, session: Session = Depends(get_session),
-                user: Soldier = Depends(require_password_changed)) -> NodeOut:
+def create_node(
+    body: CreateNodeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> NodeOut:
     parent = session.get(HierarchyNode, body.parent_id) if body.parent_id else None
     authorize(session, user, Action.HIERARCHY_MANAGE, target_node=parent)
     try:
-        node = svc.create_node(session, level=body.level, name=body.name,
-                               parent_id=body.parent_id, actor_id=user.id)
+        node = svc.create_node(
+            session, level=body.level, name=body.name, parent_id=body.parent_id, actor_id=user.id
+        )
     except svc.HierarchyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -61,8 +71,12 @@ def create_node(body: CreateNodeRequest, session: Session = Depends(get_session)
 
 
 @router.patch("/nodes/{node_id}", response_model=NodeOut)
-def update_node(node_id: uuid.UUID, body: UpdateNodeRequest, session: Session = Depends(get_session),
-                user: Soldier = Depends(require_password_changed)) -> NodeOut:
+def update_node(
+    node_id: uuid.UUID,
+    body: UpdateNodeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> NodeOut:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -71,7 +85,9 @@ def update_node(node_id: uuid.UUID, body: UpdateNodeRequest, session: Session = 
         if body.name is not None:
             svc.rename_node(session, node_id=node_id, name=body.name, actor_id=user.id)
         if "commander_id" in body.model_fields_set:
-            svc.set_commander(session, node_id=node_id, commander_id=body.commander_id, actor_id=user.id)
+            svc.set_commander(
+                session, node_id=node_id, commander_id=body.commander_id, actor_id=user.id
+            )
     except svc.HierarchyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -80,8 +96,12 @@ def update_node(node_id: uuid.UUID, body: UpdateNodeRequest, session: Session = 
 
 
 @router.post("/nodes/{node_id}/move", response_model=NodeOut)
-def move_node(node_id: uuid.UUID, body: MoveNodeRequest, session: Session = Depends(get_session),
-              user: Soldier = Depends(require_password_changed)) -> NodeOut:
+def move_node(
+    node_id: uuid.UUID,
+    body: MoveNodeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> NodeOut:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -98,8 +118,11 @@ def move_node(node_id: uuid.UUID, body: MoveNodeRequest, session: Session = Depe
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: uuid.UUID, session: Session = Depends(get_session),
-                user: Soldier = Depends(require_password_changed)) -> None:
+def delete_node(
+    node_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -112,8 +135,9 @@ def delete_node(node_id: uuid.UUID, session: Session = Depends(get_session),
 
 
 @router.get("/tree", response_model=list[NodeOut])
-def get_tree(session: Session = Depends(get_session),
-             user: Soldier = Depends(require_password_changed)) -> list[NodeOut]:
+def get_tree(
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
+) -> list[NodeOut]:
     if user.role == "admin":
         nodes = session.execute(select(HierarchyNode)).scalars().all()
     else:
@@ -121,7 +145,8 @@ def get_tree(session: Session = Depends(get_session),
         if not roots:
             return []
         nodes = [
-            n for n in session.execute(select(HierarchyNode)).scalars().all()
+            n
+            for n in session.execute(select(HierarchyNode)).scalars().all()
             if any(r in n.path_ids for r in roots)
         ]
     return [_out(n) for n in nodes]

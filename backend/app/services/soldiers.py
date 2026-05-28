@@ -52,7 +52,9 @@ def onboard_soldier(
     password: str | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> OnboardResult:
-    if session.execute(select(Soldier.id).where(Soldier.personal_number == personal_number)).first():
+    if session.execute(
+        select(Soldier.id).where(Soldier.personal_number == personal_number)
+    ).first():
         raise SoldierError("personal_number already exists")
     if hierarchy_node_id is not None and session.get(HierarchyNode, hierarchy_node_id) is None:
         raise SoldierError("hierarchy node not found")
@@ -74,21 +76,43 @@ def onboard_soldier(
     )
     session.add(soldier)
     session.flush()
-    write_audit(session, actor_id=actor_id, action="soldier.create", entity_type="soldier",
-                entity_id=soldier.id, after={"personal_number": personal_number, "full_name": full_name,
-                                             "hierarchy_node_id": str(hierarchy_node_id) if hierarchy_node_id else None})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.create",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        after={
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "hierarchy_node_id": str(hierarchy_node_id) if hierarchy_node_id else None,
+        },
+    )
     return OnboardResult(soldier=soldier, temp_password=temp_password)
 
 
-def update_soldier(session: Session, *, soldier: Soldier, full_name: str | None, phone: str | None,
-                   actor_id: uuid.UUID | None = None) -> Soldier:
+def update_soldier(
+    session: Session,
+    *,
+    soldier: Soldier,
+    full_name: str | None,
+    phone: str | None,
+    actor_id: uuid.UUID | None = None,
+) -> Soldier:
     before = {"full_name": soldier.full_name, "phone": soldier.phone}
     if full_name is not None:
         soldier.full_name = full_name
     if phone is not None:
         soldier.phone = phone
-    write_audit(session, actor_id=actor_id, action="soldier.update", entity_type="soldier",
-                entity_id=soldier.id, before=before, after={"full_name": soldier.full_name, "phone": soldier.phone})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.update",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        before=before,
+        after={"full_name": soldier.full_name, "phone": soldier.phone},
+    )
     return soldier
 
 
@@ -96,23 +120,45 @@ def reset_password(session: Session, *, soldier: Soldier, actor_id: uuid.UUID | 
     temp = generate_temp_password()
     soldier.password_hash = hash_password(temp)
     soldier.must_change_password = True
-    write_audit(session, actor_id=actor_id, action="soldier.reset_password", entity_type="soldier",
-                entity_id=soldier.id)
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.reset_password",
+        entity_type="soldier",
+        entity_id=soldier.id,
+    )
     return temp
 
 
-def soft_delete(session: Session, *, soldier: Soldier, actor_id: uuid.UUID | None = None) -> Soldier:
+def soft_delete(
+    session: Session, *, soldier: Soldier, actor_id: uuid.UUID | None = None
+) -> Soldier:
     soldier.left_at = date.today()
-    write_audit(session, actor_id=actor_id, action="soldier.soft_delete", entity_type="soldier",
-                entity_id=soldier.id, after={"left_at": soldier.left_at.isoformat()})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.soft_delete",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        after={"left_at": soldier.left_at.isoformat()},
+    )
     return soldier
 
 
-def assign_role(session: Session, *, soldier: Soldier, role: str, actor_id: uuid.UUID | None = None) -> Soldier:
+def assign_role(
+    session: Session, *, soldier: Soldier, role: str, actor_id: uuid.UUID | None = None
+) -> Soldier:
     if role not in ROLES:
         raise SoldierError(f"unknown role: {role}")
     before = {"role": soldier.role}
     soldier.role = role
-    write_audit(session, actor_id=actor_id, action="soldier.assign_role", entity_type="soldier",
-                entity_id=soldier.id, before=before, after={"role": role})
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.assign_role",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        before=before,
+        after={"role": role},
+    )
     return soldier

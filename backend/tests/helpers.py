@@ -19,10 +19,16 @@ def create_node(
 ) -> HierarchyNode:
     """Insert a node and set its materialized path_ids. Test-only shortcut that
     bypasses the service-layer validation (so tests can build arbitrary trees fast)."""
-    node = HierarchyNode(level=level, name=name, parent_id=parent.id if parent else None, commander_id=commander_id, path_ids=[])
+    node = HierarchyNode(
+        level=level,
+        name=name,
+        parent_id=parent.id if parent else None,
+        commander_id=commander_id,
+        path_ids=[],
+    )
     session.add(node)
     session.flush()  # populate node.id
-    node.path_ids = ([*parent.path_ids, node.id] if parent else [node.id])
+    node.path_ids = [*parent.path_ids, node.id] if parent else [node.id]
     session.flush()
     return node
 

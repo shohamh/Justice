@@ -11,10 +11,10 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.services.soldiers import PasswordPolicyError, validate_password
 from app.db.models import Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
+from app.services.soldiers import PasswordPolicyError, validate_password
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -131,13 +131,23 @@ def change_password(
     user: Soldier = Depends(get_current_user),
 ) -> dict[str, str]:
     if not verify_password(body.current_password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="wrong_current_password")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="wrong_current_password"
+        )
     try:
         validate_password(body.new_password)
     except PasswordPolicyError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password_too_short") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="password_too_short"
+        ) from exc
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
-    write_audit(session, actor_id=user.id, action="auth.password.change", entity_type="soldier", entity_id=user.id)
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="auth.password.change",
+        entity_type="soldier",
+        entity_id=user.id,
+    )
     session.commit()
     return {"status": "ok"}

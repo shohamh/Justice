@@ -49,10 +49,16 @@ class RoleRequest(BaseModel):
 
 
 def _out(s: Soldier) -> SoldierOut:
-    return SoldierOut(id=s.id, personal_number=s.personal_number, full_name=s.full_name, role=s.role,
-                      hierarchy_node_id=s.hierarchy_node_id, phone=s.phone,
-                      must_change_password=s.must_change_password,
-                      left_at=s.left_at.isoformat() if s.left_at else None)
+    return SoldierOut(
+        id=s.id,
+        personal_number=s.personal_number,
+        full_name=s.full_name,
+        role=s.role,
+        hierarchy_node_id=s.hierarchy_node_id,
+        phone=s.phone,
+        must_change_password=s.must_change_password,
+        left_at=s.left_at.isoformat() if s.left_at else None,
+    )
 
 
 def _load(session: Session, soldier_id: uuid.UUID) -> Soldier:
@@ -67,16 +73,29 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
 
 
 @router.post("", response_model=OnboardResponse, status_code=status.HTTP_201_CREATED)
-def onboard(body: OnboardRequest, session: Session = Depends(get_session),
-            user: Soldier = Depends(require_password_changed)) -> OnboardResponse:
-    target_node = session.get(HierarchyNode, body.hierarchy_node_id) if body.hierarchy_node_id else None
+def onboard(
+    body: OnboardRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> OnboardResponse:
+    target_node = (
+        session.get(HierarchyNode, body.hierarchy_node_id) if body.hierarchy_node_id else None
+    )
     authorize(session, user, Action.SOLDIER_CREATE, target_node=target_node)
     try:
-        result = svc.onboard_soldier(session, personal_number=body.personal_number, full_name=body.full_name,
-                                     hierarchy_node_id=body.hierarchy_node_id, phone=body.phone,
-                                     password=body.password, actor_id=user.id)
+        result = svc.onboard_soldier(
+            session,
+            personal_number=body.personal_number,
+            full_name=body.full_name,
+            hierarchy_node_id=body.hierarchy_node_id,
+            phone=body.phone,
+            password=body.password,
+            actor_id=user.id,
+        )
     except svc.PasswordPolicyError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password_too_short") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="password_too_short"
+        ) from exc
     except svc.SoldierError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -85,8 +104,9 @@ def onboard(body: OnboardRequest, session: Session = Depends(get_session),
 
 
 @router.get("", response_model=list[SoldierOut])
-def list_soldiers(session: Session = Depends(get_session),
-                  user: Soldier = Depends(require_password_changed)) -> list[SoldierOut]:
+def list_soldiers(
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
+) -> list[SoldierOut]:
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
         return [_out(s) for s in rows]
@@ -103,8 +123,11 @@ def list_soldiers(session: Session = Depends(get_session),
 
 
 @router.get("/{soldier_id}", response_model=SoldierOut)
-def get_soldier(soldier_id: uuid.UUID, session: Session = Depends(get_session),
-                user: Soldier = Depends(require_password_changed)) -> SoldierOut:
+def get_soldier(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierOut:
     s = _load(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
@@ -112,19 +135,28 @@ def get_soldier(soldier_id: uuid.UUID, session: Session = Depends(get_session),
 
 
 @router.patch("/{soldier_id}", response_model=SoldierOut)
-def update(soldier_id: uuid.UUID, body: UpdateRequest, session: Session = Depends(get_session),
-           user: Soldier = Depends(require_password_changed)) -> SoldierOut:
+def update(
+    soldier_id: uuid.UUID,
+    body: UpdateRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierOut:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
-    svc.update_soldier(session, soldier=s, full_name=body.full_name, phone=body.phone, actor_id=user.id)
+    svc.update_soldier(
+        session, soldier=s, full_name=body.full_name, phone=body.phone, actor_id=user.id
+    )
     session.commit()
     session.refresh(s)
     return _out(s)
 
 
 @router.post("/{soldier_id}/reset-password")
-def reset_password(soldier_id: uuid.UUID, session: Session = Depends(get_session),
-                   user: Soldier = Depends(require_password_changed)) -> dict[str, str]:
+def reset_password(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, str]:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_RESET_PASSWORD, target_node=_node_of(session, s))
     temp = svc.reset_password(session, soldier=s, actor_id=user.id)
@@ -133,8 +165,11 @@ def reset_password(soldier_id: uuid.UUID, session: Session = Depends(get_session
 
 
 @router.delete("/{soldier_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete(soldier_id: uuid.UUID, session: Session = Depends(get_session),
-           user: Soldier = Depends(require_password_changed)) -> None:
+def delete(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_DELETE, target_node=_node_of(session, s))
     svc.soft_delete(session, soldier=s, actor_id=user.id)
@@ -142,8 +177,12 @@ def delete(soldier_id: uuid.UUID, session: Session = Depends(get_session),
 
 
 @router.post("/{soldier_id}/role", response_model=SoldierOut)
-def set_role(soldier_id: uuid.UUID, body: RoleRequest, session: Session = Depends(get_session),
-             user: Soldier = Depends(require_roles("admin"))) -> SoldierOut:
+def set_role(
+    soldier_id: uuid.UUID,
+    body: RoleRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_roles("admin")),
+) -> SoldierOut:
     if user.must_change_password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
     s = _load(session, soldier_id)

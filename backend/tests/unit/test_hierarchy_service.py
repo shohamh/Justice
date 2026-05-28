@@ -1,10 +1,17 @@
 import pytest
+from sqlalchemy import text
 
-from app.services.hierarchy import HierarchyError, create_node
+from app.db.models import HierarchyNode
+from app.services.hierarchy import (
+    HierarchyError,
+    create_node,
+    delete_node,
+    move_node,
+    rename_node,
+    set_commander,
+)
 from tests.helpers import create_node as seed_node
-
-
-from app.services.hierarchy import move_node
+from tests.helpers import create_soldier
 
 
 def test_move_recomputes_path_ids_for_node_and_descendants(admin_session):
@@ -54,7 +61,9 @@ def test_create_non_department_root_rejected(admin_session):
 
 def test_create_child_must_be_exactly_one_level_down(admin_session):
     dept = seed_node(admin_session, level="department", name="חיל")
-    branch = create_node(admin_session, level="branch", name="ענף", parent_id=dept.id, actor_id=None)
+    branch = create_node(
+        admin_session, level="branch", name="ענף", parent_id=dept.id, actor_id=None
+    )
     admin_session.commit()
     assert branch.path_ids == [dept.id, branch.id]
     with pytest.raises(HierarchyError):
@@ -62,17 +71,14 @@ def test_create_child_must_be_exactly_one_level_down(admin_session):
 
 
 def test_create_writes_audit(admin_session):
-    from sqlalchemy import text
     create_node(admin_session, level="department", name="חיל", parent_id=None, actor_id=None)
     admin_session.commit()
-    row = admin_session.execute(text(
-        "SELECT action FROM audit_log WHERE action='hierarchy_node.create' ORDER BY created_at DESC LIMIT 1"
-    )).first()
+    row = admin_session.execute(
+        text(
+            "SELECT action FROM audit_log WHERE action='hierarchy_node.create' ORDER BY created_at DESC LIMIT 1"
+        )
+    ).first()
     assert row is not None
-
-
-from app.services.hierarchy import delete_node, rename_node, set_commander
-from tests.helpers import create_soldier
 
 
 def test_rename_node(admin_session):
@@ -110,5 +116,4 @@ def test_delete_empty_node(admin_session):
     d = seed_node(admin_session, level="department", name="d")
     delete_node(admin_session, node_id=d.id, actor_id=None)
     admin_session.commit()
-    from app.db.models import HierarchyNode as HN
-    assert admin_session.get(HN, d.id) is None
+    assert admin_session.get(HierarchyNode, d.id) is None
