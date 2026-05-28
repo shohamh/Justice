@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "ניהול תורנויות",
+    "loading": "טוען..."
+  },
+  "login": {
+    "title": "התחברות",
+    "personal_number_label": "מספר אישי",
+    "personal_number_placeholder": "לדוגמה: 1234567",
+    "password_label": "סיסמה",
+    "submit": "התחבר",
+    "submitting": "מתחבר...",
+    "errors": {
+      "invalid_credentials": "מספר אישי או סיסמה שגויים",
+      "network": "שגיאת רשת. נסה שוב.",
+      "rate_limited": "יותר מדי ניסיונות. נסה שוב בעוד מספר דקות."
+    }
+  },
+  "home": {
+    "welcome": "שלום, {{name}}",
+    "logout": "יציאה"
+  },
+  "common": {
+    "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש."
+  }
+}
