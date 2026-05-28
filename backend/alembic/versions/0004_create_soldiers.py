@@ -17,7 +17,7 @@ ROLE_ENUM = sa.Enum("soldier", "commander", "duty_manager", "admin", name="soldi
 
 
 def upgrade() -> None:
-    ROLE_ENUM.create(op.get_bind(), checkfirst=True)
+    # create_table emits CREATE TYPE for the named enum; no explicit .create() needed.
     op.create_table(
         "soldiers",
         sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), server_default=sa.text("gen_random_uuid()"), primary_key=True),
