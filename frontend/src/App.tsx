@@ -1,9 +1,19 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactElement } from "react";
 
-import { AuthProvider } from "./auth/AuthContext";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import ChangePasswordPage from "./pages/ChangePasswordPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
+import ProfilePage from "./pages/ProfilePage";
+import TeamHierarchyPage from "./pages/TeamHierarchyPage";
+
+function ForcedPasswordGate({ children }: { children: ReactElement }) {
+  const { mustChangePassword } = useAuth();
+  if (mustChangePassword) return <Navigate to="/change-password" replace />;
+  return children;
+}
 
 export default function App() {
   return (
@@ -11,7 +21,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/change-password" element={<ChangePasswordPage />} />
+          <Route path="/" element={<ForcedPasswordGate><HomePage /></ForcedPasswordGate>} />
+          <Route path="/team" element={<ForcedPasswordGate><TeamHierarchyPage /></ForcedPasswordGate>} />
+          <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
     </AuthProvider>
