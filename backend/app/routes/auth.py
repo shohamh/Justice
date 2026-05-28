@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
-from app.auth.password import verify_password
+from app.auth.password import hash_password, verify_password
+from app.services.soldiers import PasswordPolicyError, validate_password
 from app.db.models import Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
@@ -28,6 +29,11 @@ class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     must_change_password: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 def _client_context(request: Request) -> dict[str, str]:
@@ -115,4 +121,23 @@ def refresh(
 @router.post("/logout")
 def logout(response: Response, user: Soldier = Depends(get_current_user)) -> dict[str, str]:
     response.delete_cookie(key="refresh_token", path="/api/auth")
+    return {"status": "ok"}
+
+
+@router.post("/change-password")
+def change_password(
+    body: ChangePasswordRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(get_current_user),
+) -> dict[str, str]:
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="wrong_current_password")
+    try:
+        validate_password(body.new_password)
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="password_too_short") from exc
+    user.password_hash = hash_password(body.new_password)
+    user.must_change_password = False
+    write_audit(session, actor_id=user.id, action="auth.password.change", entity_type="soldier", entity_id=user.id)
+    session.commit()
     return {"status": "ok"}
