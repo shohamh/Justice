@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import HierarchyNode
+from app.db.models import HierarchyNode, Soldier
 
 # Top (index 0) to bottom. A node's parent must be exactly one level above it.
 LEVEL_ORDER = ["department", "branch", "group", "team"]
@@ -111,3 +111,46 @@ def move_node(
         after={"parent_id": str(new_parent_id) if new_parent_id else None},
     )
     return node
+
+
+def rename_node(session: Session, *, node_id: uuid.UUID, name: str, actor_id: uuid.UUID | None = None) -> HierarchyNode:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HierarchyError("node not found")
+    before = {"name": node.name}
+    node.name = name
+    write_audit(session, actor_id=actor_id, action="hierarchy_node.rename", entity_type="hierarchy_node",
+                entity_id=node.id, before=before, after={"name": name})
+    return node
+
+
+def set_commander(session: Session, *, node_id: uuid.UUID, commander_id: uuid.UUID | None, actor_id: uuid.UUID | None = None) -> HierarchyNode:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HierarchyError("node not found")
+    if commander_id is not None and session.get(Soldier, commander_id) is None:
+        raise HierarchyError("commander not found")
+    before = {"commander_id": str(node.commander_id) if node.commander_id else None}
+    node.commander_id = commander_id
+    write_audit(session, actor_id=actor_id, action="hierarchy_node.set_commander", entity_type="hierarchy_node",
+                entity_id=node.id, before=before, after={"commander_id": str(commander_id) if commander_id else None})
+    return node
+
+
+def delete_node(session: Session, *, node_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> None:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HierarchyError("node not found")
+    child = session.execute(
+        select(HierarchyNode.id).where(HierarchyNode.parent_id == node_id).limit(1)
+    ).first()
+    if child is not None:
+        raise HierarchyError("cannot delete a node that has children")
+    soldier = session.execute(
+        select(Soldier.id).where(Soldier.hierarchy_node_id == node_id).limit(1)
+    ).first()
+    if soldier is not None:
+        raise HierarchyError("cannot delete a node that has soldiers assigned")
+    write_audit(session, actor_id=actor_id, action="hierarchy_node.delete", entity_type="hierarchy_node",
+                entity_id=node.id, before={"name": node.name, "level": node.level})
+    session.delete(node)

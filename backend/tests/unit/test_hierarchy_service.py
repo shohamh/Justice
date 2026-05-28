@@ -69,3 +69,46 @@ def test_create_writes_audit(admin_session):
         "SELECT action FROM audit_log WHERE action='hierarchy_node.create' ORDER BY created_at DESC LIMIT 1"
     )).first()
     assert row is not None
+
+
+from app.services.hierarchy import delete_node, rename_node, set_commander
+from tests.helpers import create_soldier
+
+
+def test_rename_node(admin_session):
+    d = seed_node(admin_session, level="department", name="old")
+    rename_node(admin_session, node_id=d.id, name="new", actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(d)
+    assert d.name == "new"
+
+
+def test_set_commander(admin_session):
+    d = seed_node(admin_session, level="department", name="d")
+    cmd = create_soldier(admin_session, personal_number="8000001", role="commander")
+    set_commander(admin_session, node_id=d.id, commander_id=cmd.id, actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(d)
+    assert d.commander_id == cmd.id
+
+
+def test_delete_node_rejected_with_children(admin_session):
+    d = seed_node(admin_session, level="department", name="d")
+    seed_node(admin_session, level="branch", name="b", parent=d)
+    with pytest.raises(HierarchyError):
+        delete_node(admin_session, node_id=d.id, actor_id=None)
+
+
+def test_delete_node_rejected_with_soldiers(admin_session):
+    d = seed_node(admin_session, level="department", name="d")
+    create_soldier(admin_session, personal_number="8000002", hierarchy_node_id=d.id)
+    with pytest.raises(HierarchyError):
+        delete_node(admin_session, node_id=d.id, actor_id=None)
+
+
+def test_delete_empty_node(admin_session):
+    d = seed_node(admin_session, level="department", name="d")
+    delete_node(admin_session, node_id=d.id, actor_id=None)
+    admin_session.commit()
+    from app.db.models import HierarchyNode as HN
+    assert admin_session.get(HN, d.id) is None
