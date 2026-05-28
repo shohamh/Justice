@@ -13,6 +13,7 @@ from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, 
 from app.auth.password import verify_password
 from app.db.models import Soldier
 from app.db.session import get_session
+from app.rate_limit import limiter
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -37,6 +38,7 @@ def _client_context(request: Request) -> dict[str, str]:
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit(lambda: get_settings().login_rate_limit)
 def login(body: LoginRequest, request: Request, response: Response, session: Session = Depends(get_session)) -> LoginResponse:
     settings = get_settings()
     stmt = select(Soldier).where(Soldier.personal_number == body.personal_number, Soldier.left_at.is_(None))
