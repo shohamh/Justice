@@ -39,9 +39,16 @@ def _client_context(request: Request) -> dict[str, str]:
 
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit(lambda: get_settings().login_rate_limit)
-def login(body: LoginRequest, request: Request, response: Response, session: Session = Depends(get_session)) -> LoginResponse:
+def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> LoginResponse:
     settings = get_settings()
-    stmt = select(Soldier).where(Soldier.personal_number == body.personal_number, Soldier.left_at.is_(None))
+    stmt = select(Soldier).where(
+        Soldier.personal_number == body.personal_number, Soldier.left_at.is_(None)
+    )
     soldier = session.execute(stmt).scalar_one_or_none()
 
     if soldier is None or not verify_password(body.password, soldier.password_hash):
@@ -82,14 +89,18 @@ def login(body: LoginRequest, request: Request, response: Response, session: Ses
 
 
 @router.post("/refresh", response_model=LoginResponse)
-def refresh(request: Request, response: Response, session: Session = Depends(get_session)) -> LoginResponse:
+def refresh(
+    request: Request, response: Response, session: Session = Depends(get_session)
+) -> LoginResponse:
     cookie = request.cookies.get("refresh_token")
     if not cookie:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="no_refresh_cookie")
     try:
         payload = decode_token(cookie)
     except InvalidToken as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_refresh_token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_refresh_token"
+        ) from exc
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_token_type")
 

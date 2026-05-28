@@ -40,8 +40,9 @@ def _apply_schema(db_admin_url: str) -> None:
     os.environ["JWT_SECRET"] = "test-secret-32-bytes-of-padding-_-x"
     os.environ["LOGIN_RATE_LIMIT"] = "10000/minute"
 
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "alembic")

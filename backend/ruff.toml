@@ -3,4 +3,9 @@ target-version = "py312"
 
 [lint]
 select = ["E", "F", "I", "B", "UP", "N", "ASYNC", "SIM"]
-ignore = ["E501"]  # line length handled by formatter
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # FastAPI requires Depends() in argument defaults
+    "N818",   # domain exception names (InvalidToken, SettingNotFound) are intentional
+    "N806",   # SessionLocal is the conventional SQLAlchemy sessionmaker name
+]

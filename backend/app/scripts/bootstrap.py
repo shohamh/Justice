@@ -7,6 +7,7 @@ BOOTSTRAP_ADMIN_PERSONAL_NUMBER / BOOTSTRAP_ADMIN_FULL_NAME / BOOTSTRAP_ADMIN_PA
 Set must_change_password=True so the soldier is forced to set a new password on
 first login.
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,7 +30,9 @@ def main() -> int:
         return 0
 
     with session_scope() as session:
-        existing = session.execute(select(Soldier).where(Soldier.role == "admin").limit(1)).scalar_one_or_none()
+        existing = session.execute(
+            select(Soldier).where(Soldier.role == "admin").limit(1)
+        ).scalar_one_or_none()
         if existing is not None:
             print("bootstrap: an admin already exists; skipping.")
             return 0

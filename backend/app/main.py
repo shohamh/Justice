@@ -11,9 +11,11 @@ from app.settings import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(
+        title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None
+    )
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

@@ -1,13 +1,13 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.settings import get_settings
 
 
-def _make_engine_factory():
+def _make_engine_factory() -> tuple[Engine, sessionmaker[Session]]:
     settings = get_settings()
     engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
     factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)

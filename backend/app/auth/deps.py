@@ -22,7 +22,9 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     try:
         payload = decode_token(token)
     except InvalidToken as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_token"
+        ) from exc
     if payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_token_type")
     sub = payload.get("sub")

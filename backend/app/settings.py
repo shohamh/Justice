@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     login_rate_limit: str = Field(default="5/5minutes", alias="LOGIN_RATE_LIMIT")
 
-    bootstrap_admin_personal_number: str | None = Field(default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER")
+    bootstrap_admin_personal_number: str | None = Field(
+        default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
+    )
     bootstrap_admin_full_name: str | None = Field(default=None, alias="BOOTSTRAP_ADMIN_FULL_NAME")
     bootstrap_admin_password: str | None = Field(default=None, alias="BOOTSTRAP_ADMIN_PASSWORD")
 
@@ -33,4 +35,4 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

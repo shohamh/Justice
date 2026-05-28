@@ -30,7 +30,10 @@ api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
     const originalRequest = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    // Never attempt a token refresh for the auth endpoints themselves: a 401 from
+    // /auth/login means bad credentials, and /auth/refresh failing means re-login.
+    const isAuthEndpoint = originalRequest?.url?.includes("/auth/");
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       try {
         if (!refreshing) {

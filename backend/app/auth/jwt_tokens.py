@@ -17,7 +17,9 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def issue_access_token(*, user_id: uuid.UUID, role: str, lifetime_seconds: int | None = None) -> str:
+def issue_access_token(
+    *, user_id: uuid.UUID, role: str, lifetime_seconds: int | None = None
+) -> str:
     settings = get_settings()
     if lifetime_seconds is None:
         lifetime_seconds = settings.access_token_minutes * 60
