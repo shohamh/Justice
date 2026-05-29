@@ -22,5 +22,36 @@
   },
   "common": {
     "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש."
+  },
+  "change_password": {
+    "title": "שינוי סיסמה",
+    "current": "סיסמה נוכחית",
+    "new": "סיסמה חדשה",
+    "submit": "עדכן סיסמה",
+    "forced_notice": "עליך לבחור סיסמה חדשה לפני המשך השימוש.",
+    "min_length": "הסיסמה חייבת להכיל לפחות 10 תווים.",
+    "wrong_current": "הסיסמה הנוכחית שגויה."
+  },
+  "nav": {
+    "home": "ראשי",
+    "team_hierarchy": "אנשי צוות והיררכיה",
+    "profile": "פרופיל"
+  },
+  "team": {
+    "title": "אנשי צוות והיררכיה",
+    "soldiers": "אנשי צוות",
+    "add_soldier": "הוסף איש צוות",
+    "personal_number": "מספר אישי",
+    "full_name": "שם מלא",
+    "role": "תפקיד",
+    "reset_password": "אפס סיסמה",
+    "remove": "הסר",
+    "temp_password_is": "סיסמה זמנית: {{pw}}",
+    "add_node": "הוסף יחידה",
+    "node_name": "שם יחידה"
+  },
+  "profile": {
+    "title": "פרופיל",
+    "change_password": "שינוי סיסמה"
   }
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -33,4 +34,22 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     user = session.get(Soldier, uuid.UUID(sub))
     if user is None or user.left_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
+    return user
+
+
+def require_roles(*roles: str) -> Callable[..., Soldier]:
+    """Dependency factory: allow only the given roles (coarse gate, e.g. admin-only)."""
+
+    def _dep(user: Soldier = Depends(get_current_user)) -> Soldier:
+        if user.role not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        return user
+
+    return _dep
+
+
+def require_password_changed(user: Soldier = Depends(get_current_user)) -> Soldier:
+    """Block protected endpoints while the user still must change their password."""
+    if user.must_change_password:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
     return user
