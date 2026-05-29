@@ -16,7 +16,9 @@ from app.services import duty_config as svc
 router = APIRouter(prefix="/duty-config", tags=["duty-config"])
 
 
-def require_config_manager(user: Soldier = Depends(require_roles("duty_manager", "admin"))) -> Soldier:
+def require_config_manager(
+    user: Soldier = Depends(require_roles("duty_manager", "admin")),
+) -> Soldier:
     if user.must_change_password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
     return user
@@ -45,21 +47,36 @@ class UpdateDutyTypeRequest(BaseModel):
 
 
 def _dt_out(d: DutyType) -> DutyTypeOut:
-    return DutyTypeOut(id=d.id, name=d.name, score_per_day=d.score_per_day,
-                       description=d.description, active=d.active)
+    return DutyTypeOut(
+        id=d.id,
+        name=d.name,
+        score_per_day=d.score_per_day,
+        description=d.description,
+        active=d.active,
+    )
 
 
 @router.get("/duty-types", response_model=list[DutyTypeOut])
-def list_duty_types(session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def list_duty_types(
+    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)
+) -> list[DutyTypeOut]:
     return [_dt_out(d) for d in session.execute(select(DutyType)).scalars().all()]
 
 
 @router.post("/duty-types", response_model=DutyTypeOut, status_code=status.HTTP_201_CREATED)
-def create_duty_type(body: CreateDutyTypeRequest, session: Session = Depends(get_session),
-                     user: Soldier = Depends(require_config_manager)):
+def create_duty_type(
+    body: CreateDutyTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> DutyTypeOut:
     try:
-        dt = svc.create_duty_type(session, name=body.name, score_per_day=body.score_per_day,
-                                  description=body.description, actor_id=user.id)
+        dt = svc.create_duty_type(
+            session,
+            name=body.name,
+            score_per_day=body.score_per_day,
+            description=body.description,
+            actor_id=user.id,
+        )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -68,14 +85,24 @@ def create_duty_type(body: CreateDutyTypeRequest, session: Session = Depends(get
 
 
 @router.patch("/duty-types/{duty_type_id}", response_model=DutyTypeOut)
-def update_duty_type(duty_type_id: uuid.UUID, body: UpdateDutyTypeRequest,
-                     session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def update_duty_type(
+    duty_type_id: uuid.UUID,
+    body: UpdateDutyTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> DutyTypeOut:
     dt = session.get(DutyType, duty_type_id)
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     try:
-        svc.update_duty_type(session, duty_type=dt, name=body.name, score_per_day=body.score_per_day,
-                             description=body.description, actor_id=user.id)
+        svc.update_duty_type(
+            session,
+            duty_type=dt,
+            name=body.name,
+            score_per_day=body.score_per_day,
+            description=body.description,
+            actor_id=user.id,
+        )
         if body.active is not None:
             svc.set_duty_type_active(session, duty_type=dt, active=body.active, actor_id=user.id)
     except svc.DutyConfigError as exc:
@@ -109,13 +136,18 @@ def _loc_out(loc: DutyLocation) -> LocationOut:
 
 
 @router.get("/locations", response_model=list[LocationOut])
-def list_locations(session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def list_locations(
+    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)
+) -> list[LocationOut]:
     return [_loc_out(loc) for loc in session.execute(select(DutyLocation)).scalars().all()]
 
 
 @router.post("/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
-def create_location(body: CreateLocationRequest, session: Session = Depends(get_session),
-                    user: Soldier = Depends(require_config_manager)):
+def create_location(
+    body: CreateLocationRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> LocationOut:
     loc = svc.create_location(session, name=body.name, base=body.base, actor_id=user.id)
     session.commit()
     session.refresh(loc)
@@ -123,8 +155,12 @@ def create_location(body: CreateLocationRequest, session: Session = Depends(get_
 
 
 @router.patch("/locations/{location_id}", response_model=LocationOut)
-def update_location(location_id: uuid.UUID, body: UpdateLocationRequest,
-                    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def update_location(
+    location_id: uuid.UUID,
+    body: UpdateLocationRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> LocationOut:
     loc = session.get(DutyLocation, location_id)
     if loc is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -162,18 +198,26 @@ def _et_out(et: ExemptionType) -> ExemptionTypeOut:
 
 
 @router.get("/exemption-types", response_model=list[ExemptionTypeOut])
-def list_exemption_types(session: Session = Depends(get_session),
-                         user: Soldier = Depends(require_password_changed)):
+def list_exemption_types(
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
+) -> list[ExemptionTypeOut]:
     # Reference data: any authenticated (password-changed) user may list exemption-type
     # names, because commanders need them to fill the grant form. Mutations stay gated.
     return [_et_out(et) for et in session.execute(select(ExemptionType)).scalars().all()]
 
 
-@router.post("/exemption-types", response_model=ExemptionTypeOut, status_code=status.HTTP_201_CREATED)
-def create_exemption_type(body: CreateExemptionTypeRequest, session: Session = Depends(get_session),
-                          user: Soldier = Depends(require_config_manager)):
+@router.post(
+    "/exemption-types", response_model=ExemptionTypeOut, status_code=status.HTTP_201_CREATED
+)
+def create_exemption_type(
+    body: CreateExemptionTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> ExemptionTypeOut:
     try:
-        et = svc.create_exemption_type(session, name=body.name, description=body.description, actor_id=user.id)
+        et = svc.create_exemption_type(
+            session, name=body.name, description=body.description, actor_id=user.id
+        )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -182,14 +226,23 @@ def create_exemption_type(body: CreateExemptionTypeRequest, session: Session = D
 
 
 @router.patch("/exemption-types/{exemption_type_id}", response_model=ExemptionTypeOut)
-def update_exemption_type(exemption_type_id: uuid.UUID, body: UpdateExemptionTypeRequest,
-                          session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def update_exemption_type(
+    exemption_type_id: uuid.UUID,
+    body: UpdateExemptionTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> ExemptionTypeOut:
     et = session.get(ExemptionType, exemption_type_id)
     if et is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     try:
-        svc.update_exemption_type(session, exemption_type=et, name=body.name,
-                                  description=body.description, actor_id=user.id)
+        svc.update_exemption_type(
+            session,
+            exemption_type=et,
+            name=body.name,
+            description=body.description,
+            actor_id=user.id,
+        )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -198,8 +251,11 @@ def update_exemption_type(exemption_type_id: uuid.UUID, body: UpdateExemptionTyp
 
 
 @router.delete("/exemption-types/{exemption_type_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_exemption_type(exemption_type_id: uuid.UUID, session: Session = Depends(get_session),
-                          user: Soldier = Depends(require_config_manager)):
+def delete_exemption_type(
+    exemption_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> None:
     et = session.get(ExemptionType, exemption_type_id)
     if et is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -211,17 +267,28 @@ def delete_exemption_type(exemption_type_id: uuid.UUID, session: Session = Depen
 
 
 @router.get("/exemption-types/{exemption_type_id}/duty-types", response_model=list[uuid.UUID])
-def get_exemption_duty_types(exemption_type_id: uuid.UUID, session: Session = Depends(get_session),
-                             user: Soldier = Depends(require_config_manager)):
+def get_exemption_duty_types(
+    exemption_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> list[uuid.UUID]:
     return svc.list_exemption_duty_type_ids(session, exemption_type_id=exemption_type_id)
 
 
 @router.put("/exemption-types/{exemption_type_id}/duty-types", response_model=list[uuid.UUID])
-def put_exemption_duty_types(exemption_type_id: uuid.UUID, body: SetDutyTypesRequest,
-                             session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)):
+def put_exemption_duty_types(
+    exemption_type_id: uuid.UUID,
+    body: SetDutyTypesRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> list[uuid.UUID]:
     try:
-        svc.set_exemption_duty_types(session, exemption_type_id=exemption_type_id,
-                                     duty_type_ids=body.duty_type_ids, actor_id=user.id)
+        svc.set_exemption_duty_types(
+            session,
+            exemption_type_id=exemption_type_id,
+            duty_type_ids=body.duty_type_ids,
+            actor_id=user.id,
+        )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()

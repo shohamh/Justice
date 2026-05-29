@@ -44,3 +44,36 @@ def test_soldier_sees_only_self_in_list(client: TestClient, admin_session: Sessi
     assert r.status_code == 200
     body = r.json()
     assert len(body) == 1 and body[0]["personal_number"] == "3000003"
+
+
+def test_rbac_duty_config_role_gate(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5300001", role="admin")
+    dm = create_soldier(admin_session, personal_number="5300002", role="duty_manager")
+    cmd = create_soldier(admin_session, personal_number="5300003", role="commander")
+    sol = create_soldier(admin_session, personal_number="5300004", role="soldier")
+    payload = {"name": "rbac-dt", "score_per_day": "1.00"}
+    assert (
+        client.post(
+            "/api/duty-config/duty-types", headers=auth_headers(admin), json=payload
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/duty-config/duty-types",
+            headers=auth_headers(dm),
+            json={"name": "rbac-dt2", "score_per_day": "1.00"},
+        ).status_code
+        == 201
+    )
+    assert client.get("/api/duty-config/duty-types", headers=auth_headers(cmd)).status_code == 403
+    assert client.get("/api/duty-config/duty-types", headers=auth_headers(sol)).status_code == 403
+
+
+def test_rbac_must_change_password_blocks_duty_config(client: TestClient, admin_session: Session):
+    dm = create_soldier(
+        admin_session, personal_number="5300005", role="duty_manager", must_change_password=True
+    )
+    r = client.get("/api/duty-config/duty-types", headers=auth_headers(dm))
+    assert r.status_code == 403
+    assert r.json()["detail"] == "must_change_password"

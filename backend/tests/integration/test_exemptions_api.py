@@ -23,8 +23,11 @@ def test_commander_grants_in_subtree(client: TestClient, admin_session: Session)
     admin_session.commit()
     target = create_soldier(admin_session, personal_number="5200002", hierarchy_node_id=b.id)
     et = _et(admin_session, "פטור-ר1")
-    r = client.post(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(cmd),
-                    json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "גב"})
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(cmd),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "גב"},
+    )
     assert r.status_code == 201, r.text
     r2 = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(cmd))
     assert len(r2.json()) == 1
@@ -39,8 +42,11 @@ def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: S
     admin_session.commit()
     target = create_soldier(admin_session, personal_number="5200004", hierarchy_node_id=other.id)
     et = _et(admin_session, "פטור-ר2")
-    r = client.post(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(cmd),
-                    json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"})
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(cmd),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
     assert r.status_code == 403
 
 
@@ -50,8 +56,11 @@ def test_soldier_reads_own_but_cannot_grant(client: TestClient, admin_session: S
     r = client.get(f"/api/soldiers/{s.id}/exemptions", headers=auth_headers(s))
     assert r.status_code == 200
     assert r.json() == []
-    r2 = client.post(f"/api/soldiers/{s.id}/exemptions", headers=auth_headers(s),
-                     json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"})
+    r2 = client.post(
+        f"/api/soldiers/{s.id}/exemptions",
+        headers=auth_headers(s),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
     assert r2.status_code == 403
 
 
@@ -59,10 +68,17 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5200006", role="admin")
     target = create_soldier(admin_session, personal_number="5200007")
     et = _et(admin_session, "פטור-ר4")
-    ex = client.post(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin),
-                     json={"exemption_type_id": str(et.id),
-                           "start_date": (date.today() - timedelta(days=2)).isoformat()}).json()
-    r = client.delete(f"/api/soldiers/{target.id}/exemptions/{ex['id']}", headers=auth_headers(admin))
+    ex = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={
+            "exemption_type_id": str(et.id),
+            "start_date": (date.today() - timedelta(days=2)).isoformat(),
+        },
+    ).json()
+    r = client.delete(
+        f"/api/soldiers/{target.id}/exemptions/{ex['id']}", headers=auth_headers(admin)
+    )
     assert r.status_code == 204
     rows = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
     assert rows[0]["end_date"] == date.today().isoformat()
@@ -73,7 +89,10 @@ def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Sess
     a = create_soldier(admin_session, personal_number="5200009")
     b = create_soldier(admin_session, personal_number="5200010")
     et = _et(admin_session, "פטור-ר5")
-    ex = client.post(f"/api/soldiers/{a.id}/exemptions", headers=auth_headers(admin),
-                     json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"}).json()
+    ex = client.post(
+        f"/api/soldiers/{a.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    ).json()
     r = client.delete(f"/api/soldiers/{b.id}/exemptions/{ex['id']}", headers=auth_headers(admin))
     assert r.status_code == 404

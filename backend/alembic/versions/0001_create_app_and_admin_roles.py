@@ -8,6 +8,7 @@ This migration runs as db_admin. It creates the lower-privileged 'app' role
 that the FastAPI process authenticates as. Permissions on individual tables
 are granted by the migrations that create those tables.
 """
+
 from alembic import op
 
 revision = "0001"
@@ -30,7 +31,9 @@ def upgrade() -> None:
     )
     op.execute("GRANT CONNECT ON DATABASE cod2 TO app;")
     op.execute("GRANT USAGE ON SCHEMA public TO app;")
-    op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;")
+    op.execute(
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;"
+    )
     op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app;")
 
 

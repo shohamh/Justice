@@ -45,8 +45,14 @@ def test_create_duty_type_rejects_negative_score(admin_session):
 def test_update_and_deactivate_duty_type(admin_session):
     dt = create_duty_type(admin_session, name="מטבח", score_per_day=Decimal("1.00"), actor_id=None)
     admin_session.flush()
-    update_duty_type(admin_session, duty_type=dt, name="מטבח לילה", score_per_day=Decimal("2.50"),
-                     description="לילה", actor_id=None)
+    update_duty_type(
+        admin_session,
+        duty_type=dt,
+        name="מטבח לילה",
+        score_per_day=Decimal("2.50"),
+        description="לילה",
+        actor_id=None,
+    )
     set_duty_type_active(admin_session, duty_type=dt, active=False, actor_id=None)
     admin_session.commit()
     assert dt.name == "מטבח לילה"
@@ -66,9 +72,13 @@ def test_create_exemption_type_and_map(admin_session):
     et = create_exemption_type(admin_session, name="פטור רפואי", actor_id=None)
     dt = create_duty_type(admin_session, name="שמירה-מ", score_per_day=Decimal("1"), actor_id=None)
     admin_session.flush()
-    map_exemption_to_duty_type(admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None)
+    map_exemption_to_duty_type(
+        admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None
+    )
     # idempotent: second call does not raise or duplicate
-    map_exemption_to_duty_type(admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None)
+    map_exemption_to_duty_type(
+        admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None
+    )
     admin_session.commit()
     rows = admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id).all()
     assert len(rows) == 1
@@ -79,10 +89,17 @@ def test_set_exemption_duty_types_diffs(admin_session):
     d1 = create_duty_type(admin_session, name="ניקיון-מ", score_per_day=Decimal("1"), actor_id=None)
     d2 = create_duty_type(admin_session, name="מטבח-מ", score_per_day=Decimal("1"), actor_id=None)
     admin_session.flush()
-    set_exemption_duty_types(admin_session, exemption_type_id=et.id, duty_type_ids=[d1.id], actor_id=None)
-    set_exemption_duty_types(admin_session, exemption_type_id=et.id, duty_type_ids=[d2.id], actor_id=None)
+    set_exemption_duty_types(
+        admin_session, exemption_type_id=et.id, duty_type_ids=[d1.id], actor_id=None
+    )
+    set_exemption_duty_types(
+        admin_session, exemption_type_id=et.id, duty_type_ids=[d2.id], actor_id=None
+    )
     admin_session.commit()
-    rows = {r.duty_type_id for r in admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id)}
+    rows = {
+        r.duty_type_id
+        for r in admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id)
+    }
     assert rows == {d2.id}
 
 
@@ -90,7 +107,9 @@ def test_delete_exemption_type_rejected_when_granted(admin_session):
     et = create_exemption_type(admin_session, name="פטור בשימוש", actor_id=None)
     s = create_soldier(admin_session, personal_number="7200001")
     admin_session.flush()
-    admin_session.add(SoldierExemption(soldier_id=s.id, exemption_type_id=et.id, start_date=date.today()))
+    admin_session.add(
+        SoldierExemption(soldier_id=s.id, exemption_type_id=et.id, start_date=date.today())
+    )
     admin_session.flush()
     with pytest.raises(DutyConfigError):
         delete_exemption_type(admin_session, exemption_type=et, actor_id=None)

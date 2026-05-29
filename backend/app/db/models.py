@@ -184,7 +184,10 @@ class SoldierExemption(Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     granted_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False

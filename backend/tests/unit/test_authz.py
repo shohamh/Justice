@@ -71,13 +71,17 @@ def test_commander_can_grant_and_read_exemptions_in_subtree(admin_session):
 def test_duty_manager_can_grant_exemptions_in_scope(admin_session):
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)
-    dm = create_soldier(admin_session, personal_number="7100002", role="duty_manager", hierarchy_node_id=b.id)
+    dm = create_soldier(
+        admin_session, personal_number="7100002", role="duty_manager", hierarchy_node_id=b.id
+    )
     roots = _roots(admin_session, dm)
     assert authz.can(dm, authz.Action.EXEMPTION_GRANT, target_node=b, roots=roots)
 
 
 def test_plain_soldier_cannot_grant_exemptions(admin_session):
     d = create_node(admin_session, level="department", name="d")
-    s = create_soldier(admin_session, personal_number="7100003", role="soldier", hierarchy_node_id=d.id)
+    s = create_soldier(
+        admin_session, personal_number="7100003", role="soldier", hierarchy_node_id=d.id
+    )
     roots = _roots(admin_session, s)
     assert not authz.can(s, authz.Action.EXEMPTION_GRANT, target_node=d, roots=roots)
