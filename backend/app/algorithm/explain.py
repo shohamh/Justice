@@ -21,7 +21,6 @@ def build_explanations(
     global_after: dict,
     solver_seed: int,
 ) -> ExplanationData:
-    soldier_map = {s.id: s for s in soldiers}
     duty_map = {d.id: d for d in duties}
 
     per_assignment: list[AssignmentExplanation] = []
