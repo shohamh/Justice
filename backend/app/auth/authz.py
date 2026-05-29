@@ -20,6 +20,8 @@ class Action:
     HIERARCHY_MANAGE = "hierarchy.manage"
     EXEMPTION_GRANT = "exemption.grant"
     EXEMPTION_READ = "exemption.read"
+    ASSIGNMENT_MANAGE = "assignment.manage"
+    SCORE_ADJUST = "score.adjust"
 
 
 _DM_ACTIONS = {
@@ -32,6 +34,8 @@ _DM_ACTIONS = {
     Action.HIERARCHY_MANAGE,
     Action.EXEMPTION_GRANT,
     Action.EXEMPTION_READ,
+    Action.ASSIGNMENT_MANAGE,
+    Action.SCORE_ADJUST,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
