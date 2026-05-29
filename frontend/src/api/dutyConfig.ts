@@ -1,0 +1,58 @@
+import { api } from "./client";
+
+export interface DutyType {
+  id: string;
+  name: string;
+  score_per_day: string;
+  description: string | null;
+  active: boolean;
+}
+
+export interface DutyLocation {
+  id: string;
+  name: string;
+  base: string | null;
+  active: boolean;
+}
+
+export interface ExemptionType {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export async function listDutyTypes(): Promise<DutyType[]> {
+  return (await api.get<DutyType[]>("/duty-config/duty-types")).data;
+}
+export async function createDutyType(input: { name: string; score_per_day: string; description?: string | null }): Promise<DutyType> {
+  return (await api.post<DutyType>("/duty-config/duty-types", input)).data;
+}
+export async function updateDutyType(id: string, input: Partial<{ name: string; score_per_day: string; description: string | null; active: boolean }>): Promise<DutyType> {
+  return (await api.patch<DutyType>(`/duty-config/duty-types/${id}`, input)).data;
+}
+
+export async function listLocations(): Promise<DutyLocation[]> {
+  return (await api.get<DutyLocation[]>("/duty-config/locations")).data;
+}
+export async function createLocation(input: { name: string; base?: string | null }): Promise<DutyLocation> {
+  return (await api.post<DutyLocation>("/duty-config/locations", input)).data;
+}
+export async function updateLocation(id: string, input: Partial<{ name: string; base: string | null; active: boolean }>): Promise<DutyLocation> {
+  return (await api.patch<DutyLocation>(`/duty-config/locations/${id}`, input)).data;
+}
+
+export async function listExemptionTypes(): Promise<ExemptionType[]> {
+  return (await api.get<ExemptionType[]>("/duty-config/exemption-types")).data;
+}
+export async function createExemptionType(input: { name: string; description?: string | null }): Promise<ExemptionType> {
+  return (await api.post<ExemptionType>("/duty-config/exemption-types", input)).data;
+}
+export async function deleteExemptionType(id: string): Promise<void> {
+  await api.delete(`/duty-config/exemption-types/${id}`);
+}
+export async function getExemptionDutyTypes(id: string): Promise<string[]> {
+  return (await api.get<string[]>(`/duty-config/exemption-types/${id}/duty-types`)).data;
+}
+export async function setExemptionDutyTypes(id: string, duty_type_ids: string[]): Promise<string[]> {
+  return (await api.put<string[]>(`/duty-config/exemption-types/${id}/duty-types`, { duty_type_ids })).data;
+}
