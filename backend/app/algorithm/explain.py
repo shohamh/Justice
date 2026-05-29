@@ -43,23 +43,33 @@ def build_explanations(
                         blocking.append("overlap")
                         break
 
-            pre = s.cumulative_score
-            block_score = duty.score_per_day * Decimal((duty.end_date - duty.start_date).days + 1)
-            post = pre + block_score if s.id == a.soldier_id else pre
+            pre_norm = s.cumulative_score / Decimal(s.active_days) if s.active_days > 0 else None
+            blocked = len(blocking) > 0
+            post_norm = None
+            if not blocked:
+                block_score = duty.score_per_day * Decimal((duty.end_date - duty.start_date).days + 1)
+                post_total = s.cumulative_score + (block_score if s.id == a.soldier_id else Decimal("0"))
+                post_norm = post_total / Decimal(s.active_days) if s.active_days > 0 else None
 
             candidates.append(CandidateInfo(
                 soldier_id=s.id,
-                blocked=len(blocking) > 0,
+                blocked=blocked,
                 blocking_constraints=blocking,
-                pre_norm_score=pre / Decimal(s.active_days) if s.active_days > 0 else None,
-                post_norm_score=post / Decimal(s.active_days) if s.active_days > 0 else None,
+                pre_norm_score=pre_norm,
+                post_norm_score=post_norm,
             ))
+
+        unblocked_count = sum(1 for c in candidates if not c.blocked)
+        if unblocked_count <= 1:
+            tiebreaker_note = None
+        else:
+            tiebreaker_note = "lowest_post_norm_score"
 
         per_assignment.append(AssignmentExplanation(
             duty_id=a.duty_id,
             assigned_soldier_id=a.soldier_id,
             candidates=candidates,
-            tiebreaker_note="Selected by solver objective optimisation",
+            tiebreaker_note=tiebreaker_note,
         ))
 
     return ExplanationData(
