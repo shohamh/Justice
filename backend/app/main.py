@@ -4,6 +4,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.rate_limit import limiter
+from app.routes import assignments as assignment_routes
 from app.routes import auth as auth_routes
 from app.routes import duty_config as duty_config_routes
 from app.routes import exemptions as exemption_routes
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
     app.include_router(soldier_routes.router, prefix="/api")
+    app.include_router(assignment_routes.router, prefix="/api")
     app.include_router(duty_config_routes.router, prefix="/api")
     app.include_router(exemption_routes.router, prefix="/api")
     return app
