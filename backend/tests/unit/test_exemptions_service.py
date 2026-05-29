@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, timedelta
 
 import pytest
@@ -39,7 +40,6 @@ def test_grant_rejects_bad_date_range(admin_session):
 
 
 def test_grant_rejects_unknown_soldier(admin_session):
-    import uuid
     et = _et(admin_session, "פטור-3")
     with pytest.raises(ExemptionError):
         grant_exemption(admin_session, soldier_id=uuid.uuid4(), exemption_type_id=et.id,
