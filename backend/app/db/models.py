@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any
-
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
