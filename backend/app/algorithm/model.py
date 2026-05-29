@@ -133,8 +133,12 @@ def build_model(
     beta_int = int(settings.beta * 1000)
     density_terms: list[LinearExpr] = []
 
+    existing_by_soldier = {
+        s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
+    }
+
     for si, s in enumerate(soldier_list):
-        soldier_dates_set = _existing_dates_by_soldier(existing, s.id)
+        soldier_dates_set = set(existing_by_soldier.get(s.id, set()))
         for di in soldier_duties.get(si, []):
             soldier_dates_set.update(_duty_dates(duty_list[di]))
         if not soldier_dates_set:
@@ -142,18 +146,16 @@ def build_model(
 
         min_d = min(soldier_dates_set)
         max_d = max(soldier_dates_set)
+        existing_dates = existing_by_soldier.get(s.id, set())
         ws = min_d
         while ws <= max_d:
             we = ws + timedelta(days=W - 1)
-            existing_fixed = len([dt_iter for dt_iter in
-                                  _existing_dates_by_soldier(existing, s.id)
-                                  if ws <= dt_iter <= we])
+            existing_fixed = sum(1 for dt_iter in existing_dates if ws <= dt_iter <= we)
             var_for_window: list[IntVar] = []
             for di in soldier_duties.get(si, []):
                 d = duty_list[di]
                 if any(ws <= dt <= we for dt in _duty_dates(d)):
                     var_for_window.append(x[(di, si)])
-                    break
 
             if not var_for_window and existing_fixed <= T:
                 ws += timedelta(days=1)
