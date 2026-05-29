@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -72,7 +72,7 @@ def submit_constraint(
             status="pending",
         )
     else:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         c = PersonalConstraint(
             soldier_id=soldier_id,
             start_date=start_date,
@@ -116,7 +116,7 @@ def approve_constraint(
         raise ConstraintError("not_pending")
     c.status = "approved"
     c.decided_by = actor_id
-    c.decided_at = datetime.now(timezone.utc)
+    c.decided_at = datetime.now(UTC)
     c.decision_note = decision_note
     session.flush()
     write_audit(
@@ -145,7 +145,7 @@ def reject_constraint(
         raise ConstraintError("not_pending")
     c.status = "rejected"
     c.decided_by = actor_id
-    c.decided_at = datetime.now(timezone.utc)
+    c.decided_at = datetime.now(UTC)
     c.decision_note = decision_note
     session.flush()
     write_audit(
