@@ -7,6 +7,30 @@ from typing import Sequence
 from app.algorithm.types import Assignment, DutyBlock, ReserveEntry, SoldierInput
 
 
+def _eligible_reserve(
+    sid: uuid.UUID, primary_id: uuid.UUID, duty: DutyBlock,
+    soldier_map: dict[uuid.UUID, SoldierInput],
+    duty_map: dict[uuid.UUID, DutyBlock],
+    assignments: Sequence[Assignment],
+) -> bool:
+    if sid == primary_id:
+        return False
+    s = soldier_map.get(sid)
+    if s is None:
+        return False
+    if duty.duty_type_id in s.exempted_duty_type_ids:
+        return False
+    if any(cs <= duty.end_date and ce >= duty.start_date
+           for cs, ce in s.approved_constraint_dates):
+        return False
+    for other_a in assignments:
+        if other_a.soldier_id == sid:
+            other_duty = duty_map.get(other_a.duty_id)
+            if other_duty and other_duty.start_date <= duty.end_date and other_duty.end_date >= duty.start_date:
+                return False
+    return True
+
+
 def select_reserves(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
@@ -32,54 +56,31 @@ def select_reserves(
         queue.append((primary_node, 0))
         visited_nodes.add(primary_node)
 
-        reserve_candidates: list[tuple[uuid.UUID, int]] = []
+        reserve_soldier: uuid.UUID | None = None
 
         while queue:
             node_id, distance = queue.popleft()
             for sid in node_soldiers.get(node_id, []):
-                if sid == primary_id:
-                    continue
-                s = soldier_map.get(sid)
-                if s is None:
-                    continue
-                if duty.duty_type_id in s.exempted_duty_type_ids:
-                    continue
-                if any(cs <= duty.end_date and ce >= duty.start_date
-                       for cs, ce in s.approved_constraint_dates):
-                    continue
-                overlapping = False
-                for other_a in assignments:
-                    if other_a.soldier_id == sid:
-                        other_duty = duty_map.get(other_a.duty_id)
-                        if other_duty and other_duty.start_date <= duty.end_date and other_duty.end_date >= duty.start_date:
-                            overlapping = True
-                            break
-                if overlapping:
-                    continue
-                reserve_candidates.append((sid, distance))
+                if _eligible_reserve(sid, primary_id, duty, soldier_map, duty_map, assignments):
+                    reserve_soldier = sid
+                    break
+            if reserve_soldier is not None:
+                break
 
             parent = hierarchy_parent.get(node_id)
             if parent is not None and parent not in visited_nodes:
                 visited_nodes.add(parent)
-                for sid in node_soldiers.get(parent, []):
-                    if sid == primary_id:
-                        continue
-                    s = soldier_map.get(sid)
-                    if s is None:
-                        continue
-                    reserve_candidates.append((sid, distance + 1))
+                queue.append((parent, distance + 1))
                 for sibling in hierarchy_children.get(parent, []):
                     if sibling not in visited_nodes:
                         visited_nodes.add(sibling)
                         queue.append((sibling, distance + 1))
 
-        if reserve_candidates:
-            reserve_candidates.sort(key=lambda x: x[1])
-            best_id, _best_dist = reserve_candidates[0]
+        if reserve_soldier is not None:
             results.append(ReserveEntry(
                 duty_id=a.duty_id,
                 primary_soldier_id=primary_id,
-                reserve_soldier_id=best_id,
+                reserve_soldier_id=reserve_soldier,
             ))
 
     return results
