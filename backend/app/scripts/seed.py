@@ -25,11 +25,19 @@ from app.db.session import SessionLocal
 
 def seed():
     with SessionLocal() as session:
-        if session.query(Soldier).filter(Soldier.personal_number == "2000001").first():
-            print("Seed data already exists. Skipping.")
-            return
+        hashed = hash_password("1234567890")
 
-        hashed = hash_password("Pass123456!")
+        # Ensure admin 1000001 always has the correct password, even if already seeded
+        admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
+        if admin:
+            admin.password_hash = hashed
+            admin.must_change_password = False
+            session.flush()
+
+        if session.query(Soldier).filter(Soldier.personal_number == "2000001").first():
+            session.commit()
+            print("Seed data already exists. Admin password updated.")
+            return
 
         # ── Hierarchy ──────────────────────────────────────────────
         dept1 = HierarchyNode(level="department", name="אגף מבצעים", path_ids=[])

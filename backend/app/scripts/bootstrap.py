@@ -41,7 +41,7 @@ def main() -> int:
             full_name=fn,
             password_hash=hash_password(pw),
             role="admin",
-            must_change_password=True,
+            must_change_password=False,
         )
         session.add(admin)
         session.commit()
