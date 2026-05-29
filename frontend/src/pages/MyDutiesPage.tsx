@@ -3,21 +3,21 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { Assignment, listAssignments } from "../api/assignments";
+import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
 
 export default function MyDutiesPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [rows, setRows] = useState<Assignment[]>([]);
+  const [rows, setRows] = useState<EffectiveDuty[]>([]);
   const [types, setTypes] = useState<Record<string, string>>({});
   const [locs, setLocs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) return;
     void (async () => {
-      const [as, dts, ls]: [Assignment[], DutyType[], DutyLocation[]] = await Promise.all([
-        listAssignments(user.id),
+      const [as, dts, ls]: [EffectiveDuty[], DutyType[], DutyLocation[]] = await Promise.all([
+        listEffectiveDuties(user.id),
         listDutyTypes().catch(() => [] as DutyType[]),
         listLocations().catch(() => [] as DutyLocation[]),
       ]);
@@ -45,7 +45,7 @@ export default function MyDutiesPage() {
             </thead>
             <tbody>
               {rows.map((a) => (
-                <tr key={a.id} data-testid={`my-duty-row-${a.id}`}>
+                <tr key={`${a.assignment_id}-${a.start_date}`} data-testid={`my-duty-row-${a.assignment_id}-${a.start_date}`}>
                   <td className="p-1">{types[a.duty_type_id] ?? a.duty_type_id}</td>
                   <td className="p-1">{locs[a.duty_location_id] ?? a.duty_location_id}</td>
                   <td className="p-1">{a.start_date}</td>

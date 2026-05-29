@@ -11,8 +11,21 @@ export interface Assignment {
   notes: string | null;
 }
 
+export interface EffectiveDuty {
+  assignment_id: string;
+  soldier_id: string;
+  duty_type_id: string;
+  duty_location_id: string;
+  start_date: string;
+  end_date: string;
+}
+
 export async function listAssignments(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<Assignment[]> {
   return (await api.get<Assignment[]>(`/assignments`, { params: { soldier_id: soldierId, ...params } })).data;
+}
+
+export async function listEffectiveDuties(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<EffectiveDuty[]> {
+  return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
 }
 export async function createAssignment(input: {
   soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; notes?: string | null;
