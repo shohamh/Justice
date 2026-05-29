@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
+import DutyConfigPage from "./pages/DutyConfigPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/" element={<ForcedPasswordGate><HomePage /></ForcedPasswordGate>} />
           <Route path="/team" element={<ForcedPasswordGate><TeamHierarchyPage /></ForcedPasswordGate>} />
+          <Route path="/duty-config" element={<ForcedPasswordGate><DutyConfigPage /></ForcedPasswordGate>} />
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
         </Route>
       </Routes>

@@ -1,0 +1,77 @@
+import { FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
+import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
+
+export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: string; canManage: boolean }) {
+  const { t } = useTranslation();
+  const [items, setItems] = useState<Exemption[]>([]);
+  const [types, setTypes] = useState<ExemptionType[]>([]);
+  const [typeId, setTypeId] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [reason, setReason] = useState("");
+
+  async function refresh() {
+    setItems(await listExemptions(soldierId));
+  }
+  useEffect(() => {
+    void refresh();
+    listExemptionTypes().then(setTypes);
+  }, [soldierId]);
+
+  const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? id;
+
+  async function onGrant(e: FormEvent) {
+    e.preventDefault();
+    await grantExemption(soldierId, {
+      exemption_type_id: typeId,
+      start_date: start,
+      end_date: end || null,
+      reason: reason || null,
+    });
+    setTypeId(""); setStart(""); setEnd(""); setReason("");
+    await refresh();
+  }
+
+  async function onRevoke(id: string) {
+    if (!confirm(t("exemptions.revoke") + "?")) return;
+    await revokeExemption(soldierId, id);
+    await refresh();
+  }
+
+  return (
+    <div data-testid="exemptions-panel" className="space-y-3">
+      <h3 className="font-medium">{t("exemptions.title")}</h3>
+      {items.length === 0 && (
+        <p className="text-sm text-gray-500" data-testid="exemptions-empty">{t("exemptions.none")}</p>
+      )}
+      <ul className="text-sm space-y-1" data-testid="exemptions-list">
+        {items.map((ex) => (
+          <li key={ex.id} className="flex items-center gap-2" data-testid={`exemption-row-${ex.id}`}>
+            <span>{typeName(ex.exemption_type_id)}</span>
+            <span className="text-gray-400">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+            {canManage && (
+              <button className="text-rejected text-xs" onClick={() => onRevoke(ex.id)} data-testid={`revoke-${ex.id}`}>
+                {t("exemptions.revoke")}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {canManage && (
+        <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2" data-testid="grant-form">
+          <select className="border rounded p-1" value={typeId} onChange={(e) => setTypeId(e.target.value)} required data-testid="grant-type">
+            <option value="">{t("exemptions.type")}</option>
+            {types.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
+          </select>
+          <input type="date" className="border rounded p-1" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
+          <input type="date" className="border rounded p-1" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="grant-end" />
+          <input className="border rounded p-1" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
+          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="grant-submit">{t("exemptions.grant")}</button>
+        </form>
+      )}
+    </div>
+  );
+}

@@ -8,6 +8,7 @@ The column already exists (migration 0004); this only adds the FK now that
 hierarchy_nodes exists. ON DELETE SET NULL: deleting a node detaches soldiers
 (node deletion is independently guarded in the service layer).
 """
+
 from alembic import op
 
 revision = "0006"

@@ -18,6 +18,8 @@ class Action:
     SOLDIER_ASSIGN_ROLE = "soldier.assign_role"
     HIERARCHY_READ = "hierarchy.read"
     HIERARCHY_MANAGE = "hierarchy.manage"
+    EXEMPTION_GRANT = "exemption.grant"
+    EXEMPTION_READ = "exemption.read"
 
 
 _DM_ACTIONS = {
@@ -28,8 +30,15 @@ _DM_ACTIONS = {
     Action.SOLDIER_DELETE,
     Action.HIERARCHY_READ,
     Action.HIERARCHY_MANAGE,
+    Action.EXEMPTION_GRANT,
+    Action.EXEMPTION_READ,
 }
-_COMMANDER_ACTIONS = {Action.SOLDIER_READ, Action.HIERARCHY_READ}
+_COMMANDER_ACTIONS = {
+    Action.SOLDIER_READ,
+    Action.HIERARCHY_READ,
+    Action.EXEMPTION_GRANT,
+    Action.EXEMPTION_READ,
+}
 
 
 def scope_root_ids(session: Session, user: Soldier) -> set[uuid.UUID]:
