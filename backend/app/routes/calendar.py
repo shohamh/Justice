@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import DutyLocation, DutyType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
 
@@ -23,12 +23,20 @@ class CalAssignment(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
+    duty_type_name: str
+    duty_location_name: str
+    duty_type_color: str
 
 
 class CalRow(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
     assignments: list[CalAssignment]
+
+
+def _duty_type_color(duty_type_id: uuid.UUID) -> str:
+    h = hash(duty_type_id) % 360
+    return f"hsl({h}, 65%, 50%)"
 
 
 @router.get("/unit", response_model=list[CalRow])
@@ -60,18 +68,25 @@ def unit_calendar(
         .all()
     )
     soldier_ids = [s.id for s in soldiers]
+    duty_types = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
+    duty_locations = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
     spans = scoring_svc.effective_duty_spans(
         session, soldier_ids=set(soldier_ids), date_from=date_from, date_to=date_to
     )
     by_soldier: dict[uuid.UUID, list[CalAssignment]] = {sid: [] for sid in soldier_ids}
     for sp in spans:
+        dt_id = sp["duty_type_id"]
+        dl_id = sp["duty_location_id"]
         by_soldier[sp["soldier_id"]].append(
             CalAssignment(
                 assignment_id=sp["assignment_id"],
-                duty_type_id=sp["duty_type_id"],
-                duty_location_id=sp["duty_location_id"],
+                duty_type_id=dt_id,
+                duty_location_id=dl_id,
                 start_date=sp["start_date"],
                 end_date=sp["end_date"],
+                duty_type_name=duty_types.get(dt_id, ""),
+                duty_location_name=duty_locations.get(dl_id, ""),
+                duty_type_color=_duty_type_color(dt_id),
             )
         )
     return [
