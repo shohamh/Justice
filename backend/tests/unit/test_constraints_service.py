@@ -15,9 +15,15 @@ from app.services.constraints import (
 )
 from tests.helpers import create_soldier
 
+_PREFIX = str(uuid.uuid4())[:8]
+
+
+def _pn(n: int) -> str:
+    return f"{_PREFIX}-{n:04d}"
+
 
 def test_submit_success(admin_session):
-    s = create_soldier(admin_session, personal_number="7400001")
+    s = create_soldier(admin_session, personal_number=_pn(1))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -36,7 +42,7 @@ def test_submit_auto_approve(admin_session, monkeypatch):
         "app.services.constraints._get_setting_with_default",
         lambda session, key, default: False if key == "constraints.require_manager_approval" else default,
     )
-    s = create_soldier(admin_session, personal_number="7400002")
+    s = create_soldier(admin_session, personal_number=_pn(2))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -50,7 +56,7 @@ def test_submit_auto_approve(admin_session, monkeypatch):
 
 
 def test_submit_cap_enforced(admin_session):
-    s = create_soldier(admin_session, personal_number="7400003")
+    s = create_soldier(admin_session, personal_number=_pn(3))
     submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -72,7 +78,7 @@ def test_submit_cap_enforced(admin_session):
 
 
 def test_submit_bad_date_range(admin_session):
-    s = create_soldier(admin_session, personal_number="7400004")
+    s = create_soldier(admin_session, personal_number=_pn(4))
     with pytest.raises(ConstraintError, match="bad_date_range"):
         submit_constraint(
             admin_session,
@@ -85,7 +91,7 @@ def test_submit_bad_date_range(admin_session):
 
 
 def test_submit_past_start(admin_session):
-    s = create_soldier(admin_session, personal_number="7400005")
+    s = create_soldier(admin_session, personal_number=_pn(5))
     with pytest.raises(ConstraintError, match="start_date_in_past"):
         submit_constraint(
             admin_session,
@@ -110,7 +116,7 @@ def test_submit_unknown_soldier(admin_session):
 
 
 def test_approve_pending(admin_session):
-    s = create_soldier(admin_session, personal_number="7400006")
+    s = create_soldier(admin_session, personal_number=_pn(6))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -127,7 +133,7 @@ def test_approve_pending(admin_session):
 
 
 def test_approve_not_pending(admin_session):
-    s = create_soldier(admin_session, personal_number="7400007")
+    s = create_soldier(admin_session, personal_number=_pn(7))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -144,7 +150,7 @@ def test_approve_not_pending(admin_session):
 
 
 def test_reject(admin_session):
-    s = create_soldier(admin_session, personal_number="7400008")
+    s = create_soldier(admin_session, personal_number=_pn(8))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -161,7 +167,7 @@ def test_reject(admin_session):
 
 
 def test_cancel_pending(admin_session):
-    s = create_soldier(admin_session, personal_number="7400009")
+    s = create_soldier(admin_session, personal_number=_pn(9))
     c = submit_constraint(
         admin_session,
         soldier_id=s.id,
@@ -229,3 +235,4 @@ def test_get_approved_dates(admin_session):
 def test_constraint_not_found(admin_session):
     with pytest.raises(ConstraintError, match="constraint_not_found"):
         approve_constraint(admin_session, constraint_id=uuid.uuid4(), actor_id=None)
+

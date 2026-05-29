@@ -150,7 +150,8 @@ def pending_list(
     user: Soldier = Depends(require_password_changed),
 ) -> list[ConstraintOut]:
     roots = scope_root_ids(session, user)
-    authorize(session, user, Action.CONSTRAINT_READ, target_node=None)
+    if user.role != "admin" and not roots:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if user.role == "admin":
         rows = list(
             session.execute(
@@ -171,14 +172,17 @@ def pending_count(
     user: Soldier = Depends(require_password_changed),
 ) -> PendingCountOut:
     roots = scope_root_ids(session, user)
-    authorize(session, user, Action.CONSTRAINT_READ, target_node=None)
+    if user.role != "admin" and not roots:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if user.role == "admin":
-        cnt = (
-            session.execute(
-                select(PersonalConstraint).where(PersonalConstraint.status == "pending")
+        cnt = len(
+            list(
+                session.execute(
+                    select(PersonalConstraint).where(PersonalConstraint.status == "pending")
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .count()
         )
         return PendingCountOut(count=cnt)
     if not roots:

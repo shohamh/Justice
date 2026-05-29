@@ -227,18 +227,20 @@ def pending_approval_count(session: Session, *, node_ids: set[uuid.UUID]) -> int
         .where(HierarchyNode.path_ids.overlap(list(node_ids)))
         .subquery()
     )
-    return (
-        session.execute(
-            select(PersonalConstraint)
-            .where(
-                PersonalConstraint.status == "pending",
-                PersonalConstraint.soldier_id.in_(
-                    select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
-                ),
+    return len(
+        list(
+            session.execute(
+                select(PersonalConstraint)
+                .where(
+                    PersonalConstraint.status == "pending",
+                    PersonalConstraint.soldier_id.in_(
+                        select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
+                    ),
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .count()
     )
 
 
