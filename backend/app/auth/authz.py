@@ -20,6 +20,9 @@ class Action:
     HIERARCHY_MANAGE = "hierarchy.manage"
     EXEMPTION_GRANT = "exemption.grant"
     EXEMPTION_READ = "exemption.read"
+    CONSTRAINT_SUBMIT = "constraint.submit"
+    CONSTRAINT_READ = "constraint.read"
+    CONSTRAINT_APPROVE = "constraint.approve"
     ASSIGNMENT_MANAGE = "assignment.manage"
     SCORE_ADJUST = "score.adjust"
 
@@ -34,6 +37,8 @@ _DM_ACTIONS = {
     Action.HIERARCHY_MANAGE,
     Action.EXEMPTION_GRANT,
     Action.EXEMPTION_READ,
+    Action.CONSTRAINT_READ,
+    Action.CONSTRAINT_APPROVE,
     Action.ASSIGNMENT_MANAGE,
     Action.SCORE_ADJUST,
 }
@@ -42,6 +47,8 @@ _COMMANDER_ACTIONS = {
     Action.HIERARCHY_READ,
     Action.EXEMPTION_GRANT,
     Action.EXEMPTION_READ,
+    Action.CONSTRAINT_READ,
+    Action.CONSTRAINT_APPROVE,
 }
 
 
