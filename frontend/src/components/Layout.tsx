@@ -1,8 +1,9 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthContext";
+import { getPendingCount } from "../api/constraints";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -10,18 +11,37 @@ export default function Layout({ children }: { children: ReactNode }) {
   const role = user?.role;
   const canManageTeam = role === "duty_manager" || role === "admin" || role === "commander";
   const canManageDuties = role === "duty_manager" || role === "admin";
+  const canApprove = role === "duty_manager" || role === "admin" || role === "commander";
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    if (canApprove) {
+      getPendingCount().then(setPendingCount).catch(() => {});
+    }
+  }, [canApprove]);
 
   return (
     <div className="min-h-screen flex">
       <aside className="w-56 bg-white border-l shadow-sm p-4 space-y-2" data-testid="sidebar">
         <Link to="/" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-home">{t("nav.home")}</Link>
         <Link to="/my-duties" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-my-duties">{t("nav.my_duties")}</Link>
+        <Link to="/my-requests" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-my-requests">{t("nav.my_requests")}</Link>
         <Link to="/transparency" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-transparency">{t("nav.transparency")}</Link>
         {canManageTeam && (
           <Link to="/team" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-team">{t("nav.team_hierarchy")}</Link>
         )}
         {canManageTeam && (
           <Link to="/unit-calendar" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-unit-calendar">{t("nav.unit_calendar")}</Link>
+        )}
+        {canApprove && (
+          <Link to="/approvals" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-approvals">
+            {t("nav.approvals")}
+            {pendingCount > 0 && (
+              <span className="mr-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5" data-testid="pending-badge">
+                {pendingCount}
+              </span>
+            )}
+          </Link>
         )}
         {canManageDuties && (
           <Link to="/duty-config" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-duty-config">{t("nav.duty_config")}</Link>

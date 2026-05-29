@@ -3,12 +3,14 @@ import type { ReactElement } from "react";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import ApprovalsPage from "./pages/ApprovalsPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import DutyConfigPage from "./pages/DutyConfigPage";
 import DutyManagementPage from "./pages/DutyManagementPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyDutiesPage from "./pages/MyDutiesPage";
+import MyRequestsPage from "./pages/MyRequestsPage";
 import ProfilePage from "./pages/ProfilePage";
 import TeamHierarchyPage from "./pages/TeamHierarchyPage";
 import TransparencyPage from "./pages/TransparencyPage";
@@ -33,6 +35,8 @@ export default function App() {
           <Route path="/duty-management" element={<ForcedPasswordGate><DutyManagementPage /></ForcedPasswordGate>} />
           <Route path="/transparency" element={<ForcedPasswordGate><TransparencyPage /></ForcedPasswordGate>} />
           <Route path="/my-duties" element={<ForcedPasswordGate><MyDutiesPage /></ForcedPasswordGate>} />
+          <Route path="/my-requests" element={<ForcedPasswordGate><MyRequestsPage /></ForcedPasswordGate>} />
+          <Route path="/approvals" element={<ForcedPasswordGate><ApprovalsPage /></ForcedPasswordGate>} />
           <Route path="/unit-calendar" element={<ForcedPasswordGate><UnitCalendarPage /></ForcedPasswordGate>} />
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
         </Route>
