@@ -48,9 +48,16 @@ class OverrideRequest(BaseModel):
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:
-    return AssignmentOut(id=a.id, soldier_id=a.soldier_id, duty_type_id=a.duty_type_id,
-                         duty_location_id=a.duty_location_id, start_date=a.start_date,
-                         end_date=a.end_date, status=a.status, notes=a.notes)
+    return AssignmentOut(
+        id=a.id,
+        soldier_id=a.soldier_id,
+        duty_type_id=a.duty_type_id,
+        duty_location_id=a.duty_location_id,
+        start_date=a.start_date,
+        end_date=a.end_date,
+        status=a.status,
+        notes=a.notes,
+    )
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -88,7 +95,9 @@ def list_assignments(
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    rows = svc.list_assignments(session, soldier_id=soldier_id, date_from=date_from, date_to=date_to)
+    rows = svc.list_assignments(
+        session, soldier_id=soldier_id, date_from=date_from, date_to=date_to
+    )
     return [_out(a) for a in rows]
 
 
@@ -102,9 +111,14 @@ def create_assignment(
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of(session, s))
     try:
         a = svc.create_assignment(
-            session, soldier_id=body.soldier_id, duty_type_id=body.duty_type_id,
-            duty_location_id=body.duty_location_id, start_date=body.start_date,
-            end_date=body.end_date, notes=body.notes, actor_id=user.id,
+            session,
+            soldier_id=body.soldier_id,
+            duty_type_id=body.duty_type_id,
+            duty_location_id=body.duty_location_id,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            notes=body.notes,
+            actor_id=user.id,
         )
     except svc.AssignmentError as exc:
         raise _err(exc) from exc
@@ -121,7 +135,12 @@ def cancel_assignment(
     user: Soldier = Depends(require_password_changed),
 ) -> AssignmentOut:
     a = _load_assignment(session, assignment_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of(session, _load_soldier(session, a.soldier_id)))
+    authorize(
+        session,
+        user,
+        Action.ASSIGNMENT_MANAGE,
+        target_node=_node_of(session, _load_soldier(session, a.soldier_id)),
+    )
     try:
         svc.cancel_assignment(session, assignment=a, reason=body.reason, actor_id=user.id)
     except svc.AssignmentError as exc:
@@ -140,11 +159,21 @@ def set_override(
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, str]:
     a = _load_assignment(session, assignment_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of(session, _load_soldier(session, a.soldier_id)))
+    authorize(
+        session,
+        user,
+        Action.ASSIGNMENT_MANAGE,
+        target_node=_node_of(session, _load_soldier(session, a.soldier_id)),
+    )
     try:
-        svc.set_day_override(session, assignment=a, date=day,
-                             effective_soldier_id=body.effective_soldier_id, reason=body.reason,
-                             actor_id=user.id)
+        svc.set_day_override(
+            session,
+            assignment=a,
+            date=day,
+            effective_soldier_id=body.effective_soldier_id,
+            reason=body.reason,
+            actor_id=user.id,
+        )
     except svc.AssignmentError as exc:
         raise _err(exc) from exc
     session.commit()
@@ -159,6 +188,11 @@ def clear_override(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     a = _load_assignment(session, assignment_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of(session, _load_soldier(session, a.soldier_id)))
+    authorize(
+        session,
+        user,
+        Action.ASSIGNMENT_MANAGE,
+        target_node=_node_of(session, _load_soldier(session, a.soldier_id)),
+    )
     svc.clear_day_override(session, assignment=a, date=day, actor_id=user.id)
     session.commit()

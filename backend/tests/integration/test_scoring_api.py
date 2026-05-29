@@ -21,9 +21,17 @@ def test_transparency_reflects_assignment(client: TestClient, admin_session: Ses
     loc = DutyLocation(name="מוצב-sca")
     admin_session.add_all([dt, loc])
     admin_session.commit()
-    client.post("/api/assignments", headers=auth_headers(admin), json={
-        "soldier_id": str(s.id), "duty_type_id": str(dt.id), "duty_location_id": str(loc.id),
-        "start_date": "2026-10-01", "end_date": "2026-10-02"})
+    client.post(
+        "/api/assignments",
+        headers=auth_headers(admin),
+        json={
+            "soldier_id": str(s.id),
+            "duty_type_id": str(dt.id),
+            "duty_location_id": str(loc.id),
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-02",
+        },
+    )
     r = client.get("/api/scoring/transparency", headers=auth_headers(admin))
     row = next(x for x in r.json() if x["soldier_id"] == str(s.id))
     assert Decimal(row["cumulative_score"]) == Decimal("4.00")

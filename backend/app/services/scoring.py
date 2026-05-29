@@ -30,9 +30,11 @@ def effective_duty_days(
 ) -> list[tuple[date, uuid.UUID, uuid.UUID]]:
     """Expand every published assignment to (date, effective_soldier_id, duty_type_id) tuples,
     applying overrides (replacement reassigns; NULL effective drops the day)."""
-    assignments = session.execute(
-        select(DutyAssignment).where(DutyAssignment.status == "published")
-    ).scalars().all()
+    assignments = (
+        session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
+        .scalars()
+        .all()
+    )
     overrides = {
         (o.duty_assignment_id, o.date): o
         for o in session.execute(select(DutyDayOverride)).scalars().all()
@@ -60,8 +62,9 @@ def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
 
 def adjustments_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
     rows = session.execute(
-        select(ScoreAdjustment.soldier_id, func.sum(ScoreAdjustment.delta))
-        .group_by(ScoreAdjustment.soldier_id)
+        select(ScoreAdjustment.soldier_id, func.sum(ScoreAdjustment.delta)).group_by(
+            ScoreAdjustment.soldier_id
+        )
     ).all()
     return {sid: Decimal(total) for sid, total in rows}
 
@@ -73,9 +76,9 @@ def cumulative_score(session: Session, *, soldier_id: uuid.UUID) -> Decimal:
 
 
 def _active_duty_type_ids(session: Session) -> set[uuid.UUID]:
-    return set(session.execute(
-        select(DutyType.id).where(DutyType.active.is_(True))
-    ).scalars().all())
+    return set(
+        session.execute(select(DutyType.id).where(DutyType.active.is_(True))).scalars().all()
+    )
 
 
 def _full_coverage_exempt_dates(
@@ -93,12 +96,16 @@ def _full_coverage_exempt_dates(
     if not full_types:
         return set()
     result: set[date] = set()
-    exemptions = session.execute(
-        select(SoldierExemption).where(
-            SoldierExemption.soldier_id == soldier_id,
-            SoldierExemption.exemption_type_id.in_(full_types),
+    exemptions = (
+        session.execute(
+            select(SoldierExemption).where(
+                SoldierExemption.soldier_id == soldier_id,
+                SoldierExemption.exemption_type_id.in_(full_types),
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for ex in exemptions:
         lo = max(ex.start_date, start)
         hi = min(ex.end_date, end) if ex.end_date is not None else end
@@ -121,7 +128,9 @@ def active_days(session: Session, *, soldier: Soldier) -> int:
 
 
 def normalised_score(session: Session, *, soldier: Soldier) -> Decimal:
-    return cumulative_score(session, soldier_id=soldier.id) / Decimal(active_days(session, soldier=soldier))
+    return cumulative_score(session, soldier_id=soldier.id) / Decimal(
+        active_days(session, soldier=soldier)
+    )
 
 
 def transparency_rows(session: Session) -> list[dict[str, Any]]:
@@ -134,15 +143,17 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days(session, soldier=s)
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-        rows.append({
-            "soldier_id": s.id,
-            "full_name": s.full_name,
-            "node_name": node.name if node is not None else None,
-            "enrolled_at": s.enrolled_at,
-            "active_days": ad,
-            "cumulative_score": cum,
-            "normalised_score": cum / Decimal(ad),
-        })
+        rows.append(
+            {
+                "soldier_id": s.id,
+                "full_name": s.full_name,
+                "node_name": node.name if node is not None else None,
+                "enrolled_at": s.enrolled_at,
+                "active_days": ad,
+                "cumulative_score": cum,
+                "normalised_score": cum / Decimal(ad),
+            }
+        )
     rows.sort(key=lambda r: r["normalised_score"], reverse=True)
     return rows
 
@@ -155,12 +166,21 @@ def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[
         if eff == soldier_id:
             by_type_days[dtid] += 1
     per_type = [
-        {"duty_type_id": dtid, "duty_type_name": dt_names.get(dtid), "days": days,
-         "score": scores.get(dtid, Decimal("0")) * days}
+        {
+            "duty_type_id": dtid,
+            "duty_type_name": dt_names.get(dtid),
+            "days": days,
+            "score": scores.get(dtid, Decimal("0")) * days,
+        }
         for dtid, days in by_type_days.items()
     ]
-    adjustments = session.execute(
-        select(ScoreAdjustment).where(ScoreAdjustment.soldier_id == soldier_id)
-        .order_by(ScoreAdjustment.created_at)
-    ).scalars().all()
+    adjustments = (
+        session.execute(
+            select(ScoreAdjustment)
+            .where(ScoreAdjustment.soldier_id == soldier_id)
+            .order_by(ScoreAdjustment.created_at)
+        )
+        .scalars()
+        .all()
+    )
     return {"per_type": per_type, "adjustments": list(adjustments)}

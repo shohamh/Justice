@@ -72,6 +72,8 @@ def breakdown(
     data = svc.soldier_score_breakdown(session, soldier_id=soldier_id)
     return BreakdownOut(
         per_type=[PerTypeRow(**pt) for pt in data["per_type"]],
-        adjustments=[AdjustmentRow(id=a.id, delta=a.delta, reason=a.reason, created_at=a.created_at)
-                     for a in data["adjustments"]],
+        adjustments=[
+            AdjustmentRow(id=a.id, delta=a.delta, reason=a.reason, created_at=a.created_at)
+            for a in data["adjustments"]
+        ],
     )

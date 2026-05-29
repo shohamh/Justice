@@ -211,9 +211,14 @@ class DutyAssignment(Base):
     )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
-    status: Mapped[str] = mapped_column(Text, server_default=text("'published'"), default="published")
+    status: Mapped[str] = mapped_column(
+        Text, server_default=text("'published'"), default="published"
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
@@ -233,10 +238,16 @@ class DutyDayOverride(Base):
     date: Mapped[date] = mapped_column(Date)
     reason: Mapped[str] = mapped_column(Text)
     effective_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
@@ -255,10 +266,16 @@ class ScoreAdjustment(Base):
     delta: Mapped[Decimal] = mapped_column(Numeric(8, 2))
     reason: Mapped[str] = mapped_column(Text)
     duty_type_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("duty_types.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("duty_types.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False

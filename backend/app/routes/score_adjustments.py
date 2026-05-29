@@ -34,8 +34,14 @@ class CreateAdjustmentRequest(BaseModel):
 
 
 def _out(a: ScoreAdjustment) -> AdjustmentOut:
-    return AdjustmentOut(id=a.id, soldier_id=a.soldier_id, delta=a.delta, reason=a.reason,
-                         duty_type_id=a.duty_type_id, created_at=a.created_at)
+    return AdjustmentOut(
+        id=a.id,
+        soldier_id=a.soldier_id,
+        delta=a.delta,
+        reason=a.reason,
+        duty_type_id=a.duty_type_id,
+        created_at=a.created_at,
+    )
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -70,8 +76,14 @@ def create_adjustment(
     s = _load_soldier(session, body.soldier_id)
     authorize(session, user, Action.SCORE_ADJUST, target_node=_node_of(session, s))
     try:
-        adj = svc.create_adjustment(session, soldier_id=body.soldier_id, delta=body.delta,
-                                    reason=body.reason, duty_type_id=body.duty_type_id, actor_id=user.id)
+        adj = svc.create_adjustment(
+            session,
+            soldier_id=body.soldier_id,
+            delta=body.delta,
+            reason=body.reason,
+            duty_type_id=body.duty_type_id,
+            actor_id=user.id,
+        )
     except svc.AdjustmentError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()

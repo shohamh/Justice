@@ -51,7 +51,9 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.UniqueConstraint("duty_assignment_id", "date", name="uq_duty_day_overrides_assignment_date"),
+        sa.UniqueConstraint(
+            "duty_assignment_id", "date", name="uq_duty_day_overrides_assignment_date"
+        ),
         sa.CheckConstraint(
             "reason IN ('replacement', 'no_show_covered', 'cancelled', 'manual_edit')",
             name="ck_duty_day_overrides_reason",
