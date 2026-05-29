@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections import deque
-from typing import Sequence
+from collections.abc import Sequence
 
 from app.algorithm.types import Assignment, DutyBlock, ReserveEntry, SoldierInput
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from ortools.sat.python.cp_model import CpSolver, IntVar
 
@@ -95,3 +95,8 @@ def _infeasibility_relaxation_chain(
             },
             relaxed=relaxed,
         )
+
+    return SolverResult(
+        assignments=[], status="INFEASIBLE",
+        seed=current.seed or 0, relaxed=relaxed,
+    )

@@ -30,6 +30,7 @@ dev = [
   "types-python-jose>=3.3",
 ]
 
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"

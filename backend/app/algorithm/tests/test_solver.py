@@ -1,22 +1,26 @@
+import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from ortools.sat.python import cp_model
 
 from app.algorithm.model import build_model
 from app.algorithm.solver import solve
 from app.algorithm.types import (
-    Assignment,
     DutyBlock,
     ExistingAssignment,
     SoldierInput,
-    SolverResult,
     SolverSettings,
 )
 
 
-def test_build_model_basic():
+def test_build_model_basic() -> None:
     soldier_id = uuid4()
     duty_id = uuid4()
     soldiers = [
@@ -41,7 +45,7 @@ def test_build_model_basic():
     settings = SolverSettings()
     model, x = build_model(soldiers=soldiers, duties=duties, existing=existing, settings=settings)
     assert len(x) == 1  # one eligible (duty, soldier) pair
-    assert model.ModelStats()  # model has constraints
+    assert model.ModelStats()  # type: ignore[attr-defined]  # model has constraints
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 5
     status = solver.Solve(model)
@@ -50,7 +54,7 @@ def test_build_model_basic():
     assert len(assigned) == 1
 
 
-def test_solve_basic():
+def test_solve_basic() -> None:
     soldier_id = uuid4()
     duty_id = uuid4()
     soldiers = [
@@ -79,7 +83,7 @@ def test_solve_basic():
     assert result.assignments[0].soldier_id == soldier_id
 
 
-def test_solve_determinism():
+def test_solve_determinism() -> None:
     soldier_id = uuid4()
     duties = [DutyBlock(id=uuid4(), duty_type_id=uuid4(), duty_location_id=uuid4(),
                         start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
@@ -93,7 +97,7 @@ def test_solve_determinism():
     assert r1.objective_value == r2.objective_value
 
 
-def test_solve_no_eligible_soldiers():
+def test_solve_no_eligible_soldiers() -> None:
     soldier_id = uuid4()
     exempt_type = uuid4()
     duty_type = exempt_type
@@ -108,7 +112,7 @@ def test_solve_no_eligible_soldiers():
     assert len(result.assignments) == 0
 
 
-def test_infeasibility_relaxation():
+def test_infeasibility_relaxation() -> None:
     soldier_a = uuid4()
     soldier_b = uuid4()
     duty_type = uuid4()
@@ -131,17 +135,11 @@ def test_infeasibility_relaxation():
 
 # ── Golden fixture tests ──────────────────────────────────────────────
 
-import json
-from pathlib import Path
-
-import pytest
-
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.mark.parametrize("fixture_name", ["small_balanced.json", "density_stress.json"])
-def test_golden_fixture(fixture_name):
+def test_golden_fixture(fixture_name: str) -> None:
     path = FIXTURES / fixture_name
     data = json.loads(path.read_text())
     soldiers = [_dict_to_soldier(sd) for sd in data["soldiers"]]
@@ -165,7 +163,7 @@ def test_golden_fixture(fixture_name):
     all_duty_ids = {d.id for d in duties}
     assert assigned_duty_ids == all_duty_ids, "Not all duties assigned"
 
-    soldier_dates: dict = {}
+    soldier_dates: dict[UUID, set[date]] = {}
     duty_map = {d.id: d for d in duties}
     for a in result.assignments:
         d = duty_map[a.duty_id]
@@ -179,7 +177,7 @@ def test_golden_fixture(fixture_name):
         soldier_dates.setdefault(a.soldier_id, set()).update(dates)
 
 
-def _dict_to_soldier(d: dict) -> SoldierInput:
+def _dict_to_soldier(d: dict[str, Any]) -> SoldierInput:
     return SoldierInput(
         id=UUID(d["id"]),
         enrolled_at=date.fromisoformat(d["enrolled_at"]),
@@ -192,7 +190,7 @@ def _dict_to_soldier(d: dict) -> SoldierInput:
     )
 
 
-def _dict_to_duty(d: dict) -> DutyBlock:
+def _dict_to_duty(d: dict[str, Any]) -> DutyBlock:
     return DutyBlock(
         id=UUID(d["id"]),
         duty_type_id=UUID(d["duty_type_id"]),
@@ -203,7 +201,7 @@ def _dict_to_duty(d: dict) -> DutyBlock:
     )
 
 
-def _dict_to_existing(d: dict) -> ExistingAssignment:
+def _dict_to_existing(d: dict[str, Any]) -> ExistingAssignment:
     return ExistingAssignment(
         soldier_id=UUID(d["soldier_id"]),
         duty_type_id=UUID(d["duty_type_id"]),
@@ -213,8 +211,6 @@ def _dict_to_existing(d: dict) -> ExistingAssignment:
 
 
 # ── Property-based tests ──────────────────────────────────────────────
-
-from hypothesis import given, strategies as st
 
 
 @given(
@@ -244,7 +240,7 @@ from hypothesis import given, strategies as st
         max_size=3,
     ),
 )
-def test_hypothesis_property(hyp_soldiers, hyp_duties):
+def test_hypothesis_property(hyp_soldiers: list[SoldierInput], hyp_duties: list[DutyBlock]) -> None:
     if not _any_eligible(hyp_soldiers, hyp_duties):
         return
     settings = SolverSettings(time_limit_seconds=10)
@@ -259,7 +255,7 @@ def test_hypothesis_property(hyp_soldiers, hyp_duties):
             assert d.duty_type_id not in s.exempted_duty_type_ids
 
 
-def _any_eligible(soldiers, duties) -> bool:
+def _any_eligible(soldiers: list[SoldierInput], duties: list[DutyBlock]) -> bool:
     for d in duties:
         for s in soldiers:
             if d.duty_type_id not in s.exempted_duty_type_ids:

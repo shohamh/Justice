@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Sequence
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 

@@ -3,10 +3,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 from app.algorithm.reserve import select_reserves
-from app.algorithm.types import Assignment, DutyBlock, ReserveEntry, SoldierInput
+from app.algorithm.types import Assignment, DutyBlock, SoldierInput
 
 
-def test_select_reserves_basic_hierarchy_walk():
+def test_select_reserves_basic_hierarchy_walk() -> None:
     team_a = uuid4()
     team_b = uuid4()
     group = uuid4()
@@ -46,7 +46,7 @@ def test_select_reserves_basic_hierarchy_walk():
     assert result[0].reserve_soldier_id == soldier_backup
 
 
-def test_no_reserve_available():
+def test_no_reserve_available() -> None:
     solo = uuid4()
     team = uuid4()
     soldiers = [SoldierInput(id=solo, enrolled_at=date(2026, 1, 1),
@@ -64,7 +64,7 @@ def test_no_reserve_available():
     assert len(result) == 0
 
 
-def test_reserve_skips_exempted_soldier():
+def test_reserve_skips_exempted_soldier() -> None:
     primary = uuid4()
     backup = uuid4()
     team_a = uuid4()

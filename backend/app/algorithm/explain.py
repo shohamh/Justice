@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from decimal import Decimal
-from typing import Sequence
+from typing import Any
 
 from app.algorithm.types import (
     Assignment,
@@ -17,8 +18,8 @@ def build_explanations(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
     assignments: Sequence[Assignment],
-    global_before: dict,
-    global_after: dict,
+    global_before: dict[str, Any],
+    global_after: dict[str, Any],
     solver_seed: int,
 ) -> ExplanationData:
     duty_map = {d.id: d for d in duties}
@@ -60,10 +61,7 @@ def build_explanations(
             ))
 
         unblocked_count = sum(1 for c in candidates if not c.blocked)
-        if unblocked_count <= 1:
-            tiebreaker_note = None
-        else:
-            tiebreaker_note = "lowest_post_norm_score"
+        tiebreaker_note = None if unblocked_count <= 1 else "lowest_post_norm_score"
 
         per_assignment.append(AssignmentExplanation(
             duty_id=a.duty_id,

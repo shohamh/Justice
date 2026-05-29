@@ -5,10 +5,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 from app.algorithm.explain import build_explanations
-from app.algorithm.types import Assignment, CandidateInfo, DutyBlock, ExplanationData, SoldierInput
+from app.algorithm.types import Assignment, DutyBlock, SoldierInput
 
 
-def test_build_explanations_basic():
+def test_build_explanations_basic() -> None:
     soldier_id = uuid4()
     duty_id = uuid4()
     soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
@@ -36,7 +36,7 @@ def test_build_explanations_basic():
     assert result.solver_seed == 42
 
 
-def test_explain_blocked_candidate():
+def test_explain_blocked_candidate() -> None:
     soldier_a = uuid4()
     soldier_b = uuid4()
     duty_type = uuid4()
