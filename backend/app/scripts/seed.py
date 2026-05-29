@@ -7,10 +7,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from random import choice, randint
 
-from sqlalchemy import create_engine
-
 from app.auth.password import hash_password
-from app.db.base import Base
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
@@ -24,24 +21,19 @@ from app.db.models import (
     SoldierExemption,
 )
 from app.db.session import SessionLocal
-from app.settings import get_settings
 
 
 def seed():
-    settings = get_settings()
-    engine = create_engine(settings.database_url)
-    Base.metadata.create_all(bind=engine)
-
     with SessionLocal() as session:
-        if session.query(Soldier).count() > 5:
-            print("DB already has data. Delete tables or use a fresh DB first.")
+        if session.query(Soldier).filter(Soldier.personal_number == "2000001").first():
+            print("Seed data already exists. Skipping.")
             return
 
         hashed = hash_password("Pass123456!")
 
         # ── Hierarchy ──────────────────────────────────────────────
-        dept1 = HierarchyNode(level="department", name="אגף מבצעים")
-        dept2 = HierarchyNode(level="department", name="אגף מודיעין")
+        dept1 = HierarchyNode(level="department", name="אגף מבצעים", path_ids=[])
+        dept2 = HierarchyNode(level="department", name="אגף מודיעין", path_ids=[])
         session.add_all([dept1, dept2])
         session.flush()
         dept1.path_ids = [dept1.id]
@@ -50,7 +42,7 @@ def seed():
         branches = []
         for dept, bnames in [(dept1, ["זרוע אוויר", "זרוע ים"]), (dept2, ["זרוע סייבר", "זרוע יבשה"])]:
             for bname in bnames:
-                b = HierarchyNode(level="branch", name=bname, parent_id=dept.id)
+                b = HierarchyNode(level="branch", name=bname, parent_id=dept.id, path_ids=[])
                 session.add(b)
                 session.flush()
                 b.path_ids = dept.path_ids + [b.id]
@@ -64,7 +56,7 @@ def seed():
             (branches[3], ["גדוד חוד", "גדוד סדיר"]),
         ]:
             for gname in gnames:
-                g = HierarchyNode(level="group", name=gname, parent_id=branch.id)
+                g = HierarchyNode(level="group", name=gname, parent_id=branch.id, path_ids=[])
                 session.add(g)
                 session.flush()
                 g.path_ids = branch.path_ids + [g.id]
@@ -82,7 +74,7 @@ def seed():
             (groups[7], ["מחלקה 1", "מחלקה 2"]),
         ]:
             for tname in tnames:
-                t = HierarchyNode(level="team", name=tname, parent_id=group.id)
+                t = HierarchyNode(level="team", name=tname, parent_id=group.id, path_ids=[])
                 session.add(t)
                 session.flush()
                 t.path_ids = group.path_ids + [t.id]
@@ -125,6 +117,10 @@ def seed():
 
         soldiers = []
         for pn, name, role, node_idx in soldier_defs:
+            existing = session.query(Soldier).filter(Soldier.personal_number == pn).first()
+            if existing:
+                soldiers.append(existing)
+                continue
             s = Soldier(
                 personal_number=pn,
                 full_name=name,
