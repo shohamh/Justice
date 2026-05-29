@@ -35,7 +35,33 @@
   "nav": {
     "home": "ראשי",
     "team_hierarchy": "אנשי צוות והיררכיה",
+    "duty_config": "הגדרות תורנויות",
     "profile": "פרופיל"
+  },
+  "duty_config": {
+    "title": "הגדרות תורנויות",
+    "duty_types": "סוגי תורנויות",
+    "locations": "מיקומים",
+    "exemption_types": "סוגי פטור",
+    "name": "שם",
+    "score_per_day": "ניקוד ליום",
+    "base": "בסיס",
+    "active": "פעיל",
+    "add": "הוסף",
+    "save": "שמור",
+    "exempts_from": "פוטר מ-",
+    "delete": "מחק"
+  },
+  "exemptions": {
+    "title": "פטורים",
+    "type": "סוג פטור",
+    "start_date": "מתאריך",
+    "end_date": "עד תאריך",
+    "reason": "סיבה",
+    "grant": "הענק פטור",
+    "revoke": "בטל",
+    "none": "אין פטורים",
+    "forever": "ללא הגבלה"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",

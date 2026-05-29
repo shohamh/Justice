@@ -9,6 +9,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const role = user?.role;
   const canManageTeam = role === "duty_manager" || role === "admin" || role === "commander";
+  const canManageDuties = role === "duty_manager" || role === "admin";
 
   return (
     <div className="min-h-screen flex">
@@ -16,6 +17,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         <Link to="/" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-home">{t("nav.home")}</Link>
         {canManageTeam && (
           <Link to="/team" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-team">{t("nav.team_hierarchy")}</Link>
+        )}
+        {canManageDuties && (
+          <Link to="/duty-config" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-duty-config">{t("nav.duty_config")}</Link>
         )}
         <Link to="/profile" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-profile">{t("nav.profile")}</Link>
       </aside>
