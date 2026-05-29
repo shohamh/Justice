@@ -1,15 +1,22 @@
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
 
+from app.db.models import ExemptionDutyTypeMap, SoldierExemption
 from app.services.duty_config import (
     DutyConfigError,
     create_duty_type,
+    create_exemption_type,
     create_location,
+    delete_exemption_type,
+    map_exemption_to_duty_type,
     set_duty_type_active,
+    set_exemption_duty_types,
     update_duty_type,
 )
+from tests.helpers import create_soldier
 
 
 def test_create_duty_type(admin_session):
@@ -55,47 +62,31 @@ def test_create_location(admin_session):
     assert loc.active is True
 
 
-from decimal import Decimal as _D
-
-from app.services.duty_config import (
-    create_exemption_type,
-    delete_exemption_type,
-    map_exemption_to_duty_type,
-    set_exemption_duty_types,
-    unmap_exemption_from_duty_type,
-)
-
-
 def test_create_exemption_type_and_map(admin_session):
     et = create_exemption_type(admin_session, name="פטור רפואי", actor_id=None)
-    dt = create_duty_type(admin_session, name="שמירה-מ", score_per_day=_D("1"), actor_id=None)
+    dt = create_duty_type(admin_session, name="שמירה-מ", score_per_day=Decimal("1"), actor_id=None)
     admin_session.flush()
     map_exemption_to_duty_type(admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None)
     # idempotent: second call does not raise or duplicate
     map_exemption_to_duty_type(admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None)
     admin_session.commit()
-    from app.db.models import ExemptionDutyTypeMap
     rows = admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id).all()
     assert len(rows) == 1
 
 
 def test_set_exemption_duty_types_diffs(admin_session):
     et = create_exemption_type(admin_session, name="פטור גב", actor_id=None)
-    d1 = create_duty_type(admin_session, name="ניקיון-מ", score_per_day=_D("1"), actor_id=None)
-    d2 = create_duty_type(admin_session, name="מטבח-מ", score_per_day=_D("1"), actor_id=None)
+    d1 = create_duty_type(admin_session, name="ניקיון-מ", score_per_day=Decimal("1"), actor_id=None)
+    d2 = create_duty_type(admin_session, name="מטבח-מ", score_per_day=Decimal("1"), actor_id=None)
     admin_session.flush()
     set_exemption_duty_types(admin_session, exemption_type_id=et.id, duty_type_ids=[d1.id], actor_id=None)
     set_exemption_duty_types(admin_session, exemption_type_id=et.id, duty_type_ids=[d2.id], actor_id=None)
     admin_session.commit()
-    from app.db.models import ExemptionDutyTypeMap
     rows = {r.duty_type_id for r in admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id)}
     assert rows == {d2.id}
 
 
 def test_delete_exemption_type_rejected_when_granted(admin_session):
-    from tests.helpers import create_soldier
-    from app.db.models import SoldierExemption
-    from datetime import date
     et = create_exemption_type(admin_session, name="פטור בשימוש", actor_id=None)
     s = create_soldier(admin_session, personal_number="7200001")
     admin_session.flush()
