@@ -15,11 +15,19 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex">
       <aside className="w-56 bg-white border-l shadow-sm p-4 space-y-2" data-testid="sidebar">
         <Link to="/" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-home">{t("nav.home")}</Link>
+        <Link to="/my-duties" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-my-duties">{t("nav.my_duties")}</Link>
+        <Link to="/transparency" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-transparency">{t("nav.transparency")}</Link>
         {canManageTeam && (
           <Link to="/team" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-team">{t("nav.team_hierarchy")}</Link>
         )}
+        {canManageTeam && (
+          <Link to="/unit-calendar" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-unit-calendar">{t("nav.unit_calendar")}</Link>
+        )}
         {canManageDuties && (
           <Link to="/duty-config" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-duty-config">{t("nav.duty_config")}</Link>
+        )}
+        {canManageDuties && (
+          <Link to="/duty-management" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-duty-management">{t("nav.duty_management")}</Link>
         )}
         <Link to="/profile" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-profile">{t("nav.profile")}</Link>
       </aside>

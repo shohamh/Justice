@@ -36,7 +36,11 @@
     "home": "ראשי",
     "team_hierarchy": "אנשי צוות והיררכיה",
     "duty_config": "הגדרות תורנויות",
-    "profile": "פרופיל"
+    "profile": "פרופיל",
+    "duty_management": "ניהול תורנויות",
+    "transparency": "שקיפות",
+    "my_duties": "היומן שלי",
+    "unit_calendar": "היומן של היחידה"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
@@ -79,5 +83,51 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה"
+  },
+  "duty_management": {
+    "title": "ניהול תורנויות",
+    "soldier": "חייל",
+    "duty_type": "סוג תורנות",
+    "location": "מיקום",
+    "start_date": "מתאריך",
+    "end_date": "עד תאריך",
+    "notes": "הערות",
+    "create": "צור תורנות",
+    "cancel": "בטל תורנות",
+    "cancel_reason": "סיבת ביטול",
+    "override": "החלפה ליום",
+    "override_day": "תאריך",
+    "replacement": "מחליף",
+    "score_adjustment": "תיקון ניקוד",
+    "delta": "שינוי ניקוד",
+    "reason": "סיבה",
+    "apply": "החל",
+    "none": "אין תורנויות"
+  },
+  "transparency": {
+    "title": "שקיפות",
+    "name": "שם",
+    "unit": "יחידה",
+    "enrolled_at": "תאריך הצטרפות",
+    "active_days": "ימים פעילים",
+    "cumulative": "ניקוד מצטבר",
+    "normalised": "ניקוד מנורמל",
+    "my_breakdown": "הפירוט שלי",
+    "days": "ימים",
+    "adjustments": "תיקוני ניקוד"
+  },
+  "my_duties": {
+    "title": "היומן שלי",
+    "duty_type": "סוג תורנות",
+    "location": "מיקום",
+    "from": "מתאריך",
+    "to": "עד תאריך",
+    "none": "אין תורנויות"
+  },
+  "unit_calendar": {
+    "title": "היומן של היחידה",
+    "soldier": "חייל",
+    "duties": "תורנויות",
+    "none": "אין תורנויות ביחידה"
   }
 }
