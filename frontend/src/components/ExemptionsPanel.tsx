@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
@@ -13,13 +13,13 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   const [end, setEnd] = useState("");
   const [reason, setReason] = useState("");
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setItems(await listExemptions(soldierId));
-  }
+  }, [soldierId]);
   useEffect(() => {
     void refresh();
     listExemptionTypes().then(setTypes);
-  }, [soldierId]);
+  }, [refresh]);
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? id;
 
