@@ -12,13 +12,13 @@ from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier
 from app.db.session import get_session
-from app.services import assignments as svc
+from app.services import scoring as scoring_svc
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
 class CalAssignment(BaseModel):
-    id: uuid.UUID
+    assignment_id: uuid.UUID
     duty_type_id: uuid.UUID
     duty_location_id: uuid.UUID
     start_date: date
@@ -60,18 +60,18 @@ def unit_calendar(
         .all()
     )
     soldier_ids = [s.id for s in soldiers]
-    rows = svc.list_assignments_for_soldiers(
-        session, soldier_ids=soldier_ids, date_from=date_from, date_to=date_to
+    spans = scoring_svc.effective_duty_spans(
+        session, soldier_ids=set(soldier_ids), date_from=date_from, date_to=date_to
     )
     by_soldier: dict[uuid.UUID, list[CalAssignment]] = {sid: [] for sid in soldier_ids}
-    for a in rows:
-        by_soldier[a.soldier_id].append(
+    for sp in spans:
+        by_soldier[sp["soldier_id"]].append(
             CalAssignment(
-                id=a.id,
-                duty_type_id=a.duty_type_id,
-                duty_location_id=a.duty_location_id,
-                start_date=a.start_date,
-                end_date=a.end_date,
+                assignment_id=sp["assignment_id"],
+                duty_type_id=sp["duty_type_id"],
+                duty_location_id=sp["duty_location_id"],
+                start_date=sp["start_date"],
+                end_date=sp["end_date"],
             )
         )
     return [

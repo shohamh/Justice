@@ -12,6 +12,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import assignments as svc
+from app.services import scoring as scoring_svc
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
@@ -45,6 +46,15 @@ class CancelRequest(BaseModel):
 class OverrideRequest(BaseModel):
     effective_soldier_id: uuid.UUID | None = None
     reason: str = Field(min_length=1, max_length=50)
+
+
+class EffectiveDutyOut(BaseModel):
+    assignment_id: uuid.UUID
+    soldier_id: uuid.UUID
+    duty_type_id: uuid.UUID
+    duty_location_id: uuid.UUID
+    start_date: date
+    end_date: date
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:
@@ -99,6 +109,23 @@ def list_assignments(
         session, soldier_id=soldier_id, date_from=date_from, date_to=date_to
     )
     return [_out(a) for a in rows]
+
+
+@router.get("/effective", response_model=list[EffectiveDutyOut])
+def list_effective_duties(
+    soldier_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[EffectiveDutyOut]:
+    s = _load_soldier(session, soldier_id)
+    if s.id != user.id:
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    spans = scoring_svc.effective_duty_spans(
+        session, soldier_ids={soldier_id}, date_from=date_from, date_to=date_to
+    )
+    return [EffectiveDutyOut(**sp) for sp in spans]
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)

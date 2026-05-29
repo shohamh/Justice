@@ -20,6 +20,8 @@ from app.db.models import (
     SoldierExemption,
 )
 
+_UNSET: object = object()
+
 
 def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
     return {dt.id: dt.score_per_day for dt in session.execute(select(DutyType)).scalars().all()}
@@ -50,6 +52,77 @@ def effective_duty_days(
                     out.append((day, eff, a.duty_type_id))
             day += timedelta(days=1)
     return out
+
+
+def effective_duty_spans(
+    session: Session,
+    *,
+    soldier_ids: set[uuid.UUID] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict[str, Any]]:
+    """Published assignments expanded per day with overrides applied, then re-merged into
+    contiguous runs where the effective soldier is unchanged. Degrades to the original block
+    when there are no overrides; cancelled days (NULL effective) break runs and are dropped.
+    Optionally filtered to soldier_ids and to spans overlapping [date_from, date_to]."""
+    assignments = (
+        session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
+        .scalars()
+        .all()
+    )
+    overrides = {
+        (o.duty_assignment_id, o.date): o
+        for o in session.execute(select(DutyDayOverride)).scalars().all()
+    }
+    spans: list[dict[str, Any]] = []
+    for a in assignments:
+        cur: object = _UNSET
+        run_start: date | None = None
+        run_end: date | None = None
+        day = a.start_date
+        while day <= a.end_date:
+            ov = overrides.get((a.id, day))
+            eff = ov.effective_soldier_id if ov is not None else a.soldier_id
+            if eff == cur:
+                run_end = day
+            else:
+                if cur not in (None, _UNSET) and run_start is not None and run_end is not None:
+                    spans.append(
+                        {
+                            "assignment_id": a.id,
+                            "soldier_id": cur,
+                            "duty_type_id": a.duty_type_id,
+                            "duty_location_id": a.duty_location_id,
+                            "start_date": run_start,
+                            "end_date": run_end,
+                        }
+                    )
+                cur = eff
+                run_start = day if eff is not None else None
+                run_end = day if eff is not None else None
+            day += timedelta(days=1)
+        if cur not in (None, _UNSET) and run_start is not None and run_end is not None:
+            spans.append(
+                {
+                    "assignment_id": a.id,
+                    "soldier_id": cur,
+                    "duty_type_id": a.duty_type_id,
+                    "duty_location_id": a.duty_location_id,
+                    "start_date": run_start,
+                    "end_date": run_end,
+                }
+            )
+    result: list[dict[str, Any]] = []
+    for sp in spans:
+        if soldier_ids is not None and sp["soldier_id"] not in soldier_ids:
+            continue
+        if date_from is not None and sp["end_date"] < date_from:
+            continue
+        if date_to is not None and sp["start_date"] > date_to:
+            continue
+        result.append(sp)
+    result.sort(key=lambda s: s["start_date"])
+    return result
 
 
 def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
