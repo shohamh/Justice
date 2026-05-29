@@ -166,16 +166,11 @@ def build_model(
             model.Add(excess >= 0)
 
             # Piecewise-linear: 1x, 3x, 5x marginal costs
+            # Cost minimisation naturally fills cheaper buckets first.
             e1 = model.NewIntVar(0, 1, f"e1_s{si}_w{ws}")
-            model.Add(e1 <= excess)
-            model.Add(e1 * 2 >= excess)
             e2 = model.NewIntVar(0, 2, f"e2_s{si}_w{ws}")
-            model.Add(e2 <= excess - 1)
-            model.Add(e2 >= 0)
-            model.Add(e2 * 2 >= excess - 1)
             e3 = model.NewIntVar(0, W, f"e3_s{si}_w{ws}")
-            model.Add(e3 <= excess - 3)
-            model.Add(e3 >= 0)
+            model.Add(e1 + e2 + e3 == excess)
 
             cost = e1 + 3 * e2 + 5 * e3
             density_terms.append(beta_int * cost)
