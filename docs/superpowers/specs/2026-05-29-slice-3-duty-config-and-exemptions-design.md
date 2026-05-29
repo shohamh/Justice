@@ -100,7 +100,7 @@ Thin routes (parse → load → authorize/role-gate → service → Pydantic out
 
 ## Error handling
 
-- Service layer raises `DutyConfigError` / `ExemptionError`; routes translate to `HTTPException(400)` with a stable `detail` code (`name_taken`, `score_negative`, `exemption_type_in_use`, `bad_date_range`, `soldier_not_found`, `exemption_type_not_found`, `exemption_not_found`, `exemption_mismatch`).
+- Service layer raises `DutyConfigError` / `ExemptionError`; routes translate to `HTTPException(400)` with a stable `detail` code (`name_taken`, `score_negative`, `bad_date_range`, `soldier_not_found`, `exemption_type_not_found`, `exemption_not_found`, `exemption_mismatch`). The one exception is `exemption_type_in_use` (deleting a still-referenced exemption type), which returns `409 Conflict` — a referential conflict rather than a malformed request.
 - Authorization failures raise `403` (`forbidden`) via `authorize()` / `require_roles`; `must_change_password` users get `403 must_change_password` from `require_password_changed`.
 - Name-uniqueness is enforced in the service *and* by a DB unique constraint as a backstop.
 
