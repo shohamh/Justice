@@ -40,7 +40,29 @@
     "duty_management": "ניהול תורנויות",
     "transparency": "שקיפות",
     "my_duties": "היומן שלי",
+    "my_requests": "הבקשות שלי",
+    "approvals": "אישור בקשות",
     "unit_calendar": "היומן של היחידה"
+  },
+  "my_requests": {
+    "title": "הבקשות והפטורים שלי",
+    "start_date": "מתאריך",
+    "end_date": "עד תאריך",
+    "reason": "סיבה",
+    "send": "שלח בקשה",
+    "pending": "ממתין לאישור",
+    "approved": "אושר",
+    "rejected": "נדחה",
+    "cancel": "בטל בקשה",
+    "none": "אין בקשות",
+    "my_exemptions": "הפטורים שלי"
+  },
+  "approvals": {
+    "title": "אישור בקשות",
+    "none": "אין בקשות ממתינות לאישור",
+    "approve": "אשר",
+    "reject": "דחה",
+    "decision_note": "הערה"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
