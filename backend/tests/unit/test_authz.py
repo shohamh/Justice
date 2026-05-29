@@ -85,3 +85,36 @@ def test_plain_soldier_cannot_grant_exemptions(admin_session):
     )
     roots = _roots(admin_session, s)
     assert not authz.can(s, authz.Action.EXEMPTION_GRANT, target_node=d, roots=roots)
+
+
+def test_duty_manager_can_manage_assignments_and_scores_in_scope(admin_session):
+    d = create_node(admin_session, level="department", name="d-s4")
+    b = create_node(admin_session, level="branch", name="b-s4", parent=d)
+    other = create_node(admin_session, level="department", name="other-s4")
+    dm = create_soldier(
+        admin_session, personal_number="7400001", role="duty_manager", hierarchy_node_id=b.id
+    )
+    roots = _roots(admin_session, dm)
+    assert authz.can(dm, authz.Action.ASSIGNMENT_MANAGE, target_node=b, roots=roots)
+    assert authz.can(dm, authz.Action.SCORE_ADJUST, target_node=b, roots=roots)
+    assert not authz.can(dm, authz.Action.ASSIGNMENT_MANAGE, target_node=other, roots=roots)
+
+
+def test_commander_cannot_manage_assignments(admin_session):
+    d = create_node(admin_session, level="department", name="d-s4b")
+    b = create_node(admin_session, level="branch", name="b-s4b", parent=d)
+    cmd = create_soldier(admin_session, personal_number="7400002", role="commander")
+    b.commander_id = cmd.id
+    admin_session.flush()
+    roots = _roots(admin_session, cmd)
+    assert not authz.can(cmd, authz.Action.ASSIGNMENT_MANAGE, target_node=b, roots=roots)
+    assert not authz.can(cmd, authz.Action.SCORE_ADJUST, target_node=b, roots=roots)
+
+
+def test_plain_soldier_cannot_manage_assignments(admin_session):
+    d = create_node(admin_session, level="department", name="d-s4c")
+    s = create_soldier(
+        admin_session, personal_number="7400003", role="soldier", hierarchy_node_id=d.id
+    )
+    roots = _roots(admin_session, s)
+    assert not authz.can(s, authz.Action.ASSIGNMENT_MANAGE, target_node=d, roots=roots)

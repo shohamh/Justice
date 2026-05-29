@@ -1,9 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 // The bootstrap admin's one-time forced password change is consumed by whichever
 // spec runs first against a given DB. So this helper tolerates both states:
 // first login (forced change) and an already-changed admin (log in with new pw).
-async function loginAsAdmin(page) {
+async function loginAsAdmin(page: Page) {
   await page.goto("/login");
   await page.getByTestId("personal-number-input").fill("1000001");
   await page.getByTestId("password-input").fill("ChangeMeOnFirstLogin!");

@@ -30,5 +30,8 @@ Thumbs.db
 *.pem
 *.key
 
+# Worktrees (isolated development workspaces)
+.worktrees/
+
 # Postgres data volume (when running compose locally)
 .docker-data/
