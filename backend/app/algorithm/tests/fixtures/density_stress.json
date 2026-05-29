@@ -1,0 +1,29 @@
+{
+  "description": "5 soldiers, 15 duties in a tight 7-day window, tests density penalty",
+  "soldiers": [
+    {"id": "00000002-0000-0000-0000-000000000001", "enrolled_at": "2026-01-01", "cumulative_score": "0.00", "active_days": 150, "hierarchy_node_id": null, "approved_constraint_dates": [], "exempted_duty_type_ids": []},
+    {"id": "00000002-0000-0000-0000-000000000002", "enrolled_at": "2026-01-01", "cumulative_score": "5.00", "active_days": 150, "hierarchy_node_id": null, "approved_constraint_dates": [], "exempted_duty_type_ids": []},
+    {"id": "00000002-0000-0000-0000-000000000003", "enrolled_at": "2026-01-01", "cumulative_score": "10.00", "active_days": 150, "hierarchy_node_id": null, "approved_constraint_dates": [], "exempted_duty_type_ids": []},
+    {"id": "00000002-0000-0000-0000-000000000004", "enrolled_at": "2026-01-01", "cumulative_score": "3.00", "active_days": 150, "hierarchy_node_id": null, "approved_constraint_dates": [], "exempted_duty_type_ids": []},
+    {"id": "00000002-0000-0000-0000-000000000005", "enrolled_at": "2026-01-01", "cumulative_score": "2.00", "active_days": 150, "hierarchy_node_id": null, "approved_constraint_dates": [], "exempted_duty_type_ids": []}
+  ],
+  "duties": [
+    {"id": "00000002-0000-0000-0000-000000000011", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-01", "end_date": "2026-06-01", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000012", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-01", "end_date": "2026-06-01", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000013", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-01", "end_date": "2026-06-01", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000014", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-02", "end_date": "2026-06-02", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000015", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-02", "end_date": "2026-06-02", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000016", "duty_type_id": "00000002-0000-0000-0000-0000000000a2", "duty_location_id": "00000002-0000-0000-0000-0000000000b2", "start_date": "2026-06-03", "end_date": "2026-06-03", "score_per_day": "2.00"},
+    {"id": "00000002-0000-0000-0000-000000000017", "duty_type_id": "00000002-0000-0000-0000-0000000000a2", "duty_location_id": "00000002-0000-0000-0000-0000000000b2", "start_date": "2026-06-03", "end_date": "2026-06-03", "score_per_day": "2.00"},
+    {"id": "00000002-0000-0000-0000-000000000018", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-04", "end_date": "2026-06-05", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-000000000019", "duty_type_id": "00000002-0000-0000-0000-0000000000a2", "duty_location_id": "00000002-0000-0000-0000-0000000000b2", "start_date": "2026-06-04", "end_date": "2026-06-04", "score_per_day": "2.00"},
+    {"id": "00000002-0000-0000-0000-00000000001a", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-05", "end_date": "2026-06-06", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-00000000001b", "duty_type_id": "00000002-0000-0000-0000-0000000000a2", "duty_location_id": "00000002-0000-0000-0000-0000000000b2", "start_date": "2026-06-05", "end_date": "2026-06-05", "score_per_day": "2.00"},
+    {"id": "00000002-0000-0000-0000-00000000001c", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-06", "end_date": "2026-06-06", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-00000000001d", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-06", "end_date": "2026-06-06", "score_per_day": "1.00"},
+    {"id": "00000002-0000-0000-0000-00000000001e", "duty_type_id": "00000002-0000-0000-0000-0000000000a2", "duty_location_id": "00000002-0000-0000-0000-0000000000b2", "start_date": "2026-06-07", "end_date": "2026-06-07", "score_per_day": "2.00"},
+    {"id": "00000002-0000-0000-0000-00000000001f", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-07", "end_date": "2026-06-07", "score_per_day": "1.00"}
+  ],
+  "existing": [],
+  "settings": {"K": "8", "T": 7, "W": 14, "alpha": "1.0", "beta": "2.0", "time_limit_seconds": 30}
+}

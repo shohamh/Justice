@@ -5,6 +5,7 @@ description = "Army duty management backend"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110",
+  "ortools>=9.10",
   "uvicorn[standard]>=0.27",
   "sqlalchemy>=2.0.27",
   "alembic>=1.13",
@@ -28,6 +29,7 @@ dev = [
   "mypy>=1.9",
   "types-python-jose>=3.3",
 ]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
