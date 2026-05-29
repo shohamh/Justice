@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import ExemptionsPanel from "../components/ExemptionsPanel";
 import { useAuth } from "../auth/AuthContext";
 import { NodeDTO, createNode, fetchTree } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers, onboardSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
@@ -15,6 +16,8 @@ export default function TeamHierarchyPage() {
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SoldierDTO | null>(null);
+  const canManageExemptions = user?.role === "admin" || user?.role === "commander" || user?.role === "duty_manager";
   const isAdmin = user?.role === "admin";
 
   async function refresh() {
@@ -111,11 +114,19 @@ export default function TeamHierarchyPage() {
                 <td className="space-x-2 space-x-reverse">
                   <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                   <button onClick={() => onRemove(s.id)} className="text-rejected" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
+                  <button onClick={() => setSelected(s)} className="text-indigo-600" data-testid={`exemptions-${s.personal_number}`}>{t("exemptions.title")}</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {selected && canManageExemptions && (
+          <div className="border-t pt-4" data-testid="manage-exemptions">
+            <div className="text-sm text-gray-500">{selected.full_name} ({selected.personal_number})</div>
+            <ExemptionsPanel soldierId={selected.id} canManage={true} />
+          </div>
+        )}
       </section>
     </Layout>
   );

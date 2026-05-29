@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import ExemptionsPanel from "../components/ExemptionsPanel";
 import { useAuth } from "../auth/AuthContext";
 
 export default function ProfilePage() {
@@ -17,6 +18,11 @@ export default function ProfilePage() {
         <Link to="/change-password" className="text-indigo-600 hover:text-indigo-800" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
+        {user?.id && (
+          <div className="pt-4 border-t">
+            <ExemptionsPanel soldierId={user.id} canManage={false} />
+          </div>
+        )}
       </section>
     </Layout>
   );
