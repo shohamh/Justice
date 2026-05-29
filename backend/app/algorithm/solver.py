@@ -54,8 +54,6 @@ def _infeasibility_relaxation_chain(
         seed=settings.seed,
     )
     relaxed: list[str] = []
-    duty_list = list(duties)
-    soldier_list = list(soldiers)
 
     for attempt in range(5):
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current)
@@ -70,18 +68,17 @@ def _infeasibility_relaxation_chain(
                 current.T = current.T + 1
                 relaxed.append(f"T\u2192{current.T}")
                 continue
-            else:
-                return SolverResult(
-                    assignments=[], status="INFEASIBLE",
-                    seed=current.seed or 0, relaxed=relaxed,
-                )
+            return SolverResult(
+                assignments=[], status="INFEASIBLE",
+                seed=current.seed or 0, relaxed=relaxed,
+            )
 
         assignments: list[Assignment] = []
         for (di, si), var in x.items():
             if solver.Value(var):
                 assignments.append(Assignment(
-                    duty_id=duty_list[di].id,
-                    soldier_id=soldier_list[si].id,
+                    duty_id=duties[di].id,
+                    soldier_id=soldiers[si].id,
                 ))
 
         assignments.sort(key=lambda a: a.duty_id)
@@ -98,5 +95,3 @@ def _infeasibility_relaxation_chain(
             },
             relaxed=relaxed,
         )
-
-    return SolverResult(assignments=[], status="INFEASIBLE", seed=current.seed or 0, relaxed=relaxed)

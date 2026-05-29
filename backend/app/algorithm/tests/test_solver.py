@@ -114,9 +114,9 @@ def test_infeasibility_relaxation():
     duty_type = uuid4()
     soldiers = [
         SoldierInput(id=soldier_a, enrolled_at=date(2026, 1, 1),
-                     cumulative_score=Decimal("0"), active_days=100),
+                     cumulative_score=Decimal("0"), active_days=1),
         SoldierInput(id=soldier_b, enrolled_at=date(2026, 1, 1),
-                     cumulative_score=Decimal("10"), active_days=100),
+                     cumulative_score=Decimal("1"), active_days=1),
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
@@ -124,5 +124,6 @@ def test_infeasibility_relaxation():
                   score_per_day=Decimal("1.00"))
         for _ in range(2)
     ]
-    result = solve(soldiers, duties, [], SolverSettings(K=Decimal("1"), time_limit_seconds=5))
+    result = solve(soldiers, duties, [], SolverSettings(K=Decimal("0"), time_limit_seconds=5))
     assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.relaxed) > 0  # relaxation was needed
