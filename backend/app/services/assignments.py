@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.db.models import (
     DutyAssignment,
+    DutyDayOverride,
     DutyLocation,
     DutyType,
     ExemptionDutyTypeMap,
@@ -93,3 +94,104 @@ def cancel_assignment(
                 entity_id=assignment.id, before=before, after={"status": "cancelled"},
                 context={"reason": reason})
     return assignment
+
+
+def _day_busy(
+    session: Session, *, soldier_id: uuid.UUID, on_date: date, exclude_assignment_id: uuid.UUID | None = None
+) -> bool:
+    q = select(DutyAssignment.id).where(
+        DutyAssignment.soldier_id == soldier_id,
+        DutyAssignment.status != "cancelled",
+        DutyAssignment.start_date <= on_date,
+        DutyAssignment.end_date >= on_date,
+    )
+    if exclude_assignment_id is not None:
+        q = q.where(DutyAssignment.id != exclude_assignment_id)
+    return session.execute(q).first() is not None
+
+
+def set_day_override(
+    session: Session, *, assignment: DutyAssignment, date: date, effective_soldier_id: uuid.UUID | None,
+    reason: str, actor_id: uuid.UUID | None = None,
+) -> DutyDayOverride:
+    if not (assignment.start_date <= date <= assignment.end_date):
+        raise AssignmentError("date_out_of_range")
+    if reason not in _OVERRIDE_REASONS:
+        raise AssignmentError("bad_reason")
+    if effective_soldier_id is not None:
+        if session.get(Soldier, effective_soldier_id) is None:
+            raise AssignmentError("soldier_not_found")
+        if _day_busy(session, soldier_id=effective_soldier_id, on_date=date,
+                     exclude_assignment_id=assignment.id):
+            raise AssignmentError("overlap")
+        if _has_blocking_exemption(session, soldier_id=effective_soldier_id,
+                                   duty_type_id=assignment.duty_type_id, start_date=date, end_date=date):
+            raise AssignmentError("exempted")
+    existing = session.execute(
+        select(DutyDayOverride).where(
+            DutyDayOverride.duty_assignment_id == assignment.id, DutyDayOverride.date == date
+        )
+    ).scalar_one_or_none()
+    after = {"effective_soldier_id": str(effective_soldier_id) if effective_soldier_id else None,
+             "reason": reason}
+    if existing is not None:
+        before = {"effective_soldier_id": str(existing.effective_soldier_id)
+                  if existing.effective_soldier_id else None, "reason": existing.reason}
+        existing.effective_soldier_id = effective_soldier_id
+        existing.reason = reason
+        write_audit(session, actor_id=actor_id, action="assignment.override",
+                    entity_type="duty_day_override", entity_id=existing.id, before=before, after=after)
+        return existing
+    ov = DutyDayOverride(duty_assignment_id=assignment.id, date=date,
+                         effective_soldier_id=effective_soldier_id, reason=reason, created_by=actor_id)
+    session.add(ov)
+    session.flush()
+    write_audit(session, actor_id=actor_id, action="assignment.override",
+                entity_type="duty_day_override", entity_id=ov.id, after=after)
+    return ov
+
+
+def clear_day_override(
+    session: Session, *, assignment: DutyAssignment, date: date, actor_id: uuid.UUID | None = None
+) -> None:
+    ov = session.execute(
+        select(DutyDayOverride).where(
+            DutyDayOverride.duty_assignment_id == assignment.id, DutyDayOverride.date == date
+        )
+    ).scalar_one_or_none()
+    if ov is None:
+        return  # idempotent
+    write_audit(session, actor_id=actor_id, action="assignment.override_clear",
+                entity_type="duty_day_override", entity_id=ov.id,
+                before={"effective_soldier_id": str(ov.effective_soldier_id) if ov.effective_soldier_id else None})
+    session.delete(ov)
+
+
+def list_assignments(
+    session: Session, *, soldier_id: uuid.UUID | None = None, date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[DutyAssignment]:
+    q = select(DutyAssignment).where(DutyAssignment.status != "cancelled")
+    if soldier_id is not None:
+        q = q.where(DutyAssignment.soldier_id == soldier_id)
+    if date_from is not None:
+        q = q.where(DutyAssignment.end_date >= date_from)
+    if date_to is not None:
+        q = q.where(DutyAssignment.start_date <= date_to)
+    return list(session.execute(q.order_by(DutyAssignment.start_date)).scalars().all())
+
+
+def list_assignments_for_soldiers(
+    session: Session, *, soldier_ids: list[uuid.UUID], date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[DutyAssignment]:
+    if not soldier_ids:
+        return []
+    q = select(DutyAssignment).where(
+        DutyAssignment.status != "cancelled", DutyAssignment.soldier_id.in_(soldier_ids)
+    )
+    if date_from is not None:
+        q = q.where(DutyAssignment.end_date >= date_from)
+    if date_to is not None:
+        q = q.where(DutyAssignment.start_date <= date_to)
+    return list(session.execute(q.order_by(DutyAssignment.start_date)).scalars().all())

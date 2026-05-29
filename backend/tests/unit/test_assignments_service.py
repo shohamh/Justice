@@ -1,9 +1,18 @@
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 
-from app.db.models import DutyAssignment, DutyLocation, DutyType, ExemptionType, SoldierExemption
-from app.services.assignments import AssignmentError, cancel_assignment, create_assignment
+from app.db.models import DutyDayOverride, DutyLocation, DutyType, ExemptionType, SoldierExemption
+from app.services.assignments import (
+    AssignmentError,
+    cancel_assignment,
+    clear_day_override,
+    create_assignment,
+    list_assignments,
+    list_assignments_for_soldiers,
+    set_day_override,
+)
 from app.services.duty_config import map_exemption_to_duty_type
 from tests.helpers import create_soldier
 
@@ -97,3 +106,83 @@ def test_cancel_requires_reason(admin_session):
     admin_session.flush()
     with pytest.raises(AssignmentError):
         cancel_assignment(admin_session, assignment=a, reason="  ", actor_id=None)
+
+
+def test_set_and_clear_day_override(admin_session):
+    s = create_soldier(admin_session, personal_number="8200001")
+    repl = create_soldier(admin_session, personal_number="8200002")
+    dt = _dt(admin_session, "שמירה-o1")
+    loc = _loc(admin_session, "מוצב-o1")
+    a = create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                          start_date=date(2026, 7, 1), end_date=date(2026, 7, 5), notes=None, actor_id=None)
+    admin_session.flush()
+    ov = set_day_override(admin_session, assignment=a, date=date(2026, 7, 3),
+                          effective_soldier_id=repl.id, reason="replacement", actor_id=None)
+    admin_session.flush()
+    assert ov.effective_soldier_id == repl.id
+    clear_day_override(admin_session, assignment=a, date=date(2026, 7, 3), actor_id=None)
+    admin_session.flush()
+    assert admin_session.execute(
+        select(DutyDayOverride).where(DutyDayOverride.duty_assignment_id == a.id)
+    ).first() is None
+
+
+def test_override_cancel_day_with_null_effective(admin_session):
+    s = create_soldier(admin_session, personal_number="8200003")
+    dt = _dt(admin_session, "שמירה-o2")
+    loc = _loc(admin_session, "מוצב-o2")
+    a = create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                          start_date=date(2026, 7, 1), end_date=date(2026, 7, 2), notes=None, actor_id=None)
+    admin_session.flush()
+    ov = set_day_override(admin_session, assignment=a, date=date(2026, 7, 1),
+                          effective_soldier_id=None, reason="cancelled", actor_id=None)
+    admin_session.flush()
+    assert ov.effective_soldier_id is None
+
+
+def test_override_rejects_date_out_of_range(admin_session):
+    s = create_soldier(admin_session, personal_number="8200004")
+    dt = _dt(admin_session, "שמירה-o3")
+    loc = _loc(admin_session, "מוצב-o3")
+    a = create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                          start_date=date(2026, 7, 1), end_date=date(2026, 7, 2), notes=None, actor_id=None)
+    admin_session.flush()
+    with pytest.raises(AssignmentError):
+        set_day_override(admin_session, assignment=a, date=date(2026, 7, 9),
+                         effective_soldier_id=None, reason="cancelled", actor_id=None)
+
+
+def test_set_override_is_idempotent_upsert(admin_session):
+    s = create_soldier(admin_session, personal_number="8200005")
+    r1 = create_soldier(admin_session, personal_number="8200006")
+    r2 = create_soldier(admin_session, personal_number="8200007")
+    dt = _dt(admin_session, "שמירה-o4")
+    loc = _loc(admin_session, "מוצב-o4")
+    a = create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                          start_date=date(2026, 7, 1), end_date=date(2026, 7, 2), notes=None, actor_id=None)
+    admin_session.flush()
+    set_day_override(admin_session, assignment=a, date=date(2026, 7, 1),
+                     effective_soldier_id=r1.id, reason="replacement", actor_id=None)
+    set_day_override(admin_session, assignment=a, date=date(2026, 7, 1),
+                     effective_soldier_id=r2.id, reason="replacement", actor_id=None)
+    admin_session.flush()
+    rows = admin_session.execute(
+        select(DutyDayOverride).where(DutyDayOverride.duty_assignment_id == a.id)
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].effective_soldier_id == r2.id
+
+
+def test_list_assignments_by_soldier_and_range(admin_session):
+    s = create_soldier(admin_session, personal_number="8200008")
+    dt = _dt(admin_session, "שמירה-o5")
+    loc = _loc(admin_session, "מוצב-o5")
+    create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                      start_date=date(2026, 7, 1), end_date=date(2026, 7, 2), notes=None, actor_id=None)
+    create_assignment(admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                      start_date=date(2026, 8, 1), end_date=date(2026, 8, 2), notes=None, actor_id=None)
+    admin_session.flush()
+    july = list_assignments(admin_session, soldier_id=s.id, date_from=date(2026, 7, 1), date_to=date(2026, 7, 31))
+    assert len(july) == 1
+    both = list_assignments_for_soldiers(admin_session, soldier_ids=[s.id])
+    assert len(both) == 2
