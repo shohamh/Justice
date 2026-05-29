@@ -1,0 +1,37 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "command": {},
+  "skills": {
+    "paths": [
+      "C:\\Users\\Shoham\\.cache\\opencode\\node_modules\\superpowers\\skills"
+    ]
+  },
+  "plugin": [
+    "superpowers@git+https://github.com/obra/superpowers.git"
+  ],
+  "disabled_providers": [],
+  "username": "Shoham",
+  "mode": {},
+  "agent": {},
+  "provider": {
+    "nvidia-glm5": {
+      "name": "Nvidia GLM5",
+      "npm": "@ai-sdk/openai-compatible",
+      "models": {
+        "z-ai/glm5": {
+          "name": "GLM 5"
+        }
+      },
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1"
+      }
+    }
+  },
+  "permission": {
+    "edit": "ask",
+    "bash": "ask",
+    "webfetch": "ask",
+    "doom_loop": "ask",
+    "external_directory": "ask"
+  }
+}
