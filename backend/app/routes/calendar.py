@@ -36,7 +36,7 @@ class CalRow(BaseModel):
 
 def _duty_type_color(duty_type_id: uuid.UUID) -> str:
     h = hash(duty_type_id) % 360
-    return f"hsl({h}, 65%, 50%)"
+    return f"hsl({h}, 65%, 55%)"
 
 
 @router.get("/unit", response_model=list[CalRow])

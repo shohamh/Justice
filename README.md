@@ -1,22 +1,222 @@
 # Call of Duty 2 — Army Duty Management System
 
-Self-hostable system for assigning duties (תורנויות) to soldiers fairly,
-with audit-logged manual workflows in v1 and a fairness-aware CP-SAT
-algorithm in v1.5+. See [the design doc](docs/superpowers/specs/2026-05-27-army-duty-management-design.md).
+A self-hostable system for assigning duties (**תורנויות**) to soldiers fairly,
+with audit-logged workflows and a fairness-aware CP-SAT optimisation core.
+Built for a pilot of ~100 soldiers in a single branch.
 
-## Quick start (dev)
+The UI is **Hebrew-only and right-to-left**; all backend code, identifiers, and
+API payloads are in English.
 
-1. Copy `.env.example` to `.env` and review the values.
-2. `docker-compose up -d db` to start Postgres.
-3. `cd backend && uv sync && uv run alembic upgrade head`
-4. `uv run python -m app.scripts.bootstrap` (creates the first admin).
-5. `uv run uvicorn app.main:app --reload --port 8000`
-6. `cd ../frontend && pnpm install && pnpm dev`
-7. Open http://localhost:5173, log in with the bootstrap admin credentials.
+> **Status (current):** The v1 foundation is in place — auth, full data model,
+> hierarchy + soldier management, duty types/locations/exemptions, personal
+> constraints with an approval flow, manual duty assignment with per-day
+> overrides, cumulative + normalised scoring, and a full audit trail. The CP-SAT
+> fairness algorithm exists as a tested, pure library under
+> [`backend/app/algorithm/`](backend/app/algorithm/) but is **not yet wired to an
+> API endpoint** — all duty assignment today is manual. See
+> [Roadmap](#roadmap).
+
+---
+
+## Documentation map
+
+| Audience | Start here |
+|---|---|
+| **End users** (admin, duty manager, commander, soldier) | [docs/onboarding/user-guide.md](docs/onboarding/user-guide.md) |
+| **Developers** (humans setting up & contributing) | [docs/onboarding/developers.md](docs/onboarding/developers.md) |
+| **AI agents** working in this repo | [docs/onboarding/agents.md](docs/onboarding/agents.md) |
+| **Full design rationale** | [docs/superpowers/specs/2026-05-27-army-duty-management-design.md](docs/superpowers/specs/2026-05-27-army-duty-management-design.md) |
+| **Per-feature implementation plans** | [docs/superpowers/plans/](docs/superpowers/plans/) |
+
+---
+
+## What it does
+
+- **Tracks** soldiers, a four-level hierarchy (team → group → branch → department),
+  duty types, duty locations, exemptions, and personal constraints.
+- **Assigns** duties as contiguous blocks `(soldier, duty_type, location, start_date,
+  end_date)` with a per-day override layer for replacements and cancellations.
+- **Keeps effort fair** via a per-soldier *normalised score* (cumulative duty score
+  divided by active days), shown on a transparent, peer-comparable scoreboard
+  (**שקיפות**).
+- **Enforces process**: soldiers submit personal-constraint and exemption requests;
+  commanders / duty managers approve or reject them; quotas are enforced.
+- **Audits everything**: every state change is recorded in an append-only audit log.
+
+## Roles at a glance
+
+| Role | Can do |
+|---|---|
+| **Soldier** | View own duties, score & rank; submit constraint/exemption requests; view the transparency table. |
+| **Commander** | Everything a soldier can, plus read & approve requests and grant exemptions **within the subtree they command**. |
+| **Duty Manager** | Operational owner of a scope: manage duties, exemptions, constraints, scoring, hierarchy and soldiers **within their assigned node's subtree**. |
+| **Admin** | System-level: create soldiers, assign roles, reset passwords, edit hierarchy — **globally**. Deliberately does *not* run day-to-day duty operations. |
+
+Roles compose with hierarchy **scope**. Full matrix and walkthroughs:
+[user-guide.md](docs/onboarding/user-guide.md).
+
+---
+
+## Architecture
+
+```
+Browser ── React SPA (Vite + TS, RTL, react-i18next, TanStack Query)
+   │  HTTPS, JWT bearer in Authorization header; refresh token in HttpOnly cookie
+   ▼
+FastAPI app (uvicorn)
+   ├─ routes/      REST endpoints + Pydantic schemas (all under /api)
+   ├─ services/    business logic, one module per bounded context
+   ├─ algorithm/   CP-SAT batch solver + reserve + explain (PURE — no DB/HTTP)
+   ├─ auth/        argon2id passwords, JWT, central RBAC (authz.py)
+   ├─ audit/       append-only audit writer
+   └─ db/          SQLAlchemy 2.x models + Alembic migrations
+   ▼
+Postgres 16  (two DB roles: db_admin for migrations/backup, app for the runtime)
+```
+
+**Tech stack:** Python 3.12 · FastAPI · SQLAlchemy 2.x · Alembic · Pydantic v2 ·
+OR-Tools CP-SAT · React 18 · Vite · TypeScript · TanStack Query · Tailwind (RTL)
+· Postgres 16.
+
+**Key design choices** (see the design doc for the why):
+
+- Monolith + workers, no message queue. CP-SAT solves the pilot-scale problem
+  synchronously in seconds.
+- `algorithm/` is a **pure library**: plain data in, plain data out, no imports
+  from `db/` or `routes/`. Unit-testable without a database.
+- All tunable behaviour belongs in a `system_settings` table, not in code. Env
+  vars cover deployment-level concerns only (DB URL, JWT secret, log level).
+- Two Postgres roles: `app` (runtime, restricted) and `db_admin` (migrations,
+  backups). The audit log is append-only for the `app` role.
+
+---
+
+## Quick start (local dev)
+
+Prerequisites: **Docker**, **Python 3.12 + [uv](https://docs.astral.sh/uv/)**,
+**Node 20 + [pnpm](https://pnpm.io/) 9**. Windows-specific gotchas are in
+[developers.md](docs/onboarding/developers.md).
+
+```bash
+# 1. Configuration
+cp .env.example .env            # review values; the defaults work for local dev
+
+# 2. Database (Postgres 16 in Docker)
+docker-compose up -d db
+
+# 3. Backend: install, migrate, create the first admin, run
+cd backend
+uv sync --extra dev
+uv run alembic upgrade head
+uv run python -m app.scripts.bootstrap     # creates the admin from BOOTSTRAP_ADMIN_* env vars
+uv run uvicorn app.main:app --reload --port 8000
+
+# 4. Frontend (in a second terminal)
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Open <http://localhost:5173> and log in with the bootstrap admin
+(`BOOTSTRAP_ADMIN_PERSONAL_NUMBER` / `BOOTSTRAP_ADMIN_PASSWORD` from `.env`).
+
+### Seed demo data (optional)
+
+To explore the system with a realistic hierarchy, ~29 soldiers of every role,
+duty types, exemptions and a month of assignments:
+
+```bash
+cd backend
+uv run python -m app.scripts.seed
+```
+
+The seed creates a known **admin** `1000001` with password `1234567890`
+(`must_change_password=False`) and one soldier per role. Personal numbers follow
+a pattern — see [user-guide.md](docs/onboarding/user-guide.md#demo-accounts) for
+the full account list. **Seed data is for development only.**
+
+---
+
+## Common commands
+
+```bash
+# Backend (run from backend/)
+uv run uvicorn app.main:app --reload --port 8000   # dev server
+uv run alembic upgrade head                         # apply migrations
+uv run alembic revision -m "describe change"        # new migration
+uv run pytest -q                                    # all tests (needs Docker for testcontainers)
+uv run ruff check app tests                         # lint
+uv run ruff format app tests                        # format
+uv run mypy app                                     # type check
+uv run python -m app.scripts.bootstrap              # create first admin (idempotent)
+uv run python -m app.scripts.seed                   # seed demo data
+uv run python -m app.scripts.reset_password <pn>    # reset a password (prints a temp one)
+
+# Frontend (run from frontend/)
+pnpm dev            # dev server on :5173
+pnpm build          # type-check + production build
+pnpm lint           # eslint (zero warnings)
+pnpm test           # vitest unit tests
+pnpm test:e2e       # playwright end-to-end tests
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs ruff + mypy +
+pytest for the backend and lint + tsc + vitest + build for the frontend on every
+PR.
+
+---
 
 ## Repo layout
 
-- `backend/` — FastAPI app + Alembic migrations + tests
-- `frontend/` — Vite + React + TS SPA + e2e tests
-- `docs/` — design docs and implementation plans
-- `ops/` — deployment scripts (added in slice 7)
+```
+callofduty2/
+├── README.md                ← you are here
+├── docker-compose.yml       ← Postgres for local dev (app/frontend run on host)
+├── .env.example             ← copy to .env
+├── docs/
+│   ├── onboarding/          ← user, developer & agent guides (start here)
+│   └── superpowers/
+│       ├── specs/           ← design docs (the "why")
+│       └── plans/           ← per-slice implementation plans
+├── backend/
+│   ├── app/
+│   │   ├── main.py          ← FastAPI app factory + router wiring
+│   │   ├── routes/          ← REST endpoints (one module per context)
+│   │   ├── services/        ← business logic
+│   │   ├── algorithm/       ← pure CP-SAT solver + tests
+│   │   ├── auth/            ← password, JWT, authz (RBAC)
+│   │   ├── audit/           ← append-only audit writer
+│   │   ├── db/              ← models + session
+│   │   ├── scripts/         ← bootstrap, seed, reset_password
+│   │   └── settings.py      ← env-var config
+│   ├── alembic/versions/    ← migrations
+│   └── tests/{unit,integration}
+└── frontend/
+    ├── src/{api,pages,components,auth,i18n}
+    └── tests/e2e            ← playwright specs
+```
+
+---
+
+## Roadmap
+
+- **v1 — Foundation** *(current)*: data model, auth, manual workflows, scoring,
+  audit. Done apart from packaged production deployment.
+- **v1.5 — Algorithm**: wire the existing CP-SAT solver to a "run planning"
+  endpoint and DM review UI; store and surface assignment explanations
+  ("?למה קיבלתי"); hierarchy-distance reserve-soldier selection.
+- **v2 — Social layer**: peer replacement marketplace, greedy online assignment
+  for ad-hoc duties, punishment duties for no-shows.
+
+See [§9 of the design doc](docs/superpowers/specs/2026-05-27-army-duty-management-design.md)
+for full phasing.
+
+## Known gaps vs. the design doc
+
+The design doc describes the full target system. Today's deviations worth knowing:
+
+- The fairness algorithm is **library-only** (not exposed via the API yet).
+- `docker-compose.yml` provisions **only Postgres**; the app and frontend run on
+  the host in dev. There is no Caddy/TLS or production compose file checked in yet.
+- FastAPI's `/api/docs` and `/api/openapi.json` are currently **disabled**
+  (`docs_url=None`) rather than gated behind admin.
