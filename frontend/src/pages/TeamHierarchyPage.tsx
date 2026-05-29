@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import ExemptionsPanel from "../components/ExemptionsPanel";
+import HierarchyTree from "../components/HierarchyTree";
 import { useAuth } from "../auth/AuthContext";
 import { NodeDTO, createNode, fetchTree } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers, onboardSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
@@ -65,13 +66,7 @@ export default function TeamHierarchyPage() {
             </button>
           )}
         </div>
-        <ul className="text-sm text-gray-700" data-testid="node-list">
-          {nodes.map((n) => (
-            <li key={n.id} style={{ paddingInlineStart: `${(n.path_ids.length - 1) * 16}px` }}>
-              {n.name} <span className="text-gray-400">({n.level})</span>
-            </li>
-          ))}
-        </ul>
+        <HierarchyTree nodes={nodes} isAdmin={isAdmin} onChanged={refresh} />
 
         <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
           <label className="block">
@@ -94,7 +89,7 @@ export default function TeamHierarchyPage() {
           </button>
         </form>
 
-        {tempPw && <div className="text-sm text-approved" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
+        {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
 
         <table className="w-full text-sm" data-testid="soldier-table">
           <thead>
@@ -113,7 +108,7 @@ export default function TeamHierarchyPage() {
                 <td>{s.role}</td>
                 <td className="space-x-2 space-x-reverse">
                   <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
-                  <button onClick={() => onRemove(s.id)} className="text-rejected" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
+                  <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                   <button onClick={() => setSelected(s)} className="text-indigo-600" data-testid={`exemptions-${s.personal_number}`}>{t("exemptions.title")}</button>
                 </td>
               </tr>

@@ -22,6 +22,7 @@ class NodeOut(BaseModel):
     name: str
     parent_id: uuid.UUID | None
     commander_id: uuid.UUID | None
+    commander_name: str | None = None
     path_ids: list[uuid.UUID]
 
 
@@ -40,13 +41,19 @@ class MoveNodeRequest(BaseModel):
     new_parent_id: uuid.UUID | None = None
 
 
-def _out(n: HierarchyNode) -> NodeOut:
+def _out(n: HierarchyNode, _session: Session | None = None) -> NodeOut:
+    commander_name = None
+    if n.commander_id and _session:
+        cmdr = _session.get(Soldier, n.commander_id)
+        if cmdr:
+            commander_name = cmdr.full_name
     return NodeOut(
         id=n.id,
         level=n.level,
         name=n.name,
         parent_id=n.parent_id,
         commander_id=n.commander_id,
+        commander_name=commander_name,
         path_ids=list(n.path_ids),
     )
 
@@ -67,7 +74,7 @@ def create_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node)
+    return _out(node, session)
 
 
 @router.patch("/nodes/{node_id}", response_model=NodeOut)
@@ -92,7 +99,7 @@ def update_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node)
+    return _out(node, session)
 
 
 @router.post("/nodes/{node_id}/move", response_model=NodeOut)
@@ -114,7 +121,7 @@ def move_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node)
+    return _out(node, session)
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -149,4 +156,4 @@ def get_tree(
             for n in session.execute(select(HierarchyNode)).scalars().all()
             if any(r in n.path_ids for r in roots)
         ]
-    return [_out(n) for n in nodes]
+    return [_out(n, session) for n in nodes]

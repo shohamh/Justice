@@ -62,7 +62,10 @@
     "none": "אין בקשות ממתינות לאישור",
     "approve": "אשר",
     "reject": "דחה",
-    "decision_note": "הערה"
+    "decision_note": "הערה",
+    "tab_constraints": "בקשות אישיות",
+    "tab_exemptions": "בקשות פטור",
+    "exemption_none": "אין בקשות פטור ממתינות"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
@@ -100,7 +103,15 @@
     "remove": "הסר",
     "temp_password_is": "סיסמה זמנית: {{pw}}",
     "add_node": "הוסף יחידה",
-    "node_name": "שם יחידה"
+    "node_name": "שם יחידה",
+    "add_child_node": "הוסף תת-יחידה",
+    "rename_node": "שינוי שם",
+    "assign_commander": "קביעת מפקד",
+    "commander": "מפקד",
+    "level_department": "אגף",
+    "level_branch": "זרוע",
+    "level_group": "יחידה",
+    "level_team": "צוות"
   },
   "profile": {
     "title": "פרופיל",
@@ -144,12 +155,43 @@
     "location": "מיקום",
     "from": "מתאריך",
     "to": "עד תאריך",
-    "none": "אין תורנויות"
+    "none": "אין תורנויות",
+    "showing_for_date": "תורנויות לתאריך: {{date}}",
+    "show_all": "הצג הכל"
   },
   "unit_calendar": {
     "title": "היומן של היחידה",
     "soldier": "חייל",
     "duties": "תורנויות",
     "none": "אין תורנויות ביחידה"
+  },
+  "errors": {
+    "bad_date_range": "טווח תאריכים לא תקין",
+    "start_date_in_past": "תאריך התחלה לא יכול להיות בעבר",
+    "cap_exceeded": "חרגת ממכסת הימים המותרת",
+    "soldier_not_found": "חייל לא נמצא",
+    "constraint_not_found": "הבקשה לא נמצאה",
+    "not_pending": "הבקשה כבר טופלה",
+    "generic": "שגיאה",
+    "password_too_short": "הסיסמה חייבת להכיל לפחות 10 תווים",
+    "date_range_invalid": "טווח תאריכים לא תקין",
+    "exemption_not_found": "הפטור לא נמצא",
+    "already_exists": "כבר קיים במערכת",
+    "exemption_request_not_found": "בקשת הפטור לא נמצאה",
+    "exemption_request_not_pending": "בקשת הפטור כבר טופלה",
+    "exemption_type_not_found": "סוג הפטור לא נמצא"
+  },
+  "exemption_requests": {
+    "title": "בקשות פטור",
+    "type": "סוג פטור",
+    "start_date": "מתאריך",
+    "end_date": "עד תאריך",
+    "reason": "סיבה",
+    "send": "שלח בקשת פטור",
+    "pending": "ממתין לאישור",
+    "approved": "אושר",
+    "rejected": "נדחה",
+    "none": "אין בקשות פטור",
+    "my_requests": "הבקשות שלי לפטור"
   }
 }

@@ -47,7 +47,7 @@ export default function DutyManagementPage() {
       await refresh(soldierId);
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setError(detail ?? "error");
+      setError(detail ? (t(`errors.${detail}` as any) || detail) : t("errors.generic"));
     }
   }
 
