@@ -87,23 +87,31 @@ def _load_assignment(session: Session, assignment_id: uuid.UUID) -> DutyAssignme
 
 
 def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]:
-    """Load algorithm_draft/published/rejected assignments created by this job run."""
-    if job.started_at is None:
+    """Load proposals created for this job, identified via the audit log."""
+    if job.status != "done":
         return []
+
+    from app.db.models import AuditLog
+
+    # Find assignment IDs created for this specific job via audit log entries
+    audit_rows = session.execute(
+        select(AuditLog.entity_id).where(
+            AuditLog.action == "algorithm.proposal.create",
+            AuditLog.context["job_id"].astext == str(job.id),
+        )
+    ).scalars().all()
+
+    assignment_ids = {eid for eid in audit_rows if eid is not None}
+    if not assignment_ids:
+        return []
+
     rows = (
         session.execute(
-            select(DutyAssignment).where(
-                DutyAssignment.created_by == job.created_by,
-                DutyAssignment.status.in_(["algorithm_draft", "algorithm_rejected", "published"]),
-                DutyAssignment.created_at >= job.started_at,
-                DutyAssignment.start_date >= job.planning_start,
-                DutyAssignment.end_date <= job.planning_end,
-            )
+            select(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids))
         )
         .scalars()
         .all()
     )
-    assignment_ids = {a.id for a in rows}
     reserves = (
         session.execute(
             select(ReserveAssignment).where(
@@ -232,7 +240,7 @@ def get_job(
     job = _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
-    proposals = _proposals_for_job(session, job) if job.status == "done" else []
+    proposals = _proposals_for_job(session, job)
     return JobOut(
         id=job.id,
         status=job.status,
