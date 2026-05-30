@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  CandidateInfo,
   DmExplanation,
   SoldierExplanation,
   getExplanation,
   getExplanationByAssignment,
 } from "../api/algorithm";
+import { DataTable, type ColDef } from "./DataTable";
 
 interface Props {
   jobId?: string;          // optional — if omitted, uses direct lookup
@@ -94,36 +96,49 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                 {t("algorithm.min_gap_after")}: <strong>{data.global_after?.min_gap}</strong>
               </p>
             </div>
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-100 text-right">
-                  <th className="border px-2 py-1">חייל</th>
-                  <th className="border px-2 py-1">חסום?</th>
-                  <th className="border px-2 py-1">סיבה</th>
-                  <th className="border px-2 py-1">{t("algorithm.norm_before")}</th>
-                  <th className="border px-2 py-1">{t("algorithm.norm_after")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.candidates.map((c, i) => (
-                  <tr key={i} className={c.blocked ? "bg-red-50" : "bg-green-50"}>
-                    <td className="border px-2 py-1">
-                      {c.soldier_name || c.soldier_id.slice(0, 8)}
-                    </td>
-                    <td className="border px-2 py-1">{c.blocked ? "✗" : "✓"}</td>
-                    <td className="border px-2 py-1">
-                      {c.blocking_constraints.join(", ")}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {c.pre_norm_score?.toFixed(3) ?? "—"}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {c.post_norm_score?.toFixed(3) ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {(() => {
+              const candidateCols: ColDef<CandidateInfo>[] = [
+                {
+                  id: "name",
+                  header: "חייל",
+                  cell: (c) => c.soldier_name || c.soldier_id.slice(0, 8),
+                  sortValue: (c) => c.soldier_name || c.soldier_id,
+                  filterValue: (c) => c.soldier_name || c.soldier_id,
+                },
+                {
+                  id: "blocked",
+                  header: "חסום?",
+                  cell: (c) => (c.blocked ? "✗" : "✓"),
+                  sortValue: (c) => (c.blocked ? 1 : 0),
+                },
+                {
+                  id: "reason",
+                  header: "סיבה",
+                  cell: (c) =>
+                    c.blocking_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", "),
+                },
+                {
+                  id: "norm_before",
+                  header: t("algorithm.norm_before"),
+                  cell: (c) => c.pre_norm_score?.toFixed(3) ?? "—",
+                  sortValue: (c) => c.pre_norm_score ?? null,
+                },
+                {
+                  id: "norm_after",
+                  header: t("algorithm.norm_after"),
+                  cell: (c) => c.post_norm_score?.toFixed(3) ?? "—",
+                  sortValue: (c) => c.post_norm_score ?? null,
+                },
+              ];
+              return (
+                <DataTable
+                  columns={candidateCols}
+                  data={data.candidates}
+                  filterPlaceholder={t("table.filter_placeholder")}
+                  rowClassName={(c) => (c.blocked ? "bg-red-50" : "bg-green-50")}
+                />
+              );
+            })()}
             {data.tiebreaker_note && (
               <p className="text-gray-600 text-xs">בורר: {data.tiebreaker_note}</p>
             )}

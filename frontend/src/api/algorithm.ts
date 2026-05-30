@@ -55,18 +55,20 @@ export interface SoldierExplanation {
   global_after: { min_gap: number; norm_variance: number };
 }
 
+export interface CandidateInfo {
+  soldier_id: string;
+  soldier_name: string | null;
+  blocked: boolean;
+  blocking_constraints: string[];
+  pre_norm_score: number | null;
+  post_norm_score: number | null;
+}
+
 export interface DmExplanation {
   duty_id: string;
   assigned_soldier_id: string;
   tiebreaker_note: string | null;
-  candidates: Array<{
-    soldier_id: string;
-    soldier_name: string;
-    blocked: boolean;
-    blocking_constraints: string[];
-    pre_norm_score: number | null;
-    post_norm_score: number | null;
-  }>;
+  candidates: CandidateInfo[];
   global_before: Record<string, number>;
   global_after: Record<string, number>;
 }
