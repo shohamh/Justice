@@ -138,7 +138,6 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
         {quickAddNode === node.id && (
           <div className="mr-8 mb-2 px-2" data-testid={`quick-add-${node.id}`}>
             <SoldierSearchAutocomplete
-              nodeId={node.id}
               onSelect={(s) => {
                 if (s) {
                   void handleQuickAdd(node.id, s, "", "");

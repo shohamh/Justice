@@ -3,12 +3,11 @@ import { useTranslation } from "react-i18next";
 import { listSoldiers, SoldierDTO } from "../api/soldiers";
 
 interface Props {
-  nodeId: string;
   onSelect: (soldier: SoldierDTO | null) => void;
   onCreateNew: (personalNumber: string, fullName: string) => void;
 }
 
-export default function SoldierSearchAutocomplete({ nodeId, onSelect, onCreateNew }: Props) {
+export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Props) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
