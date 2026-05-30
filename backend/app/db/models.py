@@ -328,3 +328,65 @@ class ScoreAdjustment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+
+class AlgorithmJob(Base):
+    __tablename__ = "algorithm_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    planning_start: Mapped[date] = mapped_column(Date)
+    planning_end: Mapped[date] = mapped_column(Date)
+    duty_type_ids: Mapped[list[Any]] = mapped_column(JSONB)
+    duty_location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_locations.id", ondelete="RESTRICT")
+    )
+    settings_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    mode: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class ReserveAssignment(Base):
+    __tablename__ = "reserve_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    reserve_soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    reason: Mapped[str] = mapped_column(Text)
+
+
+class AssignmentExplanation(Base):
+    __tablename__ = "assignment_explanations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    algorithm_version: Mapped[str] = mapped_column(Text)
+    solver_seed: Mapped[str] = mapped_column(Text)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
