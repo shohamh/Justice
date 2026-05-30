@@ -46,7 +46,7 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
             ))}
           </select>
           <div className="flex justify-end gap-2">
-            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("duty_config.delete")}</button>
+            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="commander-submit">{t("approvals.approve")}</button>
           </div>
         </form>

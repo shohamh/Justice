@@ -54,7 +54,7 @@ export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
             </select>
           </label>
           <div className="flex justify-end gap-2">
-            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("duty_config.delete")}</button>
+            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
           </div>
         </form>

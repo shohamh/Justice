@@ -27,7 +27,7 @@ export default function RenameNodeDialog({ nodeId, currentName, onClose, onRenam
         <form onSubmit={onSubmit} className="space-y-3">
           <input className="border rounded p-1 w-full" value={name} onChange={(e) => setName(e.target.value)} required data-testid="rename-input" />
           <div className="flex justify-end gap-2">
-            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("duty_config.delete")}</button>
+            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="rename-submit">{t("duty_config.save")}</button>
           </div>
         </form>

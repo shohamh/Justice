@@ -111,7 +111,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
           )}
           {selected && (
             <button className="text-xs text-red-500 mt-1" onClick={handleClear} data-testid="soldier-search-clear">
-              {t("duty_config.delete")}
+              {t("team.cancel")}
             </button>
           )}
         </>

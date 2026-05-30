@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, deleteNode } from "../api/hierarchy";
-import { SoldierDTO, updateSoldier, listSoldiers } from "../api/soldiers";
-import { onboardSoldier } from "../api/soldiers";
+import { SoldierDTO, updateSoldier, listSoldiers, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import RenameNodeDialog from "./RenameNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
-import SoldierEditModal from "./SoldierEditModal";
+import UnifiedSoldierModal from "./UnifiedSoldierModal";
 
 const LEVEL_COLORS: Record<string, string> = {
   division: "text-purple-700 bg-purple-50",
@@ -25,16 +24,17 @@ interface Props {
   soldiers: SoldierDTO[];
   isAdmin: boolean;
   onChanged: () => void;
+  user: { role: string; id: string } | null;
 }
 
-export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: Props) {
+export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, user }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id)));
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
   const [commanderDialog, setCommanderDialog] = useState<NodeDTO | null>(null);
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);
   const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
-  const [editSoldier, setEditSoldier] = useState<{ soldier: SoldierDTO } | null>(null);
+  const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const [allSoldiers, setAllSoldiers] = useState<SoldierDTO[]>(soldiers);
 
   function toggle(id: string) {
@@ -62,13 +62,6 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
       await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
     }
     setQuickAddNode(null);
-    const refreshed = await listSoldiers();
-    setAllSoldiers(refreshed);
-    onChanged();
-  }
-
-  async function handleEditSave(soldierId: string, data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null }) {
-    await updateSoldier(soldierId, data);
     const refreshed = await listSoldiers();
     setAllSoldiers(refreshed);
     onChanged();
@@ -160,7 +153,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
                 {isAdmin && (
                   <button
                     className="text-xs text-indigo-600 hover:underline ml-auto"
-                    onClick={() => setEditSoldier({ soldier: s })}
+                    onClick={() => setEditSoldier(s)}
                     data-testid={`edit-soldier-${s.personal_number}`}
                   >
                     {t("duty_config.save")}
@@ -198,10 +191,12 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
         <RenameNodeDialog nodeId={renameDialog.id} currentName={renameDialog.name} onClose={() => setRenameDialog(null)} onRenamed={onChanged} />
       )}
       {editSoldier && (
-        <SoldierEditModal
-          soldier={editSoldier.soldier}
-          onSave={(data) => handleEditSave(editSoldier.soldier.id, data)}
+        <UnifiedSoldierModal
+          soldier={editSoldier}
+          user={user}
+          nodes={nodes}
           onClose={() => setEditSoldier(null)}
+          onRefresh={onChanged}
         />
       )}
     </>

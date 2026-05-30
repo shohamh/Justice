@@ -39,8 +39,8 @@ export default function AddChildNodeDialog({ parent, onClose, onCreated }: Props
           </select>
           <input className="border rounded p-1 w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("team.node_name")} required data-testid="child-name" />
           <div className="flex justify-end gap-2">
-            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("duty_config.delete")}</button>
-            <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="child-submit">{t("team.add_soldier")}</button>
+            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+            <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="child-submit">{t("team.add_node")}</button>
           </div>
         </form>
       </div>
