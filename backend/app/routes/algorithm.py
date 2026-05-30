@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from typing import Any
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.auth.authz import Action, authorize
+from app.auth.deps import require_password_changed
+from app.db.models import (
+    AlgorithmJob,
+    AssignmentExplanation,
+    DutyAssignment,
+    ReserveAssignment,
+    Soldier,
+)
+from app.db.session import get_session
+from app.services.algorithm_bridge import run_algorithm_job
+from app.audit.writer import write_audit
+
+router = APIRouter(prefix="/algorithm", tags=["algorithm"])
+
+
+# ── Pydantic schemas ──
+
+class SolverSettingsIn(BaseModel):
+    K: int = 8
+    T: int = 7
+    W: int = 14
+    alpha: float = 1.0
+    beta: float = 2.0
+    time_limit_seconds: int = 30
+
+
+class CreateJobRequest(BaseModel):
+    planning_start: date
+    planning_end: date
+    duty_type_ids: list[uuid.UUID] = Field(min_length=1)
+    duty_location_id: uuid.UUID
+    mode: str = "shadow"
+    settings: SolverSettingsIn = Field(default_factory=SolverSettingsIn)
+
+
+class ProposalOut(BaseModel):
+    assignment_id: uuid.UUID
+    soldier_id: uuid.UUID
+    duty_type_id: uuid.UUID
+    duty_location_id: uuid.UUID
+    start_date: date
+    end_date: date
+    status: str
+    reserve_soldier_id: uuid.UUID | None
+    norm_score_before: float | None
+    norm_score_after: float | None
+
+
+class JobOut(BaseModel):
+    id: uuid.UUID
+    status: str
+    mode: str
+    planning_start: date
+    planning_end: date
+    started_at: Any
+    finished_at: Any
+    error_message: str | None
+    proposals: list[ProposalOut]
+    solver_metrics: dict[str, Any]
+    relaxed: list[str]
+
+
+def _load_job(session: Session, job_id: uuid.UUID) -> AlgorithmJob:
+    job = session.get(AlgorithmJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return job
+
+
+def _load_assignment(session: Session, assignment_id: uuid.UUID) -> DutyAssignment:
+    a = session.get(DutyAssignment, assignment_id)
+    if a is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return a
+
+
+def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]:
+    """Load algorithm_draft/published/rejected assignments created by this job run."""
+    if job.started_at is None:
+        return []
+    rows = (
+        session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.created_by == job.created_by,
+                DutyAssignment.status.in_(["algorithm_draft", "algorithm_rejected", "published"]),
+                DutyAssignment.created_at >= job.started_at,
+                DutyAssignment.start_date >= job.planning_start,
+                DutyAssignment.end_date <= job.planning_end,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assignment_ids = {a.id for a in rows}
+    reserves = (
+        session.execute(
+            select(ReserveAssignment).where(
+                ReserveAssignment.duty_assignment_id.in_(assignment_ids)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    reserve_map = {r.duty_assignment_id: r.reserve_soldier_id for r in reserves}
+
+    explanations = (
+        session.execute(
+            select(AssignmentExplanation).where(
+                AssignmentExplanation.duty_assignment_id.in_(assignment_ids)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    exp_map = {e.duty_assignment_id: e for e in explanations}
+
+    proposals = []
+    for a in rows:
+        exp = exp_map.get(a.id)
+        norm_before = None
+        norm_after = None
+        if exp:
+            payload = exp.payload
+            for c in payload.get("candidates", []):
+                if c["soldier_id"] == str(a.soldier_id) and not c.get("blocked"):
+                    norm_before = c.get("pre_norm_score")
+                    norm_after = c.get("post_norm_score")
+                    break
+        proposals.append(ProposalOut(
+            assignment_id=a.id,
+            soldier_id=a.soldier_id,
+            duty_type_id=a.duty_type_id,
+            duty_location_id=a.duty_location_id,
+            start_date=a.start_date,
+            end_date=a.end_date,
+            status=a.status,
+            reserve_soldier_id=reserve_map.get(a.id),
+            norm_score_before=norm_before,
+            norm_score_after=norm_after,
+        ))
+    return proposals
+
+
+def _explanation_response(
+    session: Session, assignment: DutyAssignment, user: Soldier
+) -> dict[str, Any]:
+    """Build the explanation response dict, redacted for soldiers."""
+    is_dm = user.role in ("duty_manager", "admin")
+    is_assignee = assignment.soldier_id == user.id
+    if not is_dm and not is_assignee:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    exp = session.execute(
+        select(AssignmentExplanation).where(
+            AssignmentExplanation.duty_assignment_id == assignment.id
+        )
+    ).scalar_one_or_none()
+    if exp is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+
+    payload = exp.payload
+    if is_dm:
+        return payload
+
+    # Soldier-redacted view
+    blocked_count = sum(1 for c in payload.get("candidates", []) if c.get("blocked"))
+    my_candidate = next(
+        (c for c in payload.get("candidates", []) if c["soldier_id"] == str(user.id)),
+        None,
+    )
+    return {
+        "assigned": True,
+        "norm_score_before": my_candidate.get("pre_norm_score") if my_candidate else None,
+        "norm_score_after": my_candidate.get("post_norm_score") if my_candidate else None,
+        "blocked_count": blocked_count,
+        "tiebreaker_note": payload.get("tiebreaker_note"),
+        "global_before": payload.get("global_before", {}),
+        "global_after": payload.get("global_after", {}),
+    }
+
+
+# ── Endpoints ──
+
+@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+def create_job(
+    body: CreateJobRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, Any]:
+    if body.planning_start > body.planning_end:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_date_range")
+    if body.mode not in ("shadow", "dm_reviewed"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_mode")
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    job = AlgorithmJob(
+        planning_start=body.planning_start,
+        planning_end=body.planning_end,
+        duty_type_ids=[str(did) for did in body.duty_type_ids],
+        duty_location_id=body.duty_location_id,
+        settings_json=body.settings.model_dump(),
+        mode=body.mode,
+        created_by=user.id,
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background_tasks.add_task(run_algorithm_job, job.id, user.id)
+    return {"id": str(job.id), "status": job.status}
+
+
+@router.get("/jobs/{job_id}", response_model=JobOut)
+def get_job(
+    job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> JobOut:
+    job = _load_job(session, job_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    proposals = _proposals_for_job(session, job) if job.status == "done" else []
+    return JobOut(
+        id=job.id,
+        status=job.status,
+        mode=job.mode,
+        planning_start=job.planning_start,
+        planning_end=job.planning_end,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        error_message=job.error_message,
+        proposals=proposals,
+        solver_metrics={},
+        relaxed=[],
+    )
+
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_job(
+    job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    job = _load_job(session, job_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    if job.status not in ("pending", "running"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_cancellable")
+    job.status = "failed"
+    job.error_message = "cancelled_by_user"
+    session.commit()
+
+
+@router.get("/jobs/{job_id}/explanations/{assignment_id}")
+def get_explanation(
+    job_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, Any]:
+    _load_job(session, job_id)
+    a = _load_assignment(session, assignment_id)
+    return _explanation_response(session, a, user)
+
+
+@router.get("/explanations/{assignment_id}")
+def get_explanation_direct(
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, Any]:
+    """Direct explanation lookup by assignment_id (for soldier MyDutiesPage)."""
+    a = _load_assignment(session, assignment_id)
+    return _explanation_response(session, a, user)
+
+
+@router.post("/jobs/{job_id}/proposals/{assignment_id}/accept", status_code=status.HTTP_200_OK)
+def accept_proposal(
+    job_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, str]:
+    _load_job(session, job_id)
+    a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    if a.status != "algorithm_draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    a.status = "published"
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="algorithm.proposal.accept",
+        entity_type="duty_assignment",
+        entity_id=a.id,
+        before={"status": "algorithm_draft"},
+        after={"status": "published"},
+        context={"job_id": str(job_id)},
+    )
+    session.commit()
+    return {"status": "published"}
+
+
+@router.post("/jobs/{job_id}/proposals/{assignment_id}/reject", status_code=status.HTTP_200_OK)
+def reject_proposal(
+    job_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, str]:
+    _load_job(session, job_id)
+    a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    if a.status != "algorithm_draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    a.status = "algorithm_rejected"
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="algorithm.proposal.reject",
+        entity_type="duty_assignment",
+        entity_id=a.id,
+        before={"status": "algorithm_draft"},
+        after={"status": "algorithm_rejected"},
+        context={"job_id": str(job_id)},
+    )
+    session.commit()
+    return {"status": "algorithm_rejected"}
