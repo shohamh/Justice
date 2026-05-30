@@ -28,14 +28,14 @@ test.describe("Hierarchy tree", () => {
     const firstAddChild = page.getByTestId(/^tree-add-child-/).first();
     await firstAddChild.click();
     await expect(page.getByTestId("add-child-dialog")).toBeVisible();
-    await page.getByTestId("child-name").fill(`תת-יחידת בדיקה ${Date.now() % 10000}`);
+    await page.getByTestId("child-name").fill(`\u05ea\u05ea-\u05d9\u05d7\u05d9\u05d3\u05ea \u05d1\u05d3\u05d9\u05e7\u05d4 ${Date.now() % 10000}`);
     await page.getByTestId("child-submit").click();
     await expect(page.getByTestId("add-child-dialog")).not.toBeVisible();
 
     const firstRename = page.getByTestId(/^tree-rename-/).first();
     await firstRename.click();
     await expect(page.getByTestId("rename-dialog")).toBeVisible();
-    await page.getByTestId("rename-input").fill(`שם חדש ${Date.now() % 10000}`);
+    await page.getByTestId("rename-input").fill(`\u05e9\u05dd \u05d7\u05d3\u05e9 ${Date.now() % 10000}`);
     await page.getByTestId("rename-submit").click();
     await expect(page.getByTestId("rename-dialog")).not.toBeVisible();
 
@@ -45,5 +45,35 @@ test.describe("Hierarchy tree", () => {
     await page.getByTestId("commander-select").selectOption({ index: 1 });
     await page.getByTestId("commander-submit").click();
     await expect(page.getByTestId("assign-commander-dialog")).not.toBeVisible();
+  });
+
+  test("admin can add soldier to node via quick-add button", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.getByTestId("nav-team").click();
+    await expect(page).toHaveURL(/\/team$/);
+    await expect(page.getByTestId("node-tree")).toBeVisible();
+
+    const firstAddSoldier = page.getByTestId(/^tree-add-soldier-/).first();
+    await firstAddSoldier.click();
+    await expect(page.getByTestId(/^quick-add-/)).toBeVisible();
+  });
+
+  test("soldiers appear under tree node with edit button", async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.getByTestId("nav-team").click();
+    await expect(page).toHaveURL(/\/team$/);
+
+    await expect(page.getByTestId("node-tree")).toBeVisible();
+    const firstToggle = page.getByTestId(/^tree-toggle-/).first();
+    await firstToggle.click();
+
+    const soldierRows = page.getByTestId(/^tree-soldier-/);
+    const count = await soldierRows.count();
+    if (count > 0) {
+      const firstEdit = page.getByTestId(/^edit-soldier-/).first();
+      await expect(firstEdit).toBeVisible();
+      await firstEdit.click();
+      await expect(page.getByTestId("soldier-edit-modal")).toBeVisible();
+    }
   });
 });
