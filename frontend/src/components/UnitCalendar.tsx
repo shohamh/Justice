@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -23,7 +23,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     soldier_name: string;
   } | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
+  const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const fetchData = useCallback(async (from: string, to: string) => {
     if (!nodeId) return;
@@ -39,14 +39,21 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     }
   }, [nodeId, t]);
 
+  // Re-fetch when nodeId changes
   useEffect(() => {
-    if (dateRange) fetchData(dateRange.from, dateRange.to);
-  }, [dateRange, fetchData]);
+    dateRangeRef.current = null;
+    setRows([]);
+    setSelectedDate(null);
+    setSelectedEvent(null);
+  }, [nodeId]);
 
   function handleDatesSet(arg: DatesSetArg) {
     const from = arg.start.toISOString().slice(0, 10);
     const to = arg.end.toISOString().slice(0, 10);
-    setDateRange({ from, to });
+    const prev = dateRangeRef.current;
+    if (prev && prev.from === from && prev.to === to) return;
+    dateRangeRef.current = { from, to };
+    fetchData(from, to);
   }
 
   const events = useMemo(() => {
