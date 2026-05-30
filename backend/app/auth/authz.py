@@ -25,6 +25,7 @@ class Action:
     CONSTRAINT_APPROVE = "constraint.approve"
     ASSIGNMENT_MANAGE = "assignment.manage"
     SCORE_ADJUST = "score.adjust"
+    ALGORITHM_RUN = "algorithm.run"
 
 
 _DM_ACTIONS = {
@@ -41,6 +42,7 @@ _DM_ACTIONS = {
     Action.CONSTRAINT_APPROVE,
     Action.ASSIGNMENT_MANAGE,
     Action.SCORE_ADJUST,
+    Action.ALGORITHM_RUN,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -49,6 +51,10 @@ _COMMANDER_ACTIONS = {
     Action.EXEMPTION_READ,
     Action.CONSTRAINT_READ,
     Action.CONSTRAINT_APPROVE,
+}
+
+_DM_GLOBAL_ACTIONS = {
+    Action.ALGORITHM_RUN,
 }
 
 
@@ -87,6 +93,8 @@ def can(
     if user.role == "admin":
         return True  # admin: account/role/hierarchy authority, global
     if user.role == "duty_manager":
+        if action in _DM_GLOBAL_ACTIONS:
+            return True  # no node-scoping for global DM actions
         return action in _DM_ACTIONS and _node_in_scope(target_node, roots)
     if user.role == "commander":
         return action in _COMMANDER_ACTIONS and _node_in_scope(target_node, roots)
