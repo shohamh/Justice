@@ -52,15 +52,25 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     ).all():
         etid_to_dtids.setdefault(etid, set()).add(dtid)
 
+    # Global exemption types (is_global=True) cover ALL active duty types
+    global_etids: set[uuid.UUID] = set(
+        session.execute(
+            select(ExemptionType.id).where(ExemptionType.is_global.is_(True))
+        ).scalars().all()
+    )
+
     # Determine which exemption types provide full coverage (cover ALL active duty types)
     active_dt_ids: set[uuid.UUID] = set(
         session.execute(select(DutyType.id).where(DutyType.active.is_(True))).scalars().all()
     )
-    full_coverage_etids: set[uuid.UUID] = set()
+    full_coverage_etids: set[uuid.UUID] = set(global_etids)
     if active_dt_ids:
-        full_coverage_etids = {
+        full_coverage_etids.update(
             etid for etid, dts in etid_to_dtids.items() if active_dt_ids <= dts
-        }
+        )
+        # Add global exemption types to the map with all active duty types
+        for etid in global_etids:
+            etid_to_dtids[etid] = active_dt_ids
 
     # All exemptions touching [enrolled_at, as_of] — one bulk query for all soldiers
     all_exemptions = session.execute(select(SoldierExemption)).scalars().all()
@@ -376,7 +386,8 @@ def persist_results(
             action="algorithm.proposal.create",
             entity_type="duty_assignment",
             entity_id=da.id,
-            after={"status": "algorithm_draft", "job_id": str(job.id)},
+            after={"status": "algorithm_draft"},
+            context={"job_id": str(job.id)},
         )
 
 
