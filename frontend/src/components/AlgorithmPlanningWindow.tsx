@@ -274,12 +274,27 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
             <p className="text-sm text-gray-600 animate-pulse">{t("algorithm.running")} ({elapsed}s)</p>
           )}
 
-          {job?.status === "failed" && (
-            <div className="text-red-600 text-sm space-y-1">
-              <p>{t("algorithm.failed")}: {job.error_message}</p>
-              {job.relaxed.map((r, i) => <p key={i} className="text-xs">{r}</p>)}
-            </div>
-          )}
+          {job?.status === "failed" && (() => {
+            let parsed: { relaxed?: string[]; reasons?: string[]; status?: string } | null = null;
+            try { parsed = JSON.parse(job.error_message ?? "{}"); } catch { /* plain string error */ }
+            const reasons = parsed?.reasons ?? [];
+            return (
+              <div className="text-red-600 text-sm space-y-1">
+                <p className="font-medium">{t("algorithm.failed")}</p>
+                {reasons.length > 0 && (
+                  <ul className="list-disc pr-5 space-y-0.5 text-xs">
+                    {reasons.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                )}
+                {reasons.length === 0 && job.error_message && (
+                  <p className="text-xs">{job.error_message}</p>
+                )}
+                {job.relaxed.length > 0 && (
+                  <p className="text-xs text-red-400">{t("algorithm.relaxed_attempts")}: {job.relaxed.join(", ")}</p>
+                )}
+              </div>
+            );
+          })()}
 
           {job?.status === "done" && (
             <div>

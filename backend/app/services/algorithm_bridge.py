@@ -28,6 +28,7 @@ from app.db.models import (
     DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
+    ExemptionType,
     HierarchyNode,
     PersonalConstraint,
     ReserveAssignment,
@@ -450,8 +451,18 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
             result = solve(soldiers, duties, existing, settings)
 
             if result.status == "INFEASIBLE":
+                from app.algorithm.diagnose import diagnose_infeasibility
+                dt_names = {
+                    dt.id: dt.name
+                    for dt in session.execute(select(DutyType)).scalars().all()
+                }
+                reasons = diagnose_infeasibility(soldiers, duties, existing, dt_names)
                 job.status = "failed"
-                job.error_message = json.dumps({"relaxed": result.relaxed, "status": "INFEASIBLE"})
+                job.error_message = json.dumps({
+                    "relaxed": result.relaxed,
+                    "status": "INFEASIBLE",
+                    "reasons": reasons,
+                })
                 job.finished_at = datetime.now(tz=timezone.utc)
                 session.commit()
                 return
@@ -460,8 +471,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 soldiers=soldiers,
                 duties=duties,
                 assignments=result.assignments,
+                global_before={},
+                global_after={},
                 solver_seed=result.seed,
-                existing=existing,
             )
             hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
             reserves = select_reserves(
