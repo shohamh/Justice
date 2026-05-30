@@ -205,7 +205,7 @@ New collapsible "חלון תכנון" section below the existing assignment form
 5. On `failed`: show error message + relaxation steps tried (from `relaxed` array + `error_message`)
 
 **Proposals table columns:**
-| תאריך | סוג תורנות | חייל | חייל מילואים | ניקוד לפני | ניקוד אחרי | פעולות |
+| תאריך | סוג תורנות | חייל | רזרבה | ניקוד לפני | ניקוד אחרי | פעולות |
 |---|---|---|---|---|---|---|
 | start–end | duty type name | soldier name | reserve name | norm_before | norm_after | ✓ אשר / ✗ דחה / ?למה |
 
