@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DataTable, type ColDef } from "../components/DataTable";
 import Layout from "../components/Layout";
 import HierarchyTree from "../components/HierarchyTree";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
@@ -20,19 +21,6 @@ export default function TeamHierarchyPage() {
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
-  const [tableSearch, setTableSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"personal_number" | "full_name" | "">("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  function toggleSort(key: "personal_number" | "full_name") {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }
-  const canManageExemptions = user?.role === "admin" || user?.role === "commander" || user?.role === "duty_manager";
   const isAdmin = user?.role === "admin";
 
   async function refresh() {
@@ -40,20 +28,6 @@ export default function TeamHierarchyPage() {
     setSoldiers(await listSoldiers());
   }
   useEffect(() => { void refresh(); }, []);
-
-  const filteredSoldiers = soldiers.filter((s) =>
-    !s.left_at && (
-      !tableSearch ||
-      s.full_name.includes(tableSearch) ||
-      s.personal_number.includes(tableSearch)
-    )
-  );
-  const sortedSoldiers = sortKey
-    ? [...filteredSoldiers].sort((a, b) => {
-        const cmp = a[sortKey].localeCompare(b[sortKey]);
-        return sortDir === "asc" ? cmp : -cmp;
-      })
-    : filteredSoldiers;
 
   async function addSoldier(e: FormEvent) {
     e.preventDefault();
@@ -124,43 +98,58 @@ export default function TeamHierarchyPage() {
 
         {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
 
-        <div className="border rounded p-3">
-          <input className="border rounded p-1 w-full sm:w-64" value={tableSearch} onChange={(e) => setTableSearch(e.target.value)} placeholder={t("team.search_placeholder")} data-testid="soldier-search" />
-        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-testid="soldier-table">
-            <thead>
-              <tr className="text-right text-gray-500">
-                <th className="py-1 cursor-pointer select-none" onClick={() => toggleSort("personal_number")}>
-                  {t("team.personal_number")} {sortKey === "personal_number" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                </th>
-                <th className="cursor-pointer select-none" onClick={() => toggleSort("full_name")}>
-                  {t("team.full_name")} {sortKey === "full_name" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                </th>
-                <th>{t("team.role")}</th>
-                <th>{t("team.node")}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedSoldiers.map((s) => (
-                <tr key={s.id} className="border-t" data-testid={`soldier-row-${s.personal_number}`}>
-                  <td className="py-1">{s.personal_number}</td>
-                  <td>{s.full_name}</td>
-                  <td>{t(`role.${s.role}`)}</td>
-                  <td className="text-xs text-gray-400">{nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "—"}</td>
-                  <td className="space-x-2 space-x-reverse">
+          {(() => {
+            const soldierCols: ColDef<SoldierDTO>[] = [
+              {
+                id: "personal_number",
+                header: t("team.personal_number"),
+                cell: (s) => s.personal_number,
+                sortValue: (s) => s.personal_number,
+                filterValue: (s) => s.personal_number,
+              },
+              {
+                id: "full_name",
+                header: t("team.full_name"),
+                cell: (s) => s.full_name,
+                sortValue: (s) => s.full_name,
+                filterValue: (s) => s.full_name,
+              },
+              {
+                id: "role",
+                header: t("team.role"),
+                cell: (s) => t(`role.${s.role}`),
+                sortValue: (s) => t(`role.${s.role}`),
+              },
+              {
+                id: "node",
+                header: t("team.node"),
+                cell: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "—",
+                sortValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
+                filterValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
+              },
+              {
+                id: "actions",
+                header: "",
+                cell: (s) => (
+                  <span className="space-x-2 space-x-reverse">
                     <button onClick={() => setEditSoldier(s)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("duty_config.save")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
-                  </td>
-                </tr>
-              ))}
-              {sortedSoldiers.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-gray-400 py-4">{t("team.no_soldiers")}</td></tr>
-              )}
-            </tbody>
-          </table>
+                  </span>
+                ),
+              },
+            ];
+            const activeSoldiers = soldiers.filter((s) => !s.left_at);
+            return (
+              <DataTable
+                columns={soldierCols}
+                data={activeSoldiers}
+                filterPlaceholder={t("team.search_placeholder")}
+                emptyMessage={t("team.no_soldiers")}
+              />
+            );
+          })()}
         </div>
       </section>
 
