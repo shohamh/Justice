@@ -25,6 +25,7 @@ from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
     DutyAssignment,
+    DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
     HierarchyNode,
@@ -173,6 +174,45 @@ def load_duty_blocks(
     return blocks
 
 
+def load_duty_blocks_from_shifts(
+    session: Session,
+    *,
+    shift_ids: list[uuid.UUID],
+) -> tuple[list[DutyBlock], dict[uuid.UUID, uuid.UUID]]:
+    """Expand DutyShift rows into DutyBlocks.
+
+    Each shift with required_count=N generates N DutyBlocks.
+    Returns (blocks, block_to_shift_map) where block_to_shift_map
+    maps block.id -> shift_id.
+    """
+    shifts = session.execute(select(DutyShift).where(DutyShift.id.in_(shift_ids))).scalars().all()
+
+    type_ids = {s.duty_type_id for s in shifts}
+    types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
+    score_map = {dt.id: dt.score_per_day for dt in types_q}
+
+    blocks: list[DutyBlock] = []
+    block_to_shift: dict[uuid.UUID, uuid.UUID] = {}
+
+    for shift in shifts:
+        score = score_map.get(shift.duty_type_id, Decimal("1.00"))
+        for _ in range(shift.required_count):
+            block_id = uuid.uuid4()
+            blocks.append(
+                DutyBlock(
+                    id=block_id,
+                    duty_type_id=shift.duty_type_id,
+                    duty_location_id=shift.duty_location_id,
+                    start_date=shift.start_date,
+                    end_date=shift.end_date,
+                    score_per_day=score,
+                )
+            )
+            block_to_shift[block_id] = shift.id
+
+    return blocks, block_to_shift
+
+
 def load_existing_assignments(
     session: Session,
     *,
@@ -275,6 +315,7 @@ def persist_results(
     duty_blocks: list,
     soldier_names: dict[uuid.UUID, str],
     actor_id: uuid.UUID | None,
+    block_to_shift_map: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> None:
     """Insert algorithm_draft assignments, explanations, and reserve rows."""
     duty_map = {d.id: d for d in duty_blocks}
@@ -285,6 +326,7 @@ def persist_results(
 
     for a in result.assignments:
         block: DutyBlock = duty_map[a.duty_id]
+        shift_id = block_to_shift_map.get(a.duty_id) if block_to_shift_map else None
         da = DutyAssignment(
             soldier_id=a.soldier_id,
             duty_type_id=block.duty_type_id,
@@ -294,6 +336,7 @@ def persist_results(
             status="algorithm_draft",
             created_by=actor_id,
             notes=None,
+            duty_shift_id=shift_id,
         )
         session.add(da)
         session.flush()  # populate da.id
@@ -362,25 +405,31 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 beta=Decimal(str(job.settings_json.get("beta", 2.0))),
                 time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
             )
-            duty_type_ids = [uuid.UUID(s) for s in job.duty_type_ids]
-
-            as_of = job.planning_start
-            soldiers = load_soldier_inputs(session, as_of=as_of)
-            duties = load_duty_blocks(
+            shift_ids = [uuid.UUID(s) for s in job.shift_ids]
+            duties, block_to_shift_map = load_duty_blocks_from_shifts(
                 session,
-                planning_start=job.planning_start,
-                planning_end=job.planning_end,
-                duty_type_ids=duty_type_ids,
-                duty_location_id=job.duty_location_id,
+                shift_ids=shift_ids,
             )
+
+            if not duties:
+                job.status = "failed"
+                job.error_message = "no_shifts_selected"
+                job.finished_at = datetime.now(tz=timezone.utc)
+                session.commit()
+                return
+
+            planning_start = min(d.start_date for d in duties)
+            planning_end = max(d.end_date for d in duties)
+
+            soldiers = load_soldier_inputs(session, as_of=planning_start)
             existing = load_existing_assignments(
                 session,
-                planning_start=job.planning_start,
-                planning_end=job.planning_end,
+                planning_start=planning_start,
+                planning_end=planning_end,
                 W=settings.W,
             )
 
-            if not soldiers or not duties:
+            if not soldiers:
                 job.status = "failed"
                 job.error_message = "no_soldiers_or_duties"
                 job.finished_at = datetime.now(tz=timezone.utc)
@@ -428,6 +477,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 duty_blocks=duties,
                 soldier_names=soldier_names,
                 actor_id=actor_id,
+                block_to_shift_map=block_to_shift_map,
             )
 
             # Check if job was cancelled while the solver was running
