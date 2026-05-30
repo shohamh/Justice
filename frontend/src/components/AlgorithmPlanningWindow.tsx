@@ -202,7 +202,11 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
           {/* Shift selector */}
           {availableShifts.length > 0 && (
             <div className="text-sm">
-              <p className="font-medium mb-1">בחר משמרות להרצה</p>
+              <div className="flex items-center gap-3 mb-1">
+                <p className="font-medium">בחר משמרות להרצה</p>
+                <button type="button" onClick={() => setSelectedShiftIds(availableShifts.map(s => s.id))} className="text-xs text-blue-600 hover:underline">בחר הכל</button>
+                <button type="button" onClick={() => setSelectedShiftIds([])} className="text-xs text-blue-600 hover:underline">בטל בחירה</button>
+              </div>
               <div className="space-y-1 max-h-40 overflow-y-auto border rounded p-2">
                 {availableShifts.map(shift => (
                   <label key={shift.id} className="flex items-center gap-2 text-xs">
