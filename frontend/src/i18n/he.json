@@ -81,6 +81,8 @@
     "add": "הוסף",
     "save": "שמור",
     "exempts_from": "פוטר מ-",
+    "global": "גלובלי",
+    "global_exempt_desc": "פוטר מכל סוגי התורנויות",
     "delete": "מחק"
   },
   "exemptions": {
@@ -126,6 +128,7 @@
     "no_soldiers": "אין חיילים להצגה",
     "details": "פרטים",
     "constraints": "בקשות אישיות",
+    "profile": "פרופיל שירות",
     "phone": "טלפון",
     "personal_constraints": "בקשות אישיות",
     "no_constraints": "אין בקשות אישיות"
@@ -262,7 +265,12 @@
     "col_score_before": "ניקוד לפני",
     "col_score_after": "ניקוד אחרי",
     "col_actions": "פעולות",
-    "no_proposals": "אין הצעות"
+    "no_proposals": "אין הצעות",
+    "col_slot_rank": "דירוג במשמרת",
+    "col_batch_rank": "דירוג כולל",
+    "constraint_exemption": "פטור",
+    "constraint_overlap": "חפיפה",
+    "constraint_personal_constraint": "בקשה אישית"
   },
   "soldier_profile": {
     "section_title": "פרטי שירות",
@@ -288,7 +296,10 @@
     "update_pending": "ממתין לאישור",
     "update_approved": "אושר",
     "update_rejected": "נדחה",
-    "field_updates_tab": "עדכוני פרופיל"
+    "previous_value": "ערך נוכחי",
+    "new_value": "ערך מבוקש",
+    "field_updates_tab": "עדכוני פרופיל",
+    "clear": "נקה"
   },
   "eligibility": {
     "title": "דרישות כשירות",
@@ -326,5 +337,8 @@
     "actions": "פעולות",
     "cancel": "ביטול",
     "save": "שמור"
+  },
+  "table": {
+    "filter_placeholder": "סנן..."
   }
 }
