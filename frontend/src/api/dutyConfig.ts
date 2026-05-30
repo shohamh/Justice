@@ -6,7 +6,7 @@ export interface DutyType {
   score_per_day: string;
   description: string | null;
   active: boolean;
-  requirements: {
+  requirements?: {
     allowed_genders?: string[];
     requires_mitvahim?: boolean;
     requires_alal?: boolean;
