@@ -145,16 +145,16 @@ def seed(*, force: bool = False):
         all_soldiers = []
 
         # Admin — department commander
-        s_admin = make_soldier("1000001", "מפק פסיפס", "admin", psips.id)
+        s_admin = make_soldier("1000001", "מפמר פסיפס", "admin", psips.id)
         all_soldiers.append(s_admin)
         psips.commander_id = s_admin.id
 
         # Branch commanders
-        s_focus = make_soldier("2000001", "מפק פוקוס", "commander", branches[0].id)
+        s_focus = make_soldier("2000001", "רען פוקוס", "commander", branches[0].id)
         all_soldiers.append(s_focus)
         branches[0].commander_id = s_focus.id
 
-        s_alom = make_soldier("2000002", "מפק אלומות", "commander", branches[1].id)
+        s_alom = make_soldier("2000002", "רען אלומות", "commander", branches[1].id)
         all_soldiers.append(s_alom)
         branches[1].commander_id = s_alom.id
 
