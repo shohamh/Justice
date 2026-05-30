@@ -22,6 +22,17 @@ export interface Me {
   role: "soldier" | "commander" | "duty_manager" | "admin";
   must_change_password: boolean;
   hierarchy_node_id: string | null;
+  phone: string | null;
+  left_at: string | null;
+  gender: string | null;
+  is_officer: boolean | null;
+  rank: string | null;
+  bahad1_graduate: boolean;
+  enlistment_date: string | null;
+  mandatory_end_date: string | null;
+  discharge_date: string | null;
+  last_mitvahim_date: string | null;
+  last_alal_date: string | null;
 }
 
 export async function fetchMe(): Promise<Me> {

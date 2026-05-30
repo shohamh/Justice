@@ -6,17 +6,14 @@ import Layout from "../components/Layout";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import { useAuth } from "../auth/AuthContext";
 import {
-  SoldierDTO,
   FieldUpdateDTO,
   submitFieldUpdate,
   listFieldUpdates,
-  listSoldiers,
 } from "../api/soldiers";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [soldier, setSoldier] = useState<SoldierDTO | null>(null);
   const [fieldUpdates, setFieldUpdates] = useState<FieldUpdateDTO[]>([]);
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
@@ -24,9 +21,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       void (async () => {
-        const soldiers = await listSoldiers();
-        const found = soldiers.find(s => s.id === user.id);
-        if (found) setSoldier(found);
         const updates = await listFieldUpdates(user.id);
         setFieldUpdates(updates);
       })();
@@ -34,9 +28,9 @@ export default function ProfilePage() {
   }, [user]);
 
   async function requestUpdate(field: string, value: string) {
-    if (!soldier || !value) return;
-    await submitFieldUpdate(soldier.id, field, value);
-    const updated = await listFieldUpdates(soldier.id);
+    if (!user || !value) return;
+    await submitFieldUpdate(user.id, field, value);
+    const updated = await listFieldUpdates(user.id);
     setFieldUpdates(updated);
   }
 
@@ -50,9 +44,9 @@ export default function ProfilePage() {
         <Link to="/change-password" className="text-indigo-600 hover:text-indigo-800" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
-        {soldier?.id && (
+        {user?.id && (
           <div className="pt-4 border-t">
-            <ExemptionsPanel soldierId={soldier.id} canManage={false} />
+            <ExemptionsPanel soldierId={user.id} canManage={false} />
           </div>
         )}
       </section>
@@ -60,18 +54,18 @@ export default function ProfilePage() {
       <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-4" dir="rtl">
         <h3 className="text-lg font-semibold">{t("soldier_profile.section_title")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
-          {soldier?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {soldier.rank}</div>}
-          {soldier?.is_officer !== null && soldier?.is_officer !== undefined && (
+          {user?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {user.rank}</div>}
+          {user?.is_officer !== null && user?.is_officer !== undefined && (
             <div>
               <span className="font-medium">{t("soldier_profile.is_officer")}:</span>{" "}
-              {soldier.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}
+              {user.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}
             </div>
           )}
-          {soldier?.last_mitvahim_date && (
-            <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {soldier.last_mitvahim_date}</div>
+          {user?.last_mitvahim_date && (
+            <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {user.last_mitvahim_date}</div>
           )}
-          {soldier?.last_alal_date && (
-            <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {soldier.last_alal_date}</div>
+          {user?.last_alal_date && (
+            <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {user.last_alal_date}</div>
           )}
         </div>
 
