@@ -38,40 +38,40 @@ def test_move_rejects_cycle(admin_session):
         move_node(admin_session, node_id=b1.id, new_parent_id=g1.id, actor_id=None)
 
 
-def test_move_enforces_level_rules(admin_session):
+def test_move_allows_any_level_below(admin_session):
     d1 = seed_node(admin_session, level="department", name="d1")
     b1 = seed_node(admin_session, level="branch", name="b1", parent=d1)
     g1 = seed_node(admin_session, level="group", name="g1", parent=b1)
     d2 = seed_node(admin_session, level="department", name="d2")
-    with pytest.raises(HierarchyError):
-        move_node(admin_session, node_id=g1.id, new_parent_id=d2.id, actor_id=None)
+    move_node(admin_session, node_id=g1.id, new_parent_id=d2.id, actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(g1)
+    assert g1.parent_id == d2.id
 
 
-def test_create_root_must_be_department(admin_session):
-    node = create_node(admin_session, level="department", name="חיל", parent_id=None, actor_id=None)
+def test_create_root_must_be_division(admin_session):
+    node = create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
     admin_session.commit()
     assert node.parent_id is None
     assert node.path_ids == [node.id]
 
 
-def test_create_non_department_root_rejected(admin_session):
+def test_non_top_level_root_rejected(admin_session):
     with pytest.raises(HierarchyError):
         create_node(admin_session, level="branch", name="ענף", parent_id=None, actor_id=None)
 
 
-def test_create_child_must_be_exactly_one_level_down(admin_session):
+def test_create_child_allows_any_level_below(admin_session):
     dept = seed_node(admin_session, level="department", name="חיל")
-    branch = create_node(
-        admin_session, level="branch", name="ענף", parent_id=dept.id, actor_id=None
+    team = create_node(
+        admin_session, level="team", name="צוות", parent_id=dept.id, actor_id=None
     )
     admin_session.commit()
-    assert branch.path_ids == [dept.id, branch.id]
-    with pytest.raises(HierarchyError):
-        create_node(admin_session, level="team", name="צוות", parent_id=dept.id, actor_id=None)
+    assert team.path_ids == [dept.id, team.id]
 
 
 def test_create_writes_audit(admin_session):
-    create_node(admin_session, level="department", name="חיל", parent_id=None, actor_id=None)
+    create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
     admin_session.commit()
     row = admin_session.execute(
         text(
