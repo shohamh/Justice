@@ -69,29 +69,29 @@ export default function TeamHierarchyPage() {
         <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} />
 
         {isAdmin && (
-        <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
-          <label className="block">
-            <span className="text-xs">{t("team.personal_number")}</span>
-            <input className="block border rounded p-1" value={pn} onChange={(e) => setPn(e.target.value)} required data-testid="onboard-pn" />
-          </label>
-          <label className="block">
-            <span className="text-xs">{t("team.full_name")}</span>
-            <input className="block border rounded p-1" value={name} onChange={(e) => setName(e.target.value)} required data-testid="onboard-name" />
-          </label>
-          <label className="block">
-            <span className="text-xs">{t("team.title")}</span>
-            <select className="block border rounded p-1" value={nodeId} onChange={(e) => setNodeId(e.target.value)} data-testid="onboard-node">
-              <option value="">—</option>
-              {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-            </select>
-          </label>
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="onboard-submit">
-            {t("team.add_soldier")}
-          </button>
-        </form>
-
-          {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
+          <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
+            <label className="block">
+              <span className="text-xs">{t("team.personal_number")}</span>
+              <input className="block border rounded p-1" value={pn} onChange={(e) => setPn(e.target.value)} required data-testid="onboard-pn" />
+            </label>
+            <label className="block">
+              <span className="text-xs">{t("team.full_name")}</span>
+              <input className="block border rounded p-1" value={name} onChange={(e) => setName(e.target.value)} required data-testid="onboard-name" />
+            </label>
+            <label className="block">
+              <span className="text-xs">{t("team.title")}</span>
+              <select className="block border rounded p-1" value={nodeId} onChange={(e) => setNodeId(e.target.value)} data-testid="onboard-node">
+                <option value="">—</option>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+              </select>
+            </label>
+            <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="onboard-submit">
+              {t("team.add_soldier")}
+            </button>
+          </form>
         )}
+
+        {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
 
         <table className="w-full text-sm" data-testid="soldier-table">
           <thead>
