@@ -274,9 +274,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             ("מרפאה", Decimal("0.75"), "תורנות מרפאה", {}),
             ("חמ\"ל", Decimal("1.25"), "עבודה בחמ\"ל", {}),
             ("מנהלה", Decimal("0.50"), "עבודות מנהלה", {}),
-            ("קצין תורן", Decimal("1.50"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("מפקד תורן", Decimal("1.75"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}),
-            ("קצין מלווה אבט\"ש", Decimal("1.50"), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("קצין תורן", Decimal("1.50"), "קצין תורן בבסיס", {"enlisted_allowed": False}),
+            ("מפקד תורן", Decimal("1.75"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "requires_bahad1": True}),
+            ("קצין מלווה אבט\"ש", Decimal("1.50"), "קצין מלווה לאבטחה", {"enlisted_allowed": False}),
         ]
         duty_types = []
         for name, spd, desc, reqs in dt_defs:
