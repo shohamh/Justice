@@ -73,7 +73,15 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
     nodes.filter((n) => n.parent_id === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const soldiersOf = (nodeId: string) => {
-    const assigned = soldiers.filter((s) => s.hierarchy_node_id === nodeId && !s.left_at);
+    // Soldiers whose hierarchy_node_id points here, excluding those who are
+    // commanders of a different node (they appear under their commanded node)
+    const assigned = soldiers.filter((s) => {
+      if (s.hierarchy_node_id !== nodeId) return false;
+      if (s.left_at) return false;
+      const isCommanderElsewhere = nodes.some((n) => n.commander_id === s.id && n.id !== nodeId);
+      return !isCommanderElsewhere;
+    });
+    // If this node has a commander not already in the list, add them
     const node = nodes.find((n) => n.id === nodeId);
     if (node?.commander_id) {
       const cmdr = soldiers.find((s) => s.id === node.commander_id && !s.left_at);

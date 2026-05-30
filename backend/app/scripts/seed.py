@@ -23,9 +23,23 @@ from app.db.models import (
 from app.db.session import SessionLocal
 
 
-def seed():
+def seed(*, force: bool = False):
     with SessionLocal() as session:
         hashed = hash_password("1234567890")
+
+        if force:
+            # Wipe all existing data for a clean reseed
+            session.query(PersonalConstraint).delete()
+            session.query(ScoreAdjustment).delete()
+            session.query(SoldierExemption).delete()
+            session.query(ExemptionDutyTypeMap).delete()
+            session.query(DutyAssignment).delete()
+            session.query(HierarchyNode).delete()
+            session.query(Soldier).delete()
+            session.query(DutyType).delete()
+            session.query(DutyLocation).delete()
+            session.query(ExemptionType).delete()
+            session.commit()
 
         # Ensure admin 1000001 always has the correct password, even if already seeded
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
@@ -268,4 +282,5 @@ def seed():
 
 
 if __name__ == "__main__":
-    seed()
+    import sys
+    seed(force="--force" in sys.argv)
