@@ -7,7 +7,7 @@ interface Props {
   dutyTypes: DutyType[];
   locations: DutyLocation[];
   existing?: DutyShift;
-  onSaved: () => void;
+  onSaved: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -43,7 +43,7 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
         };
         await createShift(input);
       }
-      onSaved();
+      await onSaved();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail ?? "שגיאה");
@@ -92,8 +92,8 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
           </label>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded">ביטול</button>
-            <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">שמור</button>
+            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded">{t("shifts.cancel")}</button>
+            <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">{t("shifts.save")}</button>
           </div>
         </form>
       </div>

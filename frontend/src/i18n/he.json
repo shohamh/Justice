@@ -321,6 +321,10 @@
     "confirm_delete": "האם למחוק את המשמרת?",
     "notes": "הערות",
     "filter_from": "מתאריך",
-    "filter_to": "עד תאריך"
+    "filter_to": "עד תאריך",
+    "status": "סטטוס",
+    "actions": "פעולות",
+    "cancel": "ביטול",
+    "save": "שמור"
   }
 }

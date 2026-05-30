@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
@@ -21,7 +21,7 @@ export default function ShiftsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editShift, setEditShift] = useState<DutyShift | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const [ss, dts, locs] = await Promise.all([
       listShifts({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
       listDutyTypes(),
@@ -30,9 +30,9 @@ export default function ShiftsPage() {
     setShifts(ss);
     setDutyTypes(dts);
     setLocations(locs);
-  }
+  }, [dateFrom, dateTo]);
 
-  useEffect(() => { void refresh(); }, [dateFrom, dateTo]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   async function handleDelete(shift: DutyShift) {
     if (!window.confirm(t("shifts.confirm_delete"))) return;
@@ -82,8 +82,8 @@ export default function ShiftsPage() {
               <th className="border px-2 py-1">{t("shifts.end_date")}</th>
               <th className="border px-2 py-1">{t("shifts.required_count")}</th>
               <th className="border px-2 py-1">{t("shifts.assigned_count")}</th>
-              <th className="border px-2 py-1">סטטוס</th>
-              <th className="border px-2 py-1">פעולות</th>
+              <th className="border px-2 py-1">{t("shifts.status")}</th>
+              <th className="border px-2 py-1">{t("shifts.actions")}</th>
             </tr>
           </thead>
           <tbody>
