@@ -2,12 +2,7 @@ import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, createNode } from "../api/hierarchy";
 
-const CHILD_LEVELS: Record<string, string[]> = {
-  department: ["branch"],
-  branch: ["group"],
-  group: ["team"],
-  team: [],
-};
+const LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"];
 
 interface Props {
   parent: NodeDTO;
@@ -18,7 +13,9 @@ interface Props {
 export default function AddChildNodeDialog({ parent, onClose, onCreated }: Props) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
-  const possibleLevels = CHILD_LEVELS[parent.level] ?? [];
+
+  const parentIndex = LEVEL_ORDER.indexOf(parent.level);
+  const possibleLevels = LEVEL_ORDER.slice(parentIndex + 1);
   const [level, setLevel] = useState(possibleLevels[0] ?? "");
 
   async function onSubmit(e: FormEvent) {

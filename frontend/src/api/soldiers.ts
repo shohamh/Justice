@@ -40,3 +40,10 @@ export async function softDeleteSoldier(id: string): Promise<void> {
 export async function assignRole(id: string, role: string): Promise<SoldierDTO> {
   return (await api.post<SoldierDTO>(`/soldiers/${id}/role`, { role })).data;
 }
+
+export async function updateSoldier(
+  id: string,
+  input: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null }
+): Promise<SoldierDTO> {
+  return (await api.patch<SoldierDTO>(`/soldiers/${id}`, input)).data;
+}

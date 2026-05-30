@@ -1,29 +1,41 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, deleteNode } from "../api/hierarchy";
+import { SoldierDTO, updateSoldier, listSoldiers } from "../api/soldiers";
+import { onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import RenameNodeDialog from "./RenameNodeDialog";
+import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
+import SoldierEditModal from "./SoldierEditModal";
 
 const LEVEL_COLORS: Record<string, string> = {
+  division: "text-purple-700 bg-purple-50",
+  unit: "text-indigo-700 bg-indigo-50",
   department: "text-blue-700 bg-blue-50",
   branch: "text-green-700 bg-green-50",
   group: "text-yellow-700 bg-yellow-50",
   team: "text-gray-700 bg-gray-100",
 };
 
+const LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"];
+
 interface Props {
   nodes: NodeDTO[];
+  soldiers: SoldierDTO[];
   isAdmin: boolean;
   onChanged: () => void;
 }
 
-export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
+export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id)));
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
   const [commanderDialog, setCommanderDialog] = useState<NodeDTO | null>(null);
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);
+  const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
+  const [editSoldier, setEditSoldier] = useState<{ soldier: SoldierDTO } | null>(null);
+  const [allSoldiers, setAllSoldiers] = useState<SoldierDTO[]>(soldiers);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -43,21 +55,47 @@ export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
     }
   }
 
+  async function handleQuickAdd(nodeId: string, soldier: SoldierDTO | null, personalNumber: string, fullName: string) {
+    if (soldier) {
+      await updateSoldier(soldier.id, { hierarchy_node_id: nodeId });
+    } else {
+      await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
+    }
+    setQuickAddNode(null);
+    const refreshed = await listSoldiers();
+    setAllSoldiers(refreshed);
+    onChanged();
+  }
+
+  async function handleEditSave(soldierId: string, data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null }) {
+    await updateSoldier(soldierId, data);
+    const refreshed = await listSoldiers();
+    setAllSoldiers(refreshed);
+    onChanged();
+  }
+
   const childrenOf = (parentId: string | null) =>
     nodes.filter((n) => n.parent_id === parentId).sort((a, b) => a.name.localeCompare(b.name));
+
+  const soldiersOf = (nodeId: string) =>
+    allSoldiers.filter((s) => s.hierarchy_node_id === nodeId && !s.left_at);
+
+  const canHaveChildren = (level: string) => {
+    const idx = LEVEL_ORDER.indexOf(level);
+    return idx >= 0 && idx < LEVEL_ORDER.length - 1;
+  };
 
   function renderNode(node: NodeDTO, depth: number) {
     const children = childrenOf(node.id);
     const isExpanded = expanded.has(node.id);
     const hasChildren = children.length > 0;
-
-    const canHaveChildren = ["department", "branch", "group"].includes(node.level);
+    const nodeSoldiers = soldiersOf(node.id);
 
     return (
       <li key={node.id} className="select-none">
         <div className={`flex items-center gap-2 py-1 px-2 hover:bg-gray-50 rounded ${depth > 0 ? "mr-4" : ""}`}>
           <button
-            className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren ? "visible" : "invisible"}`}
+            className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren || nodeSoldiers.length > 0 ? "visible" : "invisible"}`}
             onClick={() => toggle(node.id)}
             data-testid={`tree-toggle-${node.id}`}
           >
@@ -74,13 +112,16 @@ export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
           )}
           {isAdmin && (
             <span className="flex gap-1 ml-auto">
-              {canHaveChildren && (
+              {canHaveChildren(node.level) && (
                 <button className="text-xs text-indigo-600 hover:underline" onClick={() => setAddDialog(node)} data-testid={`tree-add-child-${node.id}`}>
                   +{t("team.add_node")}
                 </button>
               )}
+              <button className="text-xs text-indigo-600 hover:underline" onClick={() => setQuickAddNode(node.id)} data-testid={`tree-add-soldier-${node.id}`}>
+                +{t("team.add_soldier")}
+              </button>
               <button className="text-xs text-green-600 hover:underline" onClick={() => setCommanderDialog(node)} data-testid={`tree-commander-btn-${node.id}`}>
-                {t("exemptions.title")}
+                {t("team.assign_commander")}
               </button>
               <button className="text-xs text-amber-600 hover:underline" onClick={() => setRenameDialog(node)} data-testid={`tree-rename-${node.id}`}>
                 {t("duty_config.save")}
@@ -93,6 +134,43 @@ export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
             </span>
           )}
         </div>
+
+        {quickAddNode === node.id && (
+          <div className="mr-8 mb-2 px-2" data-testid={`quick-add-${node.id}`}>
+            <SoldierSearchAutocomplete
+              onSelect={(s) => {
+                if (s) {
+                  void handleQuickAdd(node.id, s, "", "");
+                }
+              }}
+              onCreateNew={(pn, name) => {
+                void handleQuickAdd(node.id, null, pn || "", name || "");
+              }}
+            />
+          </div>
+        )}
+
+        {isExpanded && nodeSoldiers.length > 0 && (
+          <ul className="mr-8 mb-1" data-testid={`tree-soldiers-${node.id}`}>
+            {nodeSoldiers.map((s) => (
+              <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-600" data-testid={`tree-soldier-${s.personal_number}`}>
+                <span className="w-1 h-1 bg-gray-300 rounded-full inline-block" />
+                <span>{s.full_name}</span>
+                <span className="text-xs text-gray-400">({s.personal_number})</span>
+                {isAdmin && (
+                  <button
+                    className="text-xs text-indigo-600 hover:underline ml-auto"
+                    onClick={() => setEditSoldier({ soldier: s })}
+                    data-testid={`edit-soldier-${s.personal_number}`}
+                  >
+                    {t("duty_config.save")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
         {hasChildren && isExpanded && (
           <ul className="border-r-2 border-gray-100 mr-2">
             {children.map((child) => renderNode(child, depth + 1))}
@@ -118,6 +196,13 @@ export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
       )}
       {renameDialog && (
         <RenameNodeDialog nodeId={renameDialog.id} currentName={renameDialog.name} onClose={() => setRenameDialog(null)} onRenamed={onChanged} />
+      )}
+      {editSoldier && (
+        <SoldierEditModal
+          soldier={editSoldier.soldier}
+          onSave={(data) => handleEditSave(editSoldier.soldier.id, data)}
+          onClose={() => setEditSoldier(null)}
+        />
       )}
     </>
   );

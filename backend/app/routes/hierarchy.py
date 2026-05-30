@@ -27,7 +27,7 @@ class NodeOut(BaseModel):
 
 
 class CreateNodeRequest(BaseModel):
-    level: str = Field(pattern="^(department|branch|group|team)$")
+    level: str = Field(pattern="^(division|unit|department|branch|group|team)$")
     name: str = Field(min_length=1, max_length=200)
     parent_id: uuid.UUID | None = None
 

@@ -98,6 +98,7 @@
     "add_soldier": "הוסף איש צוות",
     "personal_number": "מספר אישי",
     "full_name": "שם מלא",
+    "edit_soldier": "עריכת חייל",
     "role": "תפקיד",
     "reset_password": "אפס סיסמה",
     "remove": "הסר",
@@ -108,14 +109,19 @@
     "rename_node": "שינוי שם",
     "assign_commander": "קביעת מפקד",
     "commander": "מפקד",
-    "level_department": "אגף",
-    "level_branch": "זרוע",
-    "level_group": "יחידה",
-    "level_team": "צוות"
+    "level_division": "מערך",
+    "level_unit": "יחידה",
+    "level_department": "מרכז",
+    "level_branch": "ענף",
+    "level_group": "מדור",
+    "level_team": "צוות",
+    "search_soldier_placeholder": "חפש חייל...",
+    "create_new_soldier": "צור חייל חדש"
   },
   "profile": {
     "title": "פרופיל",
-    "change_password": "שינוי סיסמה"
+    "change_password": "שינוי סיסמה",
+    "phone": "טלפון"
   },
   "duty_management": {
     "title": "ניהול תורנויות",

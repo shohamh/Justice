@@ -8,17 +8,20 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.db.models import HierarchyNode, Soldier
 
-# Top (index 0) to bottom. A node's parent must be exactly one level above it.
-LEVEL_ORDER = ["department", "branch", "group", "team"]
+# Top (index 0) to bottom. A child must be at any level below the parent.
+LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"]
 
 
 class HierarchyError(Exception):
     """Raised on an invalid hierarchy operation (bad level nesting, cycle, guard)."""
 
 
-def _expected_child_level(parent_level: str) -> str | None:
-    i = LEVEL_ORDER.index(parent_level)
-    return LEVEL_ORDER[i + 1] if i + 1 < len(LEVEL_ORDER) else None
+def _validate_child_level(parent_level: str, child_level: str) -> bool:
+    """Return True if child_level is any level below parent_level."""
+    try:
+        return LEVEL_ORDER.index(child_level) > LEVEL_ORDER.index(parent_level)
+    except ValueError:
+        return False
 
 
 def create_node(
@@ -33,16 +36,16 @@ def create_node(
     if level not in LEVEL_ORDER:
         raise HierarchyError(f"unknown level: {level}")
     if parent_id is None:
-        if level != "department":
-            raise HierarchyError("root nodes must be 'department'")
+        if level != LEVEL_ORDER[0]:
+            raise HierarchyError(f"root nodes must be '{LEVEL_ORDER[0]}'")
         parent = None
     else:
         parent = session.get(HierarchyNode, parent_id)
         if parent is None:
             raise HierarchyError("parent not found")
-        if _expected_child_level(parent.level) != level:
+        if not _validate_child_level(parent.level, level):
             raise HierarchyError(
-                f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes"
+                f"a {parent.level} cannot contain {level} nodes"
             )
 
     node = HierarchyNode(
@@ -86,9 +89,9 @@ def move_node(
             raise HierarchyError("parent not found")
         if node.id in parent.path_ids:
             raise HierarchyError("cannot move a node under its own descendant")
-        if _expected_child_level(parent.level) != node.level:
+        if not _validate_child_level(parent.level, node.level):
             raise HierarchyError(
-                f"a {parent.level} can only contain {_expected_child_level(parent.level)} nodes"
+                f"a {parent.level} cannot contain {node.level} nodes"
             )
         new_base = list(parent.path_ids)
 

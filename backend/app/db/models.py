@@ -87,7 +87,7 @@ class HierarchyNode(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     level: Mapped[str] = mapped_column(
-        Enum("department", "branch", "group", "team", name="hierarchy_level")
+        Enum("division", "unit", "department", "branch", "group", "team", name="hierarchy_level")
     )
     name: Mapped[str] = mapped_column(Text)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
