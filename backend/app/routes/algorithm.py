@@ -15,6 +15,7 @@ from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
     DutyAssignment,
+    DutyShift,
     ReserveAssignment,
     Soldier,
 )
@@ -37,10 +38,7 @@ class SolverSettingsIn(BaseModel):
 
 
 class CreateJobRequest(BaseModel):
-    planning_start: date
-    planning_end: date
-    duty_type_ids: list[uuid.UUID] = Field(min_length=1)
-    duty_location_id: uuid.UUID
+    shift_ids: list[uuid.UUID] = Field(min_length=1)
     mode: str = "shadow"
     settings: SolverSettingsIn = Field(default_factory=SolverSettingsIn)
 
@@ -56,6 +54,7 @@ class ProposalOut(BaseModel):
     reserve_soldier_id: uuid.UUID | None
     norm_score_before: float | None
     norm_score_after: float | None
+    duty_shift_id: uuid.UUID | None = None
 
 
 class JobOut(BaseModel):
@@ -157,6 +156,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             reserve_soldier_id=reserve_map.get(a.id),
             norm_score_before=norm_before,
             norm_score_after=norm_after,
+            duty_shift_id=a.duty_shift_id,
         ))
     return proposals
 
@@ -208,17 +208,31 @@ def create_job(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, Any]:
-    if body.planning_start > body.planning_end:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_date_range")
     if body.mode not in ("shadow", "dm_reviewed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_mode")
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
+    from app.services.shifts import get_shift_fill
+
+    all_full = True
+    for sid in body.shift_ids:
+        shift = session.get(DutyShift, sid)
+        if shift is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_not_found")
+        fill = get_shift_fill(session, shift_id=sid)
+        if fill and fill.fill_status != "full":
+            all_full = False
+    if all_full:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="all_shifts_full")
+
+    shifts = [session.get(DutyShift, sid) for sid in body.shift_ids]
+    planning_start = min(s.start_date for s in shifts if s)
+    planning_end = max(s.end_date for s in shifts if s)
+
     job = AlgorithmJob(
-        planning_start=body.planning_start,
-        planning_end=body.planning_end,
-        duty_type_ids=[str(did) for did in body.duty_type_ids],
-        duty_location_id=body.duty_location_id,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        shift_ids=[str(sid) for sid in body.shift_ids],
         settings_json=body.settings.model_dump(),
         mode=body.mode,
         created_by=user.id,
