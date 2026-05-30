@@ -39,3 +39,6 @@ vite.log
 
 # Postgres data volume (when running compose locally)
 .docker-data/
+
+# Playwright storage state (auth snapshot)
+frontend/tests/e2e/storageState.json
