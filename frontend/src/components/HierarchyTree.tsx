@@ -56,15 +56,19 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
   }
 
   async function handleQuickAdd(nodeId: string, soldier: SoldierDTO | null, personalNumber: string, fullName: string) {
-    if (soldier) {
-      await updateSoldier(soldier.id, { hierarchy_node_id: nodeId });
-    } else {
-      await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
+    try {
+      if (soldier) {
+        await updateSoldier(soldier.id, { hierarchy_node_id: nodeId });
+      } else {
+        await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
+      }
+      setQuickAddNode(null);
+      const refreshed = await listSoldiers();
+      setAllSoldiers(refreshed);
+      onChanged();
+    } catch {
+      alert(t("errors.generic"));
     }
-    setQuickAddNode(null);
-    const refreshed = await listSoldiers();
-    setAllSoldiers(refreshed);
-    onChanged();
   }
 
   const childrenOf = (parentId: string | null) =>
