@@ -1,26 +1,38 @@
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import (
+    Assignment,
+    AssignmentExplanation as AlgoExplanation,
     DutyBlock,
     ExistingAssignment,
+    ExplanationData,
     SoldierInput,
+    SolverResult,
+    SolverSettings,
 )
+from app.audit.writer import write_audit
 from app.db.models import (
+    AlgorithmJob,
+    AssignmentExplanation,
     DutyAssignment,
     DutyType,
     ExemptionDutyTypeMap,
     HierarchyNode,
     PersonalConstraint,
+    ReserveAssignment,
     Soldier,
     SoldierExemption,
 )
+from app.db.session import session_scope
 from app.services import scoring as scoring_svc
 
 
@@ -204,3 +216,209 @@ def build_hierarchy_maps(
             node_soldiers.setdefault(nid, []).append(sid)
 
     return hierarchy_parent, hierarchy_children, soldier_node, node_soldiers
+
+
+def _explanation_payload(
+    exp: AlgoExplanation,
+    *,
+    dm_view: bool,
+    soldier_names: dict[uuid.UUID, str],
+) -> dict[str, Any]:
+    """Serialise one AssignmentExplanation to a JSON-safe dict."""
+    candidates = []
+    for c in exp.candidates:
+        entry: dict[str, Any] = {
+            "soldier_id": str(c.soldier_id),
+            "blocked": c.blocked,
+            "blocking_constraints": c.blocking_constraints,
+        }
+        if dm_view:
+            entry["soldier_name"] = soldier_names.get(c.soldier_id, "")
+            entry["pre_norm_score"] = float(c.pre_norm_score) if c.pre_norm_score is not None else None
+            entry["post_norm_score"] = float(c.post_norm_score) if c.post_norm_score is not None else None
+        candidates.append(entry)
+    return {
+        "duty_id": str(exp.duty_id),
+        "assigned_soldier_id": str(exp.assigned_soldier_id),
+        "tiebreaker_note": exp.tiebreaker_note,
+        "candidates": candidates,
+    }
+
+
+def persist_results(
+    session: Session,
+    *,
+    job: AlgorithmJob,
+    result: SolverResult,
+    explanation_data: ExplanationData,
+    reserves: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
+    duty_blocks: list,
+    soldier_names: dict[uuid.UUID, str],
+    actor_id: uuid.UUID | None,
+) -> None:
+    """Insert algorithm_draft assignments, explanations, and reserve rows."""
+    duty_map = {d.id: d for d in duty_blocks}
+    explanation_map = {e.duty_id: e for e in explanation_data.per_assignment}
+    reserve_map: dict[uuid.UUID, uuid.UUID] = {
+        duty_id: reserve_id for duty_id, _primary, reserve_id in reserves
+    }
+
+    for a in result.assignments:
+        block: DutyBlock = duty_map[a.duty_id]
+        da = DutyAssignment(
+            soldier_id=a.soldier_id,
+            duty_type_id=block.duty_type_id,
+            duty_location_id=block.duty_location_id,
+            start_date=block.start_date,
+            end_date=block.end_date,
+            status="algorithm_draft",
+            created_by=actor_id,
+            notes=None,
+        )
+        session.add(da)
+        session.flush()  # populate da.id
+
+        exp = explanation_map.get(a.duty_id)
+        if exp is not None:
+            payload = _explanation_payload(
+                exp,
+                dm_view=True,
+                soldier_names=soldier_names,
+            )
+            payload["global_before"] = explanation_data.global_metrics_before
+            payload["global_after"] = explanation_data.global_metrics_after
+
+            session.add(
+                AssignmentExplanation(
+                    duty_assignment_id=da.id,
+                    payload=payload,
+                    algorithm_version=explanation_data.algorithm_version,
+                    solver_seed=str(explanation_data.solver_seed),
+                )
+            )
+
+        reserve_soldier_id = reserve_map.get(a.duty_id)
+        if reserve_soldier_id is not None:
+            session.add(
+                ReserveAssignment(
+                    duty_assignment_id=da.id,
+                    reserve_soldier_id=reserve_soldier_id,
+                    reason="auto: nearest in hierarchy",
+                )
+            )
+
+        write_audit(
+            session,
+            actor_id=actor_id,
+            action="algorithm.proposal.create",
+            entity_type="duty_assignment",
+            entity_id=da.id,
+            after={"status": "algorithm_draft", "job_id": str(job.id)},
+        )
+
+
+def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
+    """Background task: load data, run solver, persist results."""
+    from app.algorithm.explain import build_explanations
+    from app.algorithm.reserve import select_reserves
+    from app.algorithm.solver import solve
+
+    with session_scope() as session:
+        job = session.get(AlgorithmJob, job_id)
+        if job is None:
+            return
+
+        job.status = "running"
+        job.started_at = datetime.now(tz=timezone.utc)
+        session.commit()
+
+        try:
+            settings = SolverSettings(
+                K=Decimal(str(job.settings_json.get("K", 8))),
+                T=int(job.settings_json.get("T", 7)),
+                W=int(job.settings_json.get("W", 14)),
+                alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
+                beta=Decimal(str(job.settings_json.get("beta", 2.0))),
+                time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
+            )
+            duty_type_ids = [uuid.UUID(s) for s in job.duty_type_ids]
+
+            as_of = job.planning_start
+            soldiers = load_soldier_inputs(session, as_of=as_of)
+            duties = load_duty_blocks(
+                session,
+                planning_start=job.planning_start,
+                planning_end=job.planning_end,
+                duty_type_ids=duty_type_ids,
+                duty_location_id=job.duty_location_id,
+            )
+            existing = load_existing_assignments(
+                session,
+                planning_start=job.planning_start,
+                planning_end=job.planning_end,
+                W=settings.W,
+            )
+
+            if not soldiers or not duties:
+                job.status = "failed"
+                job.error_message = "no_soldiers_or_duties"
+                job.finished_at = datetime.now(tz=timezone.utc)
+                session.commit()
+                return
+
+            result = solve(soldiers, duties, existing, settings)
+
+            if result.status == "INFEASIBLE":
+                job.status = "failed"
+                job.error_message = json.dumps({"relaxed": result.relaxed, "status": "INFEASIBLE"})
+                job.finished_at = datetime.now(tz=timezone.utc)
+                session.commit()
+                return
+
+            explanation_data = build_explanations(
+                soldiers=soldiers,
+                duties=duties,
+                assignments=result.assignments,
+                solver_seed=result.seed,
+                existing=existing,
+            )
+            hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
+            reserves = select_reserves(
+                soldiers=soldiers,
+                duties=duties,
+                assignments=result.assignments,
+                hierarchy_parent=hier_parent,
+                hierarchy_children=hier_children,
+                soldier_node=soldier_node,
+                node_soldiers=node_soldiers,
+            )
+
+            soldier_names = {
+                s.id: s.full_name
+                for s in session.execute(select(Soldier)).scalars().all()
+            }
+
+            persist_results(
+                session,
+                job=job,
+                result=result,
+                explanation_data=explanation_data,
+                reserves=reserves,
+                duty_blocks=duties,
+                soldier_names=soldier_names,
+                actor_id=actor_id,
+            )
+
+            job.status = "done"
+            job.finished_at = datetime.now(tz=timezone.utc)
+            session.commit()
+
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            with session_scope() as err_session:
+                err_job = err_session.get(AlgorithmJob, job_id)
+                if err_job is not None:
+                    err_job.status = "failed"
+                    err_job.error_message = str(exc)
+                    err_job.finished_at = datetime.now(tz=timezone.utc)
+                    err_session.commit()
