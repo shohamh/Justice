@@ -27,6 +27,8 @@ export interface ProposalRow {
   norm_score_before: number | null;
   norm_score_after: number | null;
   duty_shift_id: string | null;
+  candidate_rank: number | null;
+  candidate_pool_size: number | null;
 }
 
 export interface AlgorithmJob {
