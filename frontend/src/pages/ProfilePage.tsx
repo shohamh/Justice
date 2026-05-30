@@ -29,9 +29,15 @@ export default function ProfilePage() {
 
   async function requestUpdate(field: string, value: string) {
     if (!user || !value) return;
-    await submitFieldUpdate(user.id, field, value);
-    const updated = await listFieldUpdates(user.id);
-    setFieldUpdates(updated);
+    try {
+      await submitFieldUpdate(user.id, field, value);
+      const updated = await listFieldUpdates(user.id);
+      setFieldUpdates(updated);
+      if (field === "last_mitvahim_date") setMitvahimReq("");
+      if (field === "last_alal_date") setAlalReq("");
+    } catch {
+      // submission failed silently — backend returns error detail
+    }
   }
 
   return (
