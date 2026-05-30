@@ -6,6 +6,16 @@ export interface DutyType {
   score_per_day: string;
   description: string | null;
   active: boolean;
+  requirements: {
+    allowed_genders?: string[];
+    requires_mitvahim?: boolean;
+    requires_alal?: boolean;
+    allowed_ranks?: string[];
+    allowed_service_types?: string[];
+    officers_allowed?: boolean;
+    enlisted_allowed?: boolean;
+    requires_bahad1?: boolean;
+  };
 }
 
 export interface DutyLocation {
@@ -55,4 +65,11 @@ export async function getExemptionDutyTypes(id: string): Promise<string[]> {
 }
 export async function setExemptionDutyTypes(id: string, duty_type_ids: string[]): Promise<string[]> {
   return (await api.put<string[]>(`/duty-config/exemption-types/${id}/duty-types`, { duty_type_ids })).data;
+}
+
+export async function updateDutyTypeRequirements(
+  id: string,
+  requirements: DutyType["requirements"]
+): Promise<DutyType> {
+  return (await api.patch<DutyType>(`/duty-config/duty-types/${id}`, { requirements })).data;
 }

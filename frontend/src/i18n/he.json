@@ -261,5 +261,43 @@
     "col_score_after": "ניקוד אחרי",
     "col_actions": "פעולות",
     "no_proposals": "אין הצעות"
+  },
+  "soldier_profile": {
+    "section_title": "פרטי שירות",
+    "gender": "מין",
+    "gender_male": "זכר",
+    "gender_female": "נקבה",
+    "rank": "דרגה",
+    "enlisted": "חוגרים",
+    "officers": "קצינים",
+    "is_officer": "קצין",
+    "is_enlisted": "חוגר",
+    "bahad1_graduate": "בוגר בהד\"ל 1",
+    "enlistment_date": "תאריך גיוס",
+    "mandatory_end_date": "תאריך תום שירות חובה",
+    "discharge_date": "תאריך שחרור",
+    "last_mitvahim_date": "מטווחים אחרון",
+    "last_alal_date": "אל\"ל אחרון",
+    "service_type": "סוג שירות",
+    "service_type_hobah": "חובה",
+    "service_type_keva": "קבע",
+    "service_type_unknown": "לא ידוע",
+    "submit_update": "שלח בקשת עדכון",
+    "update_pending": "ממתין לאישור",
+    "update_approved": "אושר",
+    "update_rejected": "נדחה",
+    "field_updates_tab": "עדכוני פרופיל"
+  },
+  "eligibility": {
+    "title": "דרישות כשירות",
+    "allowed_genders": "מגדר מותר",
+    "requires_mitvahim": "נדרש מטווחים עדכני",
+    "requires_alal": "נדרש אל\"ל עדכני",
+    "allowed_ranks": "דרגות מותרות",
+    "allowed_service_types": "סוג שירות מותר",
+    "officers_allowed": "קצינים מותרים",
+    "enlisted_allowed": "חוגרים מותרים",
+    "requires_bahad1": "נדרש בוגר בהד\"ל 1",
+    "save": "שמור דרישות"
   }
 }
