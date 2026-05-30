@@ -46,10 +46,10 @@ export default function TeamHierarchyPage() {
     await refresh();
   }
 
-  async function addDepartment() {
+  async function addRootNode() {
     const nm = prompt(t("team.node_name"));
     if (!nm) return;
-    await createNode({ level: "department", name: nm, parent_id: null });
+    await createNode({ level: "division", name: nm, parent_id: null });
     await refresh();
   }
 
@@ -61,13 +61,14 @@ export default function TeamHierarchyPage() {
         <div className="flex items-center gap-3">
           <h3 className="font-medium">{t("team.title")}</h3>
           {isAdmin && (
-            <button onClick={addDepartment} className="text-sm text-indigo-600" data-testid="add-department">
+            <button onClick={addRootNode} className="text-sm text-indigo-600" data-testid="add-department">
               {t("team.add_node")}
             </button>
           )}
         </div>
         <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} />
 
+        {isAdmin && (
         <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
           <label className="block">
             <span className="text-xs">{t("team.personal_number")}</span>
@@ -89,7 +90,8 @@ export default function TeamHierarchyPage() {
           </button>
         </form>
 
-        {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
+          {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
+        )}
 
         <table className="w-full text-sm" data-testid="soldier-table">
           <thead>
