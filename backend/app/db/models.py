@@ -382,10 +382,7 @@ class AlgorithmJob(Base):
     )
     planning_start: Mapped[date] = mapped_column(Date)
     planning_end: Mapped[date] = mapped_column(Date)
-    duty_type_ids: Mapped[list[Any]] = mapped_column(JSONB)
-    duty_location_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("duty_locations.id", ondelete="RESTRICT")
-    )
+    shift_ids: Mapped[list[Any]] = mapped_column(JSONB)
     settings_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     mode: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
