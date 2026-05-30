@@ -6,6 +6,8 @@ import AssignCommanderDialog from "./AssignCommanderDialog";
 import RenameNodeDialog from "./RenameNodeDialog";
 
 const LEVEL_COLORS: Record<string, string> = {
+  division: "text-purple-700 bg-purple-50",
+  unit: "text-indigo-700 bg-indigo-50",
   department: "text-blue-700 bg-blue-50",
   branch: "text-green-700 bg-green-50",
   group: "text-yellow-700 bg-yellow-50",
@@ -51,7 +53,7 @@ export default function HierarchyTree({ nodes, isAdmin, onChanged }: Props) {
     const isExpanded = expanded.has(node.id);
     const hasChildren = children.length > 0;
 
-    const canHaveChildren = ["department", "branch", "group"].includes(node.level);
+    const canHaveChildren = ["division", "unit", "department", "branch", "group"].includes(node.level);
 
     return (
       <li key={node.id} className="select-none">
