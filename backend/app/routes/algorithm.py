@@ -26,6 +26,25 @@ from app.audit.writer import write_audit
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
 
 
+def _compute_candidate_rank(
+    candidates: list[dict],
+    soldier_id: str,
+) -> tuple[int | None, int | None]:
+    """Return (1-based rank, pool_size) for soldier among unblocked candidates sorted by pre_norm_score asc."""
+    unblocked = [c for c in candidates if not c.get("blocked")]
+    pool_size = len(unblocked)
+    if pool_size == 0:
+        return None, 0
+    sorted_unblocked = sorted(
+        unblocked,
+        key=lambda c: c.get("pre_norm_score") if c.get("pre_norm_score") is not None else float("inf"),
+    )
+    for i, c in enumerate(sorted_unblocked):
+        if c["soldier_id"] == soldier_id:
+            return i + 1, pool_size
+    return None, pool_size
+
+
 # ── Pydantic schemas ──
 
 class SolverSettingsIn(BaseModel):
@@ -55,6 +74,8 @@ class ProposalOut(BaseModel):
     norm_score_before: float | None
     norm_score_after: float | None
     duty_shift_id: uuid.UUID | None = None
+    candidate_rank: int | None = None
+    candidate_pool_size: int | None = None
 
 
 class JobOut(BaseModel):
@@ -138,13 +159,17 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
         exp = exp_map.get(a.id)
         norm_before = None
         norm_after = None
+        candidate_rank = None
+        candidate_pool_size = None
         if exp:
             payload = exp.payload
-            for c in payload.get("candidates", []):
+            candidates = payload.get("candidates", [])
+            for c in candidates:
                 if c["soldier_id"] == str(a.soldier_id) and not c.get("blocked"):
                     norm_before = c.get("pre_norm_score")
                     norm_after = c.get("post_norm_score")
                     break
+            candidate_rank, candidate_pool_size = _compute_candidate_rank(candidates, str(a.soldier_id))
         proposals.append(ProposalOut(
             assignment_id=a.id,
             soldier_id=a.soldier_id,
@@ -157,6 +182,8 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             norm_score_before=norm_before,
             norm_score_after=norm_after,
             duty_shift_id=a.duty_shift_id,
+            candidate_rank=candidate_rank,
+            candidate_pool_size=candidate_pool_size,
         ))
     return proposals
 
