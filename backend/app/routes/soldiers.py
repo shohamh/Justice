@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date as date_type
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -9,9 +11,16 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 from app.db.session import get_session
 from app.services import soldiers as svc
+from app.services.soldiers import (
+    approve_field_update,
+    reject_field_update,
+    submit_field_update,
+    update_soldier_profile,
+)
+from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
 
@@ -25,6 +34,16 @@ class SoldierOut(BaseModel):
     phone: str | None
     must_change_password: bool
     left_at: str | None
+    # Profile fields
+    gender: str | None = None
+    is_officer: bool | None = None
+    rank: str | None = None
+    bahad1_graduate: bool = False
+    enlistment_date: date_type | None = None
+    mandatory_end_date: date_type | None = None
+    discharge_date: date_type | None = None
+    last_mitvahim_date: date_type | None = None
+    last_alal_date: date_type | None = None
 
 
 class OnboardRequest(BaseModel):
@@ -49,7 +68,54 @@ class RoleRequest(BaseModel):
     role: str = Field(pattern="^(soldier|commander|duty_manager|admin)$")
 
 
-def _out(s: Soldier) -> SoldierOut:
+class UpdateProfileRequest(BaseModel):
+    gender: str | None = None
+    is_officer: bool | None = None
+    rank: str | None = None
+    bahad1_graduate: bool | None = None
+    enlistment_date: date_type | None = None
+    mandatory_end_date: date_type | None = None
+    discharge_date: date_type | None = None
+    last_mitvahim_date: date_type | None = None
+    last_alal_date: date_type | None = None
+
+
+class FieldUpdateRequest(BaseModel):
+    field_name: str
+    new_value: str
+
+
+class FieldUpdateDecisionRequest(BaseModel):
+    decision_note: str | None = None
+
+
+class FieldUpdateOut(BaseModel):
+    id: uuid.UUID
+    soldier_id: uuid.UUID
+    field_name: str
+    new_value: str
+    status: str
+    decided_by: uuid.UUID | None
+    decided_at: Any
+    decision_note: str | None
+    created_at: Any
+
+
+def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
+    """Gender is visible to self, commanders in chain, DMs, admins."""
+    if user.id == target.id:
+        return True
+    if user.role == "admin":
+        return True
+    if user.role in ("duty_manager", "commander"):
+        from app.auth.authz import can, scope_root_ids
+        roots = scope_root_ids(session, user)
+        node = _node_of(session, target)
+        return can(user, Action.SOLDIER_READ, target_node=node, roots=roots)
+    return False
+
+
+def _out(s: Soldier, *, include_gender: bool = False) -> SoldierOut:
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -59,6 +125,29 @@ def _out(s: Soldier) -> SoldierOut:
         phone=s.phone,
         must_change_password=s.must_change_password,
         left_at=s.left_at.isoformat() if s.left_at else None,
+        gender=s.gender if include_gender else None,
+        is_officer=s.is_officer,
+        rank=s.rank,
+        bahad1_graduate=s.bahad1_graduate,
+        enlistment_date=s.enlistment_date,
+        mandatory_end_date=s.mandatory_end_date,
+        discharge_date=s.discharge_date,
+        last_mitvahim_date=s.last_mitvahim_date,
+        last_alal_date=s.last_alal_date,
+    )
+
+
+def _fu_out(u: SoldierFieldUpdate) -> FieldUpdateOut:
+    return FieldUpdateOut(
+        id=u.id,
+        soldier_id=u.soldier_id,
+        field_name=u.field_name,
+        new_value=u.new_value,
+        status=u.status,
+        decided_by=u.decided_by,
+        decided_at=u.decided_at,
+        decision_note=u.decision_note,
+        created_at=u.created_at,
     )
 
 
@@ -123,6 +212,40 @@ def list_soldiers(
     return out
 
 
+# NOTE: /ranks and /field-updates/pending MUST come before /{soldier_id} routes
+@router.get("/ranks")
+def get_ranks() -> dict[str, list[str]]:
+    return {"enlisted": ENLISTED_RANKS, "officers": OFFICER_RANKS}
+
+
+@router.get("/field-updates/pending", response_model=list[FieldUpdateOut])
+def list_all_pending_field_updates(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[FieldUpdateOut]:
+    """Returns pending field updates for soldiers in the caller's scope."""
+    if user.role == "admin":
+        rows = session.execute(
+            select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        ).scalars().all()
+        return [_fu_out(r) for r in rows]
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return []
+    all_pending = session.execute(
+        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+    ).scalars().all()
+    result = []
+    for upd in all_pending:
+        s = session.get(Soldier, upd.soldier_id)
+        if s:
+            node = _node_of(session, s)
+            from app.auth.authz import can
+            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+                result.append(_fu_out(upd))
+    return result
+
+
 @router.get("/{soldier_id}", response_model=SoldierOut)
 def get_soldier(
     soldier_id: uuid.UUID,
@@ -132,7 +255,7 @@ def get_soldier(
     s = _load(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    return _out(s)
+    return _out(s, include_gender=_can_see_gender(session, user, s))
 
 
 @router.patch("/{soldier_id}", response_model=SoldierOut)
@@ -151,6 +274,104 @@ def update(
     session.commit()
     session.refresh(s)
     return _out(s)
+
+
+@router.patch("/{soldier_id}/profile", response_model=SoldierOut)
+def update_profile(
+    soldier_id: uuid.UUID,
+    body: UpdateProfileRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SoldierOut:
+    s = _load(session, soldier_id)
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
+    session.commit()
+    session.refresh(s)
+    return _out(s, include_gender=_can_see_gender(session, user, s))
+
+
+@router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)
+def create_field_update(
+    soldier_id: uuid.UUID,
+    body: FieldUpdateRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> FieldUpdateOut:
+    s = _load(session, soldier_id)
+    if s.id != user.id:
+        raise HTTPException(status_code=403, detail="forbidden")
+    try:
+        req = submit_field_update(
+            session, soldier_id=soldier_id, field_name=body.field_name,
+            new_value=body.new_value, actor_id=user.id,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(req)
+    return _fu_out(req)
+
+
+@router.get("/{soldier_id}/field-updates", response_model=list[FieldUpdateOut])
+def list_field_updates(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[FieldUpdateOut]:
+    s = _load(session, soldier_id)
+    if s.id != user.id:
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    rows = session.execute(
+        select(SoldierFieldUpdate).where(SoldierFieldUpdate.soldier_id == soldier_id)
+        .order_by(SoldierFieldUpdate.created_at.desc())
+    ).scalars().all()
+    return [_fu_out(r) for r in rows]
+
+
+@router.post("/{soldier_id}/field-updates/{update_id}/approve", response_model=FieldUpdateOut)
+def approve_update(
+    soldier_id: uuid.UUID,
+    update_id: uuid.UUID,
+    body: FieldUpdateDecisionRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> FieldUpdateOut:
+    s = _load(session, soldier_id)
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
+    upd = session.get(SoldierFieldUpdate, update_id)
+    if upd is None or upd.soldier_id != soldier_id:
+        raise HTTPException(status_code=404, detail="not_found")
+    try:
+        approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(upd)
+    return _fu_out(upd)
+
+
+@router.post("/{soldier_id}/field-updates/{update_id}/reject", response_model=FieldUpdateOut)
+def reject_update(
+    soldier_id: uuid.UUID,
+    update_id: uuid.UUID,
+    body: FieldUpdateDecisionRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> FieldUpdateOut:
+    s = _load(session, soldier_id)
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
+    upd = session.get(SoldierFieldUpdate, update_id)
+    if upd is None or upd.soldier_id != soldier_id:
+        raise HTTPException(status_code=404, detail="not_found")
+    try:
+        reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(upd)
+    return _fu_out(upd)
 
 
 @router.post("/{soldier_id}/reset-password")
