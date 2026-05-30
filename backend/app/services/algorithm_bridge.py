@@ -83,6 +83,25 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
                 s_dates.add(d)
                 d += timedelta(days=1)
 
+    from app.db.models import SystemSetting
+    from app.services.eligibility import compute_eligibility_exclusions
+
+    def _setting_int(key: str, default: int) -> int:
+        row = session.get(SystemSetting, key)
+        if row is None:
+            return default
+        try:
+            return int(row.value)
+        except (TypeError, ValueError):
+            return default
+
+    mitvahim_months = _setting_int("eligibility.mitvahim_months", 6)
+    alal_months = _setting_int("eligibility.alal_months", 3)
+
+    eligibility_exclusions = compute_eligibility_exclusions(
+        session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months
+    )
+
     # Approved personal constraints per soldier (one query)
     constraints = (
         session.execute(
@@ -105,6 +124,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
         exempt_days = len(soldier_full_exempt_dates.get(s.id, set()))
         ad = max(1, raw - exempt_days)
 
+        combined_exempt = soldier_exempt_dtype_ids.get(s.id, set()) | eligibility_exclusions.get(s.id, set())
         result.append(
             SoldierInput(
                 id=s.id,
@@ -113,7 +133,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
                 active_days=ad,
                 hierarchy_node_id=s.hierarchy_node_id,
                 approved_constraint_dates=soldier_constraints.get(s.id, []),
-                exempted_duty_type_ids=soldier_exempt_dtype_ids.get(s.id, set()),
+                exempted_duty_type_ids=combined_exempt,
             )
         )
     return result
