@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 import string
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, NamedTuple
 
 from sqlalchemy import select
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.auth.password import hash_password
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 
 MIN_PASSWORD_LENGTH = 10
 
@@ -175,3 +175,118 @@ def assign_role(
         after={"role": role},
     )
     return soldier
+
+
+PROFILE_FIELDS = {
+    "gender", "is_officer", "rank", "bahad1_graduate",
+    "enlistment_date", "mandatory_end_date", "discharge_date",
+    "last_mitvahim_date", "last_alal_date",
+}
+
+
+def update_soldier_profile(
+    session: Session,
+    *,
+    soldier: Soldier,
+    fields: dict,
+    actor_id: uuid.UUID | None,
+) -> Soldier:
+    """DM/admin direct update of profile fields."""
+    for k, v in fields.items():
+        if k in PROFILE_FIELDS:
+            setattr(soldier, k, v)
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.profile.update",
+        entity_type="soldier",
+        entity_id=soldier.id,
+        after={k: str(v) for k, v in fields.items() if v is not None},
+    )
+    return soldier
+
+
+def submit_field_update(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    field_name: str,
+    new_value: str,
+    actor_id: uuid.UUID,
+) -> SoldierFieldUpdate:
+    from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
+    if field_name not in SOLDIER_EDITABLE_FIELDS:
+        raise SoldierError("field_not_editable")
+    req = SoldierFieldUpdate(
+        soldier_id=soldier_id,
+        field_name=field_name,
+        new_value=new_value,
+    )
+    session.add(req)
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.field_update.submit",
+        entity_type="soldier_field_update",
+        entity_id=None,
+        after={"soldier_id": str(soldier_id), "field": field_name, "value": new_value},
+    )
+    return req
+
+
+def approve_field_update(
+    session: Session,
+    *,
+    update: SoldierFieldUpdate,
+    actor_id: uuid.UUID,
+    decision_note: str | None = None,
+) -> SoldierFieldUpdate:
+    if update.status != "pending":
+        raise SoldierError("not_pending")
+    soldier = session.get(Soldier, update.soldier_id)
+    if soldier is None:
+        raise SoldierError("soldier_not_found")
+    field = update.field_name
+    raw = update.new_value
+    if field == "last_mitvahim_date":
+        soldier.last_mitvahim_date = date.fromisoformat(raw)
+    elif field == "last_alal_date":
+        soldier.last_alal_date = date.fromisoformat(raw)
+    elif field == "gender":
+        soldier.gender = raw
+    update.status = "approved"
+    update.decided_by = actor_id
+    update.decided_at = datetime.now(tz=timezone.utc)
+    update.decision_note = decision_note
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.field_update.approve",
+        entity_type="soldier_field_update",
+        entity_id=update.id,
+        after={"field": field, "value": raw},
+    )
+    return update
+
+
+def reject_field_update(
+    session: Session,
+    *,
+    update: SoldierFieldUpdate,
+    actor_id: uuid.UUID,
+    decision_note: str | None = None,
+) -> SoldierFieldUpdate:
+    if update.status != "pending":
+        raise SoldierError("not_pending")
+    update.status = "rejected"
+    update.decided_by = actor_id
+    update.decided_at = datetime.now(tz=timezone.utc)
+    update.decision_note = decision_note
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="soldier.field_update.reject",
+        entity_type="soldier_field_update",
+        entity_id=update.id,
+    )
+    return update
