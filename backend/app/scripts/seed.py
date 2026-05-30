@@ -213,7 +213,6 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "צוות פלאש": "פלאש", "צוות ריי": "ריי", "צוות ספארק": "ספארק",
             "צוות ארק": "ארק", "צוות אקסודוס": "אקסודוס", "צוות נילוס": "נילוס",
         }
-        _ENLIST_RANKS = ["טוראי", "רב\"ט", "סמל"]
         for team_idx, team in enumerate(all_teams):
             short = team_names_he[team.name]
             # Team leader (רשצ, NCO) — vary by team index: some mid-service, some late
@@ -226,38 +225,58 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 enlistment_date=enl, mandatory_end_date=_mandatory_end(enl), gender="male")
             team_soldiers.append(s)
             team.commander_id = s.id
-            # Regular soldiers — 3 per team, each with different seniority
-            for i in range(3):
+            # 5 members per team: 3 enlisted חובה, 1 enlisted קבע, 1 officer חובה
+            _team_profiles = [
+                # (enl_year, enl_month, rank, is_officer, discharge_year, gender)
+                (2024,  1, "סמל",   False, None, "female"),  # enlisted חובה late-service
+                (2025,  3, "רב\"ט", False, None, "male"),    # enlisted חובה mid-service
+                (2026,  1, "טוראי", False, None, "male"),    # enlisted חובה fresh
+                (2019,  6, "רסר",   False, 2035, "male"),    # enlisted קבע experienced
+                (2024,  3, "סגן",   True,  None, "male"),    # officer חובה junior
+            ]
+            for i, (ey, em, rank, is_off, dy, g) in enumerate(_team_profiles):
                 pn = next_pn()
-                if i == 0:
-                    enl = date(2024, 1, 1)   # late service
-                    rank = "סמל"
-                elif i == 1:
-                    enl = date(2025, 3, 1)   # mid service
-                    rank = "רב\"ט"
-                else:
-                    enl = date(2026, 1, 1)   # fresh
-                    rank = "טוראי"
-                s = make_soldier(pn, f"{short} {i+1}", "soldier", team.id, is_officer=False, rank=rank,
-                    enlistment_date=enl, mandatory_end_date=_mandatory_end(enl), gender="male" if i > 0 else "female")
+                enl = date(ey, em, 1)
+                disc = date(dy, 6, 1) if dy else None
+                s = make_soldier(pn, f"{short} {i+1}", "soldier", team.id,
+                    is_officer=is_off, rank=rank,
+                    enlistment_date=enl, mandatory_end_date=_mandatory_end(enl),
+                    discharge_date=disc, bahad1_graduate=is_off, gender=g)
                 team_soldiers.append(s)
 
         all_soldiers += team_soldiers
 
-        # Mador soldiers for groups without teams (3 per mador)
+        # Mador soldiers for groups without teams (15 per mador)
+        # Mix: 8 enlisted חובה, 3 enlisted קבע, 2 officer חובה, 1 officer קבע, 1 enlisted חובה fresh
+        _mador_profiles = [
+            # (enl_year, enl_month, rank, is_officer, discharge_year, gender)
+            (2023,  8, "סמל",    False, None, "male"),    # 0 enlisted חובה senior
+            (2024,  1, "סמל",    False, None, "female"),  # 1 enlisted חובה
+            (2024,  6, "רב\"ט",  False, None, "male"),    # 2 enlisted חובה
+            (2024, 11, "רב\"ט",  False, None, "male"),    # 3 enlisted חובה
+            (2025,  3, "רב\"ט",  False, None, "female"),  # 4 enlisted חובה
+            (2025,  7, "טוראי",  False, None, "male"),    # 5 enlisted חובה
+            (2025, 11, "טוראי",  False, None, "male"),    # 6 enlisted חובה
+            (2026,  2, "טוראי",  False, None, "female"),  # 7 enlisted חובה fresh
+            (2018,  4, "רסב",    False, 2035, "male"),    # 8 enlisted קבע
+            (2019,  8, "רסר",    False, 2034, "male"),    # 9 enlisted קבע
+            (2020,  2, "רסר",    False, 2033, "female"),  # 10 enlisted קבע
+            (2023, 10, "סגן",    True,  None, "male"),    # 11 officer חובה
+            (2024,  4, "סגן",    True,  None, "female"),  # 12 officer חובה
+            (2017,  1, "סרן",    True,  2032, "male"),    # 13 officer קבע
+            (2026,  3, "טוראי",  False, None, "male"),    # 14 enlisted חובה very fresh
+        ]
         mador_soldiers = []
         for gnode, gshort in [("אינפרה", "אינפרה"), ("פלאש", "פלאש"), ("ספקטרה", "ספקטרה")]:
             node = [n for n in alom_groups if n.name == gnode][0]
-            for i in range(3):
+            for i, (ey, em, rank, is_off, dy, g) in enumerate(_mador_profiles):
                 pn = next_pn()
-                if i == 0:
-                    enl = date(2024, 6, 1); rank = "סמל"; g = "male"
-                elif i == 1:
-                    enl = date(2025, 5, 1); rank = "רב\"ט"; g = "female"
-                else:
-                    enl = date(2026, 2, 1); rank = "טוראי"; g = "male"
-                s = make_soldier(pn, f"{gshort} {i+1}", "soldier", node.id, is_officer=False, rank=rank,
-                    enlistment_date=enl, mandatory_end_date=_mandatory_end(enl), gender=g)
+                enl = date(ey, em, 1)
+                disc = date(dy, 1, 1) if dy else None
+                s = make_soldier(pn, f"{gshort} {i+1}", "soldier", node.id,
+                    is_officer=is_off, rank=rank,
+                    enlistment_date=enl, mandatory_end_date=_mandatory_end(enl),
+                    discharge_date=disc, bahad1_graduate=is_off, gender=g)
                 mador_soldiers.append(s)
 
         all_soldiers += mador_soldiers
@@ -274,9 +293,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             ("מרפאה", Decimal("0.75"), "תורנות מרפאה", {}),
             ("חמ\"ל", Decimal("1.25"), "עבודה בחמ\"ל", {}),
             ("מנהלה", Decimal("0.50"), "עבודות מנהלה", {}),
-            ("קצין תורן", Decimal("1.50"), "קצין תורן בבסיס", {"enlisted_allowed": False}),
-            ("מפקד תורן", Decimal("1.75"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "requires_bahad1": True}),
-            ("קצין מלווה אבט\"ש", Decimal("1.50"), "קצין מלווה לאבטחה", {"enlisted_allowed": False}),
+            ("קצין תורן", Decimal("1.50"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("מפקד תורן", Decimal("1.75"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}),
+            ("קצין מלווה אבט\"ש", Decimal("1.50"), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
         ]
         duty_types = []
         for name, spd, desc, reqs in dt_defs:
