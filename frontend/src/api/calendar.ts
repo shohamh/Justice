@@ -14,6 +14,7 @@ export interface CalAssignment {
 export interface CalRow {
   soldier_id: string;
   full_name: string;
+  hierarchy_node_id: string | null;
   assignments: CalAssignment[];
 }
 

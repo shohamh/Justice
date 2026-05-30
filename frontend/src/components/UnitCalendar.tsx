@@ -7,6 +7,7 @@ import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalRow, CalAssignment, getUnitCalendar } from "../api/calendar";
+import { NodeDTO, fetchTree } from "../api/hierarchy";
 
 interface UnitCalendarProps {
   nodeId: string;
@@ -15,6 +16,7 @@ interface UnitCalendarProps {
 export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<CalRow[]>([]);
+  const [nodes, setNodes] = useState<NodeDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -47,6 +49,19 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     setSelectedEvent(null);
   }, [nodeId]);
 
+  useEffect(() => {
+    void fetchTree().then(setNodes);
+  }, []);
+
+  function leafLabel(nodeId: string | null): string {
+    if (!nodeId) return "";
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const leaf = nodeMap.get(nodeId);
+    if (!leaf) return "";
+    const parent = leaf.parent_id ? nodeMap.get(leaf.parent_id) : null;
+    return parent ? `${parent.name} / ${leaf.name}` : leaf.name;
+  }
+
   function handleDatesSet(arg: DatesSetArg) {
     const from = arg.start.toISOString().slice(0, 10);
     const to = arg.end.toISOString().slice(0, 10);
@@ -64,7 +79,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       end: string;
       backgroundColor: string;
       borderColor: string;
-      extendedProps: { soldier_name: string; duty_type_id: string; duty_location_name: string; soldier_id: string; assignment_id: string };
+      extendedProps: { soldier_name: string; hierarchy_label: string; duty_type_id: string; duty_location_name: string; soldier_id: string; assignment_id: string };
     }[] = [];
     for (const r of rows) {
       for (const a of r.assignments) {
@@ -79,6 +94,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           borderColor: a.duty_type_color,
           extendedProps: {
             soldier_name: r.full_name,
+            hierarchy_label: leafLabel(r.hierarchy_node_id),
             duty_type_id: a.duty_type_id,
             duty_location_name: a.duty_location_name,
             soldier_id: r.soldier_id,
@@ -88,7 +104,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       }
     }
     return out;
-  }, [rows]);
+  }, [rows, nodes]);
 
   function handleDateClick(arg: { dateStr: string }) {
     setSelectedDate(arg.dateStr);
@@ -183,6 +199,18 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           buttonText={{ today: t("unit_calendar.today") || "היום" }}
           noEventsText={t("unit_calendar.none")}
           displayEventTime={false}
+          eventContent={(arg) => {
+            const { soldier_name, hierarchy_label } = arg.event.extendedProps;
+            return (
+              <div className="text-xs leading-tight px-1 overflow-hidden w-full">
+                <div className="font-semibold truncate">{arg.event.title}</div>
+                <div className="truncate">{soldier_name}</div>
+                {hierarchy_label && (
+                  <div className="truncate opacity-75">{hierarchy_label}</div>
+                )}
+              </div>
+            );
+          }}
         />
       </div>
 

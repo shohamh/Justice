@@ -31,6 +31,7 @@ class CalAssignment(BaseModel):
 class CalRow(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
+    hierarchy_node_id: uuid.UUID | None
     assignments: list[CalAssignment]
 
 
@@ -90,6 +91,6 @@ def unit_calendar(
             )
         )
     return [
-        CalRow(soldier_id=s.id, full_name=s.full_name, assignments=by_soldier[s.id])
+        CalRow(soldier_id=s.id, full_name=s.full_name, hierarchy_node_id=s.hierarchy_node_id, assignments=by_soldier[s.id])
         for s in soldiers
     ]
