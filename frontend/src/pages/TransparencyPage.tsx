@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
 import { Breakdown, TransparencyRow, getBreakdown, getTransparency } from "../api/scoring";
+import { DataTable, type ColDef } from "../components/DataTable";
 
 export default function TransparencyPage() {
   const { t } = useTranslation();
@@ -23,35 +24,63 @@ export default function TransparencyPage() {
     <Layout>
       <section className="bg-white rounded-lg shadow p-6 space-y-4" data-testid="transparency-page">
         <h2 className="text-xl font-semibold">{t("transparency.title")}</h2>
-        <table className="w-full text-sm text-right" data-testid="transparency-table">
-          <thead>
-            <tr className="border-b">
-              <th className="p-1">{t("transparency.name")}</th>
-              <th className="p-1">{t("transparency.unit")}</th>
-              <th className="p-1">{t("transparency.enrolled_at")}</th>
-              <th className="p-1">{t("transparency.active_days")}</th>
-              <th className="p-1">{t("transparency.cumulative")}</th>
-              <th className="p-1">{t("transparency.normalised")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.soldier_id} data-testid={`transparency-row-${r.soldier_id}`}
-                  className={r.soldier_id === user?.id ? "bg-indigo-50" : ""}>
-                <td className="p-1">
-                  {r.soldier_id === user?.id ? (
-                    <button className="text-indigo-600" onClick={toggleOwn} data-testid="own-row-toggle">{r.full_name}</button>
-                  ) : r.full_name}
-                </td>
-                <td className="p-1">{r.node_name ?? "—"}</td>
-                <td className="p-1">{r.enrolled_at}</td>
-                <td className="p-1">{r.active_days}</td>
-                <td className="p-1">{r.cumulative_score}</td>
-                <td className="p-1">{r.normalised_score}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {(() => {
+          const transCols: ColDef<TransparencyRow>[] = [
+            {
+              id: "name",
+              header: t("transparency.name"),
+              cell: (r) =>
+                r.soldier_id === user?.id ? (
+                  <button className="text-indigo-600" onClick={toggleOwn} data-testid="own-row-toggle">
+                    {r.full_name}
+                  </button>
+                ) : (
+                  r.full_name
+                ),
+              sortValue: (r) => r.full_name,
+              filterValue: (r) => r.full_name,
+            },
+            {
+              id: "unit",
+              header: t("transparency.unit"),
+              cell: (r) => r.node_name ?? "—",
+              sortValue: (r) => r.node_name ?? "",
+              filterValue: (r) => r.node_name ?? "",
+            },
+            {
+              id: "enrolled_at",
+              header: t("transparency.enrolled_at"),
+              cell: (r) => r.enrolled_at,
+              sortValue: (r) => r.enrolled_at,
+            },
+            {
+              id: "active_days",
+              header: t("transparency.active_days"),
+              cell: (r) => r.active_days,
+              sortValue: (r) => r.active_days,
+            },
+            {
+              id: "cumulative",
+              header: t("transparency.cumulative"),
+              cell: (r) => r.cumulative_score,
+              sortValue: (r) => Number(r.cumulative_score),
+            },
+            {
+              id: "normalised",
+              header: t("transparency.normalised"),
+              cell: (r) => r.normalised_score,
+              sortValue: (r) => Number(r.normalised_score),
+            },
+          ];
+          return (
+            <DataTable
+              columns={transCols}
+              data={rows}
+              filterPlaceholder={t("table.filter_placeholder")}
+              rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50" : "")}
+            />
+          );
+        })()}
         {expanded && breakdown && (
           <div data-testid="own-breakdown" className="border-t pt-3 text-sm">
             <h3 className="font-medium">{t("transparency.my_breakdown")}</h3>
