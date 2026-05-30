@@ -102,10 +102,14 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+    op.create_index("idx_reserve_asgn_duty_asgn", "reserve_assignments", ["duty_assignment_id"])
+    op.create_index("idx_asgn_exp_duty_asgn", "assignment_explanations", ["duty_assignment_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("idx_asgn_exp_duty_asgn", table_name="assignment_explanations", if_exists=True)
     op.drop_table("assignment_explanations")
+    op.drop_index("idx_reserve_asgn_duty_asgn", table_name="reserve_assignments", if_exists=True)
     op.drop_table("reserve_assignments")
     op.drop_index("idx_algorithm_jobs_status", table_name="algorithm_jobs")
     op.drop_table("algorithm_jobs")
