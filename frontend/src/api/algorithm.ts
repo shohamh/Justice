@@ -10,10 +10,7 @@ export interface SolverSettings {
 }
 
 export interface CreateJobRequest {
-  planning_start: string;
-  planning_end: string;
-  duty_type_ids: string[];
-  duty_location_id: string;
+  shift_ids: string[];
   mode: "shadow" | "dm_reviewed";
   settings: SolverSettings;
 }
@@ -29,6 +26,7 @@ export interface ProposalRow {
   reserve_soldier_id: string | null;
   norm_score_before: number | null;
   norm_score_after: number | null;
+  duty_shift_id: string | null;
 }
 
 export interface AlgorithmJob {
