@@ -18,6 +18,7 @@ from app.routes import score_adjustments as score_adjustment_routes
 from app.routes import scoring as scoring_routes
 from app.routes import soldiers as soldier_routes
 from app.routes import algorithm as algorithm_routes
+from app.routes import shifts as shift_routes
 from app.settings import get_settings
 
 
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(scoring_routes.router, prefix="/api")
     app.include_router(calendar_routes.router, prefix="/api")
     app.include_router(algorithm_routes.router, prefix="/api")
+    app.include_router(shift_routes.router, prefix="/api")
     return app
 
 
