@@ -32,30 +32,46 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     duty_scores = scoring_svc.duty_score_by_soldier(session)
     adj_scores = scoring_svc.adjustments_by_soldier(session)
 
-    # Build exemption type → duty type ids map
+    # Build exemption type → duty type ids map (one query)
     etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
     for etid, dtid in session.execute(
         select(ExemptionDutyTypeMap.exemption_type_id, ExemptionDutyTypeMap.duty_type_id)
     ).all():
         etid_to_dtids.setdefault(etid, set()).add(dtid)
 
-    # Active exemptions per soldier (active as of the given date)
-    active_exemptions = (
-        session.execute(
-            select(SoldierExemption).where(
-                SoldierExemption.start_date <= as_of,
-                (SoldierExemption.end_date >= as_of) | (SoldierExemption.end_date.is_(None)),
-            )
-        )
-        .scalars()
-        .all()
+    # Determine which exemption types provide full coverage (cover ALL active duty types)
+    active_dt_ids: set[uuid.UUID] = set(
+        session.execute(select(DutyType.id).where(DutyType.active.is_(True))).scalars().all()
     )
-    soldier_exempt_dtype_ids: dict[uuid.UUID, set[uuid.UUID]] = {}
-    for ex in active_exemptions:
-        dtids = etid_to_dtids.get(ex.exemption_type_id, set())
-        soldier_exempt_dtype_ids.setdefault(ex.soldier_id, set()).update(dtids)
+    full_coverage_etids: set[uuid.UUID] = set()
+    if active_dt_ids:
+        full_coverage_etids = {
+            etid for etid, dts in etid_to_dtids.items() if active_dt_ids <= dts
+        }
 
-    # Approved personal constraints per soldier
+    # All exemptions touching [enrolled_at, as_of] — one bulk query for all soldiers
+    all_exemptions = session.execute(select(SoldierExemption)).scalars().all()
+
+    # Per-soldier: duty-type exemptions and full-coverage exempt date sets
+    soldier_exempt_dtype_ids: dict[uuid.UUID, set[uuid.UUID]] = {}
+    soldier_full_exempt_dates: dict[uuid.UUID, set[date]] = {}
+
+    for ex in all_exemptions:
+        # Active exemption check for duty-type resolution (as_of)
+        if ex.start_date <= as_of and (ex.end_date is None or ex.end_date >= as_of):
+            dtids = etid_to_dtids.get(ex.exemption_type_id, set())
+            soldier_exempt_dtype_ids.setdefault(ex.soldier_id, set()).update(dtids)
+
+        # Full-coverage exempt dates (for active_days calculation)
+        if ex.exemption_type_id in full_coverage_etids:
+            s_dates = soldier_full_exempt_dates.setdefault(ex.soldier_id, set())
+            d = ex.start_date
+            hi = ex.end_date if ex.end_date is not None else as_of
+            while d <= hi:
+                s_dates.add(d)
+                d += timedelta(days=1)
+
+    # Approved personal constraints per soldier (one query)
     constraints = (
         session.execute(
             select(PersonalConstraint).where(PersonalConstraint.status == "approved")
@@ -70,7 +86,13 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     result: list[SoldierInput] = []
     for s in soldiers:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
-        ad = scoring_svc.active_days(session, soldier=s)
+
+        # Compute active_days inline (avoids 2N extra queries)
+        raw = (as_of - s.enrolled_at).days
+        raw = max(1, raw)
+        exempt_days = len(soldier_full_exempt_dates.get(s.id, set()))
+        ad = max(1, raw - exempt_days)
+
         result.append(
             SoldierInput(
                 id=s.id,
