@@ -10,15 +10,15 @@ interface Props {
 
 export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props) {
   const { t } = useTranslation();
-  const [reqs, setReqs] = useState(dutyType.requirements ?? {});
+  const [reqs, setReqs] = useState<NonNullable<DutyType["requirements"]>>(dutyType.requirements ?? {});
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
     void getRanks().then(setRanks);
   }, []);
 
-  function toggleItem(key: string, value: string) {
-    const current: string[] = (reqs as Record<string, string[]>)[key] ?? [];
+  function toggleItem(key: keyof NonNullable<DutyType["requirements"]>, value: string) {
+    const current: string[] = (reqs[key] as string[] | undefined) ?? [];
     const next = current.includes(value)
       ? current.filter((v: string) => v !== value)
       : [...current, value];
@@ -40,7 +40,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
             <label key={g} className="flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={((reqs as Record<string, string[]>).allowed_genders ?? []).includes(g)}
+                checked={(reqs.allowed_genders ?? []).includes(g)}
                 onChange={() => toggleItem("allowed_genders", g)}
               />
               {g === "male" ? t("soldier_profile.gender_male") : t("soldier_profile.gender_female")}
@@ -59,7 +59,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
               <label key={r} className="flex items-center gap-1 text-xs">
                 <input
                   type="checkbox"
-                  checked={((reqs as Record<string, string[]>).allowed_ranks ?? []).includes(r)}
+                  checked={(reqs.allowed_ranks ?? []).includes(r)}
                   onChange={() => toggleItem("allowed_ranks", r)}
                 />
                 {r}
@@ -72,7 +72,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
               <label key={r} className="flex items-center gap-1 text-xs">
                 <input
                   type="checkbox"
-                  checked={((reqs as Record<string, string[]>).allowed_ranks ?? []).includes(r)}
+                  checked={(reqs.allowed_ranks ?? []).includes(r)}
                   onChange={() => toggleItem("allowed_ranks", r)}
                 />
                 {r}
@@ -90,7 +90,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
             <label key={s} className="flex items-center gap-1">
               <input
                 type="checkbox"
-                checked={((reqs as Record<string, string[]>).allowed_service_types ?? []).includes(s)}
+                checked={(reqs.allowed_service_types ?? []).includes(s)}
                 onChange={() => toggleItem("allowed_service_types", s)}
               />
               {s}
@@ -110,7 +110,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
         <label key={key} className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={(reqs as Record<string, boolean>)[key] ?? (defaultVal ?? false)}
+            checked={(reqs[key as keyof NonNullable<DutyType["requirements"]>] as boolean | undefined) ?? (defaultVal ?? false)}
             onChange={e => setReqs(prev => ({ ...prev, [key]: e.target.checked }))}
           />
           {label}

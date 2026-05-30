@@ -184,20 +184,20 @@ export default function ApprovalsPage() {
 
         {tab === "field_updates" && (
           <div className="space-y-3" dir="rtl">
-            {fuItems.length === 0 && <p className="text-gray-500 text-sm">אין בקשות ממתינות</p>}
+            {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuItems.map(item => (
               <div key={item.id} className="border rounded p-3 text-sm space-y-2">
                 <div className="font-medium">{item.soldier_id.slice(0, 8)} — {t(`soldier_profile.${item.field_name}`)}</div>
-                <div className="text-gray-600">ערך חדש: <strong>{item.new_value}</strong></div>
+                <div className="text-gray-600">{t("approvals.field_update_new_value")}<strong>{item.new_value}</strong></div>
                 <div className="flex gap-2 items-center">
-                  <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">אשר</button>
+                  <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input
-                    placeholder="סיבת דחייה"
+                    placeholder={t("approvals.decision_note")}
                     value={fuNotes[item.id] ?? ""}
                     onChange={e => setFuNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
                     className="border rounded p-1 text-xs flex-1"
                   />
-                  <button onClick={() => onFuReject(item)} className="bg-red-600 text-white px-2 py-1 rounded text-xs">דחה</button>
+                  <button onClick={() => onFuReject(item)} disabled={!fuNotes[item.id]} className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">{t("approvals.reject")}</button>
                 </div>
               </div>
             ))}

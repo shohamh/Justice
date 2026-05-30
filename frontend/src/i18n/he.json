@@ -65,7 +65,8 @@
     "decision_note": "הערה",
     "tab_constraints": "בקשות אישיות",
     "tab_exemptions": "בקשות פטור",
-    "exemption_none": "אין בקשות פטור ממתינות"
+    "exemption_none": "אין בקשות פטור ממתינות",
+    "field_update_new_value": "ערך חדש: "
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
