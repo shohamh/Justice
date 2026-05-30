@@ -191,6 +191,12 @@ def seed(*, force: bool = False):
         }
         for team in all_teams:
             short = team_names_he[team.name]
+            # Team leader (רשצ)
+            pn = next_pn()
+            s = make_soldier(pn, f"רשצ {short}", "commander", team.id)
+            team_soldiers.append(s)
+            team.commander_id = s.id
+            # Regular soldiers
             for i in range(1, 4):
                 pn = next_pn()
                 s = make_soldier(pn, f"{short} {i}", "soldier", team.id)
