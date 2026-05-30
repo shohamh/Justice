@@ -42,7 +42,8 @@
     "my_duties": "היומן שלי",
     "my_requests": "הבקשות שלי",
     "approvals": "אישור בקשות",
-    "unit_calendar": "היומן של היחידה"
+    "unit_calendar": "היומן של היחידה",
+    "shifts": "ניהול משמרות"
   },
   "my_requests": {
     "title": "הבקשות והפטורים שלי",
@@ -300,5 +301,26 @@
     "enlisted_allowed": "חוגרים מותרים",
     "requires_bahad1": "נדרש בוגר בהד\"ל 1",
     "save": "שמור דרישות"
+  },
+  "shifts": {
+    "title": "ניהול משמרות",
+    "create": "משמרת חדשה",
+    "edit": "עריכת משמרת",
+    "delete": "מחיקת משמרת",
+    "duty_type": "סוג תורנות",
+    "location": "מיקום",
+    "start_date": "תאריך התחלה",
+    "end_date": "תאריך סיום",
+    "required_count": "מספר נדרש",
+    "assigned_count": "שובץ",
+    "fill_empty": "ריק",
+    "fill_partial": "חלקי",
+    "fill_full": "מלא",
+    "has_assignments_error": "לא ניתן למחוק משמרת עם שיבוצים פעילים",
+    "view_assignments": "הצג שיבוצים",
+    "confirm_delete": "האם למחוק את המשמרת?",
+    "notes": "הערות",
+    "filter_from": "מתאריך",
+    "filter_to": "עד תאריך"
   }
 }

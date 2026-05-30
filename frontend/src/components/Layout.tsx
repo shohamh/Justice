@@ -49,6 +49,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         {canManageDuties && (
           <Link to="/duty-management" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-duty-management">{t("nav.duty_management")}</Link>
         )}
+        {canManageDuties && (
+          <Link to="/shifts" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-shifts">{t("shifts.title")}</Link>
+        )}
         <Link to="/profile" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-profile">{t("nav.profile")}</Link>
       </aside>
       <div className="flex-1 flex flex-col">
