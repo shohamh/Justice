@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import AlgorithmPlanningWindow from "../components/AlgorithmPlanningWindow";
 import { Assignment, cancelAssignment, createAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -114,6 +115,11 @@ export default function DutyManagementPage() {
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="adj-submit">{t("duty_management.apply")}</button>
         </form>
       </section>
+      <AlgorithmPlanningWindow
+        dutyTypes={types}
+        locations={locs}
+        soldiers={soldiers}
+      />
     </Layout>
   );
 }
