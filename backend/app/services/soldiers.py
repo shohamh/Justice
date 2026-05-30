@@ -4,7 +4,7 @@ import secrets
 import string
 import uuid
 from datetime import date
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -97,13 +97,22 @@ def update_soldier(
     soldier: Soldier,
     full_name: str | None,
     phone: str | None,
+    hierarchy_node_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> Soldier:
-    before = {"full_name": soldier.full_name, "phone": soldier.phone}
+    before: dict[str, Any] = {
+        "full_name": soldier.full_name,
+        "phone": soldier.phone,
+        "hierarchy_node_id": str(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
+    }
     if full_name is not None:
         soldier.full_name = full_name
     if phone is not None:
         soldier.phone = phone
+    if hierarchy_node_id is not None:
+        if session.get(HierarchyNode, hierarchy_node_id) is None:
+            raise SoldierError("hierarchy node not found")
+        soldier.hierarchy_node_id = hierarchy_node_id
     write_audit(
         session,
         actor_id=actor_id,
@@ -111,7 +120,11 @@ def update_soldier(
         entity_type="soldier",
         entity_id=soldier.id,
         before=before,
-        after={"full_name": soldier.full_name, "phone": soldier.phone},
+        after={
+            "full_name": soldier.full_name,
+            "phone": soldier.phone,
+            "hierarchy_node_id": str(soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None,
+        },
     )
     return soldier
 

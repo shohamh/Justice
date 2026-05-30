@@ -42,6 +42,7 @@ class OnboardResponse(SoldierOut):
 class UpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=200)
     phone: str | None = Field(default=None, max_length=40)
+    hierarchy_node_id: uuid.UUID | None = None
 
 
 class RoleRequest(BaseModel):
@@ -144,7 +145,8 @@ def update(
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
     svc.update_soldier(
-        session, soldier=s, full_name=body.full_name, phone=body.phone, actor_id=user.id
+        session, soldier=s, full_name=body.full_name, phone=body.phone,
+        hierarchy_node_id=body.hierarchy_node_id, actor_id=user.id
     )
     session.commit()
     session.refresh(s)
