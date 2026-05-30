@@ -37,6 +37,17 @@ class Soldier(Base):
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
+    gender: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    is_officer: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    bahad1_graduate: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    enlistment_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    mandatory_end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    discharge_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    last_mitvahim_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    last_alal_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -116,6 +127,9 @@ class DutyType(Base):
     score_per_day: Mapped[Decimal] = mapped_column(Numeric(6, 2))
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    requirements: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'"), default_factory=dict
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -388,5 +402,29 @@ class AssignmentExplanation(Base):
     algorithm_version: Mapped[str] = mapped_column(Text)
     solver_seed: Mapped[str] = mapped_column(Text)
     generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierFieldUpdate(Base):
+    __tablename__ = "soldier_field_updates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    field_name: Mapped[str] = mapped_column(Text)
+    new_value: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
