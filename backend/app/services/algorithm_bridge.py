@@ -33,7 +33,6 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
-from app.db.session import session_scope
 from app.services import scoring as scoring_svc
 
 
@@ -323,6 +322,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     from app.algorithm.explain import build_explanations
     from app.algorithm.reserve import select_reserves
     from app.algorithm.solver import solve
+    from app.db.session import session_scope
 
     with session_scope() as session:
         job = session.get(AlgorithmJob, job_id)
