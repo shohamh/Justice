@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_password_changed, require_roles
 from app.db.models import DutyLocation, DutyType, ExemptionType, Soldier
@@ -31,6 +34,7 @@ class DutyTypeOut(BaseModel):
     score_per_day: Decimal
     description: str | None
     active: bool
+    requirements: dict[str, Any] = {}
 
 
 class CreateDutyTypeRequest(BaseModel):
@@ -44,6 +48,7 @@ class UpdateDutyTypeRequest(BaseModel):
     score_per_day: Decimal | None = Field(default=None, ge=0)
     description: str | None = Field(default=None, max_length=1000)
     active: bool | None = None
+    requirements: dict[str, Any] | None = None
 
 
 def _dt_out(d: DutyType) -> DutyTypeOut:
@@ -53,6 +58,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         score_per_day=d.score_per_day,
         description=d.description,
         active=d.active,
+        requirements=d.requirements or {},
     )
 
 
@@ -102,6 +108,7 @@ def update_duty_type(
             score_per_day=body.score_per_day,
             description=body.description,
             actor_id=user.id,
+            requirements=body.requirements,
         )
         if body.active is not None:
             svc.set_duty_type_active(session, duty_type=dt, active=body.active, actor_id=user.id)

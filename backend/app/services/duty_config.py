@@ -54,6 +54,7 @@ def update_duty_type(
     score_per_day: Decimal | None,
     description: str | None,
     actor_id: uuid.UUID | None = None,
+    requirements: dict | None = None,
 ) -> DutyType:
     before = {
         "name": duty_type.name,
@@ -70,6 +71,10 @@ def update_duty_type(
         duty_type.name = name
     if description is not None:
         duty_type.description = description
+    if requirements is not None:
+        from app.services.eligibility import DutyTypeRequirements
+        DutyTypeRequirements.model_validate(requirements)  # validate shape
+        duty_type.requirements = requirements
     write_audit(
         session,
         actor_id=actor_id,
