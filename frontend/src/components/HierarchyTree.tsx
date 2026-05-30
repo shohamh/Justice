@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, deleteNode } from "../api/hierarchy";
-import { SoldierDTO, updateSoldier, listSoldiers, onboardSoldier } from "../api/soldiers";
+import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import RenameNodeDialog from "./RenameNodeDialog";
@@ -35,7 +35,6 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);
   const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
-  const [allSoldiers, setAllSoldiers] = useState<SoldierDTO[]>(soldiers);
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -63,8 +62,6 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
         await onboardSoldier({ personal_number: personalNumber, full_name: fullName, hierarchy_node_id: nodeId });
       }
       setQuickAddNode(null);
-      const refreshed = await listSoldiers();
-      setAllSoldiers(refreshed);
       onChanged();
     } catch {
       alert(t("errors.generic"));
@@ -75,7 +72,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
     nodes.filter((n) => n.parent_id === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const soldiersOf = (nodeId: string) =>
-    allSoldiers.filter((s) => s.hierarchy_node_id === nodeId && !s.left_at);
+    soldiers.filter((s) => s.hierarchy_node_id === nodeId && !s.left_at);
 
   const canHaveChildren = (level: string) => {
     const idx = LEVEL_ORDER.indexOf(level);
