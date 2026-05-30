@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Calendar from "react-calendar";
-import "react-calendar/dist/Calendar.css";
+import FullCalendar from "@fullcalendar/react";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import interactionPlugin from "@fullcalendar/interaction";
+import heLocale from "@fullcalendar/core/locales/he";
+import type { EventClickArg } from "@fullcalendar/core";
 
 import Layout from "../components/Layout";
 import ExplanationModal from "../components/ExplanationModal";
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
-import { DataTable, type ColDef } from "../components/DataTable";
+
+function dutyTypeColor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffffffff;
+  return `hsl(${Math.abs(h) % 360}, 65%, 55%)`;
+}
 
 export default function MyDutiesPage() {
   const { t } = useTranslation();
@@ -16,7 +24,7 @@ export default function MyDutiesPage() {
   const [rows, setRows] = useState<EffectiveDuty[]>([]);
   const [types, setTypes] = useState<Record<string, string>>({});
   const [locs, setLocs] = useState<Record<string, string>>({});
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
   const [whyTarget, setWhyTarget] = useState<{ assignmentId: string } | null>(null);
 
   useEffect(() => {
@@ -33,129 +41,71 @@ export default function MyDutiesPage() {
     })();
   }, [user]);
 
-  const dutyDates = useMemo(() => {
-    const dates = new Set<string>();
-    for (const r of rows) {
-      const startParts = r.start_date.split("-").map(Number);
-      const endParts = r.end_date.split("-").map(Number);
-      const start = new Date(startParts[0], startParts[1] - 1, startParts[2]);
-      const end = new Date(endParts[0], endParts[1] - 1, endParts[2]);
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        dates.add(`${y}-${m}-${day}`);
-      }
-    }
-    return dates;
-  }, [rows]);
+  const events = useMemo(() =>
+    rows.map((r) => {
+      const endDate = new Date(r.end_date);
+      endDate.setDate(endDate.getDate() + 1);
+      const color = dutyTypeColor(r.duty_type_id);
+      return {
+        id: r.assignment_id,
+        title: types[r.duty_type_id] ?? r.duty_type_id,
+        start: r.start_date,
+        end: endDate.toISOString().slice(0, 10),
+        backgroundColor: color,
+        borderColor: color,
+        extendedProps: { duty: r },
+      };
+    }),
+  [rows, types]);
 
-  const filteredRows = useMemo(() => {
-    if (!selectedDate) return rows;
-    const y = selectedDate.getFullYear();
-    const m = String(selectedDate.getMonth() + 1).padStart(2, "0");
-    const day = String(selectedDate.getDate()).padStart(2, "0");
-    const ds = `${y}-${m}-${day}`;
-    return rows.filter((r) => r.start_date <= ds && r.end_date >= ds);
-  }, [rows, selectedDate]);
-
-  function tileClassName({ date }: { date: Date }) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    const ds = `${y}-${m}-${d}`;
-    if (dutyDates.has(ds)) return "bg-indigo-100 rounded-full font-bold";
-    return "";
-  }
-
-  function tileContent({ date }: { date: Date }) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    const ds = `${y}-${m}-${d}`;
-    if (dutyDates.has(ds)) {
-      return <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full mx-auto" />;
-    }
-    return null;
+  function handleEventClick(arg: EventClickArg) {
+    setSelectedDuty(arg.event.extendedProps.duty as EffectiveDuty);
   }
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4" data-testid="my-duties-page">
+      <section className="bg-white rounded-lg shadow p-6 space-y-4" data-testid="my-duties-page" dir="rtl">
         <h2 className="text-xl font-semibold">{t("my_duties.title")}</h2>
 
-        <div className="flex justify-center" data-testid="duty-calendar">
-          <Calendar
-            onChange={(value) => setSelectedDate(value as Date | null)}
-            value={selectedDate}
-            tileClassName={tileClassName}
-            tileContent={tileContent}
+        <div className="text-sm" data-testid="duty-calendar">
+          <FullCalendar
+            plugins={[dayGridPlugin, interactionPlugin]}
+            initialView="dayGridMonth"
+            events={events}
+            eventClick={handleEventClick}
+            locales={[heLocale]}
             locale="he"
+            height="auto"
+            headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
+            buttonText={{ today: t("unit_calendar.today") || "היום" }}
+            noEventsText={t("my_duties.none")}
+            displayEventTime={false}
           />
         </div>
 
-        {selectedDate && (
-          <p className="text-sm text-gray-500">
-            {t("my_duties.showing_for_date", "תורנויות לתאריך: {{date}}").replace("{{date}}", selectedDate.toLocaleDateString("he-IL"))}
-            <button className="mr-2 text-indigo-600 text-xs" onClick={() => setSelectedDate(null)}>
-              {t("my_duties.show_all")}
-            </button>
-          </p>
+        {rows.length === 0 && (
+          <p data-testid="my-duties-empty" className="text-gray-500 text-sm">{t("my_duties.none")}</p>
         )}
 
-        {filteredRows.length === 0 ? (
-          <p data-testid="my-duties-empty">{t("my_duties.none")}</p>
-        ) : (() => {
-          const dutyCols: ColDef<EffectiveDuty>[] = [
-            {
-              id: "duty_type",
-              header: t("my_duties.duty_type"),
-              cell: (a) => types[a.duty_type_id] ?? a.duty_type_id,
-              sortValue: (a) => types[a.duty_type_id] ?? a.duty_type_id,
-              filterValue: (a) => types[a.duty_type_id] ?? a.duty_type_id,
-            },
-            {
-              id: "location",
-              header: t("my_duties.location"),
-              cell: (a) => locs[a.duty_location_id] ?? a.duty_location_id,
-              sortValue: (a) => locs[a.duty_location_id] ?? a.duty_location_id,
-              filterValue: (a) => locs[a.duty_location_id] ?? a.duty_location_id,
-            },
-            {
-              id: "from",
-              header: t("my_duties.from"),
-              cell: (a) => a.start_date,
-              sortValue: (a) => a.start_date,
-            },
-            {
-              id: "to",
-              header: t("my_duties.to"),
-              cell: (a) => a.end_date,
-              sortValue: (a) => a.end_date,
-            },
-            {
-              id: "why",
-              header: "",
-              cell: (a) => (
-                <button
-                  type="button"
-                  onClick={() => setWhyTarget({ assignmentId: a.assignment_id })}
-                  className="text-xs text-blue-600 underline"
-                >
-                  {t("algorithm.why_button")}
-                </button>
-              ),
-            },
-          ];
-          return (
-            <DataTable
-              columns={dutyCols}
-              data={filteredRows}
-              filterPlaceholder={t("table.filter_placeholder")}
-            />
-          );
-        })()}
+        {selectedDuty && (
+          <div className="border rounded-lg p-4 text-sm space-y-2 bg-gray-50">
+            <div className="flex justify-between items-start">
+              <h3 className="font-medium">{types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id}</h3>
+              <button onClick={() => setSelectedDuty(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+            <p className="text-gray-600">{locs[selectedDuty.duty_location_id] ?? selectedDuty.duty_location_id}</p>
+            <p>{selectedDuty.start_date} ← {selectedDuty.end_date}</p>
+            <button
+              type="button"
+              onClick={() => setWhyTarget({ assignmentId: selectedDuty.assignment_id })}
+              className="text-blue-600 underline text-xs"
+            >
+              {t("algorithm.why_button")}
+            </button>
+          </div>
+        )}
       </section>
+
       {whyTarget && (
         <ExplanationModal
           assignmentId={whyTarget.assignmentId}
