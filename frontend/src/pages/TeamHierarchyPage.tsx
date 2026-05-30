@@ -7,7 +7,7 @@ import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import UnifiedSoldierModal from "../components/UnifiedSoldierModal";
 import { useAuth } from "../auth/AuthContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
-import { SoldierDTO, listSoldiers, onboardSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -57,9 +57,19 @@ export default function TeamHierarchyPage() {
 
   async function addSoldier(e: FormEvent) {
     e.preventDefault();
-    const res = await onboardSoldier({ personal_number: pn, full_name: name, hierarchy_node_id: nodeId || null });
-    setTempPw(res.temp_password);
-    setPn(""); setName(""); setNodeId("");
+    const existing = soldiers.find((s) => s.personal_number === pn && !s.left_at);
+    if (existing) {
+      await updateSoldier(existing.id, { hierarchy_node_id: nodeId || null });
+      setPn(""); setName(""); setNodeId("");
+    } else {
+      try {
+        const res = await onboardSoldier({ personal_number: pn, full_name: name, hierarchy_node_id: nodeId || null });
+        setTempPw(res.temp_password);
+        setPn(""); setName(""); setNodeId("");
+      } catch {
+        alert(t("errors.generic"));
+      }
+    }
     await refresh();
   }
 
