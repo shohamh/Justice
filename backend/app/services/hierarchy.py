@@ -36,8 +36,8 @@ def create_node(
     if level not in LEVEL_ORDER:
         raise HierarchyError(f"unknown level: {level}")
     if parent_id is None:
-        if level != "department":
-            raise HierarchyError("root nodes must be 'department'")
+        if level != LEVEL_ORDER[0]:
+            raise HierarchyError(f"root nodes must be '{LEVEL_ORDER[0]}'")
         parent = None
     else:
         parent = session.get(HierarchyNode, parent_id)
