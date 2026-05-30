@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import { DutyShift, deleteShift, listShifts } from "../api/shifts";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
+import { DataTable, type ColDef } from "../components/DataTable";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 text-red-700",
@@ -73,57 +74,90 @@ export default function ShiftsPage() {
           </label>
         </div>
 
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-gray-50 text-right">
-              <th className="border px-2 py-1">{t("shifts.duty_type")}</th>
-              <th className="border px-2 py-1">{t("shifts.location")}</th>
-              <th className="border px-2 py-1">{t("shifts.start_date")}</th>
-              <th className="border px-2 py-1">{t("shifts.end_date")}</th>
-              <th className="border px-2 py-1">{t("shifts.required_count")}</th>
-              <th className="border px-2 py-1">{t("shifts.assigned_count")}</th>
-              <th className="border px-2 py-1">{t("shifts.status")}</th>
-              <th className="border px-2 py-1">{t("shifts.actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shifts.length === 0 && (
-              <tr><td colSpan={8} className="text-center text-gray-400 py-4">אין משמרות</td></tr>
-            )}
-            {shifts.map(shift => (
-              <tr key={shift.id}>
-                <td className="border px-2 py-1">{dtName(shift.duty_type_id)}</td>
-                <td className="border px-2 py-1">{locName(shift.duty_location_id)}</td>
-                <td className="border px-2 py-1">{shift.start_date}</td>
-                <td className="border px-2 py-1">{shift.end_date}</td>
-                <td className="border px-2 py-1 text-center">{shift.required_count}</td>
-                <td className="border px-2 py-1 text-center">{shift.assigned_count}</td>
-                <td className="border px-2 py-1">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${FILL_COLORS[shift.fill_status]}`}>
-                    {t(`shifts.fill_${shift.fill_status}`)}
-                  </span>
-                </td>
-                <td className="border px-2 py-1 space-x-2 space-x-reverse">
+        {(() => {
+          const shiftCols: ColDef<DutyShift>[] = [
+            {
+              id: "duty_type",
+              header: t("shifts.duty_type"),
+              cell: (s) => dtName(s.duty_type_id),
+              sortValue: (s) => dtName(s.duty_type_id),
+              filterValue: (s) => dtName(s.duty_type_id),
+            },
+            {
+              id: "location",
+              header: t("shifts.location"),
+              cell: (s) => locName(s.duty_location_id),
+              sortValue: (s) => locName(s.duty_location_id),
+              filterValue: (s) => locName(s.duty_location_id),
+            },
+            {
+              id: "start_date",
+              header: t("shifts.start_date"),
+              cell: (s) => s.start_date,
+              sortValue: (s) => s.start_date,
+            },
+            {
+              id: "end_date",
+              header: t("shifts.end_date"),
+              cell: (s) => s.end_date,
+              sortValue: (s) => s.end_date,
+            },
+            {
+              id: "required",
+              header: t("shifts.required_count"),
+              cell: (s) => s.required_count,
+              sortValue: (s) => s.required_count,
+            },
+            {
+              id: "assigned",
+              header: t("shifts.assigned_count"),
+              cell: (s) => s.assigned_count,
+              sortValue: (s) => s.assigned_count,
+            },
+            {
+              id: "status",
+              header: t("shifts.status"),
+              cell: (s) => (
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${FILL_COLORS[s.fill_status]}`}>
+                  {t(`shifts.fill_${s.fill_status}`)}
+                </span>
+              ),
+              sortValue: (s) => s.fill_status,
+              filterValue: (s) => t(`shifts.fill_${s.fill_status}`),
+            },
+            {
+              id: "actions",
+              header: t("shifts.actions"),
+              cell: (s) => (
+                <span className="space-x-2 space-x-reverse">
                   <button
                     type="button"
-                    onClick={() => setEditShift(shift)}
+                    onClick={() => setEditShift(s)}
                     className="text-blue-600 text-xs hover:underline"
                   >
                     {t("shifts.edit")}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDelete(shift)}
+                    onClick={() => handleDelete(s)}
                     className="text-red-600 text-xs hover:underline"
-                    disabled={shift.assigned_count > 0}
+                    disabled={s.assigned_count > 0}
                   >
                     {t("shifts.delete")}
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+              ),
+            },
+          ];
+          return (
+            <DataTable
+              columns={shiftCols}
+              data={shifts}
+              filterPlaceholder={t("table.filter_placeholder")}
+              emptyMessage="אין משמרות"
+            />
+          );
+        })()}
       </section>
 
       {showCreate && (
