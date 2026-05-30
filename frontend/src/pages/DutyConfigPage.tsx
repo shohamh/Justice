@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import DutyTypeRequirementsEditor from "../components/DutyTypeRequirementsEditor";
 import {
   DutyLocation,
   DutyType,
@@ -27,6 +28,7 @@ export default function DutyConfigPage() {
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
+  const [expandedDtId, setExpandedDtId] = useState<string | null>(null);
 
   async function refresh() {
     const [dts, locs, ets] = await Promise.all([listDutyTypes(), listLocations(), listExemptionTypes()]);
@@ -78,16 +80,31 @@ export default function DutyConfigPage() {
               <input className="block border rounded p-1 w-24" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dt-submit">{t("duty_config.add")}</button>
           </form>
-          <ul className="text-sm" data-testid="duty-type-list">
+          <div className="space-y-1 text-sm" data-testid="duty-type-list">
             {dutyTypes.map((d) => (
-              <li key={d.id} data-testid={`dt-row-${d.name}`} className="flex items-center gap-2">
-                <span>{d.name} — {d.score_per_day}</span>
-                <button className="text-xs text-indigo-600" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
-                  {d.active ? t("duty_config.active") : "—"}
-                </button>
-              </li>
+              <div key={d.id} data-testid={`dt-row-${d.name}`} className="border rounded p-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span>{d.name} — {d.score_per_day}</span>
+                  <button className="text-xs text-indigo-600" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
+                    {d.active ? t("duty_config.active") : "—"}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 underline ml-auto"
+                    onClick={() => setExpandedDtId(expandedDtId === d.id ? null : d.id)}
+                  >
+                    {t("eligibility.title")}
+                  </button>
+                </div>
+                {expandedDtId === d.id && (
+                  <DutyTypeRequirementsEditor
+                    dutyType={d}
+                    onSaved={async () => { await refresh(); setExpandedDtId(null); }}
+                  />
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
 
         <div data-testid="locations-section">
