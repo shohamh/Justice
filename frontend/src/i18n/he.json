@@ -98,6 +98,7 @@
     "add_soldier": "הוסף איש צוות",
     "personal_number": "מספר אישי",
     "full_name": "שם מלא",
+    "edit_soldier": "עריכת חייל",
     "role": "תפקיד",
     "reset_password": "אפס סיסמה",
     "remove": "הסר",
@@ -114,7 +115,8 @@
     "level_branch": "ענף",
     "level_group": "מדור",
     "level_team": "צוות",
-    "search_soldier_placeholder": "חפש חייל..."
+    "search_soldier_placeholder": "חפש חייל...",
+    "create_new_soldier": "צור חייל חדש"
   },
   "profile": {
     "title": "פרופיל",
