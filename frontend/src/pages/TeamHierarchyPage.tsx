@@ -133,7 +133,7 @@ export default function TeamHierarchyPage() {
                 header: "",
                 cell: (s) => (
                   <span className="space-x-2 space-x-reverse">
-                    <button onClick={() => setEditSoldier(s)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("duty_config.save")}</button>
+                    <button onClick={() => setEditSoldier(s)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                   </span>

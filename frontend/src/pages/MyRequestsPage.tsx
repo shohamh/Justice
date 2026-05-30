@@ -138,7 +138,7 @@ export default function MyRequestsPage() {
         <ul className="text-sm space-y-2" data-testid="constraints-list">
           {items.map((c) => (
             <li key={c.id} className="flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
-              <span>{c.start_date} → {c.end_date}</span>
+              <span dir="ltr">{c.start_date} → {c.end_date}</span>
               <span className="text-gray-500">{c.reason}</span>
               {statusBadge(c.status)}
               {c.status === "pending" && (
@@ -173,7 +173,7 @@ export default function MyRequestsPage() {
             {exemptionRequests.map((er) => (
               <li key={er.id} className="flex items-center gap-3">
                 <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
-                <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
+                <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
                 {er.reason && <span className="text-gray-500">{er.reason}</span>}
                 <span className={`text-xs ${
                   er.status === "approved" ? "text-green-600" :
@@ -189,7 +189,7 @@ export default function MyRequestsPage() {
           {exemptions.length === 0 && <p className="text-sm text-gray-500">{t("exemptions.none")}</p>}
           <ul className="text-sm space-y-1">
             {exemptions.map((ex) => (
-              <li key={ex.id}>{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</li>
+              <li key={ex.id} dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</li>
             ))}
           </ul>
         </div>

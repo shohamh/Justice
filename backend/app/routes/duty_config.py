@@ -184,16 +184,19 @@ class ExemptionTypeOut(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None
+    is_global: bool = False
 
 
 class CreateExemptionTypeRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
+    is_global: bool = False
 
 
 class UpdateExemptionTypeRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
+    is_global: bool | None = None
 
 
 class SetDutyTypesRequest(BaseModel):
@@ -201,7 +204,7 @@ class SetDutyTypesRequest(BaseModel):
 
 
 def _et_out(et: ExemptionType) -> ExemptionTypeOut:
-    return ExemptionTypeOut(id=et.id, name=et.name, description=et.description)
+    return ExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_global=et.is_global)
 
 
 @router.get("/exemption-types", response_model=list[ExemptionTypeOut])
@@ -223,7 +226,7 @@ def create_exemption_type(
 ) -> ExemptionTypeOut:
     try:
         et = svc.create_exemption_type(
-            session, name=body.name, description=body.description, actor_id=user.id
+            session, name=body.name, description=body.description, is_global=body.is_global, actor_id=user.id
         )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -248,6 +251,7 @@ def update_exemption_type(
             exemption_type=et,
             name=body.name,
             description=body.description,
+            is_global=body.is_global,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:

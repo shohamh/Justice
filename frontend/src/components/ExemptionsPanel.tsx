@@ -51,7 +51,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         {items.map((ex) => (
           <li key={ex.id} className="flex items-center gap-2" data-testid={`exemption-row-${ex.id}`}>
             <span>{typeName(ex.exemption_type_id)}</span>
-            <span className="text-gray-400">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+            <span className="text-gray-400" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
             {canManage && (
               <button className="text-rejected text-xs" onClick={() => onRevoke(ex.id)} data-testid={`revoke-${ex.id}`}>
                 {t("exemptions.revoke")}

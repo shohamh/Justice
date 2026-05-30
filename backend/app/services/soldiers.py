@@ -206,6 +206,14 @@ def update_soldier_profile(
     return soldier
 
 
+def _get_current_value(soldier: Soldier, field_name: str) -> str | None:
+    raw = getattr(soldier, field_name, None)
+    if raw is None:
+        return None
+    if isinstance(raw, date):
+        return raw.isoformat()
+    return str(raw)
+
 def submit_field_update(
     session: Session,
     *,
@@ -217,9 +225,13 @@ def submit_field_update(
     from app.services.eligibility import SOLDIER_EDITABLE_FIELDS
     if field_name not in SOLDIER_EDITABLE_FIELDS:
         raise SoldierError("field_not_editable")
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        raise SoldierError("soldier_not_found")
     req = SoldierFieldUpdate(
         soldier_id=soldier_id,
         field_name=field_name,
+        previous_value=_get_current_value(soldier, field_name),
         new_value=new_value,
     )
     session.add(req)

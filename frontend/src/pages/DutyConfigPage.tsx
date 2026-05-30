@@ -27,6 +27,7 @@ export default function DutyConfigPage() {
   const [dtScore, setDtScore] = useState("1.00");
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
+  const [exGlobal, setExGlobal] = useState(false);
   const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
   const [expandedDtId, setExpandedDtId] = useState<string | null>(null);
 
@@ -55,8 +56,8 @@ export default function DutyConfigPage() {
   }
   async function addExType(e: FormEvent) {
     e.preventDefault();
-    await createExemptionType({ name: exName });
-    setExName("");
+    await createExemptionType({ name: exName, is_global: exGlobal });
+    setExName(""); setExGlobal(false);
     await refresh();
   }
   async function toggleMap(etId: string, dtId: string) {
@@ -120,25 +121,38 @@ export default function DutyConfigPage() {
 
         <div data-testid="exemption-types-section">
           <h3 className="font-medium mb-2">{t("duty_config.exemption_types")}</h3>
-          <form onSubmit={addExType} className="flex items-end gap-2 mb-2" data-testid="exemption-type-form">
+          <form onSubmit={addExType} className="flex items-end gap-2 mb-2 flex-wrap" data-testid="exemption-type-form">
             <input className="border rounded p-1" value={exName} onChange={(e) => setExName(e.target.value)} required data-testid="et-name" placeholder={t("duty_config.name")} />
+            <label className="flex items-center gap-1 text-xs">
+              <input type="checkbox" checked={exGlobal} onChange={(e) => setExGlobal(e.target.checked)} data-testid="et-global" />
+              {t("duty_config.global")}
+            </label>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="et-submit">{t("duty_config.add")}</button>
           </form>
           <ul className="text-sm space-y-2" data-testid="exemption-type-list">
             {exTypes.map((et) => (
-              <li key={et.id} data-testid={`et-row-${et.name}`}>
-                <div>{et.name}</div>
-                <div className="text-xs text-gray-500">{t("duty_config.exempts_from")}:</div>
-                <div className="flex flex-wrap gap-2">
-                  {dutyTypes.map((d) => (
-                    <label key={d.id} className="text-xs flex items-center gap-1">
-                      <input type="checkbox" checked={(mapSel[et.id] ?? []).includes(d.id)}
-                             onChange={() => toggleMap(et.id, d.id)}
-                             data-testid={`map-${et.name}-${d.name}`} />
-                      {d.name}
-                    </label>
-                  ))}
+              <li key={et.id} data-testid={`et-row-${et.name}`} className="border rounded p-2">
+                <div className="flex items-center gap-2">
+                  <span>{et.name}</span>
+                  {et.is_global && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
                 </div>
+                {et.is_global ? (
+                  <div className="text-xs text-gray-500 mt-1">{t("duty_config.global_exempt_desc")}</div>
+                ) : (
+                  <>
+                    <div className="text-xs text-gray-500 mt-1">{t("duty_config.exempts_from")}:</div>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {dutyTypes.map((d) => (
+                        <label key={d.id} className="text-xs flex items-center gap-1">
+                          <input type="checkbox" checked={(mapSel[et.id] ?? []).includes(d.id)}
+                                 onChange={() => toggleMap(et.id, d.id)}
+                                 data-testid={`map-${et.name}-${d.name}`} />
+                          {d.name}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ul>

@@ -163,6 +163,7 @@ class ExemptionType(Base):
     )
     name: Mapped[str] = mapped_column(Text, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    is_global: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -444,6 +445,7 @@ class SoldierFieldUpdate(Base):
     )
     field_name: Mapped[str] = mapped_column(Text)
     new_value: Mapped[str] = mapped_column(Text)
+    previous_value: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None

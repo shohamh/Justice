@@ -93,6 +93,7 @@ class FieldUpdateOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
     field_name: str
+    previous_value: str | None
     new_value: str
     status: str
     decided_by: uuid.UUID | None
@@ -142,6 +143,7 @@ def _fu_out(u: SoldierFieldUpdate) -> FieldUpdateOut:
         id=u.id,
         soldier_id=u.soldier_id,
         field_name=u.field_name,
+        previous_value=u.previous_value,
         new_value=u.new_value,
         status=u.status,
         decided_by=u.decided_by,
@@ -244,6 +246,33 @@ def list_all_pending_field_updates(
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 result.append(_fu_out(upd))
     return result
+
+
+@router.get("/field-updates/pending/count")
+def count_pending_field_updates(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    if user.role == "admin":
+        rows = session.execute(
+            select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+        ).scalars().all()
+        return {"count": len(rows)}
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return {"count": 0}
+    all_pending = session.execute(
+        select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
+    ).scalars().all()
+    total = 0
+    for upd in all_pending:
+        s = session.get(Soldier, upd.soldier_id)
+        if s:
+            node = _node_of(session, s)
+            from app.auth.authz import can
+            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+                total += 1
+    return {"count": total}
 
 
 @router.get("/{soldier_id}", response_model=SoldierOut)

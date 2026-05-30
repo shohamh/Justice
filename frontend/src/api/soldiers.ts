@@ -28,6 +28,7 @@ export interface FieldUpdateDTO {
   id: string;
   soldier_id: string;
   field_name: string;
+  previous_value: string | null;
   new_value: string;
   status: "pending" | "approved" | "rejected";
   decided_by: string | null;
@@ -89,6 +90,11 @@ export async function submitFieldUpdate(
 
 export async function listFieldUpdates(soldierId: string): Promise<FieldUpdateDTO[]> {
   return (await api.get<FieldUpdateDTO[]>(`/soldiers/${soldierId}/field-updates`)).data;
+}
+
+export async function getPendingFieldUpdateCount(): Promise<number> {
+  const r = await api.get<{ count: number }>("/soldiers/field-updates/pending/count");
+  return r.data.count;
 }
 
 export async function listPendingFieldUpdates(): Promise<FieldUpdateDTO[]> {

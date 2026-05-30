@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthContext";
 import { getPendingCount } from "../api/constraints";
+import { getPendingExemptionCount } from "../api/exemptions";
+import { getPendingFieldUpdateCount } from "../api/soldiers";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -16,7 +18,14 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (canApprove) {
-      getPendingCount().then(setPendingCount).catch(() => {});
+      void (async () => {
+        const [c, e, f] = await Promise.all([
+          getPendingCount().catch(() => 0),
+          getPendingExemptionCount().catch(() => 0),
+          getPendingFieldUpdateCount().catch(() => 0),
+        ]);
+        setPendingCount(c + e + f);
+      })();
     }
   }, [canApprove]);
 

@@ -172,11 +172,12 @@ def create_exemption_type(
     *,
     name: str,
     description: str | None = None,
+    is_global: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
     if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
         raise DutyConfigError("name_taken")
-    et = ExemptionType(name=name, description=description)
+    et = ExemptionType(name=name, description=description, is_global=is_global)
     session.add(et)
     session.flush()
     write_audit(
@@ -185,7 +186,7 @@ def create_exemption_type(
         action="exemption_type.create",
         entity_type="exemption_type",
         entity_id=et.id,
-        after={"name": name},
+        after={"name": name, "is_global": is_global},
     )
     return et
 
@@ -196,15 +197,18 @@ def update_exemption_type(
     exemption_type: ExemptionType,
     name: str | None,
     description: str | None,
+    is_global: bool | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
-    before = {"name": exemption_type.name, "description": exemption_type.description}
+    before = {"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global}
     if name is not None and name != exemption_type.name:
         if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
             raise DutyConfigError("name_taken")
         exemption_type.name = name
     if description is not None:
         exemption_type.description = description
+    if is_global is not None:
+        exemption_type.is_global = is_global
     write_audit(
         session,
         actor_id=actor_id,
@@ -212,7 +216,7 @@ def update_exemption_type(
         entity_type="exemption_type",
         entity_id=exemption_type.id,
         before=before,
-        after={"name": exemption_type.name, "description": exemption_type.description},
+        after={"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global},
     )
     return exemption_type
 

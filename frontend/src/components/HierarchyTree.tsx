@@ -136,7 +136,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
                 {t("team.assign_commander")}
               </button>
               <button className="text-xs text-amber-600 hover:underline" onClick={() => setRenameDialog(node)} data-testid={`tree-rename-${node.id}`}>
-                {t("duty_config.save")}
+                {t("team.edit")}
               </button>
               {!node.commander_id && children.length === 0 && (
                 <button className="text-xs text-red-500 hover:underline" onClick={() => handleDelete(node.id)} data-testid={`tree-delete-${node.id}`}>
@@ -175,7 +175,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
                     onClick={() => setEditSoldier(s)}
                     data-testid={`edit-soldier-${s.personal_number}`}
                   >
-                    {t("duty_config.save")}
+                    {t("team.edit")}
                   </button>
                 )}
               </li>

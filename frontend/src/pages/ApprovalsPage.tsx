@@ -17,11 +17,28 @@ import {
 import {
   FieldUpdateDTO,
   approveFieldUpdate,
+  listSoldiers,
   rejectFieldUpdate,
   listPendingFieldUpdates,
+  SoldierDTO,
 } from "../api/soldiers";
+import { fetchTree, NodeDTO } from "../api/hierarchy";
 
 type Tab = "constraints" | "exemptions" | "field_updates";
+
+function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
+  const map = new Map<string, NodeDTO>();
+  function walk(list: NodeDTO[]) {
+    for (const n of list) {
+      map.set(n.id, n);
+      if ((n as unknown as { children?: NodeDTO[] }).children) {
+        walk((n as unknown as { children: NodeDTO[] }).children);
+      }
+    }
+  }
+  walk(nodes);
+  return map;
+}
 
 export default function ApprovalsPage() {
   const { t } = useTranslation();
@@ -31,6 +48,16 @@ export default function ApprovalsPage() {
   const [fuItems, setFuItems] = useState<FieldUpdateDTO[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
+  const [soldierMap, setSoldierMap] = useState<Map<string, SoldierDTO>>(new Map());
+  const [nodeMap, setNodeMap] = useState<Map<string, NodeDTO>>(new Map());
+
+  useEffect(() => {
+    void (async () => {
+      const [soldiers, tree] = await Promise.all([listSoldiers(), fetchTree()]);
+      setSoldierMap(new Map(soldiers.map(s => [s.id, s])));
+      setNodeMap(flattenTree(tree));
+    })();
+  }, []);
 
   const refresh = useCallback(async () => {
     setItems(await listPendingApprovals());
@@ -81,10 +108,21 @@ export default function ApprovalsPage() {
     await refresh();
   }
 
+  function soldierDisplay(id: string): { name: string; node: string } {
+    const s = soldierMap.get(id);
+    const nodeName = s && nodeMap.get(s.hierarchy_node_id ?? "")?.name;
+    return {
+      name: s?.full_name ?? id.slice(0, 8),
+      node: nodeName ?? "",
+    };
+  }
+
+  const total = items.length + erItems.length + fuItems.length;
+
   return (
     <Layout>
       <section className="bg-white rounded-lg shadow p-6 space-y-4">
-        <h2 className="text-xl font-semibold">{t("approvals.title")}</h2>
+        <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
 
         <div className="flex gap-4 border-b">
           <button
@@ -92,14 +130,14 @@ export default function ApprovalsPage() {
             onClick={() => setTab("constraints")}
             data-testid="approvals-tab-constraints"
           >
-            {t("approvals.tab_constraints")}
+            {t("approvals.tab_constraints")}{items.length > 0 ? ` (${items.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "exemptions" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
             onClick={() => setTab("exemptions")}
             data-testid="approvals-tab-exemptions"
           >
-            {t("approvals.tab_exemptions")}
+            {t("approvals.tab_exemptions")}{erItems.length > 0 ? ` (${erItems.length})` : ""}
           </button>
           <button
             className={`pb-2 text-sm ${tab === "field_updates" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
@@ -114,12 +152,16 @@ export default function ApprovalsPage() {
           <>
             {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
-              {items.map((c) => (
-                <li key={c.id} className="border rounded p-3 flex items-center gap-4" data-testid={`approval-row-${c.id}`}>
-                  <div className="flex-1">
-                    <p className="text-sm"><strong>{c.soldier_id}</strong> — {c.start_date} → {c.end_date}</p>
-                    <p className="text-xs text-gray-500">{c.reason}</p>
+              {items.map((c) => {
+                const sd = soldierDisplay(c.soldier_id);
+                return (
+                <li key={c.id} className="border rounded p-3" data-testid={`approval-row-${c.id}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <strong className="text-sm">{sd.name}</strong>
+                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
+                  <p className="text-sm" dir="ltr">{c.start_date} → {c.end_date}</p>
+                  <p className="text-xs text-gray-500 mb-2">{c.reason}</p>
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onApprove(c.id)} data-testid={`approve-${c.id}`}>
                       {t("approvals.approve")}
@@ -141,7 +183,8 @@ export default function ApprovalsPage() {
                     </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </>
         )}
@@ -150,12 +193,16 @@ export default function ApprovalsPage() {
           <>
             {erItems.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
-              {erItems.map((er) => (
-                <li key={er.id} className="border rounded p-3 flex items-center gap-4" data-testid={`er-approval-row-${er.id}`}>
-                  <div className="flex-1">
-                    <p className="text-sm"><strong>{er.soldier_id}</strong> — {er.start_date} → {er.end_date ?? t("exemptions.forever")}</p>
-                    <p className="text-xs text-gray-500">{er.reason}</p>
+              {erItems.map((er) => {
+                const sd = soldierDisplay(er.soldier_id);
+                return (
+                <li key={er.id} className="border rounded p-3" data-testid={`er-approval-row-${er.id}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <strong className="text-sm">{sd.name}</strong>
+                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
+                  <p className="text-sm" dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</p>
+                  <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApprove(er.id)} data-testid={`er-approve-${er.id}`}>
                       {t("approvals.approve")}
@@ -177,7 +224,8 @@ export default function ApprovalsPage() {
                     </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </>
         )}
@@ -185,10 +233,18 @@ export default function ApprovalsPage() {
         {tab === "field_updates" && (
           <div className="space-y-3" dir="rtl">
             {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
-            {fuItems.map(item => (
+            {fuItems.map(item => {
+              const sd = soldierDisplay(item.soldier_id);
+              return (
               <div key={item.id} className="border rounded p-3 text-sm space-y-2">
-                <div className="font-medium">{item.soldier_id.slice(0, 8)} — {t(`soldier_profile.${item.field_name}`)}</div>
-                <div className="text-gray-600">{t("approvals.field_update_new_value")}<strong>{item.new_value}</strong></div>
+                <div className="flex items-center gap-2">
+                  <strong>{sd.name}</strong>
+                  {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                  <span className="text-gray-400">—</span>
+                  <span>{t(`soldier_profile.${item.field_name}`)}</span>
+                </div>
+                <div className="text-gray-500">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
+                <div className="text-gray-600">{t("approvals.field_update_new_value")}<strong>{item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input
@@ -200,7 +256,8 @@ export default function ApprovalsPage() {
                   <button onClick={() => onFuReject(item)} disabled={!fuNotes[item.id]} className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">{t("approvals.reject")}</button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
