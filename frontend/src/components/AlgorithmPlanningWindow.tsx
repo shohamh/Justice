@@ -45,6 +45,7 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
   const [job, setJob] = useState<AlgorithmJob | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explanationTarget, setExplanationTarget] = useState<{
     jobId: string;
     assignmentId: string;
@@ -97,6 +98,7 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
     setError(null);
     setJob(null);
     setJobId(null);
+    setSelectedIds(new Set());
     if (selectedShiftIds.length === 0) {
       setError("נא לבחור לפחות משמרת אחת");
       return;
@@ -130,6 +132,24 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
         p.assignment_id === proposal.assignment_id ? { ...p, status: "algorithm_rejected" } : p
       ),
     } : prev);
+  }
+
+  function isPending(p: ProposalRow) {
+    return p.status !== "published" && p.status !== "algorithm_rejected";
+  }
+
+  function toggleSelection(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleApproveSelected() {
+    const toApprove = job?.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p)) ?? [];
+    await Promise.all(toApprove.map(p => handleAccept(p)));
+    setSelectedIds(new Set());
   }
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
@@ -263,7 +283,36 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
               {job.proposals.length === 0 ? (
                 <p className="text-gray-500 text-sm">{t("algorithm.no_proposals")}</p>
               ) : (() => {
+                const pendingProposals = job.proposals.filter(isPending);
+                const allPendingSelected =
+                  pendingProposals.length > 0 &&
+                  pendingProposals.every(p => selectedIds.has(p.assignment_id));
+
+                function toggleSelectAll() {
+                  if (allPendingSelected) {
+                    setSelectedIds(new Set());
+                  } else {
+                    setSelectedIds(new Set(pendingProposals.map(p => p.assignment_id)));
+                  }
+                }
+
                 const proposalCols: ColDef<ProposalRow>[] = [
+                  {
+                    id: "select",
+                    header: "",
+                    cell: (p) => {
+                      const pending = isPending(p);
+                      return (
+                        <input
+                          type="checkbox"
+                          checked={pending ? selectedIds.has(p.assignment_id) : p.status === "published"}
+                          disabled={!pending}
+                          onChange={() => pending && toggleSelection(p.assignment_id)}
+                          className="cursor-pointer disabled:cursor-default"
+                        />
+                      );
+                    },
+                  },
                   {
                     id: "date",
                     header: t("algorithm.col_date"),
@@ -341,6 +390,24 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
                   },
                 ];
                 return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 text-sm">
+                      <button
+                        type="button"
+                        onClick={toggleSelectAll}
+                        className="text-blue-600 hover:underline"
+                      >
+                        {allPendingSelected ? "בטל בחירה הכל" : "בחר הכל"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApproveSelected}
+                        disabled={selectedIds.size === 0}
+                        className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40"
+                      >
+                        {`אשר נבחרים (${selectedIds.size})`}
+                      </button>
+                    </div>
                   <DataTable
                     columns={proposalCols}
                     data={job.proposals}
@@ -349,6 +416,7 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
                       p.status === "published" ? "bg-green-50" : p.status === "algorithm_rejected" ? "bg-gray-100 opacity-50" : ""
                     }
                   />
+                  </div>
                 );
               })()}
             </div>
