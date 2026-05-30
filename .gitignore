@@ -24,6 +24,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Logs
+*.log
+vite.log
+
 # Secrets / env
 .env
 .env.local
