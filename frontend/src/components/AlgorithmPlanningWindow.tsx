@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlgorithmJob,
@@ -13,6 +13,7 @@ import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import ExplanationModal from "./ExplanationModal";
+import { DataTable, type ColDef } from "./DataTable";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -80,7 +81,7 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
       } catch {
         clearInterval(pollRef.current!);
       }
-    }, 3000);
+    }, 1000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -137,6 +138,16 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
     `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (${shift.assigned_count}/${shift.required_count})`;
 
   const isRunning = !!jobId && (job === null || job.status === "pending" || job.status === "running");
+
+  const batchRankMap = useMemo(() => {
+    if (!job?.proposals) return new Map<string, number>();
+    const sorted = [...job.proposals]
+      .filter((p) => p.norm_score_before !== null)
+      .sort((a, b) => (a.norm_score_before ?? Infinity) - (b.norm_score_before ?? Infinity));
+    const map = new Map<string, number>();
+    sorted.forEach((p, i) => map.set(p.assignment_id, i + 1));
+    return map;
+  }, [job?.proposals]);
 
   return (
     <div className="border rounded-lg mt-6" dir="rtl">
@@ -251,53 +262,95 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
               <p className="font-medium text-sm mb-2">{t("algorithm.done")}</p>
               {job.proposals.length === 0 ? (
                 <p className="text-gray-500 text-sm">{t("algorithm.no_proposals")}</p>
-              ) : (
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 text-right">
-                      <th className="border px-2 py-1">{t("algorithm.col_date")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_type")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_soldier")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_reserve")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_score_before")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_score_after")}</th>
-                      <th className="border px-2 py-1">{t("algorithm.col_actions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {job.proposals.map(p => {
+              ) : (() => {
+                const proposalCols: ColDef<ProposalRow>[] = [
+                  {
+                    id: "date",
+                    header: t("algorithm.col_date"),
+                    cell: (p) => p.start_date,
+                    sortValue: (p) => p.start_date,
+                  },
+                  {
+                    id: "type",
+                    header: t("algorithm.col_type"),
+                    cell: (p) => typeName(p.duty_type_id),
+                    sortValue: (p) => typeName(p.duty_type_id),
+                    filterValue: (p) => typeName(p.duty_type_id),
+                  },
+                  {
+                    id: "soldier",
+                    header: t("algorithm.col_soldier"),
+                    cell: (p) => soldierName(p.soldier_id),
+                    sortValue: (p) => soldierName(p.soldier_id),
+                    filterValue: (p) => soldierName(p.soldier_id),
+                  },
+                  {
+                    id: "reserve",
+                    header: t("algorithm.col_reserve"),
+                    cell: (p) => p.reserve_soldier_id ? soldierName(p.reserve_soldier_id) : "—",
+                  },
+                  {
+                    id: "score_before",
+                    header: t("algorithm.col_score_before"),
+                    cell: (p) => p.norm_score_before?.toFixed(3) ?? "—",
+                    sortValue: (p) => p.norm_score_before ?? null,
+                  },
+                  {
+                    id: "score_after",
+                    header: t("algorithm.col_score_after"),
+                    cell: (p) => p.norm_score_after?.toFixed(3) ?? "—",
+                    sortValue: (p) => p.norm_score_after ?? null,
+                  },
+                  {
+                    id: "batch_rank",
+                    header: t("algorithm.col_batch_rank"),
+                    cell: (p) => batchRankMap.get(p.assignment_id)?.toString() ?? "—",
+                    sortValue: (p) => batchRankMap.get(p.assignment_id) ?? null,
+                  },
+                  {
+                    id: "slot_rank",
+                    header: t("algorithm.col_slot_rank"),
+                    cell: (p) =>
+                      p.candidate_rank !== null && p.candidate_rank !== undefined && p.candidate_pool_size
+                        ? `${p.candidate_rank} / ${p.candidate_pool_size}`
+                        : "—",
+                    sortValue: (p) => p.candidate_rank ?? null,
+                  },
+                  {
+                    id: "actions",
+                    header: t("algorithm.col_actions"),
+                    cell: (p) => {
                       const isAccepted = p.status === "published";
                       const isRejected = p.status === "algorithm_rejected";
                       return (
-                        <tr
-                          key={p.assignment_id}
-                          className={isAccepted ? "bg-green-50" : isRejected ? "bg-gray-100 opacity-50" : ""}
-                        >
-                          <td className="border px-2 py-1">{p.start_date}</td>
-                          <td className="border px-2 py-1">{typeName(p.duty_type_id)}</td>
-                          <td className="border px-2 py-1">{soldierName(p.soldier_id)}</td>
-                          <td className="border px-2 py-1">{p.reserve_soldier_id ? soldierName(p.reserve_soldier_id) : "—"}</td>
-                          <td className="border px-2 py-1">{p.norm_score_before?.toFixed(3) ?? "—"}</td>
-                          <td className="border px-2 py-1">{p.norm_score_after?.toFixed(3) ?? "—"}</td>
-                          <td className="border px-2 py-1 space-x-1 space-x-reverse">
-                            {!isAccepted && !isRejected && (
-                              <>
-                                <button type="button" onClick={() => handleAccept(p)} className="text-green-700 font-bold hover:underline">{t("algorithm.accept")}</button>{" "}
-                                <button type="button" onClick={() => handleReject(p)} className="text-red-700 hover:underline">{t("algorithm.reject")}</button>{" "}
-                              </>
-                            )}
-                            {jobId && (
-                              <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 hover:underline">
-                                {t("algorithm.why_button")}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
+                        <span className="space-x-1 space-x-reverse">
+                          {!isAccepted && !isRejected && (
+                            <>
+                              <button type="button" onClick={() => handleAccept(p)} className="text-green-700 font-bold hover:underline">{t("algorithm.accept")}</button>{" "}
+                              <button type="button" onClick={() => handleReject(p)} className="text-red-700 hover:underline">{t("algorithm.reject")}</button>{" "}
+                            </>
+                          )}
+                          {jobId && (
+                            <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 hover:underline">
+                              {t("algorithm.why_button")}
+                            </button>
+                          )}
+                        </span>
                       );
-                    })}
-                  </tbody>
-                </table>
-              )}
+                    },
+                  },
+                ];
+                return (
+                  <DataTable
+                    columns={proposalCols}
+                    data={job.proposals}
+                    filterPlaceholder={t("table.filter_placeholder")}
+                    rowClassName={(p) =>
+                      p.status === "published" ? "bg-green-50" : p.status === "algorithm_rejected" ? "bg-gray-100 opacity-50" : ""
+                    }
+                  />
+                );
+              })()}
             </div>
           )}
         </div>
