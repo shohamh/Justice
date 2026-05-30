@@ -12,6 +12,7 @@ from app.db.models import (
     DutyLocation,
     DutyType,
     ExemptionDutyTypeMap,
+    ExemptionRequest,
     ExemptionType,
     HierarchyNode,
     PersonalConstraint,
@@ -28,6 +29,7 @@ def seed(*, force: bool = False):
         hashed = hash_password("1234567890")
 
         if clear:
+            session.query(ExemptionRequest).delete()
             session.query(PersonalConstraint).delete()
             session.query(ScoreAdjustment).delete()
             session.query(SoldierExemption).delete()
@@ -189,6 +191,12 @@ def seed(*, force: bool = False):
         }
         for team in all_teams:
             short = team_names_he[team.name]
+            # Team leader (רשצ)
+            pn = next_pn()
+            s = make_soldier(pn, f"רשצ {short}", "commander", team.id)
+            team_soldiers.append(s)
+            team.commander_id = s.id
+            # Regular soldiers
             for i in range(1, 4):
                 pn = next_pn()
                 s = make_soldier(pn, f"{short} {i}", "soldier", team.id)
@@ -363,6 +371,52 @@ def seed(*, force: bool = False):
                 )
                 session.add(sa)
 
+        # ── Exemption requests (pending, from soldiers) ────────────
+        er_reasons = [
+            ("מבקש פטור משמירות בגלל ניתוח", 0),
+            ("זקוק לפטור רפואי זמני לבדיקות", 1),
+            ("פטור בגלל חתונה במשפחה", 2),
+            ("תקופת מבחנים באוניברסיטה", 3),
+            ("מצב נפשי לא טוב מבקש הקלה", 4),
+            ("צריך ליווי לאבא חולה", 2),
+        ]
+        for i, (reason, et_idx) in enumerate(er_reasons):
+            s = all_soldiers[-(i + 3)]
+            er = ExemptionRequest(
+                soldier_id=s.id,
+                exemption_type_id=exemption_types[et_idx].id,
+                start_date=today + timedelta(days=i * 3),
+                end_date=today + timedelta(days=i * 3 + randint(2, 7)),
+                reason=reason,
+                status="pending",
+            )
+            session.add(er)
+
+        # ── One approved and one rejected request for variety ───────
+        er_approved = ExemptionRequest(
+            soldier_id=all_soldiers[-8].id,
+            exemption_type_id=exemption_types[0].id,
+            start_date=today + timedelta(days=5),
+            end_date=today + timedelta(days=10),
+            reason="פטור לשמירות - אושר",
+            status="approved",
+            decided_by=s_admin.id,
+            decision_note="מאושר לשבוע",
+        )
+        session.add(er_approved)
+
+        er_rejected = ExemptionRequest(
+            soldier_id=all_soldiers[-9].id,
+            exemption_type_id=exemption_types[2].id,
+            start_date=today + timedelta(days=10),
+            end_date=today + timedelta(days=15),
+            reason="פטור משפחתי - נדחה",
+            status="rejected",
+            decided_by=s_admin.id,
+            decision_note="אין מספיק סיבה",
+        )
+        session.add(er_rejected)
+
         session.commit()
         print("Seed complete! Created:")
         print(f"  {len(all_nodes)} hierarchy nodes")
@@ -374,6 +428,7 @@ def seed(*, force: bool = False):
         print(f"  15 personal constraints")
         print(f"  12 soldier exemptions")
         print(f"  5 score adjustments")
+        print(f"  8 exemption requests (6 pending, 1 approved, 1 rejected)")
 
 
 if __name__ == "__main__":
