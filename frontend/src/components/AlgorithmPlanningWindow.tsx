@@ -10,13 +10,12 @@ import {
   submitJob,
 } from "../api/algorithm";
 import { DutyShift, listShifts } from "../api/shifts";
-import { DutyType, DutyLocation } from "../api/dutyConfig";
+import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import ExplanationModal from "./ExplanationModal";
 
 interface Props {
   dutyTypes: DutyType[];
-  locations: DutyLocation[];
   soldiers: SoldierDTO[];
 }
 
@@ -30,7 +29,7 @@ const FILL_COLORS: Record<string, string> = {
   full: "text-green-600",
 };
 
-export default function AlgorithmPlanningWindow({ dutyTypes, locations: _locations, soldiers }: Props) {
+export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
@@ -143,7 +142,13 @@ export default function AlgorithmPlanningWindow({ dutyTypes, locations: _locatio
     <div className="border rounded-lg mt-6" dir="rtl">
       <button
         className="w-full flex justify-between items-center px-4 py-3 font-medium text-right bg-gray-50 rounded-lg hover:bg-gray-100"
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen(o => {
+          if (o) {
+            setSelectedShiftIds([]);
+            setAvailableShifts([]);
+          }
+          return !o;
+        })}
       >
         <span>{t("algorithm.title")}</span>
         <span>{open ? "▲" : "▼"}</span>

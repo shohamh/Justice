@@ -117,7 +117,6 @@ export default function DutyManagementPage() {
       </section>
       <AlgorithmPlanningWindow
         dutyTypes={types}
-        locations={locs}
         soldiers={soldiers}
       />
     </Layout>
