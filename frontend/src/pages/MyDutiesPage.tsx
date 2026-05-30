@@ -53,13 +53,13 @@ export default function MyDutiesPage() {
         end: endDate.toISOString().slice(0, 10),
         backgroundColor: color,
         borderColor: color,
-        extendedProps: { duty: r },
       };
     }),
   [rows, types]);
 
   function handleEventClick(arg: EventClickArg) {
-    setSelectedDuty(arg.event.extendedProps.duty as EffectiveDuty);
+    const duty = rows.find((r) => r.assignment_id === arg.event.id);
+    if (duty) setSelectedDuty(duty);
   }
 
   return (
