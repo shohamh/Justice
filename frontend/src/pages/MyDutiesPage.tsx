@@ -4,6 +4,7 @@ import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 
 import Layout from "../components/Layout";
+import ExplanationModal from "../components/ExplanationModal";
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -15,6 +16,7 @@ export default function MyDutiesPage() {
   const [types, setTypes] = useState<Record<string, string>>({});
   const [locs, setLocs] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [whyTarget, setWhyTarget] = useState<{ assignmentId: string } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -119,12 +121,27 @@ export default function MyDutiesPage() {
                   <td className="p-1">{locs[a.duty_location_id] ?? a.duty_location_id}</td>
                   <td className="p-1">{a.start_date}</td>
                   <td className="p-1">{a.end_date}</td>
+                  <td className="p-1">
+                    <button
+                      type="button"
+                      onClick={() => setWhyTarget({ assignmentId: a.assignment_id })}
+                      className="text-xs text-blue-600 underline ms-2"
+                    >
+                      {t("algorithm.why_button")}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </section>
+      {whyTarget && (
+        <ExplanationModal
+          assignmentId={whyTarget.assignmentId}
+          onClose={() => setWhyTarget(null)}
+        />
+      )}
     </Layout>
   );
 }
