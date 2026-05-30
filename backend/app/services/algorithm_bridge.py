@@ -15,6 +15,7 @@ from app.algorithm.types import (
     DutyBlock,
     ExistingAssignment,
     ExplanationData,
+    ReserveEntry,
     SoldierInput,
     SolverResult,
     SolverSettings,
@@ -251,7 +252,7 @@ def persist_results(
     job: AlgorithmJob,
     result: SolverResult,
     explanation_data: ExplanationData,
-    reserves: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
+    reserves: list[ReserveEntry],
     duty_blocks: list,
     soldier_names: dict[uuid.UUID, str],
     actor_id: uuid.UUID | None,
@@ -260,7 +261,7 @@ def persist_results(
     duty_map = {d.id: d for d in duty_blocks}
     explanation_map = {e.duty_id: e for e in explanation_data.per_assignment}
     reserve_map: dict[uuid.UUID, uuid.UUID] = {
-        duty_id: reserve_id for duty_id, _primary, reserve_id in reserves
+        e.duty_id: e.reserve_soldier_id for e in reserves
     }
 
     for a in result.assignments:
