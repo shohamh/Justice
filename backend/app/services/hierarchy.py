@@ -78,8 +78,8 @@ def move_node(
         raise HierarchyError("node not found")
 
     if new_parent_id is None:
-        if node.level != "department":
-            raise HierarchyError("only departments can be roots")
+        if node.level != LEVEL_ORDER[0]:
+            raise HierarchyError(f"only {LEVEL_ORDER[0]} nodes can be roots")
         new_base: list[uuid.UUID] = []
     else:
         if new_parent_id == node_id:
@@ -154,8 +154,11 @@ def set_commander(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HierarchyError("node not found")
-    if commander_id is not None and session.get(Soldier, commander_id) is None:
-        raise HierarchyError("commander not found")
+    if commander_id is not None:
+        soldier = session.get(Soldier, commander_id)
+        if soldier is None:
+            raise HierarchyError("commander not found")
+        soldier.hierarchy_node_id = node_id
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
     write_audit(
