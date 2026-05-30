@@ -158,6 +158,11 @@ def set_commander(
         soldier = session.get(Soldier, commander_id)
         if soldier is None:
             raise HierarchyError("commander not found")
+        # Clear this soldier as commander from any other node
+        session.query(HierarchyNode).filter(
+            HierarchyNode.commander_id == soldier.id,
+            HierarchyNode.id != node_id,
+        ).update({"commander_id": None})
         soldier.hierarchy_node_id = node_id
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
