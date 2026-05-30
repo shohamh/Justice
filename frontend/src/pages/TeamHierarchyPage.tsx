@@ -66,7 +66,7 @@ export default function TeamHierarchyPage() {
             </button>
           )}
         </div>
-        <HierarchyTree nodes={nodes} isAdmin={isAdmin} onChanged={refresh} />
+        <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} />
 
         <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
           <label className="block">
