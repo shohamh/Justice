@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.db.models import DutyAssignment, DutyShift
 
+_UNSET = object()
+
 
 class ShiftError(Exception):
     """Raised on invalid shift operations."""
@@ -111,7 +113,7 @@ def update_shift(
     start_date: date | None = None,
     end_date: date | None = None,
     required_count: int | None = None,
-    notes: str | None = None,
+    notes: object = _UNSET,  # use sentinel to allow explicit null (clearing notes)
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
     before: dict = {
@@ -128,8 +130,8 @@ def update_shift(
         if required_count < 1:
             raise ShiftError("invalid_required_count")
         shift.required_count = required_count
-    if notes is not None:
-        shift.notes = notes
+    if notes is not _UNSET:
+        shift.notes = notes  # type: ignore[assignment]  # None means clear
     if shift.end_date < shift.start_date:
         raise ShiftError("end_before_start")
     write_audit(
@@ -190,7 +192,36 @@ def list_shifts(
         q = q.where(DutyShift.duty_type_id == duty_type_id)
     q = q.order_by(DutyShift.start_date)
     shifts = session.execute(q).scalars().all()
-    return [_to_with_fill(session, s) for s in shifts]
+    if not shifts:
+        return []
+
+    shift_ids = [s.id for s in shifts]
+    count_rows = session.execute(
+        select(DutyAssignment.duty_shift_id, func.count(DutyAssignment.id).label("cnt"))
+        .where(
+            DutyAssignment.duty_shift_id.in_(shift_ids),
+            DutyAssignment.status.in_(["published", "algorithm_draft"]),
+        )
+        .group_by(DutyAssignment.duty_shift_id)
+    ).all()
+    count_map: dict[uuid.UUID, int] = {row.duty_shift_id: row.cnt for row in count_rows}
+
+    result = []
+    for shift in shifts:
+        assigned = count_map.get(shift.id, 0)
+        result.append(ShiftWithFill(
+            id=shift.id,
+            duty_type_id=shift.duty_type_id,
+            duty_location_id=shift.duty_location_id,
+            start_date=shift.start_date,
+            end_date=shift.end_date,
+            required_count=shift.required_count,
+            notes=shift.notes,
+            created_by=shift.created_by,
+            assigned_count=assigned,
+            fill_status=_fill_status(assigned, shift.required_count),
+        ))
+    return result
 
 
 def get_shift_fill(session: Session, *, shift_id: uuid.UUID) -> ShiftWithFill | None:

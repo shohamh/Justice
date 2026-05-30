@@ -125,6 +125,9 @@ def update_shift(
 ) -> ShiftOut:
     shift = _load(session, shift_id)
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    extra: dict = {}
+    if "notes" in body.model_fields_set:
+        extra["notes"] = body.notes
     try:
         svc.update_shift(
             session,
@@ -132,8 +135,8 @@ def update_shift(
             start_date=body.start_date,
             end_date=body.end_date,
             required_count=body.required_count,
-            notes=body.notes,
             actor_id=user.id,
+            **extra,
         )
     except svc.ShiftError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
