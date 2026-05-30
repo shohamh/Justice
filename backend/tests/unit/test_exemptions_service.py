@@ -106,6 +106,27 @@ def test_revoke_future_hard_deletes(admin_session):
     assert admin_session.get(SoldierExemption, ex_id) is None
 
 
+def test_revoke_already_expired_is_noop(admin_session):
+    s = create_soldier(admin_session, personal_number="7300008")
+    et = _et(admin_session, "פטור-8")
+    past_end = date.today() - timedelta(days=7)
+    ex = grant_exemption(
+        admin_session,
+        soldier_id=s.id,
+        exemption_type_id=et.id,
+        start_date=date.today() - timedelta(days=30),
+        end_date=past_end,
+        reason=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    revoke_exemption(admin_session, exemption_id=ex.id, actor_id=None)
+    admin_session.commit()
+    refreshed = admin_session.get(SoldierExemption, ex.id)
+    assert refreshed is not None
+    assert refreshed.end_date == past_end  # unchanged, not pushed forward to today
+
+
 def test_active_exemptions_window(admin_session):
     s = create_soldier(admin_session, personal_number="7300006")
     et = _et(admin_session, "פטור-6")

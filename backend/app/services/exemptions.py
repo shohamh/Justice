@@ -66,6 +66,10 @@ def revoke_exemption(
     if ex is None:
         raise ExemptionError("exemption_not_found")
     today = date.today()
+    if ex.end_date is not None and ex.end_date < today:
+        # Already expired: revoking would otherwise push end_date forward to
+        # today, re-opening a closed exemption. Treat as a no-op.
+        return
     if ex.start_date <= today:
         before = {"end_date": ex.end_date.isoformat() if ex.end_date else None}
         ex.end_date = today
