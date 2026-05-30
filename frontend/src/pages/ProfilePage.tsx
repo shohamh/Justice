@@ -1,13 +1,45 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import { useAuth } from "../auth/AuthContext";
+import {
+  SoldierDTO,
+  FieldUpdateDTO,
+  submitFieldUpdate,
+  listFieldUpdates,
+  listSoldiers,
+} from "../api/soldiers";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [soldier, setSoldier] = useState<SoldierDTO | null>(null);
+  const [fieldUpdates, setFieldUpdates] = useState<FieldUpdateDTO[]>([]);
+  const [mitvahimReq, setMitvahimReq] = useState("");
+  const [alalReq, setAlalReq] = useState("");
+
+  useEffect(() => {
+    if (user) {
+      void (async () => {
+        const soldiers = await listSoldiers();
+        const found = soldiers.find(s => s.id === user.id);
+        if (found) setSoldier(found);
+        const updates = await listFieldUpdates(user.id);
+        setFieldUpdates(updates);
+      })();
+    }
+  }, [user]);
+
+  async function requestUpdate(field: string, value: string) {
+    if (!soldier || !value) return;
+    await submitFieldUpdate(soldier.id, field, value);
+    const updated = await listFieldUpdates(soldier.id);
+    setFieldUpdates(updated);
+  }
+
   return (
     <Layout>
       <section className="bg-white rounded-lg shadow p-6 space-y-3">
@@ -18,9 +50,60 @@ export default function ProfilePage() {
         <Link to="/change-password" className="text-indigo-600 hover:text-indigo-800" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
-        {user?.id && (
+        {soldier?.id && (
           <div className="pt-4 border-t">
-            <ExemptionsPanel soldierId={user.id} canManage={false} />
+            <ExemptionsPanel soldierId={soldier.id} canManage={false} />
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-4" dir="rtl">
+        <h3 className="text-lg font-semibold">{t("soldier_profile.section_title")}</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          {soldier?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {soldier.rank}</div>}
+          {soldier?.is_officer !== null && soldier?.is_officer !== undefined && (
+            <div>
+              <span className="font-medium">{t("soldier_profile.is_officer")}:</span>{" "}
+              {soldier.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}
+            </div>
+          )}
+          {soldier?.last_mitvahim_date && (
+            <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {soldier.last_mitvahim_date}</div>
+          )}
+          {soldier?.last_alal_date && (
+            <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {soldier.last_alal_date}</div>
+          )}
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <p className="font-medium">{t("soldier_profile.submit_update")}</p>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
+            <input type="date" value={mitvahimReq} onChange={e => setMitvahimReq(e.target.value)} className="border rounded p-1 text-sm" />
+            <button
+              type="button"
+              onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
+            <input type="date" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm" />
+            <button
+              type="button"
+              onClick={() => requestUpdate("last_alal_date", alalReq)}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+        </div>
+
+        {fieldUpdates.filter(u => u.status === "pending").length > 0 && (
+          <div className="text-xs text-amber-600">
+            {fieldUpdates.filter(u => u.status === "pending").length} {t("soldier_profile.update_pending")}
           </div>
         )}
       </section>
