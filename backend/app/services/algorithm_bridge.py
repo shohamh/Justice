@@ -410,6 +410,13 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 actor_id=actor_id,
             )
 
+            # Check if job was cancelled while the solver was running
+            session.refresh(job)
+            if job.status == "failed":
+                # Cancelled externally — don't overwrite the cancellation
+                session.rollback()
+                return
+
             job.status = "done"
             job.finished_at = datetime.now(tz=timezone.utc)
             session.commit()
