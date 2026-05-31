@@ -340,6 +340,46 @@ class ShiftTemplate(Base):
     )
 
 
+class SwapRequest(Base):
+    __tablename__ = "swap_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    # The assignment + specific day being handed off.
+    duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    duty_date: Mapped[date] = mapped_column(Date)
+    requesting_soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    # NULL = open board posting; set = direct request to a specific peer.
+    target_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    # Soldier who agreed to cover (set when an offer is accepted/claimed).
+    covering_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    # open → claimed (peer agreed) → pending_approval → applied | rejected | cancelled
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Two-sided approval flags (NULL = not yet decided / not required).
+    requester_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    covering_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    resulting_override_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_day_overrides.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class PersonalConstraint(Base):
     __tablename__ = "personal_constraints"
 
