@@ -23,8 +23,14 @@ import {
   SoldierDTO,
 } from "../api/soldiers";
 import { fetchTree, NodeDTO } from "../api/hierarchy";
+import {
+  SwapRequest,
+  approveSwapSide,
+  listPendingSwaps,
+  rejectSwap,
+} from "../api/swaps";
 
-type Tab = "constraints" | "exemptions" | "field_updates";
+type Tab = "constraints" | "exemptions" | "field_updates" | "swaps";
 
 function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
   const map = new Map<string, NodeDTO>();
@@ -46,8 +52,10 @@ export default function ApprovalsPage() {
   const [items, setItems] = useState<PersonalConstraint[]>([]);
   const [erItems, setErItems] = useState<ExemptionRequest[]>([]);
   const [fuItems, setFuItems] = useState<FieldUpdateDTO[]>([]);
+  const [swapItems, setSwapItems] = useState<SwapRequest[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
+  const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
   const [soldierMap, setSoldierMap] = useState<Map<string, SoldierDTO>>(new Map());
   const [nodeMap, setNodeMap] = useState<Map<string, NodeDTO>>(new Map());
 
@@ -63,6 +71,7 @@ export default function ApprovalsPage() {
     setItems(await listPendingApprovals());
     setErItems(await listPendingExemptionRequests());
     setFuItems(await listPendingFieldUpdates());
+    setSwapItems(await listPendingSwaps());
   }, []);
 
   useEffect(() => {
@@ -117,7 +126,19 @@ export default function ApprovalsPage() {
     };
   }
 
-  const total = items.length + erItems.length + fuItems.length;
+  async function onSwapApproveSide(id: string, side: "requester" | "covering") {
+    await approveSwapSide(id, side);
+    await refresh();
+  }
+  async function onSwapReject(id: string) {
+    await rejectSwap(id, swapRejectNotes[id]);
+    const next = { ...swapRejectNotes };
+    delete next[id];
+    setSwapRejectNotes(next);
+    await refresh();
+  }
+
+  const total = items.length + erItems.length + fuItems.length + swapItems.length;
 
   return (
     <Layout>
@@ -145,6 +166,13 @@ export default function ApprovalsPage() {
             data-testid="approvals-tab-field-updates"
           >
             {t("soldier_profile.field_updates_tab")}{fuItems.length > 0 ? ` (${fuItems.length})` : ""}
+          </button>
+          <button
+            className={`pb-2 text-sm ${tab === "swaps" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
+            onClick={() => setTab("swaps")}
+            data-testid="approvals-tab-swaps"
+          >
+            {t("swaps.title")}{swapItems.length > 0 ? ` (${swapItems.length})` : ""}
           </button>
         </div>
 
@@ -256,6 +284,60 @@ export default function ApprovalsPage() {
                   <button onClick={() => onFuReject(item)} disabled={!fuNotes[item.id]} className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">{t("approvals.reject")}</button>
                 </div>
               </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab === "swaps" && (
+          <div className="space-y-3" dir="rtl">
+            {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
+            {swapItems.map(swap => {
+              const requesterSd = soldierDisplay(swap.requesting_soldier_id);
+              const coveringSd = swap.covering_soldier_id ? soldierDisplay(swap.covering_soldier_id) : null;
+              return (
+                <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2">
+                    <strong>{t("swaps.requester")}:</strong>
+                    <span>{requesterSd.name}</span>
+                    {requesterSd.node && <span className="text-xs text-gray-400">{requesterSd.node}</span>}
+                  </div>
+                  {coveringSd && (
+                    <div className="flex items-center gap-2">
+                      <strong>{t("swaps.covering")}:</strong>
+                      <span>{coveringSd.name}</span>
+                    </div>
+                  )}
+                  <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <button
+                      onClick={() => onSwapApproveSide(swap.id, "requester")}
+                      disabled={!!swap.requester_side_approved}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
+                    >
+                      {swap.requester_side_approved ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.requester")})
+                    </button>
+                    <button
+                      onClick={() => onSwapApproveSide(swap.id, "covering")}
+                      disabled={!!swap.covering_side_approved}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
+                    >
+                      {swap.covering_side_approved ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.covering")})
+                    </button>
+                    <input
+                      placeholder={t("approvals.decision_note")}
+                      value={swapRejectNotes[swap.id] ?? ""}
+                      onChange={e => setSwapRejectNotes(prev => ({ ...prev, [swap.id]: e.target.value }))}
+                      className="border rounded p-1 text-xs w-28"
+                    />
+                    <button
+                      onClick={() => onSwapReject(swap.id)}
+                      className="bg-red-600 text-white px-2 py-1 rounded text-xs"
+                    >
+                      {t("approvals.reject")}
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>

@@ -14,6 +14,8 @@ import MyRequestsPage from "./pages/MyRequestsPage";
 import ProfilePage from "./pages/ProfilePage";
 import TeamHierarchyPage from "./pages/TeamHierarchyPage";
 import ShiftsPage from "./pages/ShiftsPage";
+import ShiftTemplatesPage from "./pages/ShiftTemplatesPage";
+import SwapsPage from "./pages/SwapsPage";
 import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
 
@@ -40,6 +42,8 @@ export default function App() {
           <Route path="/approvals" element={<ForcedPasswordGate><ApprovalsPage /></ForcedPasswordGate>} />
           <Route path="/unit-calendar" element={<ForcedPasswordGate><UnitCalendarPage /></ForcedPasswordGate>} />
           <Route path="/shifts" element={<ForcedPasswordGate><ShiftsPage /></ForcedPasswordGate>} />
+          <Route path="/shift-templates" element={<ForcedPasswordGate><ShiftTemplatesPage /></ForcedPasswordGate>} />
+          <Route path="/swaps" element={<ForcedPasswordGate><SwapsPage /></ForcedPasswordGate>} />
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
