@@ -7,14 +7,15 @@ Built for a pilot of ~100 soldiers in a single branch.
 The UI is **Hebrew-only and right-to-left**; all backend code, identifiers, and
 API payloads are in English.
 
-> **Status (current):** The v1 foundation is in place — auth, full data model,
-> hierarchy + soldier management, duty types/locations/exemptions, personal
-> constraints with an approval flow, manual duty assignment with per-day
-> overrides, cumulative + normalised scoring, and a full audit trail. The CP-SAT
-> fairness algorithm exists as a tested, pure library under
-> [`backend/app/algorithm/`](backend/app/algorithm/) but is **not yet wired to an
-> API endpoint** — all duty assignment today is manual. See
-> [Roadmap](#roadmap).
+> **Status (current):** v2 is in place. Auth, full data model, hierarchy +
+> soldier management, duty types/locations/exemptions/eligibility, personal
+> constraints + exemption request approval flows, manual duty assignment with
+> per-day overrides, cumulative + normalised scoring, full audit trail. The
+> CP-SAT fairness algorithm is **wired to the API** — a duty manager can run it
+> against a set of duty shifts, review the proposals, and publish them.
+> Recurring shift templates auto-generate empty `duty_shifts` from a weekly
+> pattern. Soldiers can post duty swap/cover requests (direct or open board) with
+> configurable two-sided manager approval. See [Roadmap](#roadmap).
 
 ---
 
@@ -33,9 +34,19 @@ API payloads are in English.
 ## What it does
 
 - **Tracks** soldiers, a four-level hierarchy (team → group → branch → department),
-  duty types, duty locations, exemptions, and personal constraints.
+  duty types + eligibility rules, duty locations, exemptions, and personal constraints.
 - **Assigns** duties as contiguous blocks `(soldier, duty_type, location, start_date,
   end_date)` with a per-day override layer for replacements and cancellations.
+- **Optimises** assignments automatically: the CP-SAT fairness solver is wired to
+  an API endpoint — the DM selects a set of duty shifts, runs the algorithm, reviews
+  proposals, and publishes them. Assignments are explained ("?למה קיבלתי").
+- **Templates** recurring shifts: a DM defines a weekly shift pattern (duty type,
+  location, days, required headcount), previews the generated slots, and confirms —
+  the algorithm then fills them on each planning run.
+- **Swaps**: soldiers post a duty-day they need covered (direct request to a peer, or
+  an open board); peers claim it; the effective assignee changes via the override
+  layer so scoring follows automatically. A configurable two-sided approval gate is
+  enforced when enabled.
 - **Keeps effort fair** via a per-soldier *normalised score* (cumulative duty score
   divided by active days), shown on a transparent, peer-comparable scoreboard
   (**שקיפות**).
@@ -200,23 +211,32 @@ callofduty2/
 
 ## Roadmap
 
-- **v1 — Foundation** *(current)*: data model, auth, manual workflows, scoring,
-  audit. Done apart from packaged production deployment.
-- **v1.5 — Algorithm**: wire the existing CP-SAT solver to a "run planning"
-  endpoint and DM review UI; store and surface assignment explanations
-  ("?למה קיבלתי"); hierarchy-distance reserve-soldier selection.
-- **v2 — Social layer**: peer replacement marketplace, greedy online assignment
-  for ad-hoc duties, punishment duties for no-shows.
+- **v1 — Foundation** ✅: data model, auth, manual workflows, scoring, audit.
+- **v1.5 — Algorithm** ✅: CP-SAT solver wired to the API; DM review UI;
+  assignment explanations ("?למה קיבלתי"); hierarchy-distance reserve-soldier
+  selection; first-class `duty_shifts` entity; soldier eligibility requirements on
+  duty types.
+- **v2 — Recurring templates + swaps** ✅: weekly shift templates with
+  DM-triggered idempotent generation; duty swap/cover system (direct request + open
+  board) with configurable two-sided manager approval.
+- **Next**: production deployment artefacts (Caddy, TLS, prod compose);
+  notifications (SMS/push) for swap offers and approval decisions; greedy online
+  assignment for ad-hoc single duties; no-show / punishment-duty mechanic;
+  longitudinal fairness dashboard.
 
 See [§9 of the design doc](docs/superpowers/specs/2026-05-27-army-duty-management-design.md)
-for full phasing.
+for the original phasing (note: v2 scope was re-scoped — see
+[the v2 brainstorm spec](docs/superpowers/specs/2026-05-30-v2-rescope-brainstorm.md)).
 
 ## Known gaps vs. the design doc
 
 The design doc describes the full target system. Today's deviations worth knowing:
 
-- The fairness algorithm is **library-only** (not exposed via the API yet).
 - `docker-compose.yml` provisions **only Postgres**; the app and frontend run on
   the host in dev. There is no Caddy/TLS or production compose file checked in yet.
 - FastAPI's `/api/docs` and `/api/openapi.json` are currently **disabled**
   (`docs_url=None`) rather than gated behind admin.
+- The **open swap board** ranks offers by duty date only; full hierarchy-distance +
+  match-quality ranking is a planned improvement.
+- The **swap create UI** asks for an assignment ID directly — a duty-day picker
+  showing upcoming published assignments is planned.

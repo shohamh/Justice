@@ -83,10 +83,6 @@ Invoke the relevant skill rather than improvising these.
 
 ## Known deviations & open items
 
-- **Fairness algorithm is library-only** — present and tested under
-  `algorithm/`, but **not wired to any API route**. All assignment is manual
-  today. Wiring it (a "run planning" endpoint + DM review UI + stored
-  explanations) is the v1.5 work.
 - **No production deployment artefacts** — `docker-compose.yml` runs only
   Postgres; there is no Caddy/TLS or prod compose file yet. The design doc
   describes the target.
@@ -97,6 +93,19 @@ Invoke the relevant skill rather than improvising these.
   (`services/exemptions.py`). The fix is **blocked on a product decision**
   (reject vs. no-op) — don't fix it unilaterally. Details:
   [`docs/superpowers/specs/2026-05-29-slice-3-duty-config-and-exemptions-design.md`](../superpowers/specs/2026-05-29-slice-3-duty-config-and-exemptions-design.md).
+- **Swap board ranking** — open swap postings are ordered by duty date only;
+  full hierarchy-distance + match-quality ranking (described in the v2 spec) is
+  not yet implemented.
+- **Swap create UI** — the "create swap" modal asks for a raw assignment UUID;
+  a duty-day picker showing the soldier's upcoming published assignments is
+  a planned improvement.
+- **`updated_at` is not auto-updating** — `SwapRequest` and `ShiftTemplate`
+  (and other models) have `updated_at` with `server_default=now()` but no
+  `ON UPDATE` trigger. Status-change operations do not bump the column.
+- **One pre-existing failing test** —
+  `tests/unit/test_authz.py::test_duty_manager_can_manage_assignments_and_scores_in_scope`
+  fails on master (pre-dates v2; not introduced by it). Investigate before
+  adding further RBAC tests against that area.
 
 ## Persistent memory
 

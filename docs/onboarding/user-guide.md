@@ -41,12 +41,14 @@ management items are added for commanders, duty managers, and admins.
 | ראשי | Home | ✓ | ✓ | ✓ | ✓ |
 | היומן שלי | My calendar | ✓ | ✓ | ✓ | ✓ |
 | הבקשות שלי | My requests | ✓ | ✓ | ✓ | ✓ |
+| החלפות | Swaps | ✓ | ✓ | ✓ | ✓ |
 | שקיפות | Transparency | ✓ | ✓ | ✓ | ✓ |
 | אנשי צוות והיררכיה | Team & hierarchy | — | ✓ | ✓ | ✓ |
 | היומן של היחידה | Unit calendar | — | ✓ | ✓ | ✓ |
 | אישור בקשות | Approvals | — | ✓ | ✓ | ✓ |
 | הגדרות תורנויות | Duty config | — | — | ✓ | ✓ |
 | ניהול תורנויות | Duty management | — | — | ✓ | ✓ |
+| תבניות משמרת | Shift templates | — | — | ✓ | ✓ |
 | פרופיל | Profile | ✓ | ✓ | ✓ | ✓ |
 
 **Scope matters.** Commanders and duty managers only see and act on soldiers
@@ -90,6 +92,18 @@ active days, **cumulative score** (ניקוד מצטבר) and **normalised score
 and any score adjustments); other rows are not expandable. This is how everyone
 can see that effort is distributed fairly. See
 [Core concepts → Scoring](#scoring-cumulative-vs-normalised).
+
+### החלפות — Swaps
+
+Two sections:
+
+- **הבקשות שלי** (My requests): see your own open/pending swap postings. Cancel a
+  posting any time while it's still open or awaiting approval. Use **צור בקשה**
+  to post a duty-day you need covered, optionally targeting a specific peer.
+- **לוח מחליפים** (Swap board): see open postings from other soldiers (ones you
+  are permitted to claim). Click **אני מכסה** to offer to cover a posting. If
+  manager approval is required, the request queues for both soldiers' managers; if
+  not, it applies immediately and the scoreboard credits you.
 
 ### פרופיל — Profile
 View your info and change your password.
@@ -150,9 +164,27 @@ The command centre for duties:
 - **Score adjustment** (תיקון ניקוד): apply a manual `delta` (positive or
   negative) to a soldier's score with a **required reason** — e.g. to compensate
   for an off-system duty or correct an error.
+- **Run the algorithm** (הרץ אלגוריתם): select a set of duty shifts, click "הרץ
+  אלגוריתם", and the CP-SAT solver assigns eligible soldiers fairly. Review the
+  proposed assignments — each can be inspected for the solver's reasoning — then
+  publish or discard them. Infeasibility is surfaced with a human-readable
+  explanation.
 
-> The CP-SAT fairness algorithm ("הרץ אלגוריתם") is planned for v1.5 and is **not
-> yet available in the UI** — all assignment is currently manual.
+### אישור בקשות — Approvals (duty manager view)
+
+In addition to personal-constraint and exemption-request tabs, a **החלפות** tab
+shows swap requests that are waiting for managerial approval. Approve each side
+(requesting soldier and covering soldier) independently; the swap applies
+automatically once both sides are confirmed.
+
+### תבניות משמרת — Shift templates
+
+Create reusable weekly shift templates: set the duty type, location, days of the
+week, time window, and default headcount. Then pick a date range, preview the
+shifts that would be generated (with "חדש"/"קיים" indicators for slots already on
+the calendar), and confirm. Generated shifts start empty — the algorithm fills them
+on the next planning run. Templates can be set to **auto_roll** for automatic
+horizon generation.
 
 ### הגדרות תורנויות — Duty config
 Configure the building blocks:
