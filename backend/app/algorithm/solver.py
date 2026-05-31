@@ -20,9 +20,10 @@ def solve(
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics."""
-    return _infeasibility_relaxation_chain(soldiers, duties, existing, settings)
+    return _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist)
 
 
 def _solve_with_settings(
@@ -30,8 +31,9 @@ def _solve_with_settings(
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = None,
 ) -> tuple[CpSolver, dict[tuple[int, int], IntVar], int]:
-    model, x = build_model(soldiers, duties, existing, settings)
+    model, x = build_model(soldiers, duties, existing, settings, reserve_dist)
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
     if settings.seed is not None:
@@ -46,17 +48,19 @@ def _infeasibility_relaxation_chain(
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = None,
 ) -> SolverResult:
     current = SolverSettings(
         K=settings.K, T=settings.T, W=settings.W,
         alpha=settings.alpha, beta=settings.beta,
         time_limit_seconds=settings.time_limit_seconds,
         seed=settings.seed,
+        reserve_hierarchy_weight=settings.reserve_hierarchy_weight,
     )
     relaxed: list[str] = []
 
     for attempt in range(5):
-        solver, x, status = _solve_with_settings(soldiers, duties, existing, current)
+        solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist)
         status_name = solver.StatusName(status)
 
         if status_name == "INFEASIBLE":

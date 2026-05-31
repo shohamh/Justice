@@ -261,3 +261,57 @@ def _any_eligible(soldiers: list[SoldierInput], duties: list[DutyBlock]) -> bool
             if d.duty_type_id not in s.exempted_duty_type_ids:
                 return True
     return False
+
+
+def test_reserve_blocks_prefer_closer_soldier() -> None:
+    """With two soldiers in different hierarchy nodes, the reserve block should
+    be assigned to the soldier closer to the primary candidate nodes.
+
+    Hierarchy: node_a -> root (3 nodes in ancestors: node_a, root + itself)
+               node_b -> node_b only (no parent registered, so ancestors = {node_b})
+    Only s_close has a known hierarchy node for primary-node computation,
+    so s_far (no soldier_node entry) gets distance=10 (unknown), s_close dist=0.
+    The high gamma (5.0) ensures s_close wins the reserve assignment.
+    """
+    root = uuid4(); node_a = uuid4()
+    dt = uuid4(); loc = uuid4()
+    s_close = uuid4(); s_far = uuid4()
+
+    soldiers = [
+        SoldierInput(id=s_close, enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=node_a),
+        SoldierInput(id=s_far, enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=None),
+    ]
+    shift_id = uuid4()
+    primary_block = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                               start_date=date(2026,6,1), end_date=date(2026,6,1),
+                               score_per_day=Decimal("1"), is_reserve=False)
+    reserve_block = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                               start_date=date(2026,6,2), end_date=date(2026,6,2),
+                               score_per_day=Decimal("0.2"), is_reserve=True)
+    block_to_shift = {primary_block.id: shift_id, reserve_block.id: shift_id}
+
+    hierarchy_parent: dict[UUID, UUID | None] = {node_a: root, root: None}
+    # Only s_close has a known node; s_far will get distance=10 (unknown)
+    soldier_node: dict[UUID, UUID] = {s_close: node_a}
+
+    from app.algorithm.reserve import compute_reserve_dist
+    reserve_dist = compute_reserve_dist(
+        soldiers=soldiers,
+        duties=[primary_block, reserve_block],
+        block_to_shift=block_to_shift,
+        hierarchy_parent=hierarchy_parent,
+        soldier_node=soldier_node,
+    )
+    # s_close -> dist 0 (node_a is a primary node), s_far -> dist 10 (no node)
+    assert reserve_dist[(1, 0)] == 0   # reserve_block(idx=1), s_close(idx=0)
+    assert reserve_dist[(1, 1)] == 10  # reserve_block(idx=1), s_far(idx=1)
+
+    settings = SolverSettings(time_limit_seconds=10, reserve_hierarchy_weight=Decimal("5.0"))
+    result = solve(soldiers=soldiers, duties=[primary_block, reserve_block],
+                   existing=[], settings=settings, reserve_dist=reserve_dist)
+
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    reserve_assignment = next(a for a in result.assignments if a.duty_id == reserve_block.id)
+    assert reserve_assignment.soldier_id == s_close

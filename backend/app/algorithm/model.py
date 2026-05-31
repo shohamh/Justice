@@ -44,6 +44,7 @@ def build_model(
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = None,
 ) -> tuple[CpModel, dict[tuple[int, int], IntVar]]:
     model = CpModel()
     duty_list = list(duties)
@@ -179,6 +180,18 @@ def build_model(
 
             ws += timedelta(days=1)
 
-    objective = -(sum(density_terms) if density_terms else 0)
+    # Soft objective: hierarchy proximity for reserve blocks
+    reserve_dist_terms: list = []
+    if reserve_dist is not None:
+        gamma_int = int(settings.reserve_hierarchy_weight * 1000)
+        for (di, si), var in x.items():
+            if duty_list[di].is_reserve:
+                dist = reserve_dist.get((di, si), 10)
+                reserve_dist_terms.append(gamma_int * dist * var)
+
+    objective = (
+        -(sum(density_terms) if density_terms else 0)
+        - (sum(reserve_dist_terms) if reserve_dist_terms else 0)
+    )
     model.Maximize(objective)
     return model, x
