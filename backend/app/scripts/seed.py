@@ -284,18 +284,16 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         # ── Duty types ──────────────────────────────────────────────
         # (name, score_per_day, description, requirements)
         dt_defs = [
-            ("שמירות", Decimal("1.00"), "שמירה בבסיס", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("ליווים", Decimal("1.50"), "ליווי אסירים/משאיות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("עבודות רס\"ר", Decimal("0.75"), "עבודות רס\"ר שונות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("אבט\"ש", Decimal("2.00"), "אבטחה שוטפת", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("הגנ\"ש", Decimal("0.50"), "הגנה\"ש", {"enlisted_allowed": False}),
-            ("מטבח", Decimal("0.50"), "תורנות מטבח", {}),
-            ("מרפאה", Decimal("0.75"), "תורנות מרפאה", {}),
-            ("חמ\"ל", Decimal("1.25"), "עבודה בחמ\"ל", {}),
-            ("מנהלה", Decimal("0.50"), "עבודות מנהלה", {}),
-            ("קצין תורן", Decimal("1.50"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("מפקד תורן", Decimal("1.75"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}),
-            ("קצין מלווה אבט\"ש", Decimal("1.50"), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("שמירות", Decimal("1.125"), "שמירה בבסיס", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("ליווים", Decimal("1.00"), "ליווי אסירים/משאיות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("עבודות רס\"ר", Decimal("1.00"), "עבודות רס\"ר שונות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("אבט\"ש", Decimal(9) / Decimal(7), "אבטחה שוטפת", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("הגנ\"ש", Decimal(9) / Decimal(7), "הגנה\"ש", {"enlisted_allowed": False}),
+            ("קצין תורן", Decimal("1.125"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("מפקד תורן", Decimal("1.125"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}),
+            ("קצין מלווה אבט\"ש", Decimal(9) / Decimal(7), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("אבות בית", Decimal("1.00"), "אבות בית", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("עבודות רס\"ר בינוי", Decimal("1.00"), "עבודות רס\"ר בנושא בינוי", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
         ]
         duty_types = []
         for name, spd, desc, reqs in dt_defs:
@@ -335,12 +333,13 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             exemption_types.append(et)
 
         # ── Exemption → Duty mappings ──────────────────────────────
+        # Indices: 0=שמירות,1=ליווים,2=עבודות רס"ר,3=אבט"ש,4=הגנ"ש,5=קצין תורן,6=מפקד תורן,7=קצין מלווה אבט"ש,8=אבות בית,9=עבודות רס"ר בינוי
         mappings = [
             (0, [0, 1, 2]),       # פטור שמירות ← שמירות, ליווים, עבודות רס"ר
-            (1, [0, 1, 5, 6]),    # פטור רפואי ← שמירות, ליווים, מטבח, מרפאה
-            (2, [0, 3, 7]),       # פטור משפחתי ← שמירות, אבט"ש, חמ"ל
-            (3, [4, 5, 8]),       # פטור אימונים ← הגנ"ש, מטבח, מנהלה
-            (4, [0, 6, 8]),       # פטור נפשי ← שמירות, מרפאה, מנהלה
+            (1, [0, 1, 3, 4, 8, 9]),  # פטור רפואי ← שמירות, ליווים, אבט"ש, הגנ"ש, אבות בית, עבודות רס"ר בינוי
+            (2, [0, 1, 2, 8, 9]),     # פטור משפחתי ← שמירות, ליווים, עבודות רס"ר, אבות בית, עבודות רס"ר בינוי
+            (3, [3, 4]),              # פטור אימונים ← אבט"ש, הגנ"ש
+            (4, [0, 1, 3, 8]),        # פטור נפשי ← שמירות, ליווים, אבט"ש, אבות בית
         ]
         for et_idx, dt_idxs in mappings:
             for dt_idx in dt_idxs:
@@ -586,11 +585,27 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             s = DutyShift(duty_type_id=dt.id, duty_location_id=next(loc_cycle).id, start_date=start, end_date=start + timedelta(days=7), required_count=1, notes="קצין מלווה אבט\"ש שבועי", created_by=s_admin.id)
             session.add(s); session.flush(); shifts_created.append(s)
 
+        # 9. אבות בית — Sun-Thu single days, 4 weeks
+        dt = dt_by_name["אבות בית"]
+        for w in range(4):
+            for d in range(5):
+                day = next_sun + timedelta(weeks=w, days=d)
+                s = DutyShift(duty_type_id=dt.id, duty_location_id=next(loc_cycle).id, start_date=day, end_date=day, required_count=2, notes="אבות בית יומי", created_by=s_admin.id)
+                session.add(s); session.flush(); shifts_created.append(s)
+
+        # 10. עבודות רס"ר בינוי — Sun-Thu single days, 4 weeks
+        dt = dt_by_name["עבודות רס\"ר בינוי"]
+        for w in range(4):
+            for d in range(5):
+                day = next_sun + timedelta(weeks=w, days=d)
+                s = DutyShift(duty_type_id=dt.id, duty_location_id=next(loc_cycle).id, start_date=day, end_date=day, required_count=2, notes="עבודות רס\"ר בינוי יומיות", created_by=s_admin.id)
+                session.add(s); session.flush(); shifts_created.append(s)
+
         # ── Assign soldiers to shifts (only with --with-assignments) ──
         if with_assignments:
             enlisted = [s for s in all_soldiers if not s.is_officer]
             officer_soldiers = [s for s in all_soldiers if s.is_officer]
-            # indices: 0-11 old weekly, 12-51 daily (40), 52-63 new weekly (12)
+            # indices: 0-11 old weekly, 12-91 daily (80), 92-103 new weekly (12)
             for i, shift in enumerate(shifts_created):
                 if i < 12:
                     # old weekly shifts (req=2-3) — assign 2 soldiers each
@@ -603,7 +618,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                             status="published", created_by=s_admin.id,
                         ))
                         shift_assignments += 1
-                elif 12 <= i < 52:
+                elif 12 <= i < 92:
                     # daily shifts (req=2) — assign 1 soldier to each
                     soldier = enlisted[i % len(enlisted)]
                     session.add(DutyAssignment(
@@ -615,7 +630,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     shift_assignments += 1
                 else:
                     # new weekly officer shifts (req=1) — assign 1 each
-                    soldier = officer_soldiers[(i - 52) % len(officer_soldiers)]
+                    soldier = officer_soldiers[(i - 92) % len(officer_soldiers)]
                     session.add(DutyAssignment(
                         soldier_id=soldier.id, duty_type_id=shift.duty_type_id,
                         duty_location_id=shift.duty_location_id, start_date=shift.start_date,
@@ -633,7 +648,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         _safe_print(f"  {len(duty_types)} duty types")
         _safe_print(f"  {len(locations)} duty locations")
         _safe_print(f"  {len(exemption_types)} exemption types with {sum(len(dts) for _, dts in mappings)} mappings")
-        _safe_print(f"  {len(shifts_created)} duty shifts (4 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 4 \u05d0\u05d1\u05d8\"\u05e9, 4 \u05d4\u05d2\u05e0\"\u05e9, 20 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8, 4 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 4 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 4 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8\"\u05e9)")
+        _safe_print(f"  {len(shifts_created)} duty shifts (4 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 4 \u05d0\u05d1\u05d8\"\u05e9, 4 \u05d4\u05d2\u05e0\"\u05e9, 20 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8, 4 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 4 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 4 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8\"\u05e9, 20 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9)")
         if with_assignments:
             _safe_print(f"  {shift_assignments} shift-linked duty assignments")
         else:
