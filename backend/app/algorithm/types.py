@@ -28,6 +28,7 @@ class DutyBlock:
     start_date: date
     end_date: date
     score_per_day: Decimal
+    is_reserve: bool = False
 
 
 @dataclass
@@ -56,6 +57,7 @@ class SolverSettings:
     beta: Decimal = Decimal("2.0")
     time_limit_seconds: int = 30
     seed: int | None = None
+    reserve_hierarchy_weight: Decimal = Decimal("0.5")
 
 
 @dataclass
@@ -111,3 +113,11 @@ class ReserveEntry:
     duty_id: uuid.UUID
     primary_soldier_id: uuid.UUID
     reserve_soldier_id: uuid.UUID
+
+
+@dataclass
+class ReserveLink:
+    """A (reserve_assignment_id, primary_assignment_id, distance) tuple from post-solve linking."""
+    reserve_assignment_id: uuid.UUID
+    primary_assignment_id: uuid.UUID
+    hierarchy_distance: int
