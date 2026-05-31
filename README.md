@@ -104,55 +104,93 @@ OR-Tools CP-SAT · React 18 · Vite · TypeScript · TanStack Query · Tailwind 
 
 ## Quick start (local dev)
 
-Prerequisites: **Docker**, **Python 3.12 + [uv](https://docs.astral.sh/uv/)**,
-**Node 20 + [pnpm](https://pnpm.io/) 9**. Windows-specific gotchas are in
-[developers.md](docs/onboarding/developers.md).
+### Option A — Full Docker (recommended)
+
+Prerequisites: **Docker**.
 
 ```bash
 # 1. Configuration
-cp .env.example .env            # review values; the defaults work for local dev
+cp .env.example .env            # review values; defaults work for Docker
 
-# 2. Database (Postgres 16 in Docker)
-docker-compose up -d db
+# 2. Start everything (db + backend + frontend)
+docker-compose up --build
 
-# 3. Backend: install, migrate, create the first admin, run
-cd backend
-uv sync --extra dev
-uv run alembic upgrade head
-uv run python -m app.scripts.bootstrap     # creates the admin from BOOTSTRAP_ADMIN_* env vars
-uv run uvicorn app.main:app --reload --port 8000
-
-# 4. Frontend (in a second terminal)
-cd frontend
-pnpm install
-pnpm dev
+# 3. Create the first admin (run once after the first `up`)
+docker-compose exec backend uv run python -m app.scripts.bootstrap
 ```
 
 Open <http://localhost:5173> and log in with the bootstrap admin
 (`BOOTSTRAP_ADMIN_PERSONAL_NUMBER` / `BOOTSTRAP_ADMIN_PASSWORD` from `.env`).
 
-### Seed demo data (optional)
+The `backend` service automatically runs `alembic upgrade head` before starting,
+so migrations are always applied on container start.
 
-To explore the system with a realistic hierarchy, ~29 soldiers of every role,
-duty types, exemptions and a month of assignments:
+> **Rebuilding the frontend:** Vite bakes `VITE_API_BASE` into the static bundle
+> at build time. If you change that value in `.env`, run
+> `docker-compose up --build frontend` to rebuild.
+
+### Option B — On-host dev (hot reload)
+
+Prerequisites: **Docker**, **Python 3.12 + [uv](https://docs.astral.sh/uv/)**,
+**Node 20 + [pnpm](https://pnpm.io/) 9**. Windows-specific gotchas are in
+[developers.md](docs/onboarding/developers.md).
+
+Update `.env` so the DB URLs point to `localhost` instead of `db`:
+```
+DATABASE_URL=postgresql+psycopg://app:app_pw@localhost:5432/cod2
+DB_ADMIN_URL=postgresql+psycopg://db_admin:db_admin_pw@localhost:5432/cod2
+```
 
 ```bash
+# 1. Database only
+docker-compose up -d db
+
+# 2. Backend: install, migrate, bootstrap, run with hot reload
 cd backend
-uv run python -m app.scripts.seed
+uv sync --extra dev
+uv run alembic upgrade head
+uv run python -m app.scripts.bootstrap
+uv run uvicorn app.main:app --reload --port 8000
+
+# 3. Frontend (in a second terminal)
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Open <http://localhost:5173>.
+
+### Seed demo data (optional)
+
+To explore the system with a realistic hierarchy, soldiers of every role, duty
+types, exemptions, shifts, and a month of assignments:
+
+```bash
+# Docker
+docker-compose exec backend uv run python -m app.scripts.seed
+
+# On-host
+cd backend && uv run python -m app.scripts.seed
 ```
 
 The seed creates a known **admin** `1000001` with password `1234567890`
-(`must_change_password=False`) and one soldier per role. Personal numbers follow
-a pattern — see [user-guide.md](docs/onboarding/user-guide.md#demo-accounts) for
-the full account list. **Seed data is for development only.**
+(`must_change_password=False`). Personal numbers follow a pattern — see
+[user-guide.md](docs/onboarding/user-guide.md#demo-accounts) for the full
+account list. **Seed data is for development only.**
 
 ---
 
 ## Common commands
 
 ```bash
-# Backend (run from backend/)
-uv run uvicorn app.main:app --reload --port 8000   # dev server
+# Docker Compose
+docker-compose up --build            # start everything (db + backend + frontend)
+docker-compose up -d db              # start db only (for on-host dev)
+docker-compose exec backend <cmd>    # run a command inside the backend container
+docker-compose down                  # stop all services
+
+# Backend (run from backend/ — or via `docker-compose exec backend`)
+uv run uvicorn app.main:app --reload --port 8000   # dev server (hot reload)
 uv run alembic upgrade head                         # apply migrations
 uv run alembic revision -m "describe change"        # new migration
 uv run pytest -q                                    # all tests (needs Docker for testcontainers)

@@ -1,5 +1,8 @@
 FROM node:20-alpine AS build
 
+ARG VITE_API_BASE=http://localhost:8000/api
+ENV VITE_API_BASE=$VITE_API_BASE
+
 WORKDIR /app
 
 RUN npm install -g pnpm@9
