@@ -13,3 +13,7 @@ body {
   background: #f8fafc;
   color: #0f172a;
 }
+
+.fc-event-has-reserves {
+  box-shadow: 0 0 0 2px #d8b4fe;
+}

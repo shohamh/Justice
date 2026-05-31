@@ -5,11 +5,12 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyDismissal, Soldier
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, Soldier
 from app.db.session import get_session
 from app.services import reserves as svc
 
@@ -29,6 +30,21 @@ class DismissRequest(BaseModel):
 
 class ReserveLinkRequest(BaseModel):
     reserve_assignment_id: uuid.UUID
+
+
+class DismissAndReallocateRequest(BaseModel):
+    primary_assignment_id: uuid.UUID
+    covering_reserve_assignment_id: uuid.UUID
+    from_date: date
+    to_date: date
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class ReallocationOut(BaseModel):
+    primary_assignment_id: uuid.UUID
+    old_reserve_assignment_id: uuid.UUID
+    new_reserve_assignment_id: uuid.UUID | None
+    hierarchy_distance: int | None
 
 
 class DismissalOut(BaseModel):
@@ -193,6 +209,90 @@ def delete_dismissal(
     except svc.ReserveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
+
+
+@router.post("/shifts/{shift_id}/dismissals")
+def dismiss_and_reallocate(
+    shift_id: uuid.UUID,
+    body: DismissAndReallocateRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict:
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+
+    primary_a = _load_assignment(session, body.primary_assignment_id)
+    if primary_a.duty_shift_id != shift_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_in_shift")
+
+    reserve_a = _load_assignment(session, body.covering_reserve_assignment_id)
+    if reserve_a.duty_shift_id != shift_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reserve_not_in_shift")
+
+    try:
+        # Step 1: dismiss the primary
+        dismissal = svc.dismiss_primary(
+            session,
+            assignment=primary_a,
+            from_date=body.from_date,
+            to_date=body.to_date,
+            reason=body.reason,
+            actor_id=user.id,
+        )
+
+        # Step 2: call up the covering reserve
+        svc.call_up_reserve(
+            session,
+            assignment=reserve_a,
+            from_date=body.from_date,
+            to_date=body.to_date,
+            actor_id=user.id,
+        )
+
+        # Step 3: relink the dismissed primary to the covering reserve (if different from current)
+        current_link = session.execute(
+            select(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == primary_a.id)
+        ).scalar_one_or_none()
+        curr_reserve_id = current_link.reserve_assignment_id if current_link else None
+
+        if body.covering_reserve_assignment_id != curr_reserve_id:
+            svc.relink_reserve(
+                session,
+                primary_assignment=primary_a,
+                reserve_assignment_id=body.covering_reserve_assignment_id,
+                actor_id=user.id,
+            )
+
+        # Step 4: reallocate orphaned primaries
+        reallocations = svc.reallocate_orphaned_primaries(
+            session,
+            shift_id=shift_id,
+            called_up_reserve_id=reserve_a.id,
+            called_up_from=body.from_date,
+            called_up_to=body.to_date,
+            actor_id=user.id,
+        )
+
+    except svc.ReserveError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    session.commit()
+    return {
+        "dismissal_id": dismissal.id,
+        "covering_reserve": {
+            "assignment_id": reserve_a.id,
+            "called_up_from": body.from_date,
+            "called_up_to": body.to_date,
+        },
+        "reallocations": [
+            ReallocationOut(
+                primary_assignment_id=r["primary_assignment_id"],
+                old_reserve_assignment_id=r["old_reserve_assignment_id"],
+                new_reserve_assignment_id=r.get("new_reserve_assignment_id"),
+                hierarchy_distance=r.get("hierarchy_distance"),
+            )
+            for r in reallocations
+        ],
+    }
 
 
 @router.put("/shifts/{shift_id}/duty-assignments/{assignment_id}/reserve-link", response_model=dict)

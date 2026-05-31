@@ -60,3 +60,35 @@ export async function deleteDismissal(assignmentId: string, dismissalId: string)
 export async function relinkReserve(shiftId: string, assignmentId: string, reserveAssignmentId: string): Promise<void> {
   await api.put(`/shifts/${shiftId}/duty-assignments/${assignmentId}/reserve-link`, { reserve_assignment_id: reserveAssignmentId });
 }
+
+export interface DismissAndReallocateRequest {
+  primary_assignment_id: string;
+  covering_reserve_assignment_id: string;
+  from_date: string;
+  to_date: string;
+  reason?: string;
+}
+
+export interface ReallocationOut {
+  primary_assignment_id: string;
+  old_reserve_assignment_id: string;
+  new_reserve_assignment_id: string | null;
+  hierarchy_distance: number | null;
+}
+
+export interface DismissAndReallocateResponse {
+  dismissal_id: string;
+  covering_reserve: {
+    assignment_id: string;
+    called_up_from: string;
+    called_up_to: string;
+  };
+  reallocations: ReallocationOut[];
+}
+
+export async function dismissAndReallocate(
+  shiftId: string,
+  body: DismissAndReallocateRequest,
+): Promise<DismissAndReallocateResponse> {
+  return (await api.post<DismissAndReallocateResponse>(`/shifts/${shiftId}/dismissals`, body)).data;
+}

@@ -260,3 +260,152 @@ def relink_reserve(
         },
     )
     return link
+
+
+def reallocate_orphaned_primaries(
+    session: Session,
+    *,
+    shift_id: uuid.UUID,
+    called_up_reserve_id: uuid.UUID,
+    called_up_from: date,
+    called_up_to: date,
+    actor_id: uuid.UUID | None = None,
+) -> list[dict[str, Any]]:
+    """After calling up a reserve, find all OTHER primaries linked to that reserve
+    and relink them to the closest available reserve on the same shift.
+
+    Returns list of reallocation dicts with old/new reserve info.
+    """
+    link_rows = (
+        session.execute(
+            select(DutyReserveLink).where(
+                DutyReserveLink.reserve_assignment_id == called_up_reserve_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not link_rows:
+        return []
+
+    orphan_primary_ids = [lk.primary_assignment_id for lk in link_rows]
+    primaries = (
+        session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.id.in_(orphan_primary_ids),
+                DutyAssignment.duty_shift_id == shift_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Filter to primaries overlapping the call-up range
+    affected = [
+        p for p in primaries if p.start_date <= called_up_to and p.end_date >= called_up_from
+    ]
+    if not affected:
+        return []
+
+    # Find available reserves on this shift (not the called-up one, not called-up during overlap)
+    all_reserves = (
+        session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.is_reserve.is_(True),
+                DutyAssignment.id != called_up_reserve_id,
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    def _is_available(ra: DutyAssignment) -> bool:
+        if ra.called_up_from is None or ra.called_up_to is None:
+            return True
+        return not (ra.called_up_from <= called_up_to and ra.called_up_to >= called_up_from)
+
+    available_reserves = [r for r in all_reserves if _is_available(r)]
+
+    hier_parent, _, soldier_node, _ = build_hierarchy_maps(session)
+
+    results: list[dict[str, Any]] = []
+    for p in affected:
+        p_node = soldier_node.get(p.soldier_id)
+        if p_node is None:
+            results.append(
+                {
+                    "primary_assignment_id": p.id,
+                    "old_reserve_assignment_id": called_up_reserve_id,
+                    "new_reserve_assignment_id": None,
+                    "hierarchy_distance": None,
+                    "warning": "no_hierarchy_node",
+                }
+            )
+            continue
+
+        best = None
+        best_dist = 999
+        for ra in available_reserves:
+            r_node = soldier_node.get(ra.soldier_id)
+            if r_node is None:
+                continue
+            dist = _hierarchy_distance(p_node, r_node, hier_parent)
+            if dist < best_dist:
+                best_dist = dist
+                best = ra
+
+        if best is None:
+            results.append(
+                {
+                    "primary_assignment_id": p.id,
+                    "old_reserve_assignment_id": called_up_reserve_id,
+                    "new_reserve_assignment_id": None,
+                    "hierarchy_distance": None,
+                    "warning": "no_available_reserve",
+                }
+            )
+            continue
+
+        old_link = session.execute(
+            select(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == p.id)
+        ).scalar_one_or_none()
+        if old_link:
+            session.delete(old_link)
+            session.flush()
+
+        new_link = DutyReserveLink(
+            primary_assignment_id=p.id,
+            reserve_assignment_id=best.id,
+            hierarchy_distance=best_dist,
+        )
+        session.add(new_link)
+        session.flush()
+
+        write_audit(
+            session,
+            actor_id=actor_id,
+            action="reserve.relink",
+            entity_type="duty_reserve_link",
+            entity_id=new_link.id,
+            after={
+                "primary_assignment_id": str(p.id),
+                "old_reserve_assignment_id": str(called_up_reserve_id),
+                "new_reserve_assignment_id": str(best.id),
+                "hierarchy_distance": best_dist,
+                "reason": "reallocation_after_call_up",
+            },
+        )
+
+        results.append(
+            {
+                "primary_assignment_id": p.id,
+                "old_reserve_assignment_id": called_up_reserve_id,
+                "new_reserve_assignment_id": best.id,
+                "hierarchy_distance": best_dist,
+            }
+        )
+
+    return results

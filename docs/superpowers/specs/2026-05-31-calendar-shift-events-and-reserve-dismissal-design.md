@@ -233,26 +233,66 @@ currently linked via `reserve_assignment_id`. If none linked (unlikely), first r
 
 ### 6.5 Submit flow
 
-On "אשר שחרור":
+On "אשר שחרור", the frontend calls a single backend endpoint:
 
-1. `POST /duty-assignments/{primary_id}/dismissals`
-   Body: `{ from_date, to_date, reason }`
-2. `POST /duty-assignments/{reserve_id}/call-up`
-   Body: `{ from_date, to_date }`
-3. If selected reserve differs from currently linked reserve:
-   `PUT /shifts/{shift_id}/duty-assignments/{primary_id}/reserve-link`
-   Body: `{ reserve_assignment_id }`
-4. On any error in steps 1-3, roll back (abort remaining steps) and show the error
+`POST /shifts/{shift_id}/dismissals`
+Body:
+```json
+{
+  "primary_assignment_id": "uuid",
+  "from_date": "2026-06-02",
+  "to_date": "2026-06-04",
+  "covering_reserve_assignment_id": "uuid",
+  "reason": "optional"
+}
+```
 
-All three calls are sequential. The UI shows a loading spinner during the flow.
+The backend does all of the following in one transaction:
 
-### 6.6 Edge cases
+1. **Dismiss** the primary — create `DutyDismissal` record
+2. **Call up** the covering reserve — set `called_up_from` / `called_up_to`
+3. **Relink** the dismissed primary's link to the covering reserve (if changed)
+4. **Reallocate orphaned primaries** — find any OTHER primaries on this shift that were linked to the called-up reserve. For each such orphaned primary whose assignment overlaps the call-up date range, find the closest available reserve (by hierarchy distance) and relink them. Available = reserve on the same shift, not the one being called up, and not themselves called up during the overlapping period.
 
-- Primary already has overlapping dismissal → 400 from server, show error message
+Response:
+```json
+{
+  "dismissal_id": "uuid",
+  "covering_reserve": { "assignment_id": "uuid", "called_up_from": "...", "called_up_to": "..." },
+  "reallocations": [
+    { "primary_assignment_id": "uuid",
+      "old_reserve_assignment_id": "uuid",
+      "new_reserve_assignment_id": "uuid",
+      "hierarchy_distance": 2 }
+  ]
+}
+```
+
+The UI shows a loading spinner during the flow. On completion, the panel refreshes.
+
+### 6.6 Reallocation logic
+
+When a reserve R1 is called up for dates D1–D4 (because the linked primary P1 was dismissed for those dates):
+
+1. Find all `DutyReserveLink` rows where `reserve_assignment_id = R1.id`
+2. For each such link (pointing to primary Px), check if Px's assignment overlaps D1–D4
+3. For each overlapping primary Px:
+   a. Collect all reserve assignments on the same shift that are **available**:
+      - Not R1 (already called up)
+      - Not themselves called up during the overlapping period
+   b. Compute hierarchy distance from Px's soldier node to each available reserve's soldier node
+   c. Pick the closest reserve (minimum distance); link Px to that reserve
+4. Log each reallocation in the response for UI display
+
+If no available reserve exists for an orphaned primary, a warning is returned (the primary has no reserve coverage for those days).
+
+### 6.7 Edge cases
+
+- Primary already has overlapping dismissal → 400 from server
 - Reserve is already called-up for different dates → server replaces range, OK
-- Selected reserve is same as currently linked → skip step 3 (no relink needed)
-- User dismisses entire shift (from=1/6, to=6/6) → full dismissal, primary still owns
-  the assignment but dismissed all days
+- Called-up reserve has no other linked primaries → no reallocations needed
+- No available reserve for an orphaned primary → warning, primary has no reserve coverage
+- User dismisses entire shift (from=D1, to=Dn) → full dismissal
 
 ---
 
@@ -284,5 +324,5 @@ All three calls are sequential. The UI shows a loading spinner during the flow.
 - UnitCalendar renders shift events correctly with counts
 - Clicking shift event opens ShiftDetailPanel
 - Dismissal range slider initializes to full assignment span
-- Submit flow calls dismiss → call-up → (optionally) relink
+- Submit flow calls single dismiss+reallocate endpoint
 - Error state when dismiss fails (overlapping)

@@ -32,6 +32,7 @@ export interface CalendarShiftAssigneeDismissal {
 }
 
 export interface CalendarShiftAssignee {
+  assignment_id: string;
   soldier_id: string;
   soldier_name: string;
   hierarchy_label: string | null;

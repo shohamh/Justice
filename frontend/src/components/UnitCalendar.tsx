@@ -6,9 +6,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
-import { CalRow, CalAssignment, getUnitCalendar } from "../api/calendar";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
-import ShiftReservePanel from "./ShiftReservePanel";
+import { CalendarShift, getCalendarShifts } from "../api/calendar";
+import ShiftDetailPanel from "./ShiftDetailPanel";
+
 
 interface UnitCalendarProps {
   nodeId: string;
@@ -16,17 +16,12 @@ interface UnitCalendarProps {
 
 export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const { t } = useTranslation();
-  const [rows, setRows] = useState<CalRow[]>([]);
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
+  const [shifts, setShifts] = useState<CalendarShift[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedEvent, setSelectedEvent] = useState<{
-    assignment: CalAssignment;
-    soldier_name: string;
-  } | null>(null);
+  const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
-  const [reservePanelShiftId, setReservePanelShiftId] = useState<string | null>(null);
+
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const fetchData = useCallback(async (from: string, to: string) => {
@@ -34,8 +29,8 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getUnitCalendar(nodeId, { date_from: from, date_to: to });
-      setRows(data);
+      const data = await getCalendarShifts(nodeId, { date_from: from, date_to: to });
+      setShifts(data.shifts);
     } catch {
       setError(t("unit_calendar.error") || "Failed to load calendar");
     } finally {
@@ -43,26 +38,11 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     }
   }, [nodeId, t]);
 
-  // Re-fetch when nodeId changes
   useEffect(() => {
     dateRangeRef.current = null;
-    setRows([]);
-    setSelectedDate(null);
-    setSelectedEvent(null);
+    setShifts([]);
+    setSelectedShift(null);
   }, [nodeId]);
-
-  useEffect(() => {
-    void fetchTree().then(setNodes);
-  }, []);
-
-  function leafLabel(nodeId: string | null): string {
-    if (!nodeId) return "";
-    const nodeMap = new Map(nodes.map(n => [n.id, n]));
-    const leaf = nodeMap.get(nodeId);
-    if (!leaf) return "";
-    const parent = leaf.parent_id ? nodeMap.get(leaf.parent_id) : null;
-    return parent ? `${parent.name} / ${leaf.name}` : leaf.name;
-  }
 
   function handleDatesSet(arg: DatesSetArg) {
     const from = arg.start.toISOString().slice(0, 10);
@@ -73,6 +53,11 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     fetchData(from, to);
   }
 
+  const filteredShifts = useMemo(() => {
+    if (!dutyTypeFilter) return shifts;
+    return shifts.filter(s => s.duty_type_id === dutyTypeFilter);
+  }, [shifts, dutyTypeFilter]);
+
   const events = useMemo(() => {
     const out: {
       id: string;
@@ -81,74 +66,35 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       end: string;
       backgroundColor: string;
       borderColor: string;
-      extendedProps: { soldier_name: string; hierarchy_label: string; duty_type_id: string; duty_location_name: string; soldier_id: string; assignment_id: string };
+      classNames: string[];
+      extendedProps: { shiftId: string; dutyTypeId: string };
     }[] = [];
-    for (const r of rows) {
-      for (const a of r.assignments) {
-        const endDate = new Date(a.end_date);
-        endDate.setDate(endDate.getDate() + 1);
-        out.push({
-          id: `${a.assignment_id}-${a.start_date}`,
-          title: a.duty_type_name,
-          start: a.start_date,
-          end: endDate.toISOString().slice(0, 10),
-          backgroundColor: a.duty_type_color,
-          borderColor: a.duty_type_color,
-          extendedProps: {
-            soldier_name: r.full_name,
-            hierarchy_label: leafLabel(r.hierarchy_node_id),
-            duty_type_id: a.duty_type_id,
-            duty_location_name: a.duty_location_name,
-            soldier_id: r.soldier_id,
-            assignment_id: a.assignment_id,
-          },
-        });
-      }
+    for (const s of filteredShifts) {
+      const endDate = new Date(s.end_date);
+      endDate.setDate(endDate.getDate() + 1);
+      out.push({
+        id: s.id,
+        title: `${s.duty_type_name} — ${s.duty_location_name}`,
+        start: s.start_date,
+        end: endDate.toISOString().slice(0, 10),
+        backgroundColor: s.duty_type_color,
+        borderColor: s.duty_type_color,
+        classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
+        extendedProps: { shiftId: s.id, dutyTypeId: s.duty_type_id },
+      });
     }
     return out;
-  }, [rows, nodes]);
+  }, [filteredShifts]);
 
-  function handleDateClick(arg: { dateStr: string }) {
-    setSelectedDate(arg.dateStr);
-    setSelectedEvent(null);
+  function handleDateClick(_arg: { dateStr: string }) {
+    setSelectedShift(null);
   }
 
   function handleEventClick(arg: EventClickArg) {
-    const props = arg.event.extendedProps;
-    const endStr = arg.event.endStr || arg.event.startStr;
-    const endDate = new Date(endStr);
-    endDate.setDate(endDate.getDate() - 1);
-    setSelectedEvent({
-      soldier_name: props.soldier_name,
-      assignment: {
-        assignment_id: props.assignment_id,
-        duty_type_id: props.duty_type_id,
-        duty_type_name: arg.event.title,
-        duty_type_color: arg.event.backgroundColor,
-        duty_location_id: "",
-        duty_location_name: props.duty_location_name,
-        start_date: arg.event.startStr.slice(0, 10),
-        end_date: endDate.toISOString().slice(0, 10),
-      },
-    });
-    setSelectedDate(null);
+    const shiftId = arg.event.extendedProps.shiftId;
+    const shift = shifts.find(s => s.id === shiftId);
+    if (shift) setSelectedShift(shift);
   }
-
-  const detailRows = useMemo(() => {
-    const date = selectedDate;
-    if (!date) return null;
-    const out: { soldier_name: string; duty_type_name: string; duty_location_name: string }[] = [];
-    for (const r of rows) {
-      for (const a of r.assignments) {
-        if (a.start_date <= date && a.end_date >= date) {
-          if (dutyTypeFilter && a.duty_type_id !== dutyTypeFilter) continue;
-          out.push({ soldier_name: r.full_name, duty_type_name: a.duty_type_name, duty_location_name: a.duty_location_name });
-        }
-      }
-    }
-    out.sort((a, b) => a.soldier_name.localeCompare(b.soldier_name));
-    return out;
-  }, [rows, selectedDate, dutyTypeFilter]);
 
   function toggleFilter(dtId: string) {
     setDutyTypeFilter((prev) => (prev === dtId ? null : dtId));
@@ -156,13 +102,11 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
 
   const dutyTypesInView = useMemo(() => {
     const seen = new Map<string, string>();
-    for (const r of rows) {
-      for (const a of r.assignments) {
-        if (!seen.has(a.duty_type_id)) seen.set(a.duty_type_id, a.duty_type_name);
-      }
+    for (const s of shifts) {
+      if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [rows]);
+  }, [shifts]);
 
   return (
     <div className="space-y-4">
@@ -186,6 +130,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
 
       {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
       {error && <p className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
+
       <div data-testid="fullcalendar" className="text-sm">
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
@@ -202,92 +147,33 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           noEventsText={t("unit_calendar.none")}
           displayEventTime={false}
           eventContent={(arg) => {
-            const { soldier_name, hierarchy_label } = arg.event.extendedProps;
+            const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
+            if (!shift) return <div />;
             return (
               <div className="text-xs leading-tight px-1 overflow-hidden w-full">
-                <div className="font-semibold truncate">{arg.event.title}</div>
-                <div className="truncate">{soldier_name}</div>
-                {hierarchy_label && (
-                  <div className="truncate opacity-75">{hierarchy_label}</div>
-                )}
+                <div className="font-semibold truncate">{shift.duty_type_name} — {shift.duty_location_name}</div>
+                <div className="truncate">
+                  {shift.assigned_count} {t("unit_calendar.soldiers_count")}
+                  {shift.reserve_count > 0 && (
+                    <span className="mr-1">| {shift.reserve_count} {t("reserve_label")}</span>
+                  )}
+                </div>
               </div>
             );
           }}
         />
       </div>
 
-      <div className="flex gap-2 mb-2">
-        <input
-          type="text" placeholder="מזהה משמרת..."
-          className="border rounded px-2 py-1 text-sm flex-1"
-          onKeyDown={e => { if (e.key === "Enter") setReservePanelShiftId((e.target as HTMLInputElement).value); }}
+      {selectedShift && (
+        <ShiftDetailPanel
+          shift={selectedShift}
+          onClose={() => setSelectedShift(null)}
+          onRefreshNeeded={() => {
+            const r = dateRangeRef.current;
+            if (r) fetchData(r.from, r.to);
+          }}
         />
-        <button
-          className="bg-purple-600 text-white text-sm px-3 py-1 rounded"
-          onClick={() => { const el = document.querySelector<HTMLInputElement>("input[placeholder*='מזהה משמרת']"); if (el?.value) setReservePanelShiftId(el.value); }}
-        >
-          {t("reserve_detail_title")}
-        </button>
-      </div>
-      {reservePanelShiftId && (
-        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50"
-             onClick={() => setReservePanelShiftId(null)}>
-          <div onClick={e => e.stopPropagation()}>
-            <ShiftReservePanel
-              shiftId={reservePanelShiftId}
-              onClose={() => setReservePanelShiftId(null)}
-            />
-          </div>
-        </div>
       )}
-      <div data-testid="calendar-detail" className="bg-white rounded-lg border p-4">
-        {selectedEvent ? (
-          <div>
-            <h3 className="font-semibold mb-2">{t("unit_calendar.duty_detail") || "פרטי תורנות"}</h3>
-            <table className="w-full text-sm text-right">
-              <tbody>
-                <tr className="border-b"><td className="p-1 font-medium">{t("unit_calendar.soldier")}</td><td className="p-1">{selectedEvent.soldier_name}</td></tr>
-                <tr className="border-b"><td className="p-1 font-medium">{t("unit_calendar.duty_type") || "סוג תורנות"}</td><td className="p-1">{selectedEvent.assignment.duty_type_name}</td></tr>
-                <tr className="border-b"><td className="p-1 font-medium">{t("unit_calendar.location") || "מיקום"}</td><td className="p-1">{selectedEvent.assignment.duty_location_name}</td></tr>
-                <tr className="border-b"><td className="p-1 font-medium">{t("unit_calendar.from") || "מתאריך"}</td><td className="p-1">{selectedEvent.assignment.start_date}</td></tr>
-                <tr><td className="p-1 font-medium">{t("unit_calendar.to") || "עד תאריך"}</td><td className="p-1">{selectedEvent.assignment.end_date}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        ) : detailRows ? (
-          <div>
-            <h3 className="font-semibold mb-2">
-              {t("unit_calendar.detail_table") || "תורנויות לתאריך"}
-              {selectedDate && ` — ${selectedDate}`}
-              {dutyTypeFilter && ` (${dutyTypesInView.find((d) => d.id === dutyTypeFilter)?.name})`}
-            </h3>
-            {detailRows.length === 0 ? (
-              <p className="text-gray-500 text-sm">{t("unit_calendar.none")}</p>
-            ) : (
-              <table className="w-full text-sm text-right" data-testid="detail-table">
-                <thead>
-                  <tr className="border-b">
-                    <th className="p-1">{t("unit_calendar.soldier")}</th>
-                    <th className="p-1">{t("unit_calendar.duty_type") || "סוג תורנות"}</th>
-                    <th className="p-1">{t("unit_calendar.location") || "מיקום"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detailRows.map((r, i) => (
-                    <tr key={i} className="border-b last:border-0" data-testid={`detail-row-${i}`}>
-                      <td className="p-1">{r.soldier_name}</td>
-                      <td className="p-1">{r.duty_type_name}</td>
-                      <td className="p-1">{r.duty_location_name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm">{t("unit_calendar.click_hint")}</p>
-        )}
-      </div>
     </div>
   );
 }
