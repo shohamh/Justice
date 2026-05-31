@@ -33,7 +33,7 @@ def get_calendar_shifts(
     )
 
     soldiers_in_subtree = {
-        s.id: s.full_name
+        s.id: (s.full_name, s.hierarchy_node_id)
         for s in session.execute(
             select(Soldier).where(
                 Soldier.hierarchy_node_id.in_(subtree_node_ids),
@@ -50,11 +50,10 @@ def get_calendar_shifts(
 
     all_nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
 
-    def _leaf_label(sid: uuid.UUID) -> str | None:
-        s = session.get(Soldier, sid)
-        if s is None or s.hierarchy_node_id is None:
+    def _leaf_label(hierarchy_node_id: uuid.UUID | None) -> str | None:
+        if hierarchy_node_id is None:
             return None
-        leaf = all_nodes.get(s.hierarchy_node_id)
+        leaf = all_nodes.get(hierarchy_node_id)
         if leaf is None:
             return None
         parent = all_nodes.get(leaf.parent_id) if leaf.parent_id else None
@@ -67,7 +66,19 @@ def get_calendar_shifts(
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 
-    shift_query = select(DutyShift)
+    subtree_shift_ids = (
+        session.execute(
+            select(DutyAssignment.duty_shift_id)
+            .where(DutyAssignment.soldier_id.in_(soldier_id_set))
+            .distinct()
+        )
+        .scalars()
+        .all()
+    )
+    if not subtree_shift_ids:
+        return []
+
+    shift_query = select(DutyShift).where(DutyShift.id.in_(subtree_shift_ids))
     if date_from:
         shift_query = shift_query.where(DutyShift.end_date >= date_from)
     if date_to:
@@ -132,8 +143,8 @@ def get_calendar_shifts(
         assignees_by_shift.setdefault(a.duty_shift_id, [])
         entry: dict = {
             "soldier_id": a.soldier_id,
-            "soldier_name": soldiers_in_subtree.get(a.soldier_id, ""),
-            "hierarchy_label": _leaf_label(a.soldier_id),
+            "soldier_name": soldiers_in_subtree.get(a.soldier_id, ("", None))[0],
+            "hierarchy_label": _leaf_label(soldiers_in_subtree.get(a.soldier_id, ("", None))[1]),
             "is_reserve": a.is_reserve,
         }
         if a.is_reserve:
