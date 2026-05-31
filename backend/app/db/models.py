@@ -130,6 +130,12 @@ class DutyType(Base):
     requirements: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'"), default_factory=dict
     )
+    reserve_ratio: Mapped[Decimal] = mapped_column(
+        Numeric(4, 3), server_default=text("0.000"), default=Decimal("0.000")
+    )
+    reserve_minimum: Mapped[int] = mapped_column(
+        server_default=text("0"), default=0
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -239,6 +245,11 @@ class DutyAssignment(Base):
     duty_shift_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("duty_shifts.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    is_reserve: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
+    called_up_from: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    called_up_to: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -296,6 +307,9 @@ class DutyShift(Base):
     )
     dm_locked: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
+    )
+    reserve_count_override: Mapped[int | None] = mapped_column(
+        nullable=True, default=None
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
@@ -483,8 +497,8 @@ class AlgorithmJob(Base):
     )
 
 
-class ReserveAssignment(Base):
-    __tablename__ = "reserve_assignments"
+class DutyDismissal(Base):
+    __tablename__ = "duty_dismissals"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
@@ -492,10 +506,30 @@ class ReserveAssignment(Base):
     duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
     )
-    reserve_soldier_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    dismissed_from: Mapped[date] = mapped_column(Date)
+    dismissed_to: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
-    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class DutyReserveLink(Base):
+    __tablename__ = "duty_reserve_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    reserve_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    primary_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE"), unique=True
+    )
+    hierarchy_distance: Mapped[int] = mapped_column(server_default=text("0"), default=0)
 
 
 class AssignmentExplanation(Base):
