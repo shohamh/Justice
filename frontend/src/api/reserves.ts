@@ -56,3 +56,7 @@ export async function dismissPrimary(
 export async function deleteDismissal(assignmentId: string, dismissalId: string): Promise<void> {
   await api.delete(`/duty-assignments/${assignmentId}/dismissals/${dismissalId}`);
 }
+
+export async function relinkReserve(shiftId: string, assignmentId: string, reserveAssignmentId: string): Promise<void> {
+  await api.put(`/shifts/${shiftId}/duty-assignments/${assignmentId}/reserve-link`, { reserve_assignment_id: reserveAssignmentId });
+}

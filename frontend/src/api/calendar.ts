@@ -1,5 +1,6 @@
 import { api } from "./client";
 
+// Old types (still used by UnitCalendar)
 export interface CalAssignment {
   assignment_id: string;
   duty_type_id: string;
@@ -20,4 +21,51 @@ export interface CalRow {
 
 export async function getUnitCalendar(nodeId: string, params?: { date_from?: string; date_to?: string }): Promise<CalRow[]> {
   return (await api.get<CalRow[]>(`/calendar/unit`, { params: { node_id: nodeId, ...params } })).data;
+}
+
+// New shift-based calendar types
+export interface CalendarShiftAssigneeDismissal {
+  id: string;
+  dismissed_from: string;
+  dismissed_to: string;
+  reason: string | null;
+}
+
+export interface CalendarShiftAssignee {
+  soldier_id: string;
+  soldier_name: string;
+  hierarchy_label: string | null;
+  is_reserve: boolean;
+  dismissals: CalendarShiftAssigneeDismissal[];
+  reserve_assignment_id: string | null;
+  reserve_hierarchy_distance: number | null;
+  called_up_from: string | null;
+  called_up_to: string | null;
+  primary_assignment_ids: string[];
+}
+
+export interface CalendarShift {
+  id: string;
+  duty_type_id: string;
+  duty_type_name: string;
+  duty_type_color: string;
+  duty_location_name: string;
+  start_date: string;
+  end_date: string;
+  required_count: number;
+  assigned_count: number;
+  fill_status: string;
+  reserve_count: number;
+  assignees: CalendarShiftAssignee[];
+}
+
+export interface CalendarShiftsResponse {
+  shifts: CalendarShift[];
+}
+
+export async function getCalendarShifts(
+  nodeId: string,
+  params?: { date_from?: string; date_to?: string },
+): Promise<CalendarShiftsResponse> {
+  return (await api.get<CalendarShiftsResponse>("/calendar/shifts", { params: { node_id: nodeId, ...params } })).data;
 }
