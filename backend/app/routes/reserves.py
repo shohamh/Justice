@@ -27,6 +27,10 @@ class DismissRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
+class ReserveLinkRequest(BaseModel):
+    reserve_assignment_id: uuid.UUID
+
+
 class DismissalOut(BaseModel):
     id: uuid.UUID
     duty_assignment_id: uuid.UUID
@@ -78,14 +82,21 @@ def get_reserve_detail(
     detail = svc.get_shift_reserve_detail(session, shift_id=shift_id)
     primaries = [
         PrimaryDetailOut(
-            assignment_id=p["assignment_id"], soldier_id=p["soldier_id"],
-            start_date=p["start_date"], end_date=p["end_date"], status=p["status"],
+            assignment_id=p["assignment_id"],
+            soldier_id=p["soldier_id"],
+            start_date=p["start_date"],
+            end_date=p["end_date"],
+            status=p["status"],
             dismissals=[
                 DismissalOut(
-                    id=d["id"], duty_assignment_id=p["assignment_id"],
-                    dismissed_from=d["from"], dismissed_to=d["to"],
-                    reason=d["reason"], created_at=datetime.now(),
-                ) for d in p["dismissals"]
+                    id=d["id"],
+                    duty_assignment_id=p["assignment_id"],
+                    dismissed_from=d["from"],
+                    dismissed_to=d["to"],
+                    reason=d["reason"],
+                    created_at=datetime.now(),
+                )
+                for d in p["dismissals"]
             ],
             reserve_assignment_id=p["reserve_assignment_id"],
             reserve_hierarchy_distance=p["reserve_hierarchy_distance"],
@@ -94,9 +105,13 @@ def get_reserve_detail(
     ]
     reserves = [
         ReserveDetailOut(
-            assignment_id=r["assignment_id"], soldier_id=r["soldier_id"],
-            start_date=r["start_date"], end_date=r["end_date"], status=r["status"],
-            called_up_from=r["called_up_from"], called_up_to=r["called_up_to"],
+            assignment_id=r["assignment_id"],
+            soldier_id=r["soldier_id"],
+            start_date=r["start_date"],
+            end_date=r["end_date"],
+            status=r["status"],
+            called_up_from=r["called_up_from"],
+            called_up_to=r["called_up_to"],
             primary_assignment_ids=r["primary_assignment_ids"],
         )
         for r in detail["reserves"]
@@ -114,16 +129,20 @@ def call_up(
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
     try:
-        svc.call_up_reserve(session, assignment=a, from_date=body.from_date,
-                            to_date=body.to_date, actor_id=user.id)
+        svc.call_up_reserve(
+            session, assignment=a, from_date=body.from_date, to_date=body.to_date, actor_id=user.id
+        )
     except svc.ReserveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     return {"called_up_from": a.called_up_from, "called_up_to": a.called_up_to}
 
 
-@router.post("/duty-assignments/{assignment_id}/dismissals", response_model=DismissalOut,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/duty-assignments/{assignment_id}/dismissals",
+    response_model=DismissalOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def dismiss(
     assignment_id: uuid.UUID,
     body: DismissRequest,
@@ -133,21 +152,32 @@ def dismiss(
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
     try:
-        d = svc.dismiss_primary(session, assignment=a, from_date=body.from_date,
-                                to_date=body.to_date, reason=body.reason, actor_id=user.id)
+        d = svc.dismiss_primary(
+            session,
+            assignment=a,
+            from_date=body.from_date,
+            to_date=body.to_date,
+            reason=body.reason,
+            actor_id=user.id,
+        )
     except svc.ReserveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(d)
     return DismissalOut(
-        id=d.id, duty_assignment_id=d.duty_assignment_id,
-        dismissed_from=d.dismissed_from, dismissed_to=d.dismissed_to,
-        reason=d.reason, created_at=d.created_at,
+        id=d.id,
+        duty_assignment_id=d.duty_assignment_id,
+        dismissed_from=d.dismissed_from,
+        dismissed_to=d.dismissed_to,
+        reason=d.reason,
+        created_at=d.created_at,
     )
 
 
-@router.delete("/duty-assignments/{assignment_id}/dismissals/{dismissal_id}",
-               status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/duty-assignments/{assignment_id}/dismissals/{dismissal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def delete_dismissal(
     assignment_id: uuid.UUID,
     dismissal_id: uuid.UUID,
@@ -163,3 +193,29 @@ def delete_dismissal(
     except svc.ReserveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
+
+
+@router.put("/shifts/{shift_id}/duty-assignments/{assignment_id}/reserve-link", response_model=dict)
+def relink_reserve_route(
+    shift_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    body: ReserveLinkRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict:
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    a = _load_assignment(session, assignment_id)
+    try:
+        link = svc.relink_reserve(
+            session,
+            primary_assignment=a,
+            reserve_assignment_id=body.reserve_assignment_id,
+            actor_id=user.id,
+        )
+    except svc.ReserveError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return {
+        "reserve_assignment_id": str(link.reserve_assignment_id),
+        "hierarchy_distance": link.hierarchy_distance,
+    }
