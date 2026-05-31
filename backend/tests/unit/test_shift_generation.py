@@ -71,3 +71,38 @@ def test_roll_horizon_generates_only_for_auto_roll_templates(admin_session):
     not_rolled = admin_session.query(DutyShift).filter(DutyShift.generated_from_template_id == manual.id).count()
     assert rolled == 10
     assert not_rolled == 0
+
+
+from decimal import Decimal as _Decimal
+from app.db.models import DutyLocation as _DL, DutyType as _DT, DutyShift as _DS
+from app.services.algorithm_bridge import reserve_count_for_shift
+
+
+def test_reserve_count_formula(admin_session):
+    dt = _DT(name="שמירה-rc", score_per_day=_Decimal("1"), reserve_ratio=_Decimal("0.200"), reserve_minimum=0)
+    loc = _DL(name="עמדה-rc")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    shift = _DS(duty_type_id=dt.id, duty_location_id=loc.id,
+                start_date=date(2026,6,1), end_date=date(2026,6,1), required_count=20)
+    admin_session.add(shift); admin_session.flush()
+    assert reserve_count_for_shift(admin_session, shift=shift) == 4
+
+
+def test_reserve_count_minimum(admin_session):
+    dt = _DT(name="שמירה-rmin", score_per_day=_Decimal("1"), reserve_ratio=_Decimal("0.100"), reserve_minimum=3)
+    loc = _DL(name="עמדה-rmin")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    shift = _DS(duty_type_id=dt.id, duty_location_id=loc.id,
+                start_date=date(2026,6,1), end_date=date(2026,6,1), required_count=5)
+    admin_session.add(shift); admin_session.flush()
+    assert reserve_count_for_shift(admin_session, shift=shift) == 3
+
+
+def test_reserve_count_override(admin_session):
+    dt = _DT(name="שמירה-rov", score_per_day=_Decimal("1"), reserve_ratio=_Decimal("0.200"), reserve_minimum=0)
+    loc = _DL(name="עמדה-rov")
+    admin_session.add(dt); admin_session.add(loc); admin_session.flush()
+    shift = _DS(duty_type_id=dt.id, duty_location_id=loc.id,
+                start_date=date(2026,6,1), end_date=date(2026,6,1), required_count=20, reserve_count_override=7)
+    admin_session.add(shift); admin_session.flush()
+    assert reserve_count_for_shift(admin_session, shift=shift) == 7

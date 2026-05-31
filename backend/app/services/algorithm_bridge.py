@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -31,7 +32,6 @@ from app.db.models import (
     ExemptionType,
     HierarchyNode,
     PersonalConstraint,
-    ReserveAssignment,
     Soldier,
     SoldierExemption,
 )
@@ -185,16 +185,29 @@ def load_duty_blocks(
     return blocks
 
 
+def reserve_count_for_shift(session: Session, *, shift: DutyShift) -> int:
+    """Effective reserve count: override if set, else max(minimum, ceil(ratio × required_count))."""
+    if shift.reserve_count_override is not None:
+        return shift.reserve_count_override
+    dt = session.get(DutyType, shift.duty_type_id)
+    if dt is None:
+        return 0
+    ratio = float(dt.reserve_ratio or 0)
+    minimum = int(dt.reserve_minimum or 0)
+    calculated = math.ceil(shift.required_count * ratio)
+    return max(minimum, calculated)
+
+
 def load_duty_blocks_from_shifts(
     session: Session,
     *,
     shift_ids: list[uuid.UUID],
+    standby_multiplier: Decimal = Decimal("0.2"),
 ) -> tuple[list[DutyBlock], dict[uuid.UUID, uuid.UUID]]:
-    """Expand DutyShift rows into DutyBlocks.
+    """Expand DutyShift rows into primary + reserve DutyBlocks.
 
-    Each shift with required_count=N generates N DutyBlocks.
-    Returns (blocks, block_to_shift_map) where block_to_shift_map
-    maps block.id -> shift_id.
+    Returns (all_blocks, block_to_shift_map). Reserve blocks have
+    is_reserve=True and score_per_day scaled by standby_multiplier.
     """
     shifts = session.execute(select(DutyShift).where(DutyShift.id.in_(shift_ids))).scalars().all()
 
@@ -209,16 +222,29 @@ def load_duty_blocks_from_shifts(
         score = score_map.get(shift.duty_type_id, Decimal("1.00"))
         for _ in range(shift.required_count):
             block_id = uuid.uuid4()
-            blocks.append(
-                DutyBlock(
-                    id=block_id,
-                    duty_type_id=shift.duty_type_id,
-                    duty_location_id=shift.duty_location_id,
-                    start_date=shift.start_date,
-                    end_date=shift.end_date,
-                    score_per_day=score,
-                )
-            )
+            blocks.append(DutyBlock(
+                id=block_id,
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                score_per_day=score,
+                is_reserve=False,
+            ))
+            block_to_shift[block_id] = shift.id
+        r_count = reserve_count_for_shift(session, shift=shift)
+        r_score = score * standby_multiplier
+        for _ in range(r_count):
+            block_id = uuid.uuid4()
+            blocks.append(DutyBlock(
+                id=block_id,
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                score_per_day=r_score,
+                is_reserve=True,
+            ))
             block_to_shift[block_id] = shift.id
 
     return blocks, block_to_shift
@@ -371,15 +397,8 @@ def persist_results(
                 )
             )
 
-        reserve_soldier_id = reserve_map.get(a.duty_id)
-        if reserve_soldier_id is not None:
-            session.add(
-                ReserveAssignment(
-                    duty_assignment_id=da.id,
-                    reserve_soldier_id=reserve_soldier_id,
-                    reason="auto: nearest in hierarchy",
-                )
-            )
+        # TODO Task 6: persist reserve links using new ReserveAssignment schema
+        pass  # reserve links handled in Task 6
 
         write_audit(
             session,
