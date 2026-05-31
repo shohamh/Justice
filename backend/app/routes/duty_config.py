@@ -35,12 +35,16 @@ class DutyTypeOut(BaseModel):
     description: str | None
     active: bool
     requirements: dict[str, Any] = {}
+    reserve_ratio: Decimal = Decimal("0.000")
+    reserve_minimum: int = 0
 
 
 class CreateDutyTypeRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     score_per_day: Decimal = Field(ge=0)
     description: str | None = Field(default=None, max_length=1000)
+    reserve_ratio: Decimal = Field(default=Decimal("0.000"), ge=0, le=1)
+    reserve_minimum: int = Field(default=0, ge=0)
 
 
 class UpdateDutyTypeRequest(BaseModel):
@@ -49,6 +53,8 @@ class UpdateDutyTypeRequest(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     active: bool | None = None
     requirements: dict[str, Any] | None = None
+    reserve_ratio: Decimal | None = Field(default=None, ge=0, le=1)
+    reserve_minimum: int | None = Field(default=None, ge=0)
 
 
 def _dt_out(d: DutyType) -> DutyTypeOut:
@@ -59,6 +65,8 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         description=d.description,
         active=d.active,
         requirements=d.requirements or {},
+        reserve_ratio=d.reserve_ratio or Decimal("0.000"),
+        reserve_minimum=d.reserve_minimum or 0,
     )
 
 
@@ -81,6 +89,8 @@ def create_duty_type(
             name=body.name,
             score_per_day=body.score_per_day,
             description=body.description,
+            reserve_ratio=body.reserve_ratio,
+            reserve_minimum=body.reserve_minimum,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
@@ -109,6 +119,8 @@ def update_duty_type(
             description=body.description,
             actor_id=user.id,
             requirements=body.requirements,
+            reserve_ratio=body.reserve_ratio,
+            reserve_minimum=body.reserve_minimum,
         )
         if body.active is not None:
             svc.set_duty_type_active(session, duty_type=dt, active=body.active, actor_id=user.id)

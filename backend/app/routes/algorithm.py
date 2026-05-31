@@ -15,8 +15,8 @@ from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
     DutyAssignment,
+    DutyReserveLink,
     DutyShift,
-    ReserveAssignment,
     Soldier,
 )
 from app.db.session import get_session
@@ -70,7 +70,7 @@ class ProposalOut(BaseModel):
     start_date: date
     end_date: date
     status: str
-    reserve_soldier_id: uuid.UUID | None
+    reserve_assignment_id: uuid.UUID | None
     norm_score_before: float | None
     norm_score_after: float | None
     duty_shift_id: uuid.UUID | None = None
@@ -132,16 +132,16 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
         .scalars()
         .all()
     )
-    reserves = (
+    reserve_links = (
         session.execute(
-            select(ReserveAssignment).where(
-                ReserveAssignment.duty_assignment_id.in_(assignment_ids)
+            select(DutyReserveLink).where(
+                DutyReserveLink.primary_assignment_id.in_(assignment_ids)
             )
         )
         .scalars()
         .all()
     )
-    reserve_map = {r.duty_assignment_id: r.reserve_soldier_id for r in reserves}
+    reserve_map = {lk.primary_assignment_id: lk.reserve_assignment_id for lk in reserve_links}
 
     explanations = (
         session.execute(
@@ -178,7 +178,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             start_date=a.start_date,
             end_date=a.end_date,
             status=a.status,
-            reserve_soldier_id=reserve_map.get(a.id),
+            reserve_assignment_id=reserve_map.get(a.id),
             norm_score_before=norm_before,
             norm_score_after=norm_after,
             duty_shift_id=a.duty_shift_id,

@@ -10,6 +10,8 @@ export interface DutyShift {
   notes: string | null;
   assigned_count: number;
   fill_status: "empty" | "partial" | "full";
+  reserve_count_override?: number | null;
+  calculated_reserve_count?: number | null;
 }
 
 export interface CreateShiftInput {
@@ -19,6 +21,7 @@ export interface CreateShiftInput {
   end_date: string;
   required_count: number;
   notes?: string | null;
+  reserve_count_override?: number | null;
 }
 
 export interface UpdateShiftInput {
@@ -26,6 +29,7 @@ export interface UpdateShiftInput {
   end_date?: string;
   required_count?: number;
   notes?: string | null;
+  reserve_count_override?: number | null;
 }
 
 export async function listShifts(params?: {

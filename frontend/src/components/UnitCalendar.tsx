@@ -8,6 +8,7 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalRow, CalAssignment, getUnitCalendar } from "../api/calendar";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
+import ShiftReservePanel from "./ShiftReservePanel";
 
 interface UnitCalendarProps {
   nodeId: string;
@@ -25,6 +26,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     soldier_name: string;
   } | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
+  const [reservePanelShiftId, setReservePanelShiftId] = useState<string | null>(null);
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
 
   const fetchData = useCallback(async (from: string, to: string) => {
@@ -214,6 +216,30 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
         />
       </div>
 
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text" placeholder="מזהה משמרת..."
+          className="border rounded px-2 py-1 text-sm flex-1"
+          onKeyDown={e => { if (e.key === "Enter") setReservePanelShiftId((e.target as HTMLInputElement).value); }}
+        />
+        <button
+          className="bg-purple-600 text-white text-sm px-3 py-1 rounded"
+          onClick={() => { const el = document.querySelector<HTMLInputElement>("input[placeholder*='מזהה משמרת']"); if (el?.value) setReservePanelShiftId(el.value); }}
+        >
+          {t("reserve_detail_title")}
+        </button>
+      </div>
+      {reservePanelShiftId && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-50"
+             onClick={() => setReservePanelShiftId(null)}>
+          <div onClick={e => e.stopPropagation()}>
+            <ShiftReservePanel
+              shiftId={reservePanelShiftId}
+              onClose={() => setReservePanelShiftId(null)}
+            />
+          </div>
+        </div>
+      )}
       <div data-testid="calendar-detail" className="bg-white rounded-lg border p-4">
         {selectedEvent ? (
           <div>

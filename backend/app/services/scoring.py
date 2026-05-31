@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
+    DutyDismissal,
     DutyType,
     ExemptionDutyTypeMap,
     HierarchyNode,
@@ -27,21 +28,43 @@ def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
     return {dt.id: dt.score_per_day for dt in session.execute(select(DutyType)).scalars().all()}
 
 
+def _get_multiplier_setting(session: Session, key: str, default: str) -> Decimal:
+    from app.services.settings_loader import SettingNotFound, get_setting
+    try:
+        return Decimal(str(get_setting(session, key)))
+    except SettingNotFound:
+        return Decimal(default)
+
+
 def effective_duty_days(
     session: Session, *, date_from: date | None = None, date_to: date | None = None
-) -> list[tuple[date, uuid.UUID, uuid.UUID]]:
-    """Expand every published assignment to (date, effective_soldier_id, duty_type_id) tuples,
-    applying overrides (replacement reassigns; NULL effective drops the day)."""
+) -> list[tuple[date, uuid.UUID, uuid.UUID, Decimal]]:
+    """Expand every published assignment to (date, effective_soldier_id, duty_type_id, multiplier).
+
+    Multiplier depends on:
+    - Primary assignment: 1.0, or dismissed_multiplier if a DutyDismissal covers that day
+    - Reserve assignment: called_up_multiplier if in called-up range, else standby_multiplier
+    Overrides (replacements) still reassign effective_soldier_id.
+    """
+    standby_mult = _get_multiplier_setting(session, "scoring.reserve_standby_multiplier", "0.2")
+    called_up_mult = _get_multiplier_setting(session, "scoring.reserve_called_up_multiplier", "1.3")
+    dismissed_mult = _get_multiplier_setting(session, "scoring.dismissed_multiplier", "0.0")
+
     assignments = (
         session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
-        .scalars()
-        .all()
+        .scalars().all()
     )
     overrides = {
         (o.duty_assignment_id, o.date): o
         for o in session.execute(select(DutyDayOverride)).scalars().all()
     }
-    out: list[tuple[date, uuid.UUID, uuid.UUID]] = []
+    dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
+    for d in session.execute(select(DutyDismissal)).scalars().all():
+        dismissal_ranges.setdefault(d.duty_assignment_id, []).append(
+            (d.dismissed_from, d.dismissed_to)
+        )
+
+    out: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]] = []
     for a in assignments:
         day = a.start_date
         while day <= a.end_date:
@@ -49,7 +72,19 @@ def effective_duty_days(
                 ov = overrides.get((a.id, day))
                 eff = ov.effective_soldier_id if ov is not None else a.soldier_id
                 if eff is not None:
-                    out.append((day, eff, a.duty_type_id))
+                    if a.is_reserve:
+                        if (a.called_up_from is not None and a.called_up_to is not None
+                                and a.called_up_from <= day <= a.called_up_to):
+                            mult = called_up_mult
+                        else:
+                            mult = standby_mult
+                    else:
+                        ranges = dismissal_ranges.get(a.id, [])
+                        if any(df <= day <= dt for df, dt in ranges):
+                            mult = dismissed_mult
+                        else:
+                            mult = Decimal("1.0")
+                    out.append((day, eff, a.duty_type_id, mult))
             day += timedelta(days=1)
     return out
 
@@ -128,8 +163,8 @@ def effective_duty_spans(
 def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
     scores = _duty_type_scores(session)
     out: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
-    for _day, eff, dtid in effective_duty_days(session):
-        out[eff] += scores.get(dtid, Decimal("0"))
+    for _day, eff, dtid, mult in effective_duty_days(session):
+        out[eff] += scores.get(dtid, Decimal("0")) * mult
     return out
 
 
@@ -234,18 +269,17 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
 def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
     scores = _duty_type_scores(session)
     dt_names = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
-    by_type_days: dict[uuid.UUID, int] = defaultdict(int)
-    for _day, eff, dtid in effective_duty_days(session):
+    by_type: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
+    for _day, eff, dtid, mult in effective_duty_days(session):
         if eff == soldier_id:
-            by_type_days[dtid] += 1
+            by_type[dtid] += scores.get(dtid, Decimal("0")) * mult
     per_type = [
         {
             "duty_type_id": dtid,
             "duty_type_name": dt_names.get(dtid),
-            "days": days,
-            "score": scores.get(dtid, Decimal("0")) * days,
+            "score": score,
         }
-        for dtid, days in by_type_days.items()
+        for dtid, score in by_type.items()
     ]
     adjustments = (
         session.execute(

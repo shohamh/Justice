@@ -29,6 +29,7 @@ class ShiftWithFill:
     created_by: uuid.UUID | None
     assigned_count: int
     fill_status: str  # 'empty' | 'partial' | 'full'
+    reserve_count_override: int | None = None
 
 
 def _fill_status(assigned: int, required: int) -> str:
@@ -61,6 +62,7 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         created_by=shift.created_by,
         assigned_count=assigned,
         fill_status=_fill_status(assigned, shift.required_count),
+        reserve_count_override=shift.reserve_count_override,
     )
 
 
@@ -73,6 +75,7 @@ def create_shift(
     end_date: date,
     required_count: int = 1,
     notes: str | None = None,
+    reserve_count_override: int | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
     if end_date < start_date:
@@ -86,6 +89,7 @@ def create_shift(
         end_date=end_date,
         required_count=required_count,
         notes=notes,
+        reserve_count_override=reserve_count_override,
         created_by=actor_id,
     )
     session.add(shift)
@@ -114,6 +118,7 @@ def update_shift(
     end_date: date | None = None,
     required_count: int | None = None,
     notes: object = _UNSET,  # use sentinel to allow explicit null (clearing notes)
+    reserve_count_override: object = _UNSET,  # sentinel to allow explicit null (clearing override)
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
     before: dict = {
@@ -121,6 +126,7 @@ def update_shift(
         "end_date": shift.end_date.isoformat(),
         "required_count": shift.required_count,
         "notes": shift.notes,
+        "reserve_count_override": shift.reserve_count_override,
     }
     if start_date is not None:
         shift.start_date = start_date
@@ -132,6 +138,8 @@ def update_shift(
         shift.required_count = required_count
     if notes is not _UNSET:
         shift.notes = notes  # type: ignore[assignment]  # None means clear
+    if reserve_count_override is not _UNSET:
+        shift.reserve_count_override = reserve_count_override  # type: ignore[assignment]  # None means clear
     if shift.end_date < shift.start_date:
         raise ShiftError("end_before_start")
     write_audit(
@@ -146,6 +154,7 @@ def update_shift(
             "end_date": shift.end_date.isoformat(),
             "required_count": shift.required_count,
             "notes": shift.notes,
+            "reserve_count_override": shift.reserve_count_override,
         },
     )
     return shift
@@ -220,6 +229,7 @@ def list_shifts(
             created_by=shift.created_by,
             assigned_count=assigned,
             fill_status=_fill_status(assigned, shift.required_count),
+            reserve_count_override=shift.reserve_count_override,
         ))
     return result
 

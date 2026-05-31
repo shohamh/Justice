@@ -27,6 +27,8 @@ class ShiftOut(BaseModel):
     notes: str | None
     assigned_count: int
     fill_status: str
+    reserve_count_override: int | None = None
+    calculated_reserve_count: int | None = None
 
 
 class CreateShiftRequest(BaseModel):
@@ -36,6 +38,7 @@ class CreateShiftRequest(BaseModel):
     end_date: date
     required_count: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
+    reserve_count_override: int | None = Field(default=None, ge=0)
 
 
 class UpdateShiftRequest(BaseModel):
@@ -43,9 +46,17 @@ class UpdateShiftRequest(BaseModel):
     end_date: date | None = None
     required_count: int | None = Field(default=None, ge=1)
     notes: str | None = None
+    reserve_count_override: int | None = Field(default=None, ge=0)
 
 
-def _out(s: svc.ShiftWithFill) -> ShiftOut:
+def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
+    calculated = None
+    if session is not None:
+        from app.services.algorithm_bridge import reserve_count_for_shift
+        from app.db.models import DutyShift as DutyShiftModel
+        shift_obj = session.get(DutyShiftModel, s.id)
+        if shift_obj is not None:
+            calculated = reserve_count_for_shift(session, shift=shift_obj)
     return ShiftOut(
         id=s.id,
         duty_type_id=s.duty_type_id,
@@ -56,6 +67,8 @@ def _out(s: svc.ShiftWithFill) -> ShiftOut:
         notes=s.notes,
         assigned_count=s.assigned_count,
         fill_status=s.fill_status,
+        reserve_count_override=s.reserve_count_override,
+        calculated_reserve_count=calculated,
     )
 
 
@@ -75,7 +88,7 @@ def list_shifts(
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftOut]:
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
-    return [_out(s) for s in svc.list_shifts(session, date_from=date_from, date_to=date_to, duty_type_id=duty_type_id)]
+    return [_out(s, session) for s in svc.list_shifts(session, date_from=date_from, date_to=date_to, duty_type_id=duty_type_id)]
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)
@@ -94,13 +107,14 @@ def create_shift(
             end_date=body.end_date,
             required_count=body.required_count,
             notes=body.notes,
+            reserve_count_override=body.reserve_count_override,
             actor_id=user.id,
         )
     except svc.ShiftError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     result = svc.get_shift_fill(session, shift_id=shift.id)
-    return _out(result)
+    return _out(result, session)
 
 
 @router.get("/{shift_id}", response_model=ShiftOut)
@@ -113,7 +127,7 @@ def get_shift(
     result = svc.get_shift_fill(session, shift_id=shift_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return _out(result)
+    return _out(result, session)
 
 
 @router.patch("/{shift_id}", response_model=ShiftOut)
@@ -128,6 +142,8 @@ def update_shift(
     extra: dict = {}
     if "notes" in body.model_fields_set:
         extra["notes"] = body.notes
+    if "reserve_count_override" in body.model_fields_set:
+        extra["reserve_count_override"] = body.reserve_count_override
     try:
         svc.update_shift(
             session,
@@ -141,7 +157,7 @@ def update_shift(
     except svc.ShiftError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
-    return _out(svc.get_shift_fill(session, shift_id=shift_id))
+    return _out(svc.get_shift_fill(session, shift_id=shift_id), session)
 
 
 @router.delete("/{shift_id}", status_code=status.HTTP_204_NO_CONTENT)

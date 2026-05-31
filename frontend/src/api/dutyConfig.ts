@@ -6,6 +6,8 @@ export interface DutyType {
   score_per_day: string;
   description: string | null;
   active: boolean;
+  reserve_ratio?: string;
+  reserve_minimum?: number;
   requirements?: {
     allowed_genders?: string[];
     requires_mitvahim?: boolean;
@@ -35,10 +37,10 @@ export interface ExemptionType {
 export async function listDutyTypes(): Promise<DutyType[]> {
   return (await api.get<DutyType[]>("/duty-config/duty-types")).data;
 }
-export async function createDutyType(input: { name: string; score_per_day: string; description?: string | null }): Promise<DutyType> {
+export async function createDutyType(input: { name: string; score_per_day: string; description?: string | null; reserve_ratio?: string; reserve_minimum?: number }): Promise<DutyType> {
   return (await api.post<DutyType>("/duty-config/duty-types", input)).data;
 }
-export async function updateDutyType(id: string, input: Partial<{ name: string; score_per_day: string; description: string | null; active: boolean }>): Promise<DutyType> {
+export async function updateDutyType(id: string, input: Partial<{ name: string; score_per_day: string; description: string | null; active: boolean; reserve_ratio: string; reserve_minimum: number }>): Promise<DutyType> {
   return (await api.patch<DutyType>(`/duty-config/duty-types/${id}`, input)).data;
 }
 

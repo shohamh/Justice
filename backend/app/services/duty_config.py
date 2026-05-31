@@ -26,13 +26,21 @@ def create_duty_type(
     name: str,
     score_per_day: Decimal,
     description: str | None = None,
+    reserve_ratio: Decimal = Decimal("0.000"),
+    reserve_minimum: int = 0,
     actor_id: uuid.UUID | None = None,
 ) -> DutyType:
     if score_per_day < 0:
         raise DutyConfigError("score_per_day must be >= 0")
     if session.execute(select(DutyType.id).where(DutyType.name == name)).first():
         raise DutyConfigError("name_taken")
-    dt = DutyType(name=name, score_per_day=score_per_day, description=description)
+    dt = DutyType(
+        name=name,
+        score_per_day=score_per_day,
+        description=description,
+        reserve_ratio=reserve_ratio,
+        reserve_minimum=reserve_minimum,
+    )
     session.add(dt)
     session.flush()
     write_audit(
@@ -41,7 +49,12 @@ def create_duty_type(
         action="duty_type.create",
         entity_type="duty_type",
         entity_id=dt.id,
-        after={"name": name, "score_per_day": str(score_per_day)},
+        after={
+            "name": name,
+            "score_per_day": str(score_per_day),
+            "reserve_ratio": str(reserve_ratio),
+            "reserve_minimum": reserve_minimum,
+        },
     )
     return dt
 
@@ -55,6 +68,8 @@ def update_duty_type(
     description: str | None,
     actor_id: uuid.UUID | None = None,
     requirements: dict | None = None,
+    reserve_ratio: Decimal | None = None,
+    reserve_minimum: int | None = None,
 ) -> DutyType:
     before = {
         "name": duty_type.name,
@@ -75,6 +90,12 @@ def update_duty_type(
         from app.services.eligibility import DutyTypeRequirements
         DutyTypeRequirements.model_validate(requirements)  # validate shape
         duty_type.requirements = requirements
+    if reserve_ratio is not None:
+        before["reserve_ratio"] = str(duty_type.reserve_ratio)
+        duty_type.reserve_ratio = reserve_ratio
+    if reserve_minimum is not None:
+        before["reserve_minimum"] = duty_type.reserve_minimum
+        duty_type.reserve_minimum = reserve_minimum
     write_audit(
         session,
         actor_id=actor_id,
@@ -86,6 +107,8 @@ def update_duty_type(
             "name": duty_type.name,
             "score_per_day": str(duty_type.score_per_day),
             "description": duty_type.description,
+            "reserve_ratio": str(duty_type.reserve_ratio),
+            "reserve_minimum": duty_type.reserve_minimum,
         },
     )
     return duty_type

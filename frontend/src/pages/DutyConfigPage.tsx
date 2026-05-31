@@ -25,6 +25,8 @@ export default function DutyConfigPage() {
   const [exTypes, setExTypes] = useState<ExemptionType[]>([]);
   const [dtName, setDtName] = useState("");
   const [dtScore, setDtScore] = useState("1.00");
+  const [dtReserveRatio, setDtReserveRatio] = useState("0.000");
+  const [dtReserveMin, setDtReserveMin] = useState("0");
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
@@ -44,8 +46,8 @@ export default function DutyConfigPage() {
 
   async function addDutyType(e: FormEvent) {
     e.preventDefault();
-    await createDutyType({ name: dtName, score_per_day: dtScore });
-    setDtName(""); setDtScore("1.00");
+    await createDutyType({ name: dtName, score_per_day: dtScore, reserve_ratio: dtReserveRatio, reserve_minimum: parseInt(dtReserveMin) || 0 });
+    setDtName(""); setDtScore("1.00"); setDtReserveRatio("0.000"); setDtReserveMin("0");
     await refresh();
   }
   async function addLocation(e: FormEvent) {
@@ -79,6 +81,10 @@ export default function DutyConfigPage() {
               <input className="block border rounded p-1" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
             <label className="block"><span className="text-xs">{t("duty_config.score_per_day")}</span>
               <input className="block border rounded p-1 w-24" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
+            <label className="block"><span className="text-xs">{t("reserve_ratio")}</span>
+              <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
+            <label className="block"><span className="text-xs">{t("reserve_minimum")}</span>
+              <input type="number" min="0" step="1" className="block border rounded p-1 w-16" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dt-submit">{t("duty_config.add")}</button>
           </form>
           <div className="space-y-1 text-sm" data-testid="duty-type-list">
@@ -86,6 +92,9 @@ export default function DutyConfigPage() {
               <div key={d.id} data-testid={`dt-row-${d.name}`} className="border rounded p-2 space-y-2">
                 <div className="flex items-center gap-2">
                   <span>{d.name} — {d.score_per_day}</span>
+                  {d.reserve_ratio && parseFloat(d.reserve_ratio) > 0 && (
+                    <span className="text-xs text-purple-600">ר:{d.reserve_ratio} מינ:{d.reserve_minimum ?? 0}</span>
+                  )}
                   <button className="text-xs text-indigo-600" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
                     {d.active ? t("duty_config.active") : "—"}
                   </button>

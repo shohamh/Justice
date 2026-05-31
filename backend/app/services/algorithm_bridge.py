@@ -16,7 +16,6 @@ from app.algorithm.types import (
     DutyBlock,
     ExistingAssignment,
     ExplanationData,
-    ReserveEntry,
     SoldierInput,
     SolverResult,
     SolverSettings,
@@ -26,6 +25,7 @@ from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
     DutyAssignment,
+    DutyReserveLink,
     DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
@@ -348,18 +348,22 @@ def persist_results(
     job: AlgorithmJob,
     result: SolverResult,
     explanation_data: ExplanationData,
-    reserves: list[ReserveEntry],
     duty_blocks: list,
     soldier_names: dict[uuid.UUID, str],
     actor_id: uuid.UUID | None,
     block_to_shift_map: dict[uuid.UUID, uuid.UUID] | None = None,
+    hierarchy_parent: dict[uuid.UUID, uuid.UUID | None] | None = None,
+    hierarchy_children: dict[uuid.UUID, list[uuid.UUID]] | None = None,
+    soldier_node: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> None:
-    """Insert algorithm_draft assignments, explanations, and reserve rows."""
+    """Insert algorithm_draft assignments, explanations (primary only), and reserve links."""
+    from app.algorithm.reserve import link_reserves
+
     duty_map = {d.id: d for d in duty_blocks}
     explanation_map = {e.duty_id: e for e in explanation_data.per_assignment}
-    reserve_map: dict[uuid.UUID, uuid.UUID] = {
-        e.duty_id: e.reserve_soldier_id for e in reserves
-    }
+
+    primary_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
+    reserve_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
 
     for a in result.assignments:
         block: DutyBlock = duty_map[a.duty_id]
@@ -374,31 +378,23 @@ def persist_results(
             created_by=actor_id,
             notes=None,
             duty_shift_id=shift_id,
+            is_reserve=block.is_reserve,
         )
         session.add(da)
         session.flush()  # populate da.id
 
-        exp = explanation_map.get(a.duty_id)
-        if exp is not None:
-            payload = _explanation_payload(
-                exp,
-                dm_view=True,
-                soldier_names=soldier_names,
-            )
-            payload["global_before"] = explanation_data.global_metrics_before
-            payload["global_after"] = explanation_data.global_metrics_after
-
-            session.add(
-                AssignmentExplanation(
+        if not block.is_reserve:
+            exp = explanation_map.get(a.duty_id)
+            if exp is not None:
+                payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
+                payload["global_before"] = explanation_data.global_metrics_before
+                payload["global_after"] = explanation_data.global_metrics_after
+                session.add(AssignmentExplanation(
                     duty_assignment_id=da.id,
                     payload=payload,
                     algorithm_version=explanation_data.algorithm_version,
                     solver_seed=str(explanation_data.solver_seed),
-                )
-            )
-
-        # TODO Task 6: persist reserve links using new ReserveAssignment schema
-        pass  # reserve links handled in Task 6
+                ))
 
         write_audit(
             session,
@@ -406,17 +402,39 @@ def persist_results(
             action="algorithm.proposal.create",
             entity_type="duty_assignment",
             entity_id=da.id,
-            after={"status": "algorithm_draft"},
+            after={"status": "algorithm_draft", "is_reserve": block.is_reserve},
             context={"job_id": str(job.id)},
         )
+
+        if shift_id:
+            if block.is_reserve:
+                reserve_assignments.append((da.id, a.soldier_id, shift_id))
+            else:
+                primary_assignments.append((da.id, a.soldier_id, shift_id))
+
+    if primary_assignments and reserve_assignments and soldier_node is not None:
+        links = link_reserves(
+            primary_assignments=primary_assignments,
+            reserve_assignments=reserve_assignments,
+            soldier_node=soldier_node,
+            hierarchy_parent=hierarchy_parent or {},
+            hierarchy_children=hierarchy_children or {},
+        )
+        for link in links:
+            session.add(DutyReserveLink(
+                reserve_assignment_id=link.reserve_assignment_id,
+                primary_assignment_id=link.primary_assignment_id,
+                hierarchy_distance=link.hierarchy_distance,
+            ))
 
 
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     from app.algorithm.explain import build_explanations
-    from app.algorithm.reserve import select_reserves
+    from app.algorithm.reserve import compute_reserve_dist
     from app.algorithm.solver import solve
     from app.db.session import session_scope
+    from app.services.settings_loader import get_setting
 
     with session_scope() as session:
         job = session.get(AlgorithmJob, job_id)
@@ -428,6 +446,12 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         session.commit()
 
         try:
+            def _setting_decimal(key: str, default: str) -> Decimal:
+                try:
+                    return Decimal(str(get_setting(session, key)))
+                except Exception:
+                    return Decimal(default)
+
             settings = SolverSettings(
                 K=Decimal(str(job.settings_json.get("K", 8))),
                 T=int(job.settings_json.get("T", 7)),
@@ -435,11 +459,13 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
                 beta=Decimal(str(job.settings_json.get("beta", 2.0))),
                 time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
+                reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
             )
+            standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
+
             shift_ids = [uuid.UUID(s) for s in job.shift_ids]
             duties, block_to_shift_map = load_duty_blocks_from_shifts(
-                session,
-                shift_ids=shift_ids,
+                session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
             )
 
             if not duties:
@@ -467,7 +493,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 session.commit()
                 return
 
-            result = solve(soldiers, duties, existing, settings)
+            hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
+
+            reserve_dist = compute_reserve_dist(
+                soldiers=soldiers, duties=duties, block_to_shift=block_to_shift_map,
+                hierarchy_parent=hier_parent, soldier_node=soldier_node,
+            )
+
+            result = solve(soldiers, duties, existing, settings, reserve_dist=reserve_dist)
 
             if result.status == "INFEASIBLE":
                 from app.algorithm.diagnose import diagnose_infeasibility
@@ -494,16 +527,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 global_after={},
                 solver_seed=result.seed,
             )
-            hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
-            reserves = select_reserves(
-                soldiers=soldiers,
-                duties=duties,
-                assignments=result.assignments,
-                hierarchy_parent=hier_parent,
-                hierarchy_children=hier_children,
-                soldier_node=soldier_node,
-                node_soldiers=node_soldiers,
-            )
 
             soldier_names = {
                 s.id: s.full_name
@@ -515,11 +538,13 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 job=job,
                 result=result,
                 explanation_data=explanation_data,
-                reserves=reserves,
                 duty_blocks=duties,
                 soldier_names=soldier_names,
                 actor_id=actor_id,
                 block_to_shift_map=block_to_shift_map,
+                hierarchy_parent=hier_parent,
+                hierarchy_children=hier_children,
+                soldier_node=soldier_node,
             )
 
             # Check if job was cancelled while the solver was running

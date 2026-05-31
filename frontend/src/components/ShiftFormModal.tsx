@@ -19,6 +19,7 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   const [count, setCount] = useState(existing?.required_count ?? 1);
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [reserveOverride, setReserveOverride] = useState(existing?.reserve_count_override?.toString() ?? "");
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -31,6 +32,7 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
           end_date: endDate,
           required_count: count,
           notes: notes || null,
+          reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
         });
       } else {
         const input: CreateShiftInput = {
@@ -40,6 +42,7 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
           end_date: endDate,
           required_count: count,
           notes: notes || null,
+          reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
         };
         await createShift(input);
       }
@@ -89,6 +92,13 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
           <label className="block text-sm">
             {t("shifts.notes")}
             <textarea value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" rows={2} />
+          </label>
+          <label className="block text-sm">
+            {t("reserve_count_override")}
+            <input type="number" min="0" step="1" value={reserveOverride} onChange={e => setReserveOverride(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" placeholder={existing?.calculated_reserve_count?.toString() ?? ""} />
+            {existing?.calculated_reserve_count != null && (
+              <span className="text-xs text-gray-500">({t("reserve_calculated_count")}: {existing.calculated_reserve_count})</span>
+            )}
           </label>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
