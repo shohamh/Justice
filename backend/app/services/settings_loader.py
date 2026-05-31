@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,14 @@ class SettingNotFound(KeyError):
     """Raised when a system_settings key is not present."""
 
 
+def _json_safe(value: Any) -> Any:
+    # why: the value column is JSON; Decimal isn't JSON-serializable, so store it
+    # as a string and rely on callers parsing it back (e.g. Decimal(str(...))).
+    if isinstance(value, Decimal):
+        return str(value)
+    return value
+
+
 def get_setting(session: Session, key: str) -> Any:
     row = session.get(SystemSetting, key)
     if row is None:
@@ -21,6 +30,7 @@ def get_setting(session: Session, key: str) -> Any:
 
 
 def set_setting(session: Session, key: str, value: Any, *, actor_id: uuid.UUID | None) -> None:
+    value = _json_safe(value)
     row = session.get(SystemSetting, key)
     before = row.value if row is not None else None
     if row is None:
