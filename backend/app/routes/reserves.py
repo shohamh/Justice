@@ -205,6 +205,8 @@ def relink_reserve_route(
 ) -> dict:
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
+    if a.duty_shift_id != shift_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_in_shift")
     try:
         link = svc.relink_reserve(
             session,

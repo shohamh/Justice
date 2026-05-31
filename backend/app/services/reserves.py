@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink
 from app.services.algorithm_bridge import build_hierarchy_maps
@@ -209,32 +210,6 @@ def get_shift_reserve_detail(session: Session, *, shift_id: uuid.UUID) -> dict[s
     return {"primaries": primaries, "reserves": reserves}
 
 
-def _compute_hierarchy_distance(
-    parent_map: dict[uuid.UUID, uuid.UUID | None],
-    node_a: uuid.UUID,
-    node_b: uuid.UUID,
-) -> int:
-    ancestors_a = {node_a}
-    cur = node_a
-    while parent_map.get(cur):
-        cur = parent_map[cur]
-        ancestors_a.add(cur)
-    cur = node_b
-    dist = 0
-    while cur not in ancestors_a:
-        cur = parent_map.get(cur)
-        if cur is None:
-            return 99
-        dist += 1
-    cur2 = node_a
-    while cur2 != cur:
-        dist += 1
-        cur2 = parent_map.get(cur2)
-        if cur2 is None:
-            return 99
-    return dist
-
-
 def relink_reserve(
     session: Session,
     *,
@@ -262,7 +237,7 @@ def relink_reserve(
     hier_parent, _, soldier_node, _ = build_hierarchy_maps(session)
     p_node = soldier_node.get(primary_assignment.soldier_id)
     r_node = soldier_node.get(reserve_a.soldier_id)
-    distance = _compute_hierarchy_distance(hier_parent, p_node, r_node) if p_node and r_node else 99
+    distance = _hierarchy_distance(p_node, r_node, hier_parent) if p_node and r_node else 99
 
     link = DutyReserveLink(
         primary_assignment_id=primary_assignment.id,
