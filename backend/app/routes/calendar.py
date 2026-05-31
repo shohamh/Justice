@@ -13,6 +13,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyLocation, DutyType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
+from app.services.calendar_shifts import get_calendar_shifts
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -33,6 +34,45 @@ class CalRow(BaseModel):
     full_name: str
     hierarchy_node_id: uuid.UUID | None
     assignments: list[CalAssignment]
+
+
+class CalendarShiftAssigneeDismissal(BaseModel):
+    id: uuid.UUID
+    dismissed_from: date
+    dismissed_to: date
+    reason: str | None
+
+
+class CalendarShiftAssignee(BaseModel):
+    soldier_id: uuid.UUID
+    soldier_name: str
+    hierarchy_label: str | None
+    is_reserve: bool
+    dismissals: list[CalendarShiftAssigneeDismissal] = []
+    reserve_assignment_id: uuid.UUID | None = None
+    reserve_hierarchy_distance: int | None = None
+    called_up_from: date | None = None
+    called_up_to: date | None = None
+    primary_assignment_ids: list[uuid.UUID] = []
+
+
+class CalendarShiftOut(BaseModel):
+    id: uuid.UUID
+    duty_type_id: uuid.UUID
+    duty_type_name: str
+    duty_type_color: str
+    duty_location_name: str
+    start_date: date
+    end_date: date
+    required_count: int
+    assigned_count: int
+    fill_status: str
+    reserve_count: int
+    assignees: list[CalendarShiftAssignee]
+
+
+class CalendarShiftsResponse(BaseModel):
+    shifts: list[CalendarShiftOut]
 
 
 def _duty_type_color(duty_type_id: uuid.UUID) -> str:
@@ -70,7 +110,9 @@ def unit_calendar(
     )
     soldier_ids = [s.id for s in soldiers]
     duty_types = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
-    duty_locations = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
+    duty_locations = {
+        dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()
+    }
     spans = scoring_svc.effective_duty_spans(
         session, soldier_ids=set(soldier_ids), date_from=date_from, date_to=date_to
     )
@@ -91,6 +133,28 @@ def unit_calendar(
             )
         )
     return [
-        CalRow(soldier_id=s.id, full_name=s.full_name, hierarchy_node_id=s.hierarchy_node_id, assignments=by_soldier[s.id])
+        CalRow(
+            soldier_id=s.id,
+            full_name=s.full_name,
+            hierarchy_node_id=s.hierarchy_node_id,
+            assignments=by_soldier[s.id],
+        )
         for s in soldiers
     ]
+
+
+@router.get("/shifts", response_model=CalendarShiftsResponse)
+def calendar_shifts(
+    node_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> CalendarShiftsResponse:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    authorize(session, user, Action.HIERARCHY_READ, target_node=node)
+    raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
+    shifts = [CalendarShiftOut(**s) for s in raw]
+    return CalendarShiftsResponse(shifts=shifts)

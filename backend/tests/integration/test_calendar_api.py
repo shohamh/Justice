@@ -46,3 +46,95 @@ def test_plain_soldier_forbidden_calendar(client: TestClient, admin_session: Ses
     admin_session.commit()
     r = client.get(f"/api/calendar/unit?node_id={dept.id}", headers=auth_headers(s))
     assert r.status_code == 403
+
+
+def test_calendar_shifts_returns_shift_events(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="7100001", role="admin")
+    dept = create_node(admin_session, level="department", name="cal-shift-dept")
+    branch = create_node(admin_session, level="branch", name="cal-shift-br", parent=dept)
+    s1 = create_soldier(
+        admin_session, personal_number="7100002", role="soldier", hierarchy_node_id=branch.id
+    )
+    s2 = create_soldier(
+        admin_session, personal_number="7100003", role="soldier", hierarchy_node_id=branch.id
+    )
+    admin_session.commit()
+    dt = DutyType(name="שמירה-cs", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="מוצב-cs")
+    admin_session.add_all([dt, loc])
+    admin_session.commit()
+    shift_resp = client.post(
+        "/api/shifts",
+        headers=auth_headers(admin),
+        json={
+            "duty_type_id": str(dt.id),
+            "duty_location_id": str(loc.id),
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-03",
+            "required_count": 2,
+        },
+    )
+    assert shift_resp.status_code == 201
+    shift_id = shift_resp.json()["id"]
+
+    for sid in [s1.id, s2.id]:
+        client.post(
+            "/api/assignments",
+            headers=auth_headers(admin),
+            json={
+                "soldier_id": str(sid),
+                "duty_type_id": str(dt.id),
+                "duty_location_id": str(loc.id),
+                "start_date": "2026-11-01",
+                "end_date": "2026-11-03",
+                "duty_shift_id": shift_id,
+            },
+        )
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={branch.id}&date_from=2026-11-01&date_to=2026-11-03",
+        headers=auth_headers(admin),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "shifts" in body
+    assert len(body["shifts"]) == 1
+    shift = body["shifts"][0]
+    assert shift["id"] == shift_id
+    assert len(shift["assignees"]) == 2
+    assert all(not a["is_reserve"] for a in shift["assignees"])
+    assert shift["required_count"] == 2
+    assert shift["assigned_count"] == 2
+    assert shift["fill_status"] == "full"
+    assert shift["reserve_count"] == 0
+
+
+def test_calendar_shifts_excludes_shift_with_no_assignees_in_node(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="7100010", role="admin")
+    dept = create_node(admin_session, level="department", name="cal-empty")
+    other = create_node(admin_session, level="branch", name="other-br", parent=dept)
+    admin_session.commit()
+    dt = DutyType(name="empty-shift", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="empty-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.commit()
+    shift_resp = client.post(
+        "/api/shifts",
+        headers=auth_headers(admin),
+        json={
+            "duty_type_id": str(dt.id),
+            "duty_location_id": str(loc.id),
+            "start_date": "2026-11-05",
+            "end_date": "2026-11-05",
+            "required_count": 1,
+        },
+    )
+    assert shift_resp.status_code == 201
+    r = client.get(
+        f"/api/calendar/shifts?node_id={other.id}&date_from=2026-11-05&date_to=2026-11-05",
+        headers=auth_headers(admin),
+    )
+    assert r.status_code == 200
+    assert len(r.json()["shifts"]) == 0
