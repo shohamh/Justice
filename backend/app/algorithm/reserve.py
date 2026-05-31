@@ -1,86 +1,129 @@
 from __future__ import annotations
 
 import uuid
-from collections import deque
+from collections import defaultdict
 from collections.abc import Sequence
 
-from app.algorithm.types import Assignment, DutyBlock, ReserveEntry, SoldierInput
+from app.algorithm.types import DutyBlock, ReserveLink, SoldierInput
 
 
-def _eligible_reserve(
-    sid: uuid.UUID, primary_id: uuid.UUID, duty: DutyBlock,
-    soldier_map: dict[uuid.UUID, SoldierInput],
-    duty_map: dict[uuid.UUID, DutyBlock],
-    assignments: Sequence[Assignment],
-) -> bool:
-    if sid == primary_id:
-        return False
-    s = soldier_map.get(sid)
-    if s is None:
-        return False
-    if duty.duty_type_id in s.exempted_duty_type_ids:
-        return False
-    if any(cs <= duty.end_date and ce >= duty.start_date
-           for cs, ce in s.approved_constraint_dates):
-        return False
-    for other_a in assignments:
-        if other_a.soldier_id == sid:
-            other_duty = duty_map.get(other_a.duty_id)
-            if other_duty and other_duty.start_date <= duty.end_date and other_duty.end_date >= duty.start_date:
-                return False
-    return True
+def _node_ancestors(node_id: uuid.UUID, hierarchy_parent: dict[uuid.UUID, uuid.UUID | None]) -> set[uuid.UUID]:
+    """All ancestor node IDs including node_id itself."""
+    path: set[uuid.UUID] = set()
+    current: uuid.UUID | None = node_id
+    while current is not None:
+        if current in path:
+            break  # cycle guard
+        path.add(current)
+        current = hierarchy_parent.get(current)
+    return path
 
 
-def select_reserves(
-    soldiers: Sequence[SoldierInput],
-    duties: Sequence[DutyBlock],
-    assignments: Sequence[Assignment],
+def _hierarchy_distance(node_a: uuid.UUID, node_b: uuid.UUID,
+                        hierarchy_parent: dict[uuid.UUID, uuid.UUID | None]) -> int:
+    """Symmetric-difference distance: len(ancestors(a) Δ ancestors(b))."""
+    return len(_node_ancestors(node_a, hierarchy_parent).symmetric_difference(
+        _node_ancestors(node_b, hierarchy_parent)
+    ))
+
+
+def link_reserves(
+    primary_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
+    reserve_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
+    soldier_node: dict[uuid.UUID, uuid.UUID],
     hierarchy_parent: dict[uuid.UUID, uuid.UUID | None],
     hierarchy_children: dict[uuid.UUID, list[uuid.UUID]],
-    soldier_node: dict[uuid.UUID, uuid.UUID],
-    node_soldiers: dict[uuid.UUID, list[uuid.UUID]],
-) -> list[ReserveEntry]:
-    duty_map = {d.id: d for d in duties}
-    soldier_map = {s.id: s for s in soldiers}
-    results: list[ReserveEntry] = []
+) -> list[ReserveLink]:
+    """For each primary assignment, find the closest reserve (by hierarchy distance)
+    in the same shift. One reserve may cover multiple primaries.
 
-    for a in assignments:
-        duty = duty_map[a.duty_id]
-        primary_id = a.soldier_id
-        primary_node = soldier_node.get(primary_id)
-        if primary_node is None:
+    Args:
+        primary_assignments: list of (assignment_id, soldier_id, shift_id)
+        reserve_assignments: list of (assignment_id, soldier_id, shift_id)
+        soldier_node, hierarchy_parent, hierarchy_children: from build_hierarchy_maps
+    Returns:
+        list of ReserveLink — one per primary assignment that has a reserve in its shift
+    """
+    reserves_by_shift: dict[uuid.UUID, list[tuple[uuid.UUID, uuid.UUID]]] = {}
+    for r_assign_id, r_soldier_id, shift_id in reserve_assignments:
+        reserves_by_shift.setdefault(shift_id, []).append((r_assign_id, r_soldier_id))
+
+    links: list[ReserveLink] = []
+    for p_assign_id, p_soldier_id, shift_id in primary_assignments:
+        candidates = reserves_by_shift.get(shift_id)
+        if not candidates:
+            continue
+        p_node = soldier_node.get(p_soldier_id)
+        if p_node is None:
+            r_assign_id, _ = candidates[0]
+            links.append(ReserveLink(
+                reserve_assignment_id=r_assign_id,
+                primary_assignment_id=p_assign_id,
+                hierarchy_distance=10,
+            ))
             continue
 
-        visited_nodes: set[uuid.UUID] = set()
-        queue: deque[tuple[uuid.UUID, int]] = deque()
-        queue.append((primary_node, 0))
-        visited_nodes.add(primary_node)
+        best_assign_id: uuid.UUID | None = None
+        best_dist = 999
+        for r_assign_id, r_soldier_id in candidates:
+            r_node = soldier_node.get(r_soldier_id)
+            if r_node is None:
+                dist = 10
+            else:
+                dist = _hierarchy_distance(p_node, r_node, hierarchy_parent)
+            if dist < best_dist:
+                best_dist = dist
+                best_assign_id = r_assign_id
 
-        reserve_soldier: uuid.UUID | None = None
-
-        while queue:
-            node_id, distance = queue.popleft()
-            for sid in node_soldiers.get(node_id, []):
-                if _eligible_reserve(sid, primary_id, duty, soldier_map, duty_map, assignments):
-                    reserve_soldier = sid
-                    break
-            if reserve_soldier is not None:
-                break
-
-            parent = hierarchy_parent.get(node_id)
-            if parent is not None and parent not in visited_nodes:
-                visited_nodes.add(parent)
-                queue.append((parent, distance + 1))
-                for sibling in hierarchy_children.get(parent, []):
-                    if sibling not in visited_nodes:
-                        visited_nodes.add(sibling)
-                        queue.append((sibling, distance + 1))
-
-        if reserve_soldier is not None:
-            results.append(ReserveEntry(
-                duty_id=a.duty_id,
-                primary_soldier_id=primary_id,
-                reserve_soldier_id=reserve_soldier,
+        if best_assign_id is not None:
+            links.append(ReserveLink(
+                reserve_assignment_id=best_assign_id,
+                primary_assignment_id=p_assign_id,
+                hierarchy_distance=best_dist,
             ))
 
-    return results
+    return links
+
+
+def compute_reserve_dist(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    block_to_shift: dict[uuid.UUID, uuid.UUID],
+    hierarchy_parent: dict[uuid.UUID, uuid.UUID | None],
+    soldier_node: dict[uuid.UUID, uuid.UUID],
+) -> dict[tuple[int, int], int]:
+    """Precompute hierarchy distance from each candidate reserve soldier to the
+    nearest primary-eligible soldier for the same shift.
+
+    Returns dict mapping (duty_index, soldier_index) -> int distance,
+    populated only for reserve blocks.
+    """
+    duty_list = list(duties)
+    soldier_list = list(soldiers)
+
+    shift_primary_nodes: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    for d in duty_list:
+        if not d.is_reserve:
+            shift_id = block_to_shift.get(d.id)
+            if shift_id is not None:
+                for s in soldier_list:
+                    node = soldier_node.get(s.id)
+                    if node:
+                        shift_primary_nodes[shift_id].add(node)
+
+    result: dict[tuple[int, int], int] = {}
+    for di, d in enumerate(duty_list):
+        if not d.is_reserve:
+            continue
+        shift_id = block_to_shift.get(d.id)
+        primary_nodes = shift_primary_nodes.get(shift_id, set()) if shift_id else set()
+        for si, s in enumerate(soldier_list):
+            s_node = soldier_node.get(s.id)
+            if s_node is None or not primary_nodes:
+                result[(di, si)] = 10
+            else:
+                result[(di, si)] = min(
+                    _hierarchy_distance(s_node, pn, hierarchy_parent)
+                    for pn in primary_nodes
+                )
+    return result
