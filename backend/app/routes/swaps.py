@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from app.db.models import SwapRequest, Soldier
 from app.db.session import get_session
@@ -137,9 +137,7 @@ def pending(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
-    roots = scope_root_ids(session, user)
-    if user.role != "admin" and not roots:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    authorize(session, user, Action.SWAP_APPROVE, target_node=None)
     return [_out(r) for r in svc.list_pending_approval(session)]
 
 

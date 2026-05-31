@@ -160,6 +160,7 @@ def _existing_dates(
         select(DutyShift.start_date).where(
             DutyShift.generated_from_template_id == template_id,
             DutyShift.start_date.in_(dates),
+            DutyShift.end_date == DutyShift.start_date,
         )
     ).scalars().all()
     return set(rows)

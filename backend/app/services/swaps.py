@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -37,6 +37,15 @@ def create_request(
         raise SwapError("not_published")
     if target_soldier_id is not None and target_soldier_id == requesting_soldier_id:
         raise SwapError("cannot_target_self")
+    existing = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.duty_assignment_id == duty_assignment_id,
+            SwapRequest.duty_date == duty_date,
+            SwapRequest.status.in_(["open", "pending_approval"]),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise SwapError("already_pending")
     req = SwapRequest(
         duty_assignment_id=duty_assignment_id,
         duty_date=duty_date,

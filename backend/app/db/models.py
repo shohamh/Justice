@@ -362,7 +362,7 @@ class SwapRequest(Base):
     covering_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
-    # open → claimed (peer agreed) → pending_approval → applied | rejected | cancelled
+    # open → pending_approval (approval required) | applied (auto) → applied | rejected | cancelled
     status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # Two-sided approval flags (NULL = not yet decided / not required).
