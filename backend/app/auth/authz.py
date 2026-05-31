@@ -26,6 +26,7 @@ class Action:
     ASSIGNMENT_MANAGE = "assignment.manage"
     SCORE_ADJUST = "score.adjust"
     ALGORITHM_RUN = "algorithm.run"
+    SWAP_APPROVE = "swap.approve"
 
 
 _DM_ACTIONS = {
@@ -40,6 +41,7 @@ _DM_ACTIONS = {
     Action.EXEMPTION_READ,
     Action.CONSTRAINT_READ,
     Action.CONSTRAINT_APPROVE,
+    Action.SWAP_APPROVE,
     Action.ASSIGNMENT_MANAGE,
     Action.SCORE_ADJUST,
     Action.ALGORITHM_RUN,
@@ -51,6 +53,7 @@ _COMMANDER_ACTIONS = {
     Action.EXEMPTION_READ,
     Action.CONSTRAINT_READ,
     Action.CONSTRAINT_APPROVE,
+    Action.SWAP_APPROVE,
 }
 
 _DM_GLOBAL_ACTIONS = {
