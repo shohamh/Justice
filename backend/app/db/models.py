@@ -288,9 +288,90 @@ class DutyShift(Base):
     end_date: Mapped[date] = mapped_column(Date)
     required_count: Mapped[int] = mapped_column(server_default=text("1"), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    generated_from_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shift_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    dm_locked: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class ShiftTemplate(Base):
+    __tablename__ = "shift_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    name: Mapped[str] = mapped_column(Text)
+    duty_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_types.id", ondelete="RESTRICT")
+    )
+    duty_location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_locations.id", ondelete="RESTRICT")
+    )
+    # ISO weekday numbers the shift recurs on: 1=Mon … 7=Sun
+    weekdays: Mapped[list[int]] = mapped_column(JSONB, default_factory=list)
+    start_time: Mapped[str] = mapped_column(Text, server_default=text("'00:00'"), default="00:00")  # "HH:MM"
+    end_time: Mapped[str] = mapped_column(Text, server_default=text("'23:59'"), default="23:59")    # "HH:MM"
+    required_count: Mapped[int] = mapped_column(server_default=text("1"), default=1)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    auto_roll: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SwapRequest(Base):
+    __tablename__ = "swap_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    # The assignment + specific day being handed off.
+    duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    duty_date: Mapped[date] = mapped_column(Date)
+    requesting_soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    # NULL = open board posting; set = direct request to a specific peer.
+    target_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    # Soldier who agreed to cover (set when an offer is accepted/claimed).
+    covering_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    # open → pending_approval (approval required) | applied (auto) → applied | rejected | cancelled
+    status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Two-sided approval flags (NULL = not yet decided / not required).
+    requester_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    covering_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    resulting_override_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_day_overrides.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

@@ -61,6 +61,10 @@ export default function Layout({ children }: { children: ReactNode }) {
         {canManageDuties && (
           <Link to="/shifts" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-shifts">{t("nav.shifts")}</Link>
         )}
+        {canManageDuties && (
+          <Link to="/shift-templates" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-shift-templates">{t("nav.shift_templates")}</Link>
+        )}
+        <Link to="/swaps" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-swaps">{t("nav.swaps")}</Link>
         <Link to="/profile" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-profile">{t("nav.profile")}</Link>
       </aside>
       <div className="flex-1 flex flex-col">

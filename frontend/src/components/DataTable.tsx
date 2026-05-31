@@ -12,6 +12,7 @@ import {
 export interface ColDef<T> {
   id: string;
   header: string;
+  headerTooltip?: string;
   cell: (row: T) => React.ReactNode;
   sortValue?: (row: T) => string | number | null | undefined;
   filterValue?: (row: T) => string;
@@ -36,12 +37,14 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [tooltipModal, setTooltipModal] = useState<string | null>(null);
 
   const tanCols: TanColumnDef<T>[] = useMemo(
     () =>
       columns.map((col) => ({
         id: col.id,
         header: col.header,
+        meta: { tooltip: col.headerTooltip } as { tooltip?: string },
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
@@ -102,7 +105,7 @@ export function DataTable<T>({
                   className={`border px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
                   onClick={header.column.getToggleSortingHandler()}
                 >
-                  <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                  <span className="inline-flex items-center gap-1">{flexRender(header.column.columnDef.header, header.getContext())}{(header.column.columnDef.meta as { tooltip?: string })?.tooltip && <button type="button" onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: string }).tooltip!)} className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer">?</button>}</span>
                   {header.column.getIsSorted() === "asc" && <span aria-hidden> ▲</span>}
                   {header.column.getIsSorted() === "desc" && <span aria-hidden> ▼</span>}
                 </th>
@@ -133,6 +136,17 @@ export function DataTable<T>({
           )}
         </tbody>
       </table>
+
+      {tooltipModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipModal(null)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm whitespace-pre-line">{tooltipModal}</p>
+            <div className="mt-4 text-left">
+              <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipModal(null)}>סגור</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
