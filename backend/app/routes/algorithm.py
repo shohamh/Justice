@@ -297,7 +297,7 @@ def get_job(
     )
 
 
-@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def cancel_job(
     job_id: uuid.UUID,
     session: Session = Depends(get_session),

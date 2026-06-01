@@ -124,7 +124,7 @@ def move_node(
     return _out(node, session)
 
 
-@router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_node(
     node_id: uuid.UUID,
     session: Session = Depends(get_session),

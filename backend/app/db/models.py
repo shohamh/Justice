@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum as _enum
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -7,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -575,3 +577,71 @@ class SoldierFieldUpdate(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+
+class NotificationType(str, _enum.Enum):
+    swap_offer = "swap_offer"
+    swap_accepted = "swap_accepted"
+    swap_rejected = "swap_rejected"
+    exemption_approved = "exemption_approved"
+    exemption_rejected = "exemption_rejected"
+    constraint_approved = "constraint_approved"
+    constraint_rejected = "constraint_rejected"
+    assignment_created = "assignment_created"
+    assignment_removed = "assignment_removed"
+    score_adjusted = "score_adjusted"
+    announcement = "announcement"
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    soldier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name="notification_type"), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    reference_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, default=None)
+    is_read: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+
+
+class TelegramLink(Base):
+    __tablename__ = "telegram_links"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    soldier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False, unique=True)
+    telegram_chat_id: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True, default=None)
+    telegram_username: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    verification_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    is_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    soldier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False)
+    notification_type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name="notification_type"), nullable=False)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    __table_args__ = (sa.UniqueConstraint("soldier_id", "notification_type"),)
+
+
+class CommanderNotificationScope(Base):
+    __tablename__ = "commander_notification_scopes"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    commander_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False)
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id"), nullable=False)
+
+
+class TelegramOutbox(Base):
+    __tablename__ = "telegram_outbox"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    telegram_chat_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+    message_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)

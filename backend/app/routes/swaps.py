@@ -116,7 +116,7 @@ def claim(
     return _out(r)
 
 
-@router.delete("/me/swaps/{request_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/me/swaps/{request_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def cancel(
     request_id: uuid.UUID,
     session: Session = Depends(get_session),

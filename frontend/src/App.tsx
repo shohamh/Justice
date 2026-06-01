@@ -11,6 +11,7 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyDutiesPage from "./pages/MyDutiesPage";
 import MyRequestsPage from "./pages/MyRequestsPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import ProfilePage from "./pages/ProfilePage";
 import TeamHierarchyPage from "./pages/TeamHierarchyPage";
 import ShiftsPage from "./pages/ShiftsPage";
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/swaps" element={<ForcedPasswordGate><SwapsPage /></ForcedPasswordGate>} />
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
           <Route path="/command-dashboard" element={<ForcedPasswordGate><CommandDashboardPage /></ForcedPasswordGate>} />
+          <Route path="/notifications" element={<ForcedPasswordGate><NotificationsPage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
     </AuthProvider>

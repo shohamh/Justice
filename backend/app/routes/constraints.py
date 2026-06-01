@@ -113,7 +113,7 @@ def submit(
     return _out(c)
 
 
-@router.delete("/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def cancel(
     constraint_id: uuid.UUID,
     session: Session = Depends(get_session),

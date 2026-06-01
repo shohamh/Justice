@@ -7,8 +7,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import DutyAssignment, Soldier, SwapRequest
+from app.db.models import DutyAssignment, NotificationType, Soldier, SwapRequest
 from app.services import assignments as assignments_svc
+from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
 
@@ -158,6 +159,11 @@ def claim_request(
         req.status = "pending_approval"
         req.requester_side_approved = None
         req.covering_side_approved = None
+        create_notification(session, soldier_id=req.requesting_soldier_id,
+                            type=NotificationType.swap_offer,
+                            title="הייתה הצעת החלפה",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
         write_audit(
             session, actor_id=actor_id, action="swap.claim", entity_type="swap_request",
             entity_id=req.id, before={"status": before_status},
@@ -198,6 +204,17 @@ def approve_side(
     )
     if req.requester_side_approved and req.covering_side_approved:
         _apply_cover(session, req=req, actor_id=actor_id)
+        create_notification(session, soldier_id=req.requesting_soldier_id,
+                            type=NotificationType.swap_accepted,
+                            title="בקשת ההחלפה אושרה",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
+        if req.covering_soldier_id:
+            create_notification(session, soldier_id=req.covering_soldier_id,
+                                type=NotificationType.swap_accepted,
+                                title="בקשת ההחלפה אושרה",
+                                reference_type="swap_request", reference_id=req.id,
+                                actor_id=actor_id)
         write_audit(
             session, actor_id=actor_id, action="swap.apply", entity_type="swap_request",
             entity_id=req.id, after={"status": "applied"},
@@ -221,6 +238,11 @@ def reject_request(
     before = {"status": req.status}
     req.status = "rejected"
     req.decision_note = decision_note
+    create_notification(session, soldier_id=req.requesting_soldier_id,
+                        type=NotificationType.swap_rejected,
+                        title="בקשת ההחלפה נדחתה",
+                        reference_type="swap_request", reference_id=req.id,
+                        actor_id=actor_id)
     write_audit(
         session, actor_id=actor_id, action="swap.reject", entity_type="swap_request",
         entity_id=req.id, before=before, after={"status": "rejected", "decision_note": decision_note},

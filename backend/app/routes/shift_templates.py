@@ -140,7 +140,7 @@ def update_template(
     return _out(t)
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_template(
     template_id: uuid.UUID,
     session: Session = Depends(get_session),

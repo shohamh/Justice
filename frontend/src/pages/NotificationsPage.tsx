@@ -1,0 +1,107 @@
+import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import Layout from "../components/Layout";
+import { listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO } from "../api/notifications";
+
+export default function NotificationsPage() {
+  const { t } = useTranslation();
+  const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filter, setFilter] = useState<string>("all");
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
+
+  useEffect(() => {
+    const params: Record<string, unknown> = { offset, limit };
+    if (filter === "unread") params.is_read = false;
+    listNotifications(params).then((r) => {
+      setNotifications(r.items);
+      setTotal(r.total);
+    }).catch(() => {});
+  }, [filter, offset]);
+
+  async function handleMarkRead(id: string) {
+    await markRead(id);
+    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
+  }
+
+  async function handleMarkAll() {
+    await markAllRead();
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+  }
+
+  async function handleDelete(id: string) {
+    await deleteNotification(id);
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setTotal((t) => t - 1);
+  }
+
+  const typeLabels: Record<string, string> = {
+    swap_offer: "🔄", swap_accepted: "✅", swap_rejected: "❌",
+    exemption_approved: "✔️", exemption_rejected: "✖️",
+    constraint_approved: "✔️", constraint_rejected: "✖️",
+    assignment_created: "📋", assignment_removed: "🗑️",
+    score_adjusted: "⭐", announcement: "📢",
+  };
+
+  const pages = Math.ceil(total / limit);
+
+  return (
+    <Layout>
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">{t("notifications.title")}</h2>
+          <button onClick={handleMarkAll} className="text-sm text-indigo-600 hover:text-indigo-800">
+            {t("notifications.mark_all_read")}
+          </button>
+        </div>
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => { setFilter("all"); setOffset(0); }}
+                  className={`px-3 py-1 rounded text-sm ${filter === "all" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100"}`}>
+            {t("notifications.all")} ({total})
+          </button>
+          <button onClick={() => { setFilter("unread"); setOffset(0); }}
+                  className={`px-3 py-1 rounded text-sm ${filter === "unread" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100"}`}>
+            {t("notifications.unread")}
+          </button>
+        </div>
+        {notifications.length === 0 ? (
+          <p className="text-gray-500">{t("notifications.none")}</p>
+        ) : (
+          <div className="space-y-2">
+            {notifications.map((n) => (
+              <div key={n.id} className={`flex items-start gap-3 p-3 rounded border ${n.is_read ? "bg-gray-50" : "bg-white"}`}>
+                <span className="text-xl">{typeLabels[n.type] || "🔔"}</span>
+                <div className="flex-1">
+                  <p className={`${n.is_read ? "text-gray-600" : "font-semibold"}`}>{n.title}</p>
+                  {n.body && <p className="text-sm text-gray-500">{n.body}</p>}
+                  <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString("he-IL")}</p>
+                </div>
+                <div className="flex gap-1">
+                  {!n.is_read && (
+                    <button onClick={() => handleMarkRead(n.id)} className="text-xs text-gray-400 hover:text-indigo-600" title={t("notifications.mark_read")}>
+                      ✓
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(n.id)} className="text-xs text-gray-400 hover:text-red-600" title={t("notifications.dismiss")}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {pages > 1 && (
+          <div className="flex justify-center gap-2 mt-4">
+            {Array.from({ length: pages }, (_, i) => (
+              <button key={i} onClick={() => setOffset(i * limit)}
+                      className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100"}`}>
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+}

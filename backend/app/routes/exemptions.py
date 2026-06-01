@@ -94,7 +94,7 @@ def grant(
     return _out(ex)
 
 
-@router.delete("/{exemption_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{exemption_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def revoke(
     soldier_id: uuid.UUID,
     exemption_id: uuid.UUID,

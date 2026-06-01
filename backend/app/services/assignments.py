@@ -13,9 +13,11 @@ from app.db.models import (
     DutyLocation,
     DutyType,
     ExemptionDutyTypeMap,
+    NotificationType,
     Soldier,
     SoldierExemption,
 )
+from app.services.notifications import create_notification
 
 _OVERRIDE_REASONS = {"replacement", "no_show_covered", "cancelled", "manual_edit"}
 
@@ -105,6 +107,11 @@ def create_assignment(
     )
     session.add(a)
     session.flush()
+    create_notification(session, soldier_id=a.soldier_id,
+                        type=NotificationType.assignment_created,
+                        title="שיבוץ חדש נוצר עבורך",
+                        reference_type="duty_assignment", reference_id=a.id,
+                        actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
@@ -128,6 +135,11 @@ def cancel_assignment(
         raise AssignmentError("reason_required")
     before = {"status": assignment.status}
     assignment.status = "cancelled"
+    create_notification(session, soldier_id=assignment.soldier_id,
+                        type=NotificationType.assignment_removed,
+                        title="שיבוץ בוטל",
+                        reference_type="duty_assignment", reference_id=assignment.id,
+                        actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,

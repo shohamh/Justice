@@ -6,7 +6,8 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExemptionRequest, ExemptionType, SoldierExemption
+from app.db.models import ExemptionRequest, ExemptionType, NotificationType, SoldierExemption
+from app.services.notifications import create_notification
 
 
 class ExemptionRequestError(ValueError):
@@ -90,6 +91,11 @@ def approve_request(
     )
     session.add(exemption)
     session.flush()
+    create_notification(session, soldier_id=req.soldier_id,
+                        type=NotificationType.exemption_approved,
+                        title="בקשת הפטור אושרה",
+                        reference_type="exemption_request", reference_id=req.id,
+                        actor_id=decided_by)
     return req
 
 
@@ -109,4 +115,9 @@ def reject_request(
     req.decided_by = decided_by
     req.decision_note = decision_note
     session.flush()
+    create_notification(session, soldier_id=req.soldier_id,
+                        type=NotificationType.exemption_rejected,
+                        title="בקשת הפטור נדחתה",
+                        reference_type="exemption_request", reference_id=req.id,
+                        actor_id=decided_by)
     return req

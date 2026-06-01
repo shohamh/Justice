@@ -209,7 +209,7 @@ def set_override(
     return {"status": "ok"}
 
 
-@router.delete("/{assignment_id}/overrides/{day}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{assignment_id}/overrides/{day}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def clear_override(
     assignment_id: uuid.UUID,
     day: date,

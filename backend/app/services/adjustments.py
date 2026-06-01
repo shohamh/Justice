@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import ScoreAdjustment, Soldier
+from app.db.models import NotificationType, ScoreAdjustment, Soldier
+from app.services.notifications import create_notification
 
 
 class AdjustmentError(Exception):
@@ -38,6 +39,11 @@ def create_adjustment(
     )
     session.add(adj)
     session.flush()
+    create_notification(session, soldier_id=adj.soldier_id,
+                        type=NotificationType.score_adjusted,
+                        title=f"הניקוד שלך עודכן ב-{adj.delta}",
+                        reference_type="score_adjustment", reference_id=adj.id,
+                        actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
