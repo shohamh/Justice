@@ -29,6 +29,7 @@ class DutyBlock:
     end_date: date
     score_per_day: Decimal
     is_reserve: bool = False
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 @dataclass

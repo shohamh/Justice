@@ -230,6 +230,7 @@ def load_duty_blocks_from_shifts(
                 end_date=shift.end_date,
                 score_per_day=score,
                 is_reserve=False,
+                eligible_node_ids=shift.eligible_node_ids,
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
@@ -244,6 +245,7 @@ def load_duty_blocks_from_shifts(
                 end_date=shift.end_date,
                 score_per_day=r_score,
                 is_reserve=True,
+                eligible_node_ids=shift.eligible_node_ids,
             ))
             block_to_shift[block_id] = shift.id
 

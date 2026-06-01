@@ -77,6 +77,9 @@ def build_model(
             constrained_dates = constraint_map.get(s.id, set())
             if any(dt in constrained_dates for dt in _duty_dates(d)):
                 continue
+            if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
+                if s.hierarchy_node_id not in d.eligible_node_ids:
+                    continue
             eligible.append((di, si))
             soldier_duties[si].append(di)
 
