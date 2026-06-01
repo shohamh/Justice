@@ -13,6 +13,7 @@ import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import ExplanationModal from "./ExplanationModal";
+import SubHierarchySelector from "./SubHierarchySelector";
 import { DataTable, type ColDef } from "./DataTable";
 
 interface Props {
@@ -40,6 +41,7 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
   const [mode, setMode] = useState<"shadow" | "dm_reviewed">("shadow");
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<AlgorithmJob | null>(null);
@@ -258,6 +260,11 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
               ))}
             </div>
           )}
+
+          <details className="border rounded p-2 mt-2">
+            <summary className="text-sm font-medium cursor-pointer">{t("algorithm.restrict_to_subtree")}</summary>
+            <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />
+          </details>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 

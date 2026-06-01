@@ -42,6 +42,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         {canManageTeam && (
           <Link to="/unit-calendar" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-unit-calendar">{t("nav.unit_calendar")}</Link>
         )}
+        {canManageTeam && (
+          <Link to="/command-dashboard" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-command-dashboard">{t("nav.command_dashboard")}</Link>
+        )}
         {canApprove && (
           <Link to="/approvals" className="block px-2 py-1 rounded hover:bg-gray-100" data-testid="nav-approvals">
             {t("nav.approvals")}

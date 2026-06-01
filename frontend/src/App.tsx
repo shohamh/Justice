@@ -18,6 +18,7 @@ import ShiftTemplatesPage from "./pages/ShiftTemplatesPage";
 import SwapsPage from "./pages/SwapsPage";
 import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
+import CommandDashboardPage from "./pages/CommandDashboardPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/shift-templates" element={<ForcedPasswordGate><ShiftTemplatesPage /></ForcedPasswordGate>} />
           <Route path="/swaps" element={<ForcedPasswordGate><SwapsPage /></ForcedPasswordGate>} />
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
+          <Route path="/command-dashboard" element={<ForcedPasswordGate><CommandDashboardPage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
     </AuthProvider>

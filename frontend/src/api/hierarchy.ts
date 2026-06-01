@@ -8,6 +8,7 @@ export interface NodeDTO {
   commander_id: string | null;
   commander_name: string | null;
   path_ids: string[];
+  children?: NodeDTO[];
 }
 
 export async function fetchTree(): Promise<NodeDTO[]> {
