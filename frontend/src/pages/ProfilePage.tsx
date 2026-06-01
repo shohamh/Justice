@@ -10,6 +10,8 @@ import {
   submitFieldUpdate,
   listFieldUpdates,
 } from "../api/soldiers";
+import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
+import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref, CommanderScope } from "../api/notifications";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -18,6 +20,11 @@ export default function ProfilePage() {
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
+  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
+  const [tgCode, setTgCode] = useState<string | null>(null);
+  const [tgPolling, setTgPolling] = useState(false);
+  const [prefs, setPrefs] = useState<NotificationPref[]>([]);
+  const [scopes, setScopes] = useState<CommanderScope[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -27,6 +34,29 @@ export default function ProfilePage() {
       })();
     }
   }, [user]);
+
+  useEffect(() => {
+    getTelegramStatus().then(setTgStatus).catch(() => {});
+    getPreferences().then(setPrefs).catch(() => {});
+    if (user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") {
+      listCommanderScopes().then(setScopes).catch(() => {});
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!tgPolling) return;
+    const interval = setInterval(async () => {
+      try {
+        const s = await getTelegramStatus();
+        setTgStatus(s);
+        if (s?.is_verified) {
+          setTgPolling(false);
+          setTgCode(null);
+        }
+      } catch { setTgPolling(false); }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [tgPolling]);
 
   async function requestUpdate(field: string, value: string) {
     if (!user || !value) return;
@@ -40,6 +70,39 @@ export default function ProfilePage() {
     } catch {
       // submission failed silently — backend returns error detail
     }
+  }
+
+  async function handleLinkTelegram() {
+    try {
+      const { code } = await generateTelegramCode();
+      setTgCode(code);
+      setTgPolling(true);
+    } catch { /* ignore */ }
+  }
+
+  async function handleUnlinkTelegram() {
+    await unlinkTelegram();
+    setTgStatus({ is_verified: false });
+  }
+
+  async function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled") {
+    const updated = prefs.map((p) => p.notification_type === nt ? { ...p, [field]: !p[field] } : p);
+    setPrefs(updated);
+    await updatePreferences(updated.map((p) => ({ notification_type: p.notification_type, in_app_enabled: p.in_app_enabled, push_enabled: p.push_enabled })));
+  }
+
+  async function handleAddScope() {
+    const nodeId = prompt(t("notifications.enter_node_id"));
+    if (!nodeId) return;
+    try {
+      const scope = await addCommanderScope(nodeId);
+      setScopes((prev) => [...prev, scope]);
+    } catch { alert(t("notifications.scope_add_error")); }
+  }
+
+  async function handleRemoveScope(id: string) {
+    await removeCommanderScope(id);
+    setScopes((prev) => prev.filter((s) => s.id !== id));
   }
 
   return (
@@ -128,6 +191,78 @@ export default function ProfilePage() {
           </div>
         )}
       </section>
+
+      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+        <h3 className="text-lg font-semibold">{t("notifications.telegram")}</h3>
+        {tgCode ? (
+          <div>
+            <p className="text-sm">{t("notifications.send_code_to_bot")}</p>
+            <div className="flex items-center gap-2 mt-2">
+              <code className="bg-gray-100 px-3 py-1 rounded text-lg font-mono">{tgCode}</code>
+              <button onClick={() => navigator.clipboard.writeText(tgCode)} className="text-xs text-indigo-600 hover:text-indigo-800">
+                {t("notifications.copy")}
+              </button>
+            </div>
+            {tgPolling && <p className="text-xs text-gray-500 mt-1">{t("notifications.waiting_for_verification")}</p>}
+          </div>
+        ) : tgStatus?.is_verified ? (
+          <div>
+            <p className="text-sm">✅ {t("notifications.linked_to")} @{tgStatus.telegram_username || "?"}</p>
+            <button onClick={handleUnlinkTelegram} className="text-sm text-red-600 hover:text-red-800 mt-2">
+              {t("notifications.unlink")}
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleLinkTelegram} className="bg-indigo-600 text-white px-4 py-2 rounded text-sm hover:bg-indigo-700">
+            {t("notifications.link_telegram")}
+          </button>
+        )}
+      </section>
+
+      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+        <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>
+        <div className="space-y-2">
+          {prefs.map((p) => (
+            <div key={p.notification_type} className="flex items-center justify-between py-1 border-b text-sm">
+              <span>{t(`notifications.type_${p.notification_type}`)}</span>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1">
+                  <input type="checkbox" checked={p.in_app_enabled} onChange={() => handleTogglePref(p.notification_type, "in_app_enabled")} />
+                  <span className="text-xs">{t("notifications.in_app")}</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input type="checkbox" checked={p.push_enabled} onChange={() => handleTogglePref(p.notification_type, "push_enabled")} />
+                  <span className="text-xs">{t("notifications.push")}</span>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {(user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") && (
+        <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+          <h3 className="text-lg font-semibold">{t("notifications.commander_scopes")}</h3>
+          <p className="text-xs text-gray-500">{t("notifications.commander_scopes_hint")}</p>
+          {scopes.length === 0 ? (
+            <p className="text-sm text-gray-500">{t("notifications.no_scopes")}</p>
+          ) : (
+            <ul className="space-y-1">
+              {scopes.map((s) => (
+                <li key={s.id} className="flex items-center justify-between text-sm py-1 border-b">
+                  <span>{s.hierarchy_node_id}</span>
+                  <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
+                    {t("notifications.remove")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button onClick={handleAddScope} className="text-sm text-indigo-600 hover:text-indigo-800">
+            + {t("notifications.add_scope")}
+          </button>
+        </section>
+      )}
     </Layout>
   );
 }
