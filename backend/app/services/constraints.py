@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import HierarchyNode, PersonalConstraint, Soldier
+from app.db.models import HierarchyNode, NotificationType, PersonalConstraint, Soldier
+from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
 
@@ -119,6 +120,11 @@ def approve_constraint(
     c.decided_at = datetime.now(UTC)
     c.decision_note = decision_note
     session.flush()
+    create_notification(session, soldier_id=c.soldier_id,
+                        type=NotificationType.constraint_approved,
+                        title="בקשת האילוץ אושרה",
+                        reference_type="personal_constraint", reference_id=c.id,
+                        actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
@@ -148,6 +154,11 @@ def reject_constraint(
     c.decided_at = datetime.now(UTC)
     c.decision_note = decision_note
     session.flush()
+    create_notification(session, soldier_id=c.soldier_id,
+                        type=NotificationType.constraint_rejected,
+                        title="בקשת האילוץ נדחתה",
+                        reference_type="personal_constraint", reference_id=c.id,
+                        actor_id=actor_id)
     write_audit(
         session,
         actor_id=actor_id,
