@@ -77,7 +77,9 @@ export default function ProfilePage() {
       const { code } = await generateTelegramCode();
       setTgCode(code);
       setTgPolling(true);
-    } catch { /* ignore */ }
+    } catch {
+      alert(t("notifications.link_error"));
+    }
   }
 
   async function handleUnlinkTelegram() {

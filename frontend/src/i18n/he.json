@@ -508,6 +508,7 @@
     "waiting_for_verification": "ממתין לאימות...",
     "linked_to": "מחובר ל-",
     "unlink": "נתק",
+    "link_error": "שגיאה בקישור חשבון טלגרם. נסה שוב.",
     "preferences": "העדפות התראות",
     "in_app": "באפליקציה",
     "push": "בטלגרם",
