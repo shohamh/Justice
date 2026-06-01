@@ -34,7 +34,15 @@ def create_notification(
     reference_type: str | None = None,
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
-) -> Notification:
+) -> Notification | None:
+    pref = session.execute(
+        select(NotificationPreference).where(
+            NotificationPreference.soldier_id == soldier_id,
+            NotificationPreference.notification_type == type,
+        )
+    ).scalar_one_or_none()
+    if pref is not None and not pref.in_app_enabled:
+        return None
     notif = Notification(
         soldier_id=soldier_id, type=type, title=title, body=body,
         reference_type=reference_type, reference_id=reference_id,
@@ -47,7 +55,8 @@ def create_notification(
     cascade_to_commanders(session, type=type, title=title, body=body,
                           reference_type=reference_type, reference_id=reference_id,
                           actor_id=actor_id, original_soldier_id=soldier_id)
-    _enqueue_push(session, soldier_id=soldier_id, text=title)
+    if pref is None or pref.push_enabled:
+        _enqueue_push(session, soldier_id=soldier_id, text=title)
     return notif
 
 
@@ -91,7 +100,8 @@ def _create_notif(session: Session, *, soldier_id: uuid.UUID, type: Notification
     notif = Notification(soldier_id=soldier_id, type=type, title=title, body=body,
                          reference_type=reference_type, reference_id=reference_id)
     session.add(notif)
-    _enqueue_push(session, soldier_id=soldier_id, text=title)
+    if pref is None or pref.push_enabled:
+        _enqueue_push(session, soldier_id=soldier_id, text=title)
 
 
 def _enqueue_push(session: Session, *, soldier_id: uuid.UUID, text: str) -> None:
@@ -259,25 +269,28 @@ def broadcast_announcement(session: Session, *, title: str, body: str | None = N
                            hierarchy_node_ids: list[uuid.UUID] | None = None,
                            actor_id: uuid.UUID | None = None) -> int:
     if hierarchy_node_ids:
-        nodes = session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(hierarchy_node_ids))).scalars().all()
+        nodes = session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(hierarchy_node_ids))
+        ).scalars().all()
         path_sets = [set(n.path_ids) for n in nodes if n.path_ids]
         if path_sets:
             combined_paths = set().union(*path_sets)
-        else:
-            combined_paths = set()
-        soldiers = session.execute(
-            select(Soldier).where(
-                Soldier.hierarchy_node_id.in_(
-                    select(HierarchyNode.id).where(
-                        HierarchyNode.path_ids.overlap(list(combined_paths)) if combined_paths else select(HierarchyNode.id).where(False)
+            soldiers = session.execute(
+                select(Soldier).where(
+                    Soldier.hierarchy_node_id.in_(
+                        select(HierarchyNode.id).where(
+                            HierarchyNode.path_ids.overlap(list(combined_paths))
+                        )
                     )
                 )
-            )
-        ).scalars().all()
+            ).scalars().all()
+        else:
+            soldiers = []
     else:
         soldiers = session.execute(select(Soldier)).scalars().all()
     count = 0
     for s in soldiers:
-        create_notification(session, soldier_id=s.id, type=NotificationType.announcement, title=title, body=body, actor_id=actor_id)
+        create_notification(session, soldier_id=s.id, type=NotificationType.announcement,
+                            title=title, body=body, actor_id=actor_id)
         count += 1
     return count
