@@ -6,13 +6,20 @@ from datetime import date, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    DutyAssignment, DutyShift, DutyType, ExemptionDutyTypeMap,
-    ExemptionRequest, ExemptionType, HierarchyNode,
-    ScoreAdjustment, Soldier, SoldierExemption, SoldierFieldUpdate, SwapRequest,
+    DutyAssignment,
+    DutyShift,
+    DutyType,
+    ExemptionRequest,
+    ExemptionType,
+    ScoreAdjustment,
+    Soldier,
+    SoldierExemption,
+    SoldierFieldUpdate,
+    SwapRequest,
 )
 
 
@@ -85,7 +92,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
 
     pending_swaps = session.execute(
         select(func.count(SwapRequest.id)).where(
-            SwapRequest.soldier_id.in_(soldier_ids),
+                SwapRequest.requesting_soldier_id.in_(soldier_ids),
             SwapRequest.status == "pending",
         )
     ).scalar() or 0
@@ -339,7 +346,7 @@ def pending_approvals(session: Session, *, subtree_ids: list[uuid.UUID]) -> list
             "soldier_id": er.soldier_id,
             "soldier_name": name_map.get(er.soldier_id, ""),
             "request_type": "exemption",
-            "summary": f"בקשת פטור",
+            "summary": "בקשת פטור",
             "created_at": str(er.created_at),
         })
 
