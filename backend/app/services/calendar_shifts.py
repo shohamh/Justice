@@ -175,7 +175,9 @@ def get_calendar_shifts(
             continue
         dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
         primary_count = sum(1 for a_ in assignees if not a_["is_reserve"])
-        reserve_count = sum(1 for a_ in assignees if a_["is_reserve"])
+        reserve_count = sum(
+            1 for a_ in assignees if a_["is_reserve"] and not a_.get("called_up_from")
+        )
         result.append(
             {
                 "id": shift.id,

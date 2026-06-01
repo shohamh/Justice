@@ -42,3 +42,4 @@ vite.log
 
 # Playwright storage state (auth snapshot)
 frontend/tests/e2e/storageState.json
+nul

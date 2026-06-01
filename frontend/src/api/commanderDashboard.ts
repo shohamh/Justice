@@ -41,9 +41,19 @@ export interface PotentialCount {
   unit_total: number | null;
 }
 
+export interface UpcomingAssignment {
+  assignment_id: string;
+  soldier_id: string;
+  soldier_name: string;
+  duty_type_id: string;
+  duty_type_name: string;
+  node_name: string;
+  is_reserve: boolean;
+}
+
 export interface UpcomingDay {
   date: string;
-  assignments: { assignment_id: string; duty_type_id: string; soldier_id: string }[];
+  assignments: UpcomingAssignment[];
 }
 
 export interface Alert {

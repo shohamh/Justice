@@ -34,7 +34,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
   const [reason, setReason] = useState("");
 
   const reserveOptions = useMemo(
-    () => shift.assignees.filter(a => a.is_reserve && a.assignment_id),
+    () => shift.assignees.filter(a => a.is_reserve && a.assignment_id && !a.called_up_from),
     [shift.assignees]
   );
 

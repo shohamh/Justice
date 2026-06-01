@@ -13,6 +13,8 @@ import UnitCalendar from "../components/UnitCalendar";
 import HierarchyTree from "../components/HierarchyTree";
 import { useAuth } from "../auth/AuthContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { listSoldiers } from "../api/soldiers";
+import type { SoldierDTO } from "../api/soldiers";
 import {
   getSummary, getDashboardSoldiers, getFairnessInternal,
   getFairnessExternal, getPotential, getUpcoming,
@@ -30,6 +32,7 @@ export default function CommandDashboardPage() {
   const [summaryData, setSummaryData] = useState<SummaryCardsData | null>(null);
   const [soldiers, setSoldiers] = useState<SoldierWithStatus[]>([]);
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
+  const [soldierDTOs, setSoldierDTOs] = useState<SoldierDTO[]>([]);
   const [fairnessInternal, setFairnessInternal] = useState<FairnessStats | null>(null);
   const [fairnessExternal, setFairnessExternal] = useState<NodeFairness[] | null>(null);
   const [potentialData, setPotentialData] = useState<PotentialCount[] | null>(null);
@@ -42,7 +45,7 @@ export default function CommandDashboardPage() {
     const results = await Promise.allSettled([
       getSummary(), getDashboardSoldiers(), getFairnessInternal(),
       getFairnessExternal(), getPotential(), getUpcoming(),
-      getAlerts(), getApprovals(), fetchTree(),
+      getAlerts(), getApprovals(), fetchTree(), listSoldiers(),
     ]);
     if (results[0].status === "fulfilled") setSummaryData(results[0].value);
     if (results[1].status === "fulfilled") setSoldiers(results[1].value);
@@ -53,6 +56,7 @@ export default function CommandDashboardPage() {
     if (results[6].status === "fulfilled") setAlertsData(results[6].value);
     if (results[7].status === "fulfilled") setApprovalsData(results[7].value);
     if (results[8].status === "fulfilled") setNodes(results[8].value);
+    if (results[9].status === "fulfilled") setSoldierDTOs(results[9].value);
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -71,7 +75,7 @@ export default function CommandDashboardPage() {
       content: (
         <div>
           <div className="mb-4">
-            <HierarchyTree nodes={nodes} soldiers={soldiers as any} isAdmin={false} onChanged={refresh} user={user} />
+            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} isAdmin={false} onChanged={refresh} user={user} />
           </div>
         </div>
       ),
@@ -99,7 +103,7 @@ export default function CommandDashboardPage() {
     {
       id: "approvals",
       title: t("command_dashboard.approvals"),
-      content: <ApprovalsFeed data={approvalsData} />,
+       content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
     },
     {
       id: "upcoming",
@@ -119,7 +123,7 @@ export default function CommandDashboardPage() {
         <h2 className="text-xl font-semibold">{t("command_dashboard.title")}</h2>
         <SummaryCards data={summaryData} onCardClick={handleCardClick} />
         {panels.map((panel) => (
-          <details key={panel.id} open={activePanel === panel.id} className="bg-white rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
+          <details key={panel.id} open className="bg-white rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
             <summary className="cursor-pointer font-medium text-lg mb-2">{panel.title}</summary>
             {panel.content}
           </details>

@@ -59,9 +59,19 @@ class PotentialCount(BaseModel):
     unit_total: int | None = None
 
 
+class UpcomingAssignment(BaseModel):
+    assignment_id: str
+    soldier_id: uuid.UUID
+    soldier_name: str
+    duty_type_id: str
+    duty_type_name: str
+    node_name: str
+    is_reserve: bool
+
+
 class UpcomingDay(BaseModel):
     date: date
-    assignments: list[dict]
+    assignments: list[UpcomingAssignment]
 
 
 class Alert(BaseModel):
@@ -84,9 +94,11 @@ def _get_subtree_ids(session: Session, node_id: uuid.UUID) -> list[uuid.UUID]:
     node = session.get(HierarchyNode, node_id)
     if node is None:
         return [node_id]
-    descendants = session.execute(
-        select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id))
-    ).scalars().all()
+    descendants = (
+        session.execute(select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id)))
+        .scalars()
+        .all()
+    )
     return [node_id] + list(descendants)
 
 
@@ -143,18 +155,34 @@ def fairness_external(
     node = session.get(HierarchyNode, node_id)
     if node is None or node.parent_id is None:
         return []
-    siblings = session.execute(
-        select(HierarchyNode).where(
-            HierarchyNode.parent_id == node.parent_id,
-            HierarchyNode.id != node_id,
+    siblings = (
+        session.execute(
+            select(HierarchyNode).where(
+                HierarchyNode.parent_id == node.parent_id,
+                HierarchyNode.id != node_id,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     result: list[NodeFairness] = []
     node_subtree = _get_subtree_ids(session, node_id)
-    result.append(NodeFairness(node_id=node_id, node_name=node.name, stats=svc.fairness_stats(session, subtree_ids=node_subtree)))
+    result.append(
+        NodeFairness(
+            node_id=node_id,
+            node_name=node.name,
+            stats=svc.fairness_stats(session, subtree_ids=node_subtree),
+        )
+    )
     for sibling in siblings:
         sib_subtree = _get_subtree_ids(session, sibling.id)
-        result.append(NodeFairness(node_id=sibling.id, node_name=sibling.name, stats=svc.fairness_stats(session, subtree_ids=sib_subtree)))
+        result.append(
+            NodeFairness(
+                node_id=sibling.id,
+                node_name=sibling.name,
+                stats=svc.fairness_stats(session, subtree_ids=sib_subtree),
+            )
+        )
     return result
 
 

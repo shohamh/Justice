@@ -13,8 +13,9 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const { t } = useTranslation();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);
 
-  const primaries = shift.assignees.filter(a => !a.is_reserve);
-  const reserves = shift.assignees.filter(a => a.is_reserve);
+  const dismissed = shift.assignees.filter(a => (!a.is_reserve || a.called_up_from) && a.dismissals.length > 0);
+  const primaries = shift.assignees.filter(a => (!a.is_reserve || a.called_up_from) && a.dismissals.length === 0);
+  const reserves = shift.assignees.filter(a => a.is_reserve && !a.called_up_from);
 
   function soldierName(id: string | null): string {
     if (!id) return "—";
@@ -40,38 +41,75 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
           </h4>
           <div className="space-y-2">
             {primaries.length === 0 && <p className="text-xs text-gray-400">{t("unit_calendar.none")}</p>}
-            {primaries.map(a => (
-              <div key={a.assignment_id} className="border rounded p-2 text-sm flex flex-col gap-1">
+            {primaries.map(a => {
+              const isCalledUp = a.is_reserve && a.called_up_from;
+              return (
+              <div key={a.assignment_id} className={`border rounded p-2 text-sm flex flex-col gap-1 ${isCalledUp ? "border-blue-200 bg-blue-50" : ""}`}>
                 <div className="flex justify-between items-center">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-medium">{a.soldier_name}</span>
-                    {a.hierarchy_label && <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>}
+                    {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
+                    {isCalledUp && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                        {a.called_up_from === a.called_up_to
+                          ? `${t("reserve_called_up")} ${a.called_up_from}`
+                          : `${t("reserve_called_up")} ${a.called_up_from}–${a.called_up_to}`}
+                      </span>
+                    )}
                   </div>
-                  <button
-                    className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
-                    onClick={() => setDismissTarget(a)}
-                  >
-                    {t("dismiss_action")}
-                  </button>
+                  {!isCalledUp && (
+                    <button
+                      className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                      onClick={() => setDismissTarget(a)}
+                    >
+                      {t("dismiss_action")}
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {a.reserve_assignment_id && (
+                  {!isCalledUp && a.reserve_assignment_id && (
                     <span className="text-purple-600">
                       {t("reserve_standby")}: {soldierName(a.reserve_assignment_id)}
                       {a.reserve_hierarchy_distance != null && ` (${t("distance_label", "מרחק")}: ${a.reserve_hierarchy_distance})`}
                     </span>
                   )}
+                  {isCalledUp && a.primary_assignment_ids.length > 0 && (
+                    <span className="text-blue-600">
+                      {t("reserve_covers")}: {a.primary_assignment_ids.map(id => soldierName(id)).join(", ")}
+                    </span>
+                  )}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {dismissed.length > 0 && (
+        <section className="mb-5">
+          <h4 className="font-semibold text-sm text-gray-600 mb-2">
+            {t("dismissed_soldiers")} ({dismissed.length})
+          </h4>
+          <div className="space-y-2">
+            {dismissed.map(a => (
+              <div key={a.assignment_id} className="border border-amber-200 bg-amber-50 rounded p-2 text-sm flex flex-col gap-1">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-medium">{a.soldier_name}</span>
+                    {a.hierarchy_label && <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>}
+                  </div>
                 </div>
                 {a.dismissals.map(d => (
-                  <div key={d.id} className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
-                    <span>{t("reserve_dismissed")} {d.dismissed_from} — {d.dismissed_to}</span>
-                    {d.reason && <span>({d.reason})</span>}
+                  <div key={d.id} className="text-xs text-amber-700">
+                    {t("dismissed_from_to", { from: d.dismissed_from, to: d.dismissed_to })}
+                    {d.reason && <span> ({d.reason})</span>}
                   </div>
                 ))}
               </div>
             ))}
           </div>
         </section>
+        )}
 
         <section>
           <h4 className="font-semibold text-sm text-gray-600 mb-2">

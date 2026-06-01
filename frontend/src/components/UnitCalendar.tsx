@@ -31,6 +31,10 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     try {
       const data = await getCalendarShifts(nodeId, { date_from: from, date_to: to });
       setShifts(data.shifts);
+      setSelectedShift(prev => {
+        if (!prev) return null;
+        return data.shifts.find(s => s.id === prev.id) ?? prev;
+      });
     } catch {
       setError(t("unit_calendar.error") || "Failed to load calendar");
     } finally {
