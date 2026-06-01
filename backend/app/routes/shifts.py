@@ -47,6 +47,7 @@ class UpdateShiftRequest(BaseModel):
     required_count: int | None = Field(default=None, ge=1)
     notes: str | None = None
     reserve_count_override: int | None = Field(default=None, ge=0)
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
@@ -144,6 +145,8 @@ def update_shift(
         extra["notes"] = body.notes
     if "reserve_count_override" in body.model_fields_set:
         extra["reserve_count_override"] = body.reserve_count_override
+    if "eligible_node_ids" in body.model_fields_set:
+        extra["eligible_node_ids"] = body.eligible_node_ids
     try:
         svc.update_shift(
             session,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -19,6 +19,21 @@ export default function TransparencyPage() {
     if (!expanded && user) setBreakdown(await getBreakdown(user.id));
     setExpanded(!expanded);
   }
+
+  const avgCumulative = useMemo(() => {
+    if (rows.length === 0) return 0;
+    return rows.reduce((s, r) => s + Number(r.cumulative_score), 0) / rows.length;
+  }, [rows]);
+
+  const avgActiveDays = useMemo(() => {
+    if (rows.length === 0) return 0;
+    return Math.round(rows.reduce((s, r) => s + r.active_days, 0) / rows.length);
+  }, [rows]);
+
+  const normalisedTooltip = useMemo(() => {
+    const avgCumFmt = avgCumulative.toFixed(3);
+    return t("transparency.normalised_tooltip", { avgCumulative: avgCumFmt, avgActiveDays });
+  }, [t, avgCumulative, avgActiveDays]);
 
   return (
     <Layout>
@@ -68,7 +83,8 @@ export default function TransparencyPage() {
             {
               id: "normalised",
               header: t("transparency.normalised"),
-              cell: (r) => r.normalised_score,
+              headerTooltip: normalisedTooltip,
+              cell: (r) => { const n = Number(r.normalised_score); return isNaN(n) ? r.normalised_score : n.toFixed(3); },
               sortValue: (r) => Number(r.normalised_score),
             },
           ];

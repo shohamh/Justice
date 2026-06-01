@@ -142,6 +142,7 @@ def get_calendar_shifts(
     for a in assignments:
         assignees_by_shift.setdefault(a.duty_shift_id, [])
         entry: dict = {
+            "assignment_id": a.id,
             "soldier_id": a.soldier_id,
             "soldier_name": soldiers_in_subtree.get(a.soldier_id, ("", None))[0],
             "hierarchy_label": _leaf_label(soldiers_in_subtree.get(a.soldier_id, ("", None))[1]),

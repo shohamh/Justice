@@ -311,6 +311,9 @@ class DutyShift(Base):
     reserve_count_override: Mapped[int | None] = mapped_column(
         nullable=True, default=None
     )
+    eligible_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True, default=None
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )

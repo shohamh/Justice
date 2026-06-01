@@ -44,6 +44,7 @@ class CalendarShiftAssigneeDismissal(BaseModel):
 
 
 class CalendarShiftAssignee(BaseModel):
+    assignment_id: uuid.UUID
     soldier_id: uuid.UUID
     soldier_name: str
     hierarchy_label: str | None

@@ -119,6 +119,7 @@ def update_shift(
     required_count: int | None = None,
     notes: object = _UNSET,  # use sentinel to allow explicit null (clearing notes)
     reserve_count_override: object = _UNSET,  # sentinel to allow explicit null (clearing override)
+    eligible_node_ids: object = _UNSET,  # sentinel to allow explicit null (clearing eligible nodes)
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
     before: dict = {
@@ -127,6 +128,7 @@ def update_shift(
         "required_count": shift.required_count,
         "notes": shift.notes,
         "reserve_count_override": shift.reserve_count_override,
+        "eligible_node_ids": shift.eligible_node_ids,
     }
     if start_date is not None:
         shift.start_date = start_date
@@ -140,6 +142,8 @@ def update_shift(
         shift.notes = notes  # type: ignore[assignment]  # None means clear
     if reserve_count_override is not _UNSET:
         shift.reserve_count_override = reserve_count_override  # type: ignore[assignment]  # None means clear
+    if eligible_node_ids is not _UNSET:
+        shift.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
     if shift.end_date < shift.start_date:
         raise ShiftError("end_before_start")
     write_audit(
@@ -155,6 +159,7 @@ def update_shift(
             "required_count": shift.required_count,
             "notes": shift.notes,
             "reserve_count_override": shift.reserve_count_override,
+            "eligible_node_ids": shift.eligible_node_ids,
         },
     )
     return shift

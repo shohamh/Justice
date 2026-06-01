@@ -11,6 +11,8 @@ interface Props {
   onDone: () => void;
 }
 
+const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+
 export default function DismissalModal({ shift, primary, onClose, onDone }: Props) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -26,8 +28,8 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
     return dates;
   }, [shift.start_date, shift.end_date]);
 
-  const [fromIdx, setFromIdx] = useState(0);
-  const [toIdx, setToIdx] = useState(allDates.length - 1);
+  const [fromIdx, setFromIdx] = useState<number | null>(0);
+  const [toIdx, setToIdx] = useState<number | null>(allDates.length - 1);
   const [selectedReserveId, setSelectedReserveId] = useState(primary.reserve_assignment_id ?? "");
   const [reason, setReason] = useState("");
 
@@ -44,16 +46,34 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
     }
   }, [primary.reserve_assignment_id, reserveOptions, selectedReserveId]);
 
-  const fromDate = allDates[fromIdx];
-  const toDate = allDates[toIdx];
+  const fromDate = fromIdx !== null ? allDates[fromIdx] : null;
+  const toDate = toIdx !== null ? allDates[toIdx] : null;
+
+  function handleDateClick(i: number) {
+    if (fromIdx === null || toIdx === null) {
+      setFromIdx(i);
+      setToIdx(i);
+    } else if (i < fromIdx) {
+      setFromIdx(i);
+    } else if (i > toIdx) {
+      setToIdx(i);
+    } else if (i === fromIdx && i === toIdx) {
+      return;
+    } else {
+      const dFrom = Math.abs(i - fromIdx);
+      const dTo = Math.abs(i - toIdx);
+      if (dFrom <= dTo) setFromIdx(i);
+      else setToIdx(i);
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
       dismissAndReallocate(shift.id, {
         primary_assignment_id: primary.assignment_id,
         covering_reserve_assignment_id: selectedReserveId,
-        from_date: fromDate,
-        to_date: toDate,
+        from_date: fromDate ?? shift.start_date,
+        to_date: toDate ?? shift.end_date,
         reason: reason || undefined,
       }),
     onSuccess: () => {
@@ -62,72 +82,65 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
     },
   });
 
-  const dayWidth = 36;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-5 max-w-xl w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg">{t("dismiss_modal.title")} — {primary.soldier_name}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-5">
+          <div>
+            <h3 className="font-bold text-lg">{t("dismiss_modal.title")}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">{primary.soldier_name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">✕</button>
+        </div>
+
+        <div className="mb-5">
+          <label className="text-sm font-medium text-gray-600 mb-2 block">{t("dismiss_modal.date_range")}</label>
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {allDates.map((d, i) => {
+              const dt = new Date(d);
+              const dayName = DAY_NAMES[dt.getDay()];
+              const dayNum = dt.getDate();
+              const isStart = fromIdx === i;
+              const isEnd = toIdx === i;
+              const isSelected = fromIdx !== null && toIdx !== null && i >= fromIdx && i <= toIdx;
+              const isRange = isSelected && !isStart && !isEnd;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => handleDateClick(i)}
+                  className={`flex flex-col items-center rounded-lg px-2.5 py-1.5 text-xs min-w-[48px] transition-colors
+                    ${isStart || isEnd
+                      ? "bg-amber-500 text-white shadow-md font-bold"
+                      : isRange
+                        ? "bg-amber-100 text-amber-900"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                >
+                  <span className="text-[10px] opacity-70">{dayName}</span>
+                  <span className="text-sm font-medium">{dayNum}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-center gap-6 mt-3 text-sm text-gray-600">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+              {t("dismiss_modal.from")}: <span className="font-medium text-gray-800" dir="ltr">{fromDate}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+              {t("dismiss_modal.to")}: <span className="font-medium text-gray-800" dir="ltr">{toDate}</span>
+            </span>
+          </div>
         </div>
 
         <div className="mb-4">
-          <label className="text-sm text-gray-500 mb-1 block">{t("dismiss_modal.date_range")}</label>
-          <div className="relative overflow-x-auto" style={{ direction: "ltr" }}>
-            <div className="flex" style={{ minWidth: allDates.length * dayWidth }}>
-              {allDates.map((d, i) => {
-                const isSelected = i >= fromIdx && i <= toIdx;
-                return (
-                  <div
-                    key={d}
-                    onClick={() => {
-                      if (i < fromIdx) setFromIdx(i);
-                      else if (i > toIdx) setToIdx(i);
-                      else {
-                        const mid = Math.floor((fromIdx + toIdx) / 2);
-                        if (i <= mid) setFromIdx(i);
-                        else setToIdx(i);
-                      }
-                    }}
-                    className="h-10 flex items-center justify-center text-[10px] cursor-pointer border-l border-gray-200"
-                    style={{
-                      width: dayWidth,
-                      backgroundColor: isSelected ? "#fbbf24" : "#f3f4f6",
-                      fontWeight: isSelected ? 600 : 400,
-                    }}
-                    title={d}
-                  >
-                    {new Date(d).getDate()}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="flex gap-4 mt-2 text-xs text-gray-600">
-            <input
-              type="range" min={0} max={allDates.length - 1} value={fromIdx}
-              onChange={e => setFromIdx(Math.min(parseInt(e.target.value), toIdx))}
-              className="flex-1"
-            />
-            <input
-              type="range" min={0} max={allDates.length - 1} value={toIdx}
-              onChange={e => setToIdx(Math.max(parseInt(e.target.value), fromIdx))}
-              className="flex-1"
-            />
-          </div>
-          <div className="flex gap-4 mt-1 text-xs text-gray-600">
-            <span>{t("dismiss_modal.from")}: {fromDate}</span>
-            <span>{t("dismiss_modal.to")}: {toDate}</span>
-          </div>
-        </div>
-
-        <div className="mb-3">
-          <label className="text-sm text-gray-500 mb-1 block">{t("dismiss_modal.covering_reserve")}</label>
+          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.covering_reserve")}</label>
           <select
             value={selectedReserveId}
             onChange={e => setSelectedReserveId(e.target.value)}
-            className="border rounded p-1 w-full text-sm"
+            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
           >
             {reserveOptions.length === 0 && <option value="">{t("dismiss_modal.no_reserves")}</option>}
             {reserveOptions.map(a => (
@@ -140,9 +153,9 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         <div className="mb-4">
-          <label className="text-sm text-gray-500 mb-1 block">{t("dismiss_modal.reason")}</label>
+          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.reason")}</label>
           <input
-            className="border rounded p-1 w-full text-sm"
+            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
             value={reason}
             onChange={e => setReason(e.target.value)}
             placeholder={t("dismiss_modal.reason_placeholder")}
@@ -150,19 +163,31 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         {mutation.isError && (
-          <p className="text-red-500 text-sm mb-2">
-            {(mutation.error as any)?.response?.data?.detail ?? t("dismiss_modal.error")}
-          </p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <p className="text-red-600 text-sm">
+              {(mutation.error as any)?.response?.data?.detail ?? t("dismiss_modal.error")}
+            </p>
+          </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1 text-sm border rounded">{t("dismiss_modal.cancel")}</button>
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+            {t("dismiss_modal.cancel")}
+          </button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-            className="px-3 py-1 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+            disabled={mutation.isPending || selectedReserveId === ""}
+            className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
-            {mutation.isPending ? t("dismiss_modal.submitting") : t("dismiss_modal.confirm")}
+            {mutation.isPending ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                {t("dismiss_modal.submitting")}
+              </span>
+            ) : t("dismiss_modal.confirm")}
           </button>
         </div>
       </div>

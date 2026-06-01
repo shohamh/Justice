@@ -10,11 +10,13 @@ Flags:
 
 from datetime import date
 from decimal import Decimal
+import math
 
 from app.auth.password import hash_password
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
+    DutyReserveLink,
     DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
@@ -26,6 +28,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapRequest,
 )
 from app.db.session import SessionLocal
 
@@ -40,7 +43,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.query(PersonalConstraint).delete()
             session.query(ScoreAdjustment).delete()
             session.query(SoldierExemption).delete()
+            session.query(SwapRequest).delete()
             session.query(ExemptionDutyTypeMap).delete()
+            session.query(DutyReserveLink).delete()
             session.query(DutyAssignment).delete()
             session.query(DutyShift).delete()
             session.query(HierarchyNode).delete()
@@ -282,22 +287,22 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         all_soldiers += mador_soldiers
 
         # ── Duty types ──────────────────────────────────────────────
-        # (name, score_per_day, description, requirements)
+        # (name, score_per_day, description, requirements, reserve_ratio, reserve_minimum)
         dt_defs = [
-            ("שמירות", Decimal("1.125"), "שמירה בבסיס", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("ליווים", Decimal("1.00"), "ליווי אסירים/משאיות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("עבודות רס\"ר", Decimal("1.00"), "עבודות רס\"ר שונות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("אבט\"ש", Decimal(9) / Decimal(7), "אבטחה שוטפת", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("הגנ\"ש", Decimal(9) / Decimal(7), "הגנה\"ש", {"enlisted_allowed": False}),
-            ("קצין תורן", Decimal("1.125"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("מפקד תורן", Decimal("1.125"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}),
-            ("קצין מלווה אבט\"ש", Decimal(9) / Decimal(7), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("אבות בית", Decimal("1.00"), "אבות בית", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
-            ("עבודות רס\"ר בינוי", Decimal("1.00"), "עבודות רס\"ר בנושא בינוי", {"officers_allowed": False, "allowed_service_types": ["חובה"]}),
+            ("שמירות", Decimal("1.125"), "שמירה בבסיס", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.300"), 3),
+            ("ליווים", Decimal("1.00"), "ליווי אסירים/משאיות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.200"), 2),
+            ("עבודות רס\"ר", Decimal("1.00"), "עבודות רס\"ר שונות", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.250"), 2),
+            ("אבט\"ש", Decimal(9) / Decimal(7), "אבטחה שוטפת", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.350"), 4),
+            ("הגנ\"ש", Decimal(9) / Decimal(7), "הגנה\"ש", {"enlisted_allowed": False}, Decimal("0.400"), 2),
+            ("קצין תורן", Decimal("1.125"), "קצין תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.500"), 1),
+            ("מפקד תורן", Decimal("1.125"), "מפקד תורן בבסיס", {"enlisted_allowed": False, "allowed_service_types": ["חובה"], "requires_bahad1": True}, Decimal("0.500"), 1),
+            ("קצין מלווה אבט\"ש", Decimal(9) / Decimal(7), "קצין מלווה לאבטחה", {"enlisted_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.300"), 1),
+            ("אבות בית", Decimal("1.00"), "אבות בית", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.150"), 1),
+            ("עבודות רס\"ר בינוי", Decimal("1.00"), "עבודות רס\"ר בנושא בינוי", {"officers_allowed": False, "allowed_service_types": ["חובה"]}, Decimal("0.150"), 1),
         ]
         duty_types = []
-        for name, spd, desc, reqs in dt_defs:
-            dt = DutyType(name=name, score_per_day=spd, description=desc, requirements=reqs)
+        for name, spd, desc, reqs, rr, rmin in dt_defs:
+            dt = DutyType(name=name, score_per_day=spd, description=desc, requirements=reqs, reserve_ratio=rr, reserve_minimum=rmin)
             session.add(dt)
             session.flush()
             duty_types.append(dt)
@@ -602,6 +607,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 session.add(s); session.flush(); shifts_created.append(s)
 
         # ── Assign soldiers to shifts (only with --with-assignments) ──
+        created_assignments = []
         if with_assignments:
             enlisted = [s for s in all_soldiers if not s.is_officer]
             officer_soldiers = [s for s in all_soldiers if s.is_officer]
@@ -611,33 +617,142 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     # old weekly shifts (req=2-3) — assign 2 soldiers each
                     for k in range(min(2, shift.required_count)):
                         soldier = enlisted[(i * 3 + k) % len(enlisted)]
-                        session.add(DutyAssignment(
+                        da = DutyAssignment(
                             soldier_id=soldier.id, duty_type_id=shift.duty_type_id,
                             duty_location_id=shift.duty_location_id, start_date=shift.start_date,
                             end_date=shift.end_date, duty_shift_id=shift.id,
                             status="published", created_by=s_admin.id,
-                        ))
+                        )
+                        session.add(da)
+                        session.flush()
+                        created_assignments.append(da)
                         shift_assignments += 1
                 elif 12 <= i < 92:
                     # daily shifts (req=2) — assign 1 soldier to each
                     soldier = enlisted[i % len(enlisted)]
-                    session.add(DutyAssignment(
+                    da = DutyAssignment(
                         soldier_id=soldier.id, duty_type_id=shift.duty_type_id,
                         duty_location_id=shift.duty_location_id, start_date=shift.start_date,
                         end_date=shift.end_date, duty_shift_id=shift.id,
                         status="published", created_by=s_admin.id,
-                    ))
+                    )
+                    session.add(da)
+                    session.flush()
+                    created_assignments.append(da)
                     shift_assignments += 1
                 else:
                     # new weekly officer shifts (req=1) — assign 1 each
                     soldier = officer_soldiers[(i - 92) % len(officer_soldiers)]
-                    session.add(DutyAssignment(
+                    da = DutyAssignment(
                         soldier_id=soldier.id, duty_type_id=shift.duty_type_id,
                         duty_location_id=shift.duty_location_id, start_date=shift.start_date,
                         end_date=shift.end_date, duty_shift_id=shift.id,
                         status="published", created_by=s_admin.id,
-                    ))
+                    )
+                    session.add(da)
+                    session.flush()
+                    created_assignments.append(da)
                     shift_assignments += 1
+
+            # ── Reserve assignments ──────────────────────────────────────
+            dt_by_id = {dt.id: dt for dt in duty_types}
+            reserve_count_total = 0
+            for i, shift in enumerate(shifts_created):
+                dt = dt_by_id[shift.duty_type_id]
+                rcount = max(int(dt.reserve_minimum or 0), math.ceil(shift.required_count * float(dt.reserve_ratio or 0)))
+                if rcount == 0:
+                    continue
+                pool = officer_soldiers if i >= 92 else enlisted
+                for k in range(rcount):
+                    idx = (i * 7 + k * 13 + 5) % len(pool)
+                    soldier = pool[idx]
+                    tries = 0
+                    while (tries < len(pool) and any(
+                        a.soldier_id == soldier.id and a.duty_shift_id == shift.id
+                        for a in created_assignments
+                    )):
+                        tries += 1
+                        soldier = pool[(idx + tries) % len(pool)]
+                    da = DutyAssignment(
+                        soldier_id=soldier.id, duty_type_id=shift.duty_type_id,
+                        duty_location_id=shift.duty_location_id, start_date=shift.start_date,
+                        end_date=shift.end_date, duty_shift_id=shift.id,
+                        status="published", created_by=s_admin.id, is_reserve=True,
+                    )
+                    session.add(da)
+                    session.flush()
+                    created_assignments.append(da)
+                    reserve_count_total += 1
+
+            # ── Link reserves to primaries ──────────────────────────────
+            assignments_by_shift: dict[uuid.UUID, list[DutyAssignment]] = {}
+            for a in created_assignments:
+                assignments_by_shift.setdefault(a.duty_shift_id, []).append(a)
+            links_created = 0
+            for sa_group in assignments_by_shift.values():
+                primaries = [a for a in sa_group if not a.is_reserve]
+                reserves = [a for a in sa_group if a.is_reserve]
+                if not primaries or not reserves:
+                    continue
+                for i, primary in enumerate(primaries):
+                    reserve = reserves[i % len(reserves)]
+                    session.add(DutyReserveLink(
+                        primary_assignment_id=primary.id,
+                        reserve_assignment_id=reserve.id,
+                        hierarchy_distance=0,
+                    ))
+                    links_created += 1
+
+            # ── Swap requests ──────────────────────────────────────────
+            # Pick future assignments for swaps
+            from datetime import timedelta
+            today = date.today()
+            future_assignments = [a for a in created_assignments if a.start_date >= today - timedelta(days=1)]
+            if len(future_assignments) >= 6:
+                # Swap 1: open — soldier wants to swap, no specific target
+                s_a = future_assignments[0]
+                session.add(SwapRequest(
+                    duty_assignment_id=s_a.id,
+                    duty_date=s_a.start_date,
+                    requesting_soldier_id=s_a.soldier_id,
+                    status="open",
+                    reason="מבקש להחליף תורנות",
+                ))
+                # Swap 2: open with target
+                s_b = future_assignments[1]
+                target_s = session.query(Soldier).filter(Soldier.id != s_b.soldier_id).first()
+                session.add(SwapRequest(
+                    duty_assignment_id=s_b.id,
+                    duty_date=s_b.start_date,
+                    requesting_soldier_id=s_b.soldier_id,
+                    target_soldier_id=target_s.id,
+                    status="open",
+                    reason="מבקש להחליף עם חייל ספציפי",
+                ))
+                # Swap 3: pending_approval — covering soldier agreed, waiting for approval
+                s_c = future_assignments[2]
+                cover_s = session.query(Soldier).filter(Soldier.id != s_c.soldier_id).first()
+                session.add(SwapRequest(
+                    duty_assignment_id=s_c.id,
+                    duty_date=s_c.start_date,
+                    requesting_soldier_id=s_c.soldier_id,
+                    covering_soldier_id=cover_s.id,
+                    status="pending_approval",
+                    reason="סוכם עם המחליף",
+                ))
+                # Swap 4: applied — completed swap
+                s_d = future_assignments[3]
+                cover_d = session.query(Soldier).filter(Soldier.id != s_d.soldier_id).first()
+                session.add(SwapRequest(
+                    duty_assignment_id=s_d.id,
+                    duty_date=s_d.start_date,
+                    requesting_soldier_id=s_d.soldier_id,
+                    covering_soldier_id=cover_d.id,
+                    status="applied",
+                    requester_side_approved=True,
+                    covering_side_approved=True,
+                    reason="החלפה אושרה ובוצעה",
+                ))
 
         session.commit()
         import sys
@@ -650,7 +765,10 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         _safe_print(f"  {len(exemption_types)} exemption types with {sum(len(dts) for _, dts in mappings)} mappings")
         _safe_print(f"  {len(shifts_created)} duty shifts (4 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 4 \u05d0\u05d1\u05d8\"\u05e9, 4 \u05d4\u05d2\u05e0\"\u05e9, 20 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8, 4 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 4 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 4 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8\"\u05e9, 20 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1\"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9)")
         if with_assignments:
-            _safe_print(f"  {shift_assignments} shift-linked duty assignments")
+            _safe_print(f"  {shift_assignments} primary duty assignments")
+            _safe_print(f"  {reserve_count_total} reserve assignments")
+            _safe_print(f"  {links_created} reserve-to-primary links")
+            _safe_print("  4 swap requests (1 open, 1 open with target, 1 pending approval, 1 applied)")
         else:
             _safe_print("  0 shift assignments (pass --with-assignments to include)")
         _safe_print(f"  15 personal constraints")
