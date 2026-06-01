@@ -273,7 +273,7 @@ def update_exemption_type(
     return _et_out(et)
 
 
-@router.delete("/exemption-types/{exemption_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/exemption-types/{exemption_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_exemption_type(
     exemption_type_id: uuid.UUID,
     session: Session = Depends(get_session),

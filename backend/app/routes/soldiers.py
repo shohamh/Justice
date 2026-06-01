@@ -416,7 +416,7 @@ def reset_password(
     return {"temp_password": temp}
 
 
-@router.delete("/{soldier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{soldier_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete(
     soldier_id: uuid.UUID,
     session: Session = Depends(get_session),

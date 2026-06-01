@@ -172,7 +172,8 @@ def list_scopes(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[CommanderScopeOut]:
-    authorize(session, user, Action.SOLDIER_READ, target_node=None)
+    if user.role not in ("commander", "duty_manager", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     scopes = svc.list_commander_scopes(session, commander_id=user.id)
     return [CommanderScopeOut(id=s.id, hierarchy_node_id=s.hierarchy_node_id) for s in scopes]
 
@@ -183,7 +184,8 @@ def add_scope(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> CommanderScopeOut:
-    authorize(session, user, Action.SOLDIER_READ, target_node=None)
+    if user.role not in ("commander", "duty_manager", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     scope = svc.add_commander_scope(session, commander_id=user.id,
                                      hierarchy_node_id=body.hierarchy_node_id)
     session.commit()
@@ -196,7 +198,8 @@ def remove_scope(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
-    authorize(session, user, Action.SOLDIER_READ, target_node=None)
+    if user.role not in ("commander", "duty_manager", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     if not svc.remove_commander_scope(session, scope_id=scope_id, commander_id=user.id):
         raise _err("not_found", 404)
     session.commit()
