@@ -19,7 +19,7 @@ def upgrade() -> None:
     op.create_table(
         "notifications",
         sa.Column("id", postgresql.UUID(as_uuid=True), server_default=sa.text("gen_random_uuid()"), primary_key=True),
-        sa.Column("soldier_id", postgresql.UUID(as_uuid=True), nullable=False, index=True),
+        sa.Column("soldier_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("type", sa.Enum("swap_offer", "swap_accepted", "swap_rejected", "exemption_approved", "exemption_rejected", "constraint_approved", "constraint_rejected", "assignment_created", "assignment_removed", "score_adjusted", "announcement", name="notification_type", create_type=True), nullable=False),
         sa.Column("body", sa.Text(), nullable=True),
@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["soldier_id"], ["soldiers.id"], ondelete="CASCADE", name="fk_notifications_soldier"),
     )
+    op.create_index("ix_notifications_soldier_created", "notifications", ["soldier_id", "created_at"])
 
     op.create_table(
         "telegram_links",
@@ -74,9 +75,12 @@ def upgrade() -> None:
         sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),
     )
+    op.create_index("ix_telegram_outbox_sent_at", "telegram_outbox", ["sent_at"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_telegram_outbox_sent_at", table_name="telegram_outbox")
+    op.drop_index("ix_notifications_soldier_created", table_name="notifications")
     op.drop_table("telegram_outbox")
     op.drop_table("commander_notification_scopes")
     op.drop_table("notification_preferences")
