@@ -8,6 +8,7 @@ import RenameNodeDialog from "./RenameNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import SoldierLink from "./SoldierLink";
+import TelegramBadge from "./TelegramBadge";
 
 const LEVEL_COLORS: Record<string, string> = {
   division: "text-purple-700 bg-purple-50",
@@ -170,6 +171,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
                 <span className="w-1 h-1 bg-gray-300 rounded-full inline-block" />
                 <SoldierLink id={s.id} name={s.full_name} />
                 <span className="text-xs text-gray-400">({s.personal_number})</span>
+                <TelegramBadge linked={s.telegram_linked} />
                 {isAdmin && (
                   <button
                     className="text-xs text-indigo-600 hover:underline ml-auto"
