@@ -430,6 +430,18 @@ def persist_results(
             ))
 
 
+def _count_proposals_for_job(session: "Session", job: "AlgorithmJob") -> int:
+    """Count proposals created for a job via the audit log."""
+    from sqlalchemy import func
+    from app.db.models import AuditLog
+    return session.execute(
+        select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == "algorithm.proposal.create",
+            AuditLog.context["job_id"].astext == str(job.id),
+        )
+    ).scalar_one()
+
+
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     from app.algorithm.explain import build_explanations
@@ -558,6 +570,20 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
             job.status = "done"
             job.finished_at = datetime.now(tz=timezone.utc)
+
+            if job.created_by:
+                from app.db.models import NotificationType
+                from app.services.notifications import create_notification
+                proposal_count = _count_proposals_for_job(session, job)
+                create_notification(
+                    session,
+                    soldier_id=job.created_by,
+                    type=NotificationType.algorithm_job_done,
+                    title=f"הרצת האלגוריתם הסתיימה — {proposal_count} הצעות ממתינות לאישור",
+                    reference_type="algorithm_job",
+                    reference_id=job.id,
+                )
+
             session.commit()
 
         except Exception as exc:  # noqa: BLE001
@@ -568,4 +594,19 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     err_job.status = "failed"
                     err_job.error_message = str(exc)
                     err_job.finished_at = datetime.now(tz=timezone.utc)
+
+                    if err_job.created_by:
+                        from app.db.models import NotificationType
+                        from app.services.notifications import create_notification
+                        body = str(exc)[:200] if str(exc) else None
+                        create_notification(
+                            err_session,
+                            soldier_id=err_job.created_by,
+                            type=NotificationType.algorithm_job_failed,
+                            title="הרצת האלגוריתם נכשלה",
+                            body=body,
+                            reference_type="algorithm_job",
+                            reference_id=err_job.id,
+                        )
+
                     err_session.commit()
