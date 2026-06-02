@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import TelegramBadge from "../components/TelegramBadge";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -120,6 +121,12 @@ export default function TeamHierarchyPage() {
                 header: t("team.role"),
                 cell: (s) => t(`role.${s.role}`),
                 sortValue: (s) => t(`role.${s.role}`),
+              },
+              {
+                id: "telegram",
+                header: t("team.telegram"),
+                cell: (s) => <TelegramBadge linked={s.telegram_linked} />,
+                sortValue: (s) => (s.telegram_linked ? 0 : 1),
               },
               {
                 id: "node",

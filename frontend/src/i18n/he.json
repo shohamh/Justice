@@ -146,7 +146,8 @@
     "phone": "טלפון",
     "personal_constraints": "בקשות אישיות",
     "no_constraints": "אין בקשות אישיות",
-    "duty_history": "היסטוריית תורנויות"
+    "duty_history": "היסטוריית תורנויות",
+    "telegram": "טלגרם"
   },
   "role": {
     "soldier": "חייל",
