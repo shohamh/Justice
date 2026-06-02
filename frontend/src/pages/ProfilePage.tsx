@@ -22,6 +22,7 @@ export default function ProfilePage() {
   const [genderReq, setGenderReq] = useState("");
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
   const [tgCode, setTgCode] = useState<string | null>(null);
+  const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
   const [tgPolling, setTgPolling] = useState(false);
   const [prefs, setPrefs] = useState<NotificationPref[]>([]);
   const [scopes, setScopes] = useState<CommanderScope[]>([]);
@@ -74,8 +75,9 @@ export default function ProfilePage() {
 
   async function handleLinkTelegram() {
     try {
-      const { code } = await generateTelegramCode();
+      const { code, bot_username } = await generateTelegramCode();
       setTgCode(code);
+      setTgBotUsername(bot_username || null);
       setTgPolling(true);
     } catch {
       alert(t("notifications.link_error"));
@@ -199,12 +201,23 @@ export default function ProfilePage() {
         {tgCode ? (
           <div>
             <p className="text-sm">{t("notifications.send_code_to_bot")}</p>
+            {tgBotUsername && (
+              <a
+                href={`https://t.me/${tgBotUsername}?start=verify`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-1 text-sm text-indigo-600 hover:text-indigo-800 underline"
+              >
+                @{tgBotUsername}
+              </a>
+            )}
             <div className="flex items-center gap-2 mt-2">
               <code className="bg-gray-100 px-3 py-1 rounded text-lg font-mono">{tgCode}</code>
               <button onClick={() => navigator.clipboard.writeText(tgCode)} className="text-xs text-indigo-600 hover:text-indigo-800">
                 {t("notifications.copy")}
               </button>
             </div>
+            <p className="text-xs text-gray-500 mt-1">{t("notifications.verify_command")}</p>
             {tgPolling && <p className="text-xs text-gray-500 mt-1">{t("notifications.waiting_for_verification")}</p>}
           </div>
         ) : tgStatus?.is_verified ? (

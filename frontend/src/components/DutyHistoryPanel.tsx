@@ -99,6 +99,18 @@ function EventCard({
             <p className="text-xs text-gray-500" dir="ltr">
               {e.date}{e.end_date && e.end_date !== e.date ? ` → ${e.end_date}` : ""}
             </p>
+            <div className="flex gap-1 mt-1 flex-wrap">
+              {e.metadata.is_reserve === "true" && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                  {t("duty_history.reserve")}
+                </span>
+              )}
+              {e.metadata.called_up === "true" && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-800">
+                  {t("duty_history.called_up")}
+                </span>
+              )}
+            </div>
           </div>
           {badgeClass && (
             <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass}`}>

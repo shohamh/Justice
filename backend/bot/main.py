@@ -22,22 +22,23 @@ async def outbox_loop(app: Application) -> None:
         await asyncio.sleep(2)
 
 
+async def _post_init(app: Application) -> None:
+    asyncio.ensure_future(outbox_loop(app))
+
+
 def main() -> None:
     settings = get_settings()
     if not settings.telegram_bot_token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; bot not starting")
         return
 
-    app = Application.builder().token(settings.telegram_bot_token).build()
+    app = Application.builder().token(settings.telegram_bot_token).post_init(_post_init).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("verify", verify))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("unlink", unlink))
     app.add_handler(CommandHandler("help", help_command))
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.create_task(outbox_loop(app))
     app.run_polling()
 
 

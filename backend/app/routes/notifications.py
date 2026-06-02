@@ -12,6 +12,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import CommanderNotificationScope, Notification, NotificationPreference, NotificationType, Soldier
 from app.db.session import get_session
 from app.services import notifications as svc
+from app.settings import get_settings
 
 router = APIRouter(tags=["notifications"])
 
@@ -48,6 +49,7 @@ class TelegramStatusOut(BaseModel):
 class GenerateCodeOut(BaseModel):
     code: str
     expires_at: datetime
+    bot_username: str
 
 
 class CommanderScopeOut(BaseModel):
@@ -226,7 +228,7 @@ def generate_code(
 ) -> GenerateCodeOut:
     code, expires_at = svc.generate_code(session, soldier_id=user.id)
     session.commit()
-    return GenerateCodeOut(code=code, expires_at=expires_at)
+    return GenerateCodeOut(code=code, expires_at=expires_at, bot_username=get_settings().telegram_bot_username)
 
 
 @router.get("/telegram/link/status", response_model=TelegramStatusOut)

@@ -1,8 +1,7 @@
-from __future__ import annotations
-
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
+from typing import Annotated
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -44,9 +43,9 @@ def _client_context(request: Request) -> dict[str, str]:
 
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit(lambda: get_settings().login_rate_limit)
+@limiter.limit(get_settings().login_rate_limit)
 def login(
-    body: LoginRequest,
+    body: Annotated[LoginRequest, Body()],
     request: Request,
     response: Response,
     session: Session = Depends(get_session),

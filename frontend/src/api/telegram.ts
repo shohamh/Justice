@@ -3,6 +3,7 @@ import { api as client } from "./client";
 export interface GenerateCodeResult {
   code: string;
   expires_at: string;
+  bot_username: string;
 }
 
 export interface TelegramStatus {

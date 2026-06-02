@@ -118,7 +118,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
-        <h3 className="font-semibold mb-2">{t("team.edit_soldier")}: {soldier.full_name}</h3>
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="font-semibold">{t("team.edit_soldier")}: {soldier.full_name}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none -mt-1 -mr-1 p-1"
+            aria-label="close"
+            data-testid="modal-close"
+          >
+            ×
+          </button>
+        </div>
         <p className="text-xs text-gray-400 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
 
         <div className="flex gap-4 border-b mb-4">

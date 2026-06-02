@@ -80,6 +80,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                         "duty_type_name": dt_name,
                         "location_name": loc_name,
                         "duty_assignment_id": str(a.id),
+                        "is_reserve": "true",
                     },
                     created_at=a.created_at.isoformat(),
                 )
@@ -100,6 +101,8 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                         "duty_type_name": dt_name,
                         "location_name": loc_name,
                         "duty_assignment_id": str(a.id),
+                        "is_reserve": "true" if a.is_reserve else "false",
+                        "called_up": "true" if a.called_up_from is not None else "false",
                     },
                     created_at=a.created_at.isoformat(),
                 )
@@ -118,6 +121,8 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                         "duty_type_name": dt_name,
                         "location_name": loc_name,
                         "duty_assignment_id": str(a.id),
+                        "is_reserve": "true" if a.is_reserve else "false",
+                        "called_up": "true" if a.called_up_from is not None else "false",
                     },
                     created_at=a.created_at.isoformat(),
                 )
