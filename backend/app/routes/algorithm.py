@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -310,6 +310,30 @@ def cancel_job(
     job.status = "failed"
     job.error_message = "cancelled_by_user"
     session.commit()
+
+
+@router.post("/reset-published", status_code=status.HTTP_200_OK)
+def reset_published_assignments(
+    days_ahead: int = Query(ge=1),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    from app.services.assignments import cancel_assignment
+
+    cutoff = date.today() + timedelta(days=days_ahead)
+    assignments = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.start_date > cutoff,
+        )
+    ).scalars().all()
+
+    for a in assignments:
+        cancel_assignment(session, assignment=a, reason="bulk_reset", actor_id=user.id)
+
+    session.commit()
+    return {"cancelled": len(assignments)}
 
 
 @router.get("/jobs/{job_id}/explanations/{assignment_id}")

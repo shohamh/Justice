@@ -216,3 +216,84 @@ def test_reject_proposal(client, admin_session):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "algorithm_rejected"
+
+
+from datetime import date, timedelta
+
+from app.db.models import DutyAssignment
+
+
+def _make_published_assignment(session, personal_number: str, start_date: date) -> DutyAssignment:
+    """Helper: creates a soldier + duty type + location + published assignment."""
+    node = create_node(session, level="branch", name=f"branch_{personal_number}")
+    soldier = create_soldier(session, personal_number=personal_number, hierarchy_node_id=node.id)
+    dt = DutyType(name=f"dt_{personal_number}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{personal_number}")
+    session.add(dt)
+    session.add(loc)
+    session.flush()
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=start_date,
+        end_date=start_date,
+        status="published",
+    )
+    session.add(a)
+    session.commit()
+    session.refresh(a)
+    return a
+
+
+def test_reset_published_cancels_future_assignments(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_rp_dm_001")
+    dm = create_soldier(admin_session, personal_number="rp_dm_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    future = date.today() + timedelta(days=60)
+    near = date.today() + timedelta(days=5)
+
+    far_assignment = _make_published_assignment(admin_session, "rp_s_001", future)
+    near_assignment = _make_published_assignment(admin_session, "rp_s_002", near)
+
+    resp = client.post(
+        "/api/algorithm/reset-published",
+        params={"days_ahead": 30},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cancelled"] >= 1
+
+    admin_session.expire(far_assignment)
+    admin_session.expire(near_assignment)
+    admin_session.refresh(far_assignment)
+    admin_session.refresh(near_assignment)
+
+    assert far_assignment.status == "cancelled"
+    assert near_assignment.status == "published"  # within 30 days, untouched
+
+
+def test_reset_published_returns_zero_when_no_matches(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_rp_dm_002")
+    dm = create_soldier(admin_session, personal_number="rp_dm_002", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    resp = client.post(
+        "/api/algorithm/reset-published",
+        params={"days_ahead": 365},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["cancelled"] == 0
+
+
+def test_reset_published_rejects_days_ahead_zero(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_rp_dm_003")
+    dm = create_soldier(admin_session, personal_number="rp_dm_003", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    resp = client.post(
+        "/api/algorithm/reset-published",
+        params={"days_ahead": 0},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 422
