@@ -364,13 +364,20 @@ def cancel_job(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
+    from datetime import datetime, timezone
     job = _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
     if job.status not in ("pending", "running"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_cancellable")
     job.status = "failed"
     job.error_message = "cancelled_by_user"
+    job.finished_at = datetime.now(tz=timezone.utc)
     session.commit()
+
+    from app.services.algorithm_bridge import _cancel_events
+    event = _cancel_events.get(str(job_id))
+    if event:
+        event.set()
 
 
 @router.post("/reset-published", status_code=status.HTTP_200_OK)

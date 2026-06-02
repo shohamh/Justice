@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
+
+_cancel_events: dict[str, threading.Event] = {}
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -450,163 +453,178 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     from app.db.session import session_scope
     from app.services.settings_loader import get_setting
 
-    with session_scope() as session:
-        job = session.get(AlgorithmJob, job_id)
-        if job is None:
-            return
+    cancel_event = threading.Event()
+    _cancel_events[str(job_id)] = cancel_event
 
-        job.status = "running"
-        job.started_at = datetime.now(tz=timezone.utc)
-        session.commit()
-
-        try:
-            def _setting_decimal(key: str, default: str) -> Decimal:
-                try:
-                    return Decimal(str(get_setting(session, key)))
-                except Exception:
-                    return Decimal(default)
-
-            settings = SolverSettings(
-                K=Decimal(str(job.settings_json.get("K", 8))),
-                T=int(job.settings_json.get("T", 7)),
-                W=int(job.settings_json.get("W", 14)),
-                alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
-                beta=Decimal(str(job.settings_json.get("beta", 2.0))),
-                time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
-                reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
-            )
-            standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
-
-            shift_ids = [uuid.UUID(s) for s in job.shift_ids]
-            duties, block_to_shift_map = load_duty_blocks_from_shifts(
-                session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
-            )
-
-            if not duties:
-                job.status = "failed"
-                job.error_message = "no_shifts_selected"
-                job.finished_at = datetime.now(tz=timezone.utc)
-                session.commit()
+    try:
+        with session_scope() as session:
+            job = session.get(AlgorithmJob, job_id)
+            if job is None:
                 return
 
-            planning_start = min(d.start_date for d in duties)
-            planning_end = max(d.end_date for d in duties)
-
-            soldiers = load_soldier_inputs(session, as_of=planning_start)
-            existing = load_existing_assignments(
-                session,
-                planning_start=planning_start,
-                planning_end=planning_end,
-                W=settings.W,
-            )
-
-            if not soldiers:
-                job.status = "failed"
-                job.error_message = "no_soldiers_or_duties"
-                job.finished_at = datetime.now(tz=timezone.utc)
-                session.commit()
-                return
-
-            hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
-
-            reserve_dist = compute_reserve_dist(
-                soldiers=soldiers, duties=duties, block_to_shift=block_to_shift_map,
-                hierarchy_parent=hier_parent, soldier_node=soldier_node,
-            )
-
-            result = solve(soldiers, duties, existing, settings, reserve_dist=reserve_dist)
-
-            if result.status == "INFEASIBLE":
-                from app.algorithm.diagnose import diagnose_infeasibility
-                dt_names = {
-                    dt.id: dt.name
-                    for dt in session.execute(select(DutyType)).scalars().all()
-                }
-                reasons = diagnose_infeasibility(soldiers, duties, existing, dt_names)
-                job.status = "failed"
-                job.error_message = json.dumps({
-                    "relaxed": result.relaxed,
-                    "status": "INFEASIBLE",
-                    "reasons": reasons,
-                })
-                job.finished_at = datetime.now(tz=timezone.utc)
-                session.commit()
-                return
-
-            explanation_data = build_explanations(
-                soldiers=soldiers,
-                duties=duties,
-                assignments=result.assignments,
-                global_before={},
-                global_after={},
-                solver_seed=result.seed,
-            )
-
-            soldier_names = {
-                s.id: s.full_name
-                for s in session.execute(select(Soldier)).scalars().all()
-            }
-
-            persist_results(
-                session,
-                job=job,
-                result=result,
-                explanation_data=explanation_data,
-                duty_blocks=duties,
-                soldier_names=soldier_names,
-                actor_id=actor_id,
-                block_to_shift_map=block_to_shift_map,
-                hierarchy_parent=hier_parent,
-                hierarchy_children=hier_children,
-                soldier_node=soldier_node,
-            )
-
-            # Check if job was cancelled while the solver was running
-            session.refresh(job)
+            # Job cancelled before background task started
             if job.status == "failed":
-                # Cancelled externally — don't overwrite the cancellation
-                session.rollback()
                 return
 
-            job.status = "done"
-            job.finished_at = datetime.now(tz=timezone.utc)
-
-            if job.created_by:
-                from app.db.models import NotificationType
-                from app.services.notifications import create_notification
-                proposal_count = _count_proposals_for_job(session, job)
-                create_notification(
-                    session,
-                    soldier_id=job.created_by,
-                    type=NotificationType.algorithm_job_done,
-                    title=f"הרצת האלגוריתם הסתיימה — {proposal_count} הצעות ממתינות לאישור",
-                    reference_type="algorithm_job",
-                    reference_id=job.id,
-                )
-
+            job.status = "running"
+            job.started_at = datetime.now(tz=timezone.utc)
             session.commit()
 
-        except Exception as exc:  # noqa: BLE001
-            session.rollback()
-            with session_scope() as err_session:
-                err_job = err_session.get(AlgorithmJob, job_id)
-                if err_job is not None:
-                    err_job.status = "failed"
-                    err_job.error_message = str(exc)
-                    err_job.finished_at = datetime.now(tz=timezone.utc)
+            try:
+                def _setting_decimal(key: str, default: str) -> Decimal:
+                    try:
+                        return Decimal(str(get_setting(session, key)))
+                    except Exception:
+                        return Decimal(default)
 
-                    if err_job.created_by:
-                        from app.db.models import NotificationType
-                        from app.services.notifications import create_notification
-                        body = str(exc)[:200] if str(exc) else None
-                        create_notification(
-                            err_session,
-                            soldier_id=err_job.created_by,
-                            type=NotificationType.algorithm_job_failed,
-                            title="הרצת האלגוריתם נכשלה",
-                            body=body,
-                            reference_type="algorithm_job",
-                            reference_id=err_job.id,
-                        )
+                settings = SolverSettings(
+                    K=Decimal(str(job.settings_json.get("K", 8))),
+                    T=int(job.settings_json.get("T", 7)),
+                    W=int(job.settings_json.get("W", 14)),
+                    alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
+                    beta=Decimal(str(job.settings_json.get("beta", 2.0))),
+                    time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
+                    reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
+                )
+                standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
-                    err_session.commit()
+                shift_ids = [uuid.UUID(s) for s in job.shift_ids]
+                duties, block_to_shift_map = load_duty_blocks_from_shifts(
+                    session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
+                )
+
+                if not duties:
+                    job.status = "failed"
+                    job.error_message = "no_shifts_selected"
+                    job.finished_at = datetime.now(tz=timezone.utc)
+                    session.commit()
+                    return
+
+                planning_start = min(d.start_date for d in duties)
+                planning_end = max(d.end_date for d in duties)
+
+                soldiers = load_soldier_inputs(session, as_of=planning_start)
+                existing = load_existing_assignments(
+                    session,
+                    planning_start=planning_start,
+                    planning_end=planning_end,
+                    W=settings.W,
+                )
+
+                if not soldiers:
+                    job.status = "failed"
+                    job.error_message = "no_soldiers_or_duties"
+                    job.finished_at = datetime.now(tz=timezone.utc)
+                    session.commit()
+                    return
+
+                hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
+
+                reserve_dist = compute_reserve_dist(
+                    soldiers=soldiers, duties=duties, block_to_shift=block_to_shift_map,
+                    hierarchy_parent=hier_parent, soldier_node=soldier_node,
+                )
+
+                result = solve(soldiers, duties, existing, settings, reserve_dist=reserve_dist, cancel_event=cancel_event)
+
+                # Solver was interrupted by cancellation — DB already marked failed
+                if result.status == "CANCELLED":
+                    session.rollback()
+                    return
+
+                if result.status == "INFEASIBLE":
+                    from app.algorithm.diagnose import diagnose_infeasibility
+                    dt_names = {
+                        dt.id: dt.name
+                        for dt in session.execute(select(DutyType)).scalars().all()
+                    }
+                    reasons = diagnose_infeasibility(soldiers, duties, existing, dt_names)
+                    job.status = "failed"
+                    job.error_message = json.dumps({
+                        "relaxed": result.relaxed,
+                        "status": "INFEASIBLE",
+                        "reasons": reasons,
+                    })
+                    job.finished_at = datetime.now(tz=timezone.utc)
+                    session.commit()
+                    return
+
+                explanation_data = build_explanations(
+                    soldiers=soldiers,
+                    duties=duties,
+                    assignments=result.assignments,
+                    global_before={},
+                    global_after={},
+                    solver_seed=result.seed,
+                )
+
+                soldier_names = {
+                    s.id: s.full_name
+                    for s in session.execute(select(Soldier)).scalars().all()
+                }
+
+                persist_results(
+                    session,
+                    job=job,
+                    result=result,
+                    explanation_data=explanation_data,
+                    duty_blocks=duties,
+                    soldier_names=soldier_names,
+                    actor_id=actor_id,
+                    block_to_shift_map=block_to_shift_map,
+                    hierarchy_parent=hier_parent,
+                    hierarchy_children=hier_children,
+                    soldier_node=soldier_node,
+                )
+
+                # Check if job was cancelled while the solver was running
+                session.refresh(job)
+                if job.status == "failed":
+                    # Cancelled externally — don't overwrite the cancellation
+                    session.rollback()
+                    return
+
+                job.status = "done"
+                job.finished_at = datetime.now(tz=timezone.utc)
+
+                if job.created_by:
+                    from app.db.models import NotificationType
+                    from app.services.notifications import create_notification
+                    proposal_count = _count_proposals_for_job(session, job)
+                    create_notification(
+                        session,
+                        soldier_id=job.created_by,
+                        type=NotificationType.algorithm_job_done,
+                        title=f"הרצת האלגוריתם הסתיימה — {proposal_count} הצעות ממתינות לאישור",
+                        reference_type="algorithm_job",
+                        reference_id=job.id,
+                    )
+
+                session.commit()
+
+            except Exception as exc:  # noqa: BLE001
+                session.rollback()
+                with session_scope() as err_session:
+                    err_job = err_session.get(AlgorithmJob, job_id)
+                    if err_job is not None:
+                        err_job.status = "failed"
+                        err_job.error_message = str(exc)
+                        err_job.finished_at = datetime.now(tz=timezone.utc)
+
+                        if err_job.created_by:
+                            from app.db.models import NotificationType
+                            from app.services.notifications import create_notification
+                            body = str(exc)[:200] if str(exc) else None
+                            create_notification(
+                                err_session,
+                                soldier_id=err_job.created_by,
+                                type=NotificationType.algorithm_job_failed,
+                                title="הרצת האלגוריתם נכשלה",
+                                body=body,
+                                reference_type="algorithm_job",
+                                reference_id=err_job.id,
+                            )
+
+                        err_session.commit()
+    finally:
+        _cancel_events.pop(str(job_id), None)
