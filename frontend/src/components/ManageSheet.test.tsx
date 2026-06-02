@@ -53,6 +53,7 @@ describe("ManageSheet", () => {
     expect(screen.getByText("nav.section_planning")).toBeInTheDocument();
     expect(screen.getByText("nav.duty_config")).toBeInTheDocument();
     expect(screen.getByText("nav.shifts")).toBeInTheDocument();
+    expect(screen.getByText("nav.algorithm")).toBeInTheDocument();
   });
 
   test("calls onClose when backdrop is clicked", () => {

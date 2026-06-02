@@ -67,6 +67,7 @@ export default function ManageSheet({ open, onClose }: Props) {
             <Link to="/duty-management" onClick={onClose} className={linkClass}>{t("nav.duty_management")}</Link>
             <Link to="/shifts" onClick={onClose} className={linkClass}>{t("nav.shifts")}</Link>
             <Link to="/shift-templates" onClick={onClose} className={linkClass}>{t("nav.shift_templates")}</Link>
+            <Link to="/algorithm" onClick={onClose} className={linkClass}>{t("nav.algorithm")}</Link>
           </div>
         )}
       </div>

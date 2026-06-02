@@ -21,6 +21,7 @@ import SwapsPage from "./pages/SwapsPage";
 import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
 import CommandDashboardPage from "./pages/CommandDashboardPage";
+import AlgorithmPage from "./pages/AlgorithmPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
           <Route path="/command-dashboard" element={<ForcedPasswordGate><CommandDashboardPage /></ForcedPasswordGate>} />
           <Route path="/notifications" element={<ForcedPasswordGate><NotificationsPage /></ForcedPasswordGate>} />
+          <Route path="/algorithm" element={<ForcedPasswordGate><AlgorithmPage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
       </SoldierModalProvider>
