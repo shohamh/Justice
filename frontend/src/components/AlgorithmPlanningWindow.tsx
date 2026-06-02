@@ -7,6 +7,8 @@ import {
   acceptProposal,
   pollJob,
   rejectProposal,
+  resetDrafts,
+  resetPublished,
   submitJob,
 } from "../api/algorithm";
 import { DutyShift, listShifts } from "../api/shifts";
@@ -53,6 +55,13 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
     jobId: string;
     assignmentId: string;
   } | null>(null);
+
+  const [resetPublishedDays, setResetPublishedDays] = useState(30);
+  const [resetDraftsDays, setResetDraftsDays] = useState(30);
+  const [resetPublishedMsg, setResetPublishedMsg] = useState<string | null>(null);
+  const [resetDraftsMsg, setResetDraftsMsg] = useState<string | null>(null);
+  const [resetPublishedLoading, setResetPublishedLoading] = useState(false);
+  const [resetDraftsLoading, setResetDraftsLoading] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -153,6 +162,54 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
     const toApprove = job?.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p)) ?? [];
     await Promise.all(toApprove.map(p => handleAccept(p)));
     setSelectedIds(new Set());
+  }
+
+  async function handleResetPublished() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + resetPublishedDays);
+    const dateStr = cutoff.toISOString().slice(0, 10);
+    const confirmed = window.confirm(
+      t("algorithm.reset_confirm_published", { date: dateStr })
+    );
+    if (!confirmed) return;
+    setResetPublishedLoading(true);
+    setResetPublishedMsg(null);
+    try {
+      const result = await resetPublished(resetPublishedDays);
+      setResetPublishedMsg(
+        result.cancelled === 0
+          ? t("algorithm.reset_none")
+          : t("algorithm.reset_result_cancelled", { count: result.cancelled })
+      );
+    } catch {
+      setResetPublishedMsg(t("errors.generic"));
+    } finally {
+      setResetPublishedLoading(false);
+    }
+  }
+
+  async function handleResetDrafts() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + resetDraftsDays);
+    const dateStr = cutoff.toISOString().slice(0, 10);
+    const confirmed = window.confirm(
+      t("algorithm.reset_confirm_drafts", { date: dateStr })
+    );
+    if (!confirmed) return;
+    setResetDraftsLoading(true);
+    setResetDraftsMsg(null);
+    try {
+      const result = await resetDrafts(resetDraftsDays);
+      setResetDraftsMsg(
+        result.rejected === 0
+          ? t("algorithm.reset_none")
+          : t("algorithm.reset_result_rejected", { count: result.rejected })
+      );
+    } catch {
+      setResetDraftsMsg(t("errors.generic"));
+    } finally {
+      setResetDraftsLoading(false);
+    }
   }
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
@@ -453,6 +510,56 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
               })()}
             </div>
           )}
+          {/* Bulk reset */}
+          <div className="border-t pt-3 space-y-3">
+            {/* Reset published */}
+            <div className="flex items-center gap-2 text-sm flex-wrap">
+              <span className="text-gray-700">{t("algorithm.reset_published_label")}</span>
+              <input
+                type="number"
+                min={1}
+                value={resetPublishedDays}
+                onChange={e => setResetPublishedDays(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-16 border rounded p-1 text-sm text-center"
+              />
+              <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
+              <button
+                type="button"
+                onClick={handleResetPublished}
+                disabled={resetPublishedLoading}
+                className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-50"
+              >
+                {t("algorithm.reset_published_btn")}
+              </button>
+              {resetPublishedMsg && (
+                <span className="text-xs text-gray-600">{resetPublishedMsg}</span>
+              )}
+            </div>
+
+            {/* Reset drafts */}
+            <div className="flex items-center gap-2 text-sm flex-wrap">
+              <span className="text-gray-700">{t("algorithm.reset_drafts_label")}</span>
+              <input
+                type="number"
+                min={1}
+                value={resetDraftsDays}
+                onChange={e => setResetDraftsDays(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-16 border rounded p-1 text-sm text-center"
+              />
+              <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
+              <button
+                type="button"
+                onClick={handleResetDrafts}
+                disabled={resetDraftsLoading}
+                className="bg-amber-600 text-white px-3 py-1 rounded text-xs hover:bg-amber-700 disabled:opacity-50"
+              >
+                {t("algorithm.reset_drafts_btn")}
+              </button>
+              {resetDraftsMsg && (
+                <span className="text-xs text-gray-600">{resetDraftsMsg}</span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
