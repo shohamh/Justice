@@ -1,7 +1,8 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import DismissalModal from "./DismissalModal";
+import SoldierLink from "./SoldierLink";
 
 interface Props {
   shift: CalendarShift;
@@ -21,6 +22,17 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     if (!id) return "—";
     const a = shift.assignees.find(a => a.assignment_id === id);
     return a?.soldier_name ?? id.slice(0, 8);
+  }
+
+  const assigneeById = Object.fromEntries(
+    shift.assignees.map((a) => [a.assignment_id, { soldierId: a.soldier_id, name: a.soldier_name }])
+  );
+
+  function soldierNode(id: string | null): React.ReactNode {
+    if (!id) return "—";
+    const a = assigneeById[id];
+    if (!a) return id.slice(0, 8);
+    return <SoldierLink id={a.soldierId} name={a.name} />;
   }
 
   return (
@@ -47,7 +59,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
               <div key={a.assignment_id} className={`border rounded p-2 text-sm flex flex-col gap-1 ${isCalledUp ? "border-blue-200 bg-blue-50" : ""}`}>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{a.soldier_name}</span>
+                    <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                     {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
                     {isCalledUp && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
@@ -69,13 +81,15 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                 <div className="flex flex-wrap gap-2 text-xs">
                   {!isCalledUp && a.reserve_assignment_id && (
                     <span className="text-purple-600">
-                      {t("reserve_standby")}: {soldierName(a.reserve_assignment_id)}
+                      {t("reserve_standby")}: {soldierNode(a.reserve_assignment_id)}
                       {a.reserve_hierarchy_distance != null && ` (${t("distance_label", "מרחק")}: ${a.reserve_hierarchy_distance})`}
                     </span>
                   )}
                   {isCalledUp && a.primary_assignment_ids.length > 0 && (
                     <span className="text-blue-600">
-                      {t("reserve_covers")}: {a.primary_assignment_ids.map(id => soldierName(id)).join(", ")}
+                      {t("reserve_covers")}: {a.primary_assignment_ids.map((id, i) => (
+                        <span key={id}>{i > 0 && ", "}{soldierNode(id)}</span>
+                      ))}
                     </span>
                   )}
                 </div>
@@ -95,7 +109,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
               <div key={a.assignment_id} className="border border-amber-200 bg-amber-50 rounded p-2 text-sm flex flex-col gap-1">
                 <div className="flex justify-between items-center">
                   <div>
-                    <span className="font-medium">{a.soldier_name}</span>
+                    <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                     {a.hierarchy_label && <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>}
                   </div>
                 </div>
@@ -121,7 +135,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
               <div key={a.assignment_id} className="border rounded p-2 text-sm border-purple-200 bg-purple-50 flex flex-col gap-1">
                 <div className="flex justify-between items-center">
                   <div>
-                    <span className="font-medium">{a.soldier_name}</span>
+                    <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                     <span className="text-xs text-purple-500 mr-2">({t("reserve_label")})</span>
                     {a.hierarchy_label && <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>}
                   </div>
@@ -133,7 +147,9 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                 </div>
                 {a.primary_assignment_ids.length > 0 && (
                   <div className="text-xs text-gray-600">
-                    {t("reserve_covers")}: {a.primary_assignment_ids.map(id => soldierName(id)).join(", ")}
+                    {t("reserve_covers")}: {a.primary_assignment_ids.map((id, i) => (
+                      <span key={id}>{i > 0 && ", "}{soldierNode(id)}</span>
+                    ))}
                   </div>
                 )}
               </div>
