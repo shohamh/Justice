@@ -9,6 +9,7 @@ export interface DutyShift {
   required_count: number;
   notes: string | null;
   assigned_count: number;
+  reserve_assigned_count: number;
   fill_status: "empty" | "partial" | "full";
   reserve_count_override?: number | null;
   calculated_reserve_count?: number | null;

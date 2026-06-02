@@ -111,8 +111,20 @@ export default function ShiftsPage() {
             {
               id: "assigned",
               header: t("shifts.assigned_count"),
-              cell: (s) => s.assigned_count,
-              sortValue: (s) => s.assigned_count,
+              cell: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
+              sortValue: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
+            },
+            {
+              id: "reserve_needed",
+              header: t("shifts.reserve_needed"),
+              cell: (s) => s.calculated_reserve_count ?? 0,
+              sortValue: (s) => s.calculated_reserve_count ?? 0,
+            },
+            {
+              id: "reserve_assigned",
+              header: t("shifts.reserve_assigned"),
+              cell: (s) => s.reserve_assigned_count ?? 0,
+              sortValue: (s) => s.reserve_assigned_count ?? 0,
             },
             {
               id: "status",

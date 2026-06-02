@@ -4,10 +4,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+
 from app.db.models import DutyAssignment, DutyShift
 
 _UNSET = object()
@@ -28,6 +29,7 @@ class ShiftWithFill:
     notes: str | None
     created_by: uuid.UUID | None
     assigned_count: int
+    reserve_assigned_count: int
     fill_status: str  # 'empty' | 'partial' | 'full'
     reserve_count_override: int | None = None
 
@@ -40,17 +42,23 @@ def _fill_status(assigned: int, required: int) -> str:
     return "partial"
 
 
-def _get_assigned_count(session: Session, shift_id: uuid.UUID) -> int:
-    return session.execute(
-        select(func.count(DutyAssignment.id)).where(
+def _get_assigned_counts(session: Session, shift_id: uuid.UUID) -> tuple[int, int]:
+    row = session.execute(
+        select(
+            func.count(DutyAssignment.id).label("total"),
+            func.sum(case((DutyAssignment.is_reserve == True, 1), else_=0)).label("reserve"),
+        ).where(
             DutyAssignment.duty_shift_id == shift_id,
             DutyAssignment.status.in_(["published", "algorithm_draft"]),
         )
-    ).scalar_one()
+    ).one()
+    total = row.total or 0
+    reserve = row.reserve or 0
+    return total, reserve
 
 
 def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
-    assigned = _get_assigned_count(session, shift.id)
+    total, reserve = _get_assigned_counts(session, shift.id)
     return ShiftWithFill(
         id=shift.id,
         duty_type_id=shift.duty_type_id,
@@ -60,8 +68,9 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         required_count=shift.required_count,
         notes=shift.notes,
         created_by=shift.created_by,
-        assigned_count=assigned,
-        fill_status=_fill_status(assigned, shift.required_count),
+        assigned_count=total,
+        reserve_assigned_count=reserve,
+        fill_status=_fill_status(total, shift.required_count),
         reserve_count_override=shift.reserve_count_override,
     )
 
@@ -211,7 +220,11 @@ def list_shifts(
 
     shift_ids = [s.id for s in shifts]
     count_rows = session.execute(
-        select(DutyAssignment.duty_shift_id, func.count(DutyAssignment.id).label("cnt"))
+        select(
+            DutyAssignment.duty_shift_id,
+            func.count(DutyAssignment.id).label("cnt"),
+            func.sum(case((DutyAssignment.is_reserve == True, 1), else_=0)).label("reserve_cnt"),
+        )
         .where(
             DutyAssignment.duty_shift_id.in_(shift_ids),
             DutyAssignment.status.in_(["published", "algorithm_draft"]),
@@ -219,10 +232,12 @@ def list_shifts(
         .group_by(DutyAssignment.duty_shift_id)
     ).all()
     count_map: dict[uuid.UUID, int] = {row.duty_shift_id: row.cnt for row in count_rows}
+    reserve_map: dict[uuid.UUID, int] = {row.duty_shift_id: row.reserve_cnt or 0 for row in count_rows}
 
     result = []
     for shift in shifts:
         assigned = count_map.get(shift.id, 0)
+        reserve_assigned = reserve_map.get(shift.id, 0)
         result.append(ShiftWithFill(
             id=shift.id,
             duty_type_id=shift.duty_type_id,
@@ -233,6 +248,7 @@ def list_shifts(
             notes=shift.notes,
             created_by=shift.created_by,
             assigned_count=assigned,
+            reserve_assigned_count=reserve_assigned,
             fill_status=_fill_status(assigned, shift.required_count),
             reserve_count_override=shift.reserve_count_override,
         ))

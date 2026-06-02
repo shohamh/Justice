@@ -26,6 +26,7 @@ class ShiftOut(BaseModel):
     required_count: int
     notes: str | None
     assigned_count: int
+    reserve_assigned_count: int
     fill_status: str
     reserve_count_override: int | None = None
     calculated_reserve_count: int | None = None
@@ -67,6 +68,7 @@ def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
         required_count=s.required_count,
         notes=s.notes,
         assigned_count=s.assigned_count,
+        reserve_assigned_count=s.reserve_assigned_count,
         fill_status=s.fill_status,
         reserve_count_override=s.reserve_count_override,
         calculated_reserve_count=calculated,

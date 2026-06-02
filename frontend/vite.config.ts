@@ -7,7 +7,14 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },
-  server: { port: 5173, host: "0.0.0.0" },
+  server: {
+    port: 5173,
+    host: "0.0.0.0",
+    allowedHosts: [".trycloudflare.com", ".ts.net"],
+    proxy: {
+      "/api": { target: "http://localhost:8000", changeOrigin: true },
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,
