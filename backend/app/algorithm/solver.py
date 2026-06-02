@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 
 from ortools.sat.python.cp_model import CpSolver, IntVar
@@ -15,15 +16,22 @@ from app.algorithm.types import (
 )
 
 
+def _watch_cancel(solver: CpSolver, event: threading.Event) -> None:
+    """Daemon thread: calls StopSearch when the cancel event fires."""
+    event.wait()
+    solver.StopSearch()
+
+
 def solve(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics."""
-    return _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist)
+    return _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
 
 
 def _solve_with_settings(
@@ -32,6 +40,7 @@ def _solve_with_settings(
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[CpSolver, dict[tuple[int, int], IntVar], int]:
     model, x = build_model(soldiers, duties, existing, settings, reserve_dist)
     solver = CpSolver()
@@ -39,6 +48,8 @@ def _solve_with_settings(
     if settings.seed is not None:
         solver.parameters.random_seed = settings.seed
     solver.parameters.num_search_workers = 8
+    if cancel_event is not None:
+        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
     status = solver.Solve(model)
     return solver, x, status
 
@@ -49,6 +60,7 @@ def _infeasibility_relaxation_chain(
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> SolverResult:
     current = SolverSettings(
         K=settings.K, T=settings.T, W=settings.W,
@@ -60,8 +72,12 @@ def _infeasibility_relaxation_chain(
     relaxed: list[str] = []
 
     for attempt in range(5):
-        solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist)
+        solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
         status_name = solver.StatusName(status)
+
+        # UNKNOWN means StopSearch() fired before a solution was found \u2014 treat as cancelled
+        if status_name not in ("OPTIMAL", "FEASIBLE", "INFEASIBLE"):
+            return SolverResult(assignments=[], status="CANCELLED", seed=current.seed or 0, relaxed=relaxed)
 
         if status_name == "INFEASIBLE":
             if attempt < 3:
