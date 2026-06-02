@@ -4,10 +4,10 @@ import asyncio
 import logging
 
 from telegram import Bot
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from app.settings import get_settings
-from bot.handlers import start, verify, status, unlink, help_command
+from bot.handlers import start, verify, status, unlink, help_command, handle_code_message
 from bot.outbox import poll_outbox
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ def main() -> None:
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("unlink", unlink))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_code_message))
 
     app.run_polling()
 

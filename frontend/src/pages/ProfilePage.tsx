@@ -199,26 +199,31 @@ export default function ProfilePage() {
       <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.telegram")}</h3>
         {tgCode ? (
-          <div>
+          <div className="space-y-2">
             <p className="text-sm">{t("notifications.send_code_to_bot")}</p>
             {tgBotUsername && (
               <a
-                href={`https://t.me/${tgBotUsername}?start=verify`}
+                href={`https://t.me/${tgBotUsername}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block mt-1 text-sm text-indigo-600 hover:text-indigo-800 underline"
+                className="inline-block text-sm text-indigo-600 hover:text-indigo-800 underline"
               >
                 @{tgBotUsername}
               </a>
             )}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2">
               <code className="bg-gray-100 px-3 py-1 rounded text-lg font-mono">{tgCode}</code>
               <button onClick={() => navigator.clipboard.writeText(tgCode)} className="text-xs text-indigo-600 hover:text-indigo-800">
                 {t("notifications.copy")}
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">{t("notifications.verify_command")}</p>
-            {tgPolling && <p className="text-xs text-gray-500 mt-1">{t("notifications.waiting_for_verification")}</p>}
+            <div className="flex items-center gap-2">
+              <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-700">/verify {tgCode}</code>
+              <button onClick={() => navigator.clipboard.writeText(`/verify ${tgCode}`)} className="text-xs text-indigo-600 hover:text-indigo-800">
+                {t("notifications.copy")}
+              </button>
+            </div>
+            {tgPolling && <p className="text-xs text-gray-500">{t("notifications.waiting_for_verification")}</p>}
           </div>
         ) : tgStatus?.is_verified ? (
           <div>

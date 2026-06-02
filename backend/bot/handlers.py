@@ -17,11 +17,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not context.args or not context.args[0]:
-        await update.message.reply_text("אנא הזן קוד: /verify <קוד>")
-        return
-    code = context.args[0].strip().upper()
+async def _do_verify(update: Update, code: str) -> None:
     with session_scope() as session:
         link = session.execute(
             select(TelegramLink).where(
@@ -40,6 +36,20 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         link.verification_expires_at = None
         session.commit()
     await update.message.reply_text("החשבון שלך אומת בהצלחה!")
+
+
+async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or not context.args[0]:
+        await update.message.reply_text("אנא הזן קוד: /verify <קוד>")
+        return
+    await _do_verify(update, context.args[0].strip().upper())
+
+
+async def handle_code_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Accept a bare 6-character code sent as a plain message."""
+    text = (update.message.text or "").strip().upper()
+    if len(text) == 6 and text.isalnum():
+        await _do_verify(update, text)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
