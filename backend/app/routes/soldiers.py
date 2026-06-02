@@ -112,6 +112,7 @@ class TimelineEventOut(BaseModel):
     description: str | None
     status: str | None
     metadata: dict
+    created_at: str
 
 
 def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
@@ -294,7 +295,7 @@ def get_soldier_duty_history(
     user: Soldier = Depends(require_password_changed),
 ):
     s = _load(session, soldier_id)
-    if str(s.id) != str(user.id):
+    if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     events = get_duty_history(session, soldier_id)
     return [
@@ -307,6 +308,7 @@ def get_soldier_duty_history(
             description=e.description,
             status=e.status,
             metadata=e.metadata,
+            created_at=e.created_at,
         )
         for e in events
     ]

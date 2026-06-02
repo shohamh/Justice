@@ -69,7 +69,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
         if a.called_up_from is not None:
             events.append(
                 TimelineEvent(
-                    id=a.id,
+                    id=uuid.uuid5(a.id, "call_up"),
                     event_type="call_up",
                     date=a.called_up_from.isoformat(),
                     end_date=_isodate(a.called_up_to),

@@ -135,6 +135,9 @@ def test_call_up_appears(admin_session, soldier, duty_type, location):
     assert call_up_ev.date == "2026-06-08"
     assert call_up_ev.end_date == "2026-06-09"
 
+    assignment_event = next(e for e in events if e.event_type == "assignment")
+    assert assignment_event.date == "2026-06-10"
+
 
 def test_dismissal_appears(admin_session, soldier, duty_type, location):
     """A DutyDismissal linked to an assignment produces a 'dismissal' event."""
