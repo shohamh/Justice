@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlgorithmJob,
@@ -15,6 +15,7 @@ import { SoldierDTO } from "../api/soldiers";
 import ExplanationModal from "./ExplanationModal";
 import SubHierarchySelector from "./SubHierarchySelector";
 import { DataTable, type ColDef } from "./DataTable";
+import SoldierLink from "./SoldierLink";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -155,6 +156,11 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
   }
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
+  const soldierLink = (id: string): React.ReactNode => {
+    const s = soldiers.find((s) => s.id === id);
+    if (!s) return id.slice(0, 8);
+    return <SoldierLink id={s.id} name={s.full_name} />;
+  };
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
   const shiftLabel = (shift: DutyShift) =>
     `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (${shift.assigned_count}/${shift.required_count})`;
@@ -355,14 +361,14 @@ export default function AlgorithmPlanningWindow({ dutyTypes, soldiers }: Props) 
                   {
                     id: "soldier",
                     header: t("algorithm.col_soldier"),
-                    cell: (p) => soldierName(p.soldier_id),
+                    cell: (p) => soldierLink(p.soldier_id),
                     sortValue: (p) => soldierName(p.soldier_id),
                     filterValue: (p) => soldierName(p.soldier_id),
                   },
                   {
                     id: "reserve",
                     header: t("algorithm.col_reserve"),
-                    cell: (p) => p.reserve_soldier_id ? soldierName(p.reserve_soldier_id) : "—",
+                    cell: (p) => p.reserve_soldier_id ? soldierLink(p.reserve_soldier_id) : "—",
                   },
                   {
                     id: "score_before",
