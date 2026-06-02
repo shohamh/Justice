@@ -51,7 +51,8 @@
     "manage": "ניהול",
     "section_personal": "אישי",
     "section_team": "צוות",
-    "section_planning": "תכנון"
+    "section_planning": "תכנון",
+    "algorithm": "ניהול אלגוריתם"
   },
   "my_requests": {
     "title": "הבקשות והפטורים שלי",
@@ -298,7 +299,11 @@
     "reset_confirm_drafts": "לדחות את כל טיוטות האלגוריתם החל מ-{{date}}?",
     "reset_result_cancelled": "בוטלו {{count}} שיבוצים",
     "reset_result_rejected": "נדחו {{count}} טיוטות",
-    "reset_none": "לא נמצאו שיבוצים לביטול"
+    "reset_none": "לא נמצאו שיבוצים לביטול",
+    "runs_title": "הרצות",
+    "new_run": "+ הרצה חדשה",
+    "no_runs": "אין הרצות עדיין",
+    "select_run": "בחר הרצה מהרשימה"
   },
   "soldier_profile": {
     "section_title": "פרטי שירות",
