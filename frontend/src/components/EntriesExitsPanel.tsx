@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SoldierWithStatus } from "../api/commanderDashboard";
 import { softDeleteSoldier } from "../api/soldiers";
+import SoldierLink from "./SoldierLink";
 import { grantExemption } from "../api/exemptions";
 import { listExemptionTypes, type ExemptionType } from "../api/dutyConfig";
 import { fetchTree, type NodeDTO } from "../api/hierarchy";
@@ -83,7 +84,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
         <tbody>
           {soldiers.map((s) => (
             <tr key={s.id} className="border-b hover:bg-gray-50">
-              <td className="p-1">{s.full_name}</td>
+              <td className="p-1"><SoldierLink id={s.id} name={s.full_name} /></td>
               <td className="p-1">{s.status}</td>
               <td className="p-1 space-x-2 space-x-reverse">
                 <button onClick={() => setExemptTarget(s)} className="text-indigo-600 text-xs">{t("command_dashboard.exempt")}</button>
