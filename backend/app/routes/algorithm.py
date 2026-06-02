@@ -21,6 +21,7 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services.algorithm_bridge import run_algorithm_job
+from app.services.assignments import cancel_assignment
 from app.audit.writer import write_audit
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
@@ -319,7 +320,6 @@ def reset_published_assignments(
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, int]:
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    from app.services.assignments import cancel_assignment
 
     cutoff = date.today() + timedelta(days=days_ahead)
     assignments = session.execute(
