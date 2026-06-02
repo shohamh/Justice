@@ -336,6 +336,39 @@ def reset_published_assignments(
     return {"cancelled": len(assignments)}
 
 
+@router.post("/reset-drafts", status_code=status.HTTP_200_OK)
+def reset_draft_assignments(
+    days_ahead: int = Query(ge=1),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    cutoff = date.today() + timedelta(days=days_ahead)
+    assignments = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.status == "algorithm_draft",
+            DutyAssignment.start_date > cutoff,
+        )
+    ).scalars().all()
+
+    for a in assignments:
+        a.status = "algorithm_rejected"
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="algorithm.proposal.bulk_reject",
+            entity_type="duty_assignment",
+            entity_id=a.id,
+            before={"status": "algorithm_draft"},
+            after={"status": "algorithm_rejected"},
+            context={"days_ahead": days_ahead},
+        )
+
+    session.commit()
+    return {"rejected": len(assignments)}
+
+
 @router.get("/jobs/{job_id}/explanations/{assignment_id}")
 def get_explanation(
     job_id: uuid.UUID,
