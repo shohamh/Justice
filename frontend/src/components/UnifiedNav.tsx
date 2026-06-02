@@ -96,6 +96,7 @@ export default function UnifiedNav() {
 
       {/* Mobile bottom bar */}
       <nav
+        aria-label="ניווט ראשי"
         className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
@@ -127,6 +128,7 @@ export default function UnifiedNav() {
 
       {/* Desktop sidebar */}
       <nav
+        aria-label="ניווט צדדי"
         className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30"
         data-testid="sidebar"
       >

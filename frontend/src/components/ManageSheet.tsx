@@ -24,11 +24,28 @@ export default function ManageSheet({ open, onClose }: Props) {
       <div
         className="fixed inset-0 bg-black/30 z-40"
         data-testid="manage-sheet-backdrop"
+        role="presentation"
         onClick={onClose}
       />
-      <div className="fixed bottom-0 right-0 left-0 md:bottom-0 md:right-24 md:left-auto md:top-0 bg-white z-50 rounded-t-2xl md:rounded-none shadow-xl overflow-y-auto max-h-[70vh] md:max-h-full md:w-64 py-4 space-y-3">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed bottom-0 right-0 left-0 md:bottom-0 md:right-24 md:left-auto md:top-0 bg-white z-50 rounded-t-2xl md:rounded-none shadow-xl overflow-y-auto max-h-[70vh] md:max-h-full md:w-64 py-4 space-y-3"
+        onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      >
+        <div className="flex justify-end px-3">
+          <button
+            autoFocus
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+            aria-label="סגור"
+          >
+            ✕
+          </button>
+        </div>
+
         <div>
-          <p className={sectionHeadClass}>{t("nav.section_personal")}</p>
+          <h3 className={sectionHeadClass}>{t("nav.section_personal")}</h3>
           <Link to="/my-requests" onClick={onClose} className={linkClass}>{t("nav.my_requests")}</Link>
           <Link to="/swaps" onClick={onClose} className={linkClass}>{t("nav.swaps")}</Link>
           <Link to="/transparency" onClick={onClose} className={linkClass}>{t("nav.transparency")}</Link>
@@ -36,7 +53,7 @@ export default function ManageSheet({ open, onClose }: Props) {
 
         {canManageTeam && (
           <div>
-            <p className={sectionHeadClass}>{t("nav.section_team")}</p>
+            <h3 className={sectionHeadClass}>{t("nav.section_team")}</h3>
             <Link to="/team" onClick={onClose} className={linkClass}>{t("nav.team_hierarchy")}</Link>
             <Link to="/unit-calendar" onClick={onClose} className={linkClass}>{t("nav.unit_calendar")}</Link>
             <Link to="/command-dashboard" onClick={onClose} className={linkClass}>{t("nav.command_dashboard")}</Link>
@@ -45,7 +62,7 @@ export default function ManageSheet({ open, onClose }: Props) {
 
         {canManageDuties && (
           <div>
-            <p className={sectionHeadClass}>{t("nav.section_planning")}</p>
+            <h3 className={sectionHeadClass}>{t("nav.section_planning")}</h3>
             <Link to="/duty-config" onClick={onClose} className={linkClass}>{t("nav.duty_config")}</Link>
             <Link to="/duty-management" onClick={onClose} className={linkClass}>{t("nav.duty_management")}</Link>
             <Link to="/shifts" onClick={onClose} className={linkClass}>{t("nav.shifts")}</Link>
