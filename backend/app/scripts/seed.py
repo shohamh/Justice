@@ -34,7 +34,7 @@ from app.db.models import (
 from app.db.session import SessionLocal
 
 
-def seed(*, force: bool = False, with_assignments: bool = True):
+def seed(*, force: bool = False, with_assignments: bool = False):
     clear = force
     with SessionLocal() as session:
         hashed = hash_password("1234567890")
@@ -1137,7 +1137,7 @@ def seed(*, force: bool = False, with_assignments: bool = True):
                 "  4 swap requests (1 open, 1 open with target, 1 pending approval, 1 applied)"
             )
         else:
-            _safe_print("  0 shift assignments (pass --no-assignments to skip)")
+            _safe_print("  0 shift assignments (pass --with-assignments to include)")
         _safe_print(f"  15 personal constraints")
         _safe_print(f"  12 soldier exemptions")
         _safe_print(f"  5 score adjustments")
@@ -1150,5 +1150,5 @@ if __name__ == "__main__":
 
     seed(
         force="--clear" in sys.argv or "--force" in sys.argv,
-        with_assignments="--no-assignments" not in sys.argv,
+        with_assignments="--with-assignments" in sys.argv,
     )
