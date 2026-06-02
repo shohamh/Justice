@@ -110,9 +110,9 @@ export default function AlgorithmPage() {
 
   return (
     <Layout>
-      <div className="flex h-full gap-4 overflow-hidden" dir="rtl">
+      <div className="flex flex-col md:flex-row h-full gap-4 overflow-hidden" dir="rtl">
         {/* Left panel: job history */}
-        <div className="w-72 shrink-0 border rounded-lg bg-white flex flex-col overflow-hidden">
+        <div className="w-full md:w-72 md:shrink-0 border rounded-lg bg-white flex flex-col overflow-hidden max-h-48 md:max-h-none">
           <div className="flex justify-between items-center p-3 border-b">
             <h2 className="font-semibold text-sm">{t("algorithm.runs_title")}</h2>
             <button
