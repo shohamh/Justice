@@ -321,7 +321,7 @@ def get_soldier(
     user: Soldier = Depends(require_password_changed),
 ) -> SoldierOut:
     s = _load(session, soldier_id)
-    if s.id != user.id:
+    if s.id != user.id and user.role != "soldier":
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     return _out(s, include_gender=_can_see_gender(session, user, s))
 
