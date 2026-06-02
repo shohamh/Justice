@@ -591,6 +591,8 @@ class NotificationType(str, _enum.Enum):
     assignment_removed = "assignment_removed"
     score_adjusted = "score_adjusted"
     announcement = "announcement"
+    algorithm_job_done = "algorithm_job_done"
+    algorithm_job_failed = "algorithm_job_failed"
 
 
 class Notification(Base):
