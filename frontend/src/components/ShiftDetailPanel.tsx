@@ -18,12 +18,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const primaries = shift.assignees.filter(a => (!a.is_reserve || a.called_up_from) && a.dismissals.length === 0);
   const reserves = shift.assignees.filter(a => a.is_reserve && !a.called_up_from);
 
-  function soldierName(id: string | null): string {
-    if (!id) return "—";
-    const a = shift.assignees.find(a => a.assignment_id === id);
-    return a?.soldier_name ?? id.slice(0, 8);
-  }
-
   const assigneeById = Object.fromEntries(
     shift.assignees.map((a) => [a.assignment_id, { soldierId: a.soldier_id, name: a.soldier_name }])
   );
