@@ -352,6 +352,7 @@ def reset_draft_assignments(
         )
     ).scalars().all()
 
+    # Drafts are invisible to soldiers — no notification needed, just reject and audit.
     for a in assignments:
         a.status = "algorithm_rejected"
         write_audit(

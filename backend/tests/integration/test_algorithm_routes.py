@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -216,11 +217,6 @@ def test_reject_proposal(client, admin_session):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "algorithm_rejected"
-
-
-from datetime import date, timedelta
-
-from app.db.models import DutyAssignment
 
 
 def _make_published_assignment(session, personal_number: str, start_date: date) -> DutyAssignment:
