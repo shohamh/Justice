@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import Layout from "../components/Layout";
 import AlgorithmRunForm from "../components/AlgorithmRunForm";
 import AlgorithmProposalTable from "../components/AlgorithmProposalTable";
-import { AlgorithmJob, JobSummaryOut, listJobs, pollJob } from "../api/algorithm";
+import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 
@@ -95,6 +95,13 @@ export default function AlgorithmPage() {
     void loadJobs();
   }
 
+  async function handleCancel() {
+    if (!selectedJobId) return;
+    try {
+      await cancelJob(selectedJobId);
+    } catch { /* 409 = already done, ignore */ }
+  }
+
   const statusIcon = (status: string) => {
     if (status === "done") return "✓";
     if (status === "failed") return "✗";
@@ -165,12 +172,27 @@ export default function AlgorithmPage() {
                   <span className="text-gray-500 text-xs">{selectedJob.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}</span>
                 </div>
                 {(selectedJob.status === "pending" || selectedJob.status === "running") && (
-                  <p className="text-gray-600 animate-pulse">{t("algorithm.running")}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-gray-600 animate-pulse text-sm">
+                      {selectedJob.started_at
+                        ? `${t("algorithm.running")} (${Math.floor((Date.now() - new Date(selectedJob.started_at).getTime()) / 1000)}s)`
+                        : t("algorithm.running")}
+                    </p>
+                    <button
+                      onClick={handleCancel}
+                      className="text-xs text-red-600 hover:text-red-800 border border-red-300 rounded px-2 py-0.5"
+                    >
+                      {t("algorithm.cancel_btn")}
+                    </button>
+                  </div>
                 )}
               </div>
 
               {/* Failed state */}
               {selectedJob.status === "failed" && (() => {
+                if (selectedJob.error_message === "cancelled_by_user") {
+                  return <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>;
+                }
                 let parsed: { reasons?: string[] } | null = null;
                 try { parsed = JSON.parse(selectedJob.error_message ?? "{}"); } catch { /* plain string */ }
                 const reasons = parsed?.reasons ?? [];

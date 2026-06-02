@@ -304,7 +304,9 @@
     "runs_title": "הרצות",
     "new_run": "+ הרצה חדשה",
     "no_runs": "אין הרצות עדיין",
-    "select_run": "בחר הרצה מהרשימה"
+    "select_run": "בחר הרצה מהרשימה",
+    "cancel_btn": "בטל הרצה",
+    "cancelled": "ההרצה בוטלה"
   },
   "soldier_profile": {
     "section_title": "פרטי שירות",

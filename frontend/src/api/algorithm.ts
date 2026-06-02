@@ -143,3 +143,7 @@ export async function resetDrafts(daysAhead: number): Promise<{ rejected: number
     params: { days_ahead: daysAhead },
   })).data;
 }
+
+export async function cancelJob(id: string): Promise<void> {
+  await api.delete(`/algorithm/jobs/${id}`);
+}
