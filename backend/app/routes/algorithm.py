@@ -92,6 +92,24 @@ class JobOut(BaseModel):
     relaxed: list[str]
 
 
+class JobSummaryOut(BaseModel):
+    id: uuid.UUID
+    status: str
+    mode: str
+    planning_start: date
+    planning_end: date
+    shift_count: int
+    created_at: Any
+    started_at: Any
+    finished_at: Any
+    error_message: str | None
+
+
+class JobListOut(BaseModel):
+    items: list[JobSummaryOut]
+    total: int
+
+
 def _load_job(session: Session, job_id: uuid.UUID) -> AlgorithmJob:
     job = session.get(AlgorithmJob, job_id)
     if job is None:
@@ -270,6 +288,49 @@ def create_job(
 
     background_tasks.add_task(run_algorithm_job, job.id, user.id)
     return {"id": str(job.id), "status": job.status}
+
+
+@router.get("/jobs", response_model=JobListOut)
+def list_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> JobListOut:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    from sqlalchemy import func
+
+    total = session.execute(
+        select(func.count()).select_from(AlgorithmJob).where(AlgorithmJob.created_by == user.id)
+    ).scalar_one()
+
+    jobs = session.execute(
+        select(AlgorithmJob)
+        .where(AlgorithmJob.created_by == user.id)
+        .order_by(AlgorithmJob.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    ).scalars().all()
+
+    return JobListOut(
+        items=[
+            JobSummaryOut(
+                id=j.id,
+                status=j.status,
+                mode=j.mode,
+                planning_start=j.planning_start,
+                planning_end=j.planning_end,
+                shift_count=len(j.shift_ids),
+                created_at=j.created_at,
+                started_at=j.started_at,
+                finished_at=j.finished_at,
+                error_message=j.error_message,
+            )
+            for j in jobs
+        ],
+        total=total,
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
