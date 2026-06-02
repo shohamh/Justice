@@ -12,6 +12,7 @@ from datetime import date
 from decimal import Decimal
 import math
 
+from app.algorithm.reserve import _hierarchy_distance
 from app.auth.password import hash_password
 from app.db.models import (
     DutyAssignment,
@@ -33,7 +34,7 @@ from app.db.models import (
 from app.db.session import SessionLocal
 
 
-def seed(*, force: bool = False, with_assignments: bool = False):
+def seed(*, force: bool = False, with_assignments: bool = True):
     clear = force
     with SessionLocal() as session:
         hashed = hash_password("1234567890")
@@ -1021,6 +1022,10 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     reserve_count_total += 1
 
             # ── Link reserves to primaries ──────────────────────────────
+            hier_nodes = session.query(HierarchyNode).all()
+            hierarchy_parent = {n.id: n.parent_id for n in hier_nodes}
+            soldiers = session.query(Soldier).filter(Soldier.left_at.is_(None)).all()
+            soldier_node = {s.id: s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id}
             assignments_by_shift: dict[uuid.UUID, list[DutyAssignment]] = {}
             for a in created_assignments:
                 assignments_by_shift.setdefault(a.duty_shift_id, []).append(a)
@@ -1032,11 +1037,17 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     continue
                 for i, primary in enumerate(primaries):
                     reserve = reserves[i % len(reserves)]
+                    p_node = soldier_node.get(primary.soldier_id)
+                    r_node = soldier_node.get(reserve.soldier_id)
+                    if p_node and r_node:
+                        dist = _hierarchy_distance(p_node, r_node, hierarchy_parent)
+                    else:
+                        dist = 10
                     session.add(
                         DutyReserveLink(
                             primary_assignment_id=primary.id,
                             reserve_assignment_id=reserve.id,
-                            hierarchy_distance=0,
+                            hierarchy_distance=dist,
                         )
                     )
                     links_created += 1
@@ -1126,7 +1137,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 "  4 swap requests (1 open, 1 open with target, 1 pending approval, 1 applied)"
             )
         else:
-            _safe_print("  0 shift assignments (pass --with-assignments to include)")
+            _safe_print("  0 shift assignments (pass --no-assignments to skip)")
         _safe_print(f"  15 personal constraints")
         _safe_print(f"  12 soldier exemptions")
         _safe_print(f"  5 score adjustments")
@@ -1139,5 +1150,5 @@ if __name__ == "__main__":
 
     seed(
         force="--clear" in sys.argv or "--force" in sys.argv,
-        with_assignments="--with-assignments" in sys.argv,
+        with_assignments="--no-assignments" not in sys.argv,
     )
