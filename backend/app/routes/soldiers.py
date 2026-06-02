@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date as date_type
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.auth.deps import require_password_changed, require_roles
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 from app.db.session import get_session
 from app.services import soldiers as svc
+from app.services import scoring as scoring_svc
 from app.services.soldiers import (
     approve_field_update,
     reject_field_update,
@@ -113,6 +115,13 @@ class TimelineEventOut(BaseModel):
     status: str | None
     metadata: dict
     created_at: str
+
+
+class SoldierScoreOut(BaseModel):
+    soldier_id: uuid.UUID
+    active_days: int
+    cumulative_score: Decimal
+    normalised_score: Decimal
 
 
 def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
@@ -286,6 +295,23 @@ def count_pending_field_updates(
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 total += 1
     return {"count": total}
+
+
+@router.get("/{soldier_id}/score", response_model=SoldierScoreOut)
+def get_soldier_score(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+):
+    s = _load(session, soldier_id)
+    ad = scoring_svc.active_days(session, soldier=s)
+    cum = scoring_svc.cumulative_score(session, soldier_id=s.id)
+    return SoldierScoreOut(
+        soldier_id=s.id,
+        active_days=ad,
+        cumulative_score=cum,
+        normalised_score=cum / Decimal(ad),
+    )
 
 
 @router.get("/{soldier_id}/duty-history", response_model=list[TimelineEventOut])
