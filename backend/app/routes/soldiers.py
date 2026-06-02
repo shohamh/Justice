@@ -223,18 +223,23 @@ def onboard(
 def list_soldiers(
     session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
 ) -> list[SoldierOut]:
+    linked_ids: set[uuid.UUID] = {
+        row for (row,) in session.execute(
+            select(TelegramLink.soldier_id).where(TelegramLink.is_verified == True)
+        ).all()
+    }
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
-        return [_out(s) for s in rows]
+        return [_out(s, telegram_linked=s.id in linked_ids) for s in rows]
     roots = scope_root_ids(session, user)
     if not roots:
-        return [_out(user)]
+        return [_out(user, telegram_linked=user.id in linked_ids)]
     rows = session.execute(select(Soldier)).scalars().all()
     out: list[SoldierOut] = []
     for s in rows:
         node = _node_of(session, s)
         if node is not None and any(r in node.path_ids for r in roots):
-            out.append(_out(s))
+            out.append(_out(s, telegram_linked=s.id in linked_ids))
     return out
 
 
@@ -365,7 +370,13 @@ def get_soldier(
     s = _load(session, soldier_id)
     if s.id != user.id and user.role != "soldier":
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
-    return _out(s, include_gender=_can_see_gender(session, user, s))
+    link = session.execute(
+        select(TelegramLink).where(
+            TelegramLink.soldier_id == soldier_id,
+            TelegramLink.is_verified == True,
+        )
+    ).scalar_one_or_none()
+    return _out(s, include_gender=_can_see_gender(session, user, s), telegram_linked=link is not None)
 
 
 @router.patch("/{soldier_id}", response_model=SoldierOut)
