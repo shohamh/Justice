@@ -210,6 +210,7 @@ def test_personal_constraint_appears(admin_session, soldier):
     ev = events[0]
     assert ev.event_type == "personal_constraint"
     assert ev.date == "2026-06-20"
+    assert ev.title == "בקשה אישית"
     assert ev.description == "אירוע משפחתי"
 
 
