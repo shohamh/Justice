@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { ApprovalItem } from "../api/commanderDashboard";
 import { approveFieldUpdate, rejectFieldUpdate } from "../api/soldiers";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
+import SoldierLink from "./SoldierLink";
 
 interface Props {
   data: ApprovalItem[] | null;
@@ -48,7 +49,7 @@ export default function ApprovalsFeed({ data, onRefresh }: Props) {
         <div key={item.id} className="border rounded p-2 text-sm">
           <div className="flex items-center justify-between mb-1">
             <div>
-              <span className="font-medium">{item.soldier_name}</span>
+              <SoldierLink id={item.soldier_id} name={item.soldier_name} className="font-medium" />
               <span className="mx-1 text-gray-400">·</span>
               <span className="text-gray-500">{item.summary}</span>
             </div>
