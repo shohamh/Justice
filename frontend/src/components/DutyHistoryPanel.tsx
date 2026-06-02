@@ -1,5 +1,5 @@
 // frontend/src/components/DutyHistoryPanel.tsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TimelineEvent, getSoldierDutyHistory } from "../api/dutyHistory";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
@@ -64,18 +64,25 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
   const [filter, setFilter] = useState<FilterType>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  async function load() {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      setEvents(await getSoldierDutyHistory(soldierId));
+      const data = await getSoldierDutyHistory(soldierId);
+      if (!signal?.aborted) setEvents(data);
+    } catch {
+      // silently ignore aborted or network errors
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }
+  }, [soldierId]);
 
   useEffect(() => {
-    if (isActive) void load();
-  }, [isActive, soldierId]);
+    if (!isActive) return;
+    setExpanded(new Set());
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [isActive, soldierId, load]);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -87,27 +94,43 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
   }
 
   async function handleApproveExemption(id: string) {
-    await approveExemptionRequest(id);
-    await load();
+    try {
+      await approveExemptionRequest(id);
+      await load();
+    } catch {
+      alert("שגיאה בביצוע הפעולה");
+    }
   }
 
   async function handleRejectExemption(id: string) {
-    const note = prompt(t("approvals.decision_note"));
-    if (note === null) return;
-    await rejectExemptionRequest(id, note || "");
-    await load();
+    try {
+      const note = prompt(t("approvals.decision_note"));
+      if (note === null) return;
+      await rejectExemptionRequest(id, note || "");
+      await load();
+    } catch {
+      alert("שגיאה בביצוע הפעולה");
+    }
   }
 
   async function handleApproveConstraint(id: string) {
-    await approveConstraint(id);
-    await load();
+    try {
+      await approveConstraint(id);
+      await load();
+    } catch {
+      alert("שגיאה בביצוע הפעולה");
+    }
   }
 
   async function handleRejectConstraint(id: string) {
-    const note = prompt(t("approvals.decision_note"));
-    if (note === null) return;
-    await rejectConstraint(id, note || "");
-    await load();
+    try {
+      const note = prompt(t("approvals.decision_note"));
+      if (note === null) return;
+      await rejectConstraint(id, note || "");
+      await load();
+    } catch {
+      alert("שגיאה בביצוע הפעולה");
+    }
   }
 
   const displayed = filter === "all" ? events : events.filter((e) => e.event_type === filter);
@@ -150,7 +173,7 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
               return (
                 <div
                   key={`${e.event_type}-${e.id}`}
-                  className="flex items-start gap-3 pr-6"
+                  className="relative flex items-start gap-3 pr-6"
                   data-testid={`history-event-${e.event_type}`}
                 >
                   <div className={`absolute right-1 mt-2 w-4 h-4 rounded-full border-2 border-white ${dotColor}`} />
