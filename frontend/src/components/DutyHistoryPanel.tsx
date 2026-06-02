@@ -210,20 +210,28 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
   const { t } = useTranslation();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await getSoldierDutyHistory(soldierId);
       if (!signal?.aborted) setEvents(data);
-    } catch {
-      // silently ignore aborted or network errors
+    } catch (err: unknown) {
+      if (signal?.aborted) return;
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        setLoadError(t("common.no_permission"));
+      } else {
+        setLoadError(`שגיאה בטעינת ההיסטוריה (${status ?? "network"})`);
+      }
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [soldierId]);
+  }, [soldierId, t]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -284,6 +292,10 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
 
   if (loading) {
     return <p className="text-sm text-gray-400">{t("app.loading")}</p>;
+  }
+
+  if (loadError) {
+    return <p className="text-sm text-red-500">{loadError}</p>;
   }
 
   const today = new Date().toISOString().slice(0, 10);
