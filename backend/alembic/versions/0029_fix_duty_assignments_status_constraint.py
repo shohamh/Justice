@@ -16,7 +16,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.drop_constraint("ck_duty_assignments_status", "duty_assignments", type_="check")
+    op.execute("ALTER TABLE duty_assignments DROP CONSTRAINT IF EXISTS ck_duty_assignments_status")
     op.create_check_constraint(
         "ck_duty_assignments_status",
         "duty_assignments",
@@ -25,7 +25,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_duty_assignments_status", "duty_assignments", type_="check")
+    op.execute("ALTER TABLE duty_assignments DROP CONSTRAINT IF EXISTS ck_duty_assignments_status")
     op.create_check_constraint(
         "ck_duty_assignments_status",
         "duty_assignments",

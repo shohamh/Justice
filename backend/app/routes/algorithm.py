@@ -21,7 +21,6 @@ from app.db.models import (
 )
 from app.db.session import get_session
 from app.services.algorithm_bridge import run_algorithm_job
-from app.services.assignments import cancel_assignment
 from app.audit.writer import write_audit
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
@@ -329,8 +328,19 @@ def reset_published_assignments(
         )
     ).scalars().all()
 
+    # Bulk admin reset — direct mutation without per-soldier notifications (same pattern as reset-drafts).
     for a in assignments:
-        cancel_assignment(session, assignment=a, reason="bulk_reset", actor_id=user.id)
+        a.status = "cancelled"
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="assignment.bulk_cancel",
+            entity_type="duty_assignment",
+            entity_id=a.id,
+            before={"status": "published"},
+            after={"status": "cancelled"},
+            context={"days_ahead": days_ahead},
+        )
 
     session.commit()
     return {"cancelled": len(assignments)}
