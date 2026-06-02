@@ -304,13 +304,16 @@ def get_soldier_score(
     user: Soldier = Depends(require_password_changed),
 ):
     s = _load(session, soldier_id)
+    if s.id != user.id and user.role != "soldier":
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     ad = scoring_svc.active_days(session, soldier=s)
     cum = scoring_svc.cumulative_score(session, soldier_id=s.id)
+    normalised = scoring_svc.normalised_score(session, soldier=s)
     return SoldierScoreOut(
         soldier_id=s.id,
         active_days=ad,
         cumulative_score=cum,
-        normalised_score=cum / Decimal(ad),
+        normalised_score=normalised,
     )
 
 

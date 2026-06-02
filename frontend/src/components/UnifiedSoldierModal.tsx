@@ -81,6 +81,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
+    if (isCommander) return;  // UI hides button, but guard against keyboard submit
     setSavingProfile(true);
     await updateSoldierProfile(soldier.id, {
       gender: profileGender || null,

@@ -31,29 +31,38 @@ interface ModalState {
 
 export function SoldierModalProvider({ children }: { children: ReactNode }) {
   const [modal, setModal] = useState<ModalState | null>(null);
+  const [opening, setOpening] = useState(false);
 
   const openSoldierModal = useCallback(
     async (soldierId: string, onRefresh?: () => void) => {
-      const [soldier, score, nodes] = await Promise.allSettled([
-        getSoldier(soldierId),
-        getSoldierScore(soldierId),
-        fetchTree(),
-      ]);
+      setOpening(true);
+      try {
+        const [soldier, score, nodes] = await Promise.allSettled([
+          getSoldier(soldierId),
+          getSoldierScore(soldierId),
+          fetchTree(),
+        ]);
 
-      if (soldier.status === "rejected") return;
+        if (soldier.status === "rejected") {
+          alert("לא ניתן לטעון את פרטי החייל");
+          return;
+        }
 
-      setModal({
-        soldier: (soldier as PromiseFulfilledResult<SoldierDTO>).value,
-        score:
-          score.status === "fulfilled"
-            ? (score as PromiseFulfilledResult<SoldierScoreDTO>).value
-            : null,
-        nodes:
-          nodes.status === "fulfilled"
-            ? (nodes as PromiseFulfilledResult<NodeDTO[]>).value
-            : [],
-        onRefresh,
-      });
+        setModal({
+          soldier: (soldier as PromiseFulfilledResult<SoldierDTO>).value,
+          score:
+            score.status === "fulfilled"
+              ? (score as PromiseFulfilledResult<SoldierScoreDTO>).value
+              : null,
+          nodes:
+            nodes.status === "fulfilled"
+              ? (nodes as PromiseFulfilledResult<NodeDTO[]>).value
+              : [],
+          onRefresh,
+        });
+      } finally {
+        setOpening(false);
+      }
     },
     []
   );
@@ -64,14 +73,20 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
 
   async function handleRefresh() {
     if (!modal) return;
-    modal.onRefresh?.();
-    const updated = await getSoldier(modal.soldier.id).catch(() => null);
+    const { onRefresh, soldier } = modal;  // extract before await
+    onRefresh?.();
+    const updated = await getSoldier(soldier.id).catch(() => null);
     if (updated) setModal((prev) => prev && { ...prev, soldier: updated });
   }
 
   return (
     <SoldierModalContext.Provider value={{ openSoldierModal }}>
       {children}
+      {opening && (
+        <div className="fixed inset-0 bg-black/10 flex items-center justify-center z-40 pointer-events-none">
+          <div className="bg-white rounded px-4 py-2 text-sm text-gray-600 shadow">טוען...</div>
+        </div>
+      )}
       {modal && (
         <UnifiedSoldierModal
           soldier={modal.soldier}
