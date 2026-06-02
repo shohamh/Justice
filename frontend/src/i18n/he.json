@@ -47,7 +47,11 @@
     "shifts": "ניהול משמרות",
     "shift_templates": "תבניות משמרת",
     "swaps": "החלפות",
-    "command_dashboard": "דשבורד מפקד"
+    "command_dashboard": "דשבורד מפקד",
+    "manage": "ניהול",
+    "section_personal": "אישי",
+    "section_team": "צוות",
+    "section_planning": "תכנון"
   },
   "my_requests": {
     "title": "הבקשות והפטורים שלי",
@@ -58,6 +62,9 @@
     "pending": "ממתין לאישור",
     "approved": "אושר",
     "rejected": "נדחה",
+    "published": "פורסם",
+    "active": "פעיל",
+    "cancelled": "בוטל",
     "cancel": "בטל בקשה",
     "none": "אין בקשות",
     "my_exemptions": "הפטורים שלי"
@@ -525,7 +532,9 @@
     "event_call_up": "הקפצת רזרבה",
     "event_dismissal": "שחרור מתורנות",
     "event_exemption_request": "בקשת פטור",
-    "event_constraint": "בקשה אישית"
+    "event_constraint": "בקשה אישית",
+    "reserve": "רזרבה",
+    "called_up": "הוקפץ"
   },
   "notifications": {
     "title": "התראות",
@@ -538,7 +547,8 @@
     "view_all": "לכל ההתראות",
     "telegram": "טלגרם",
     "link_telegram": "קשר חשבון טלגרם",
-    "send_code_to_bot": "שלח קוד זה לבוט:",
+    "send_code_to_bot": "פתח את הבוט ושלח לו את הפקודה:",
+    "verify_command": "הקלד: /verify <הקוד>",
     "copy": "העתק",
     "waiting_for_verification": "ממתין לאימות...",
     "linked_to": "מחובר ל-",
