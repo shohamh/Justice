@@ -45,6 +45,24 @@ export interface AlgorithmJob {
   relaxed: string[];
 }
 
+export interface JobSummaryOut {
+  id: string;
+  status: "pending" | "running" | "done" | "failed";
+  mode: string;
+  planning_start: string;
+  planning_end: string;
+  shift_count: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+}
+
+export interface JobListOut {
+  items: JobSummaryOut[];
+  total: number;
+}
+
 export interface SoldierExplanation {
   assigned: boolean;
   norm_score_before: number | null;
@@ -79,6 +97,10 @@ export async function submitJob(req: CreateJobRequest): Promise<{ id: string; st
 
 export async function pollJob(jobId: string): Promise<AlgorithmJob> {
   return (await api.get<AlgorithmJob>(`/algorithm/jobs/${jobId}`)).data;
+}
+
+export async function listJobs(limit = 20, offset = 0): Promise<JobListOut> {
+  return (await api.get<JobListOut>("/algorithm/jobs", { params: { limit, offset } })).data;
 }
 
 export async function getExplanation(
