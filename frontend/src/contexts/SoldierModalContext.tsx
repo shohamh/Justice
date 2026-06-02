@@ -75,7 +75,6 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
       {modal && (
         <UnifiedSoldierModal
           soldier={modal.soldier}
-          // @ts-ignore
           score={modal.score}
           nodes={modal.nodes}
           onClose={handleClose}

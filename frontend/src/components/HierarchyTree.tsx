@@ -27,7 +27,7 @@ interface Props {
   user: { role: string; id: string } | null;
 }
 
-export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, user }: Props) {
+export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id)));
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
@@ -212,7 +212,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged, use
       {editSoldier && (
         <UnifiedSoldierModal
           soldier={editSoldier}
-          user={user}
+          score={null}
           nodes={nodes}
           onClose={() => setEditSoldier(null)}
           onRefresh={onChanged}

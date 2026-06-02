@@ -160,7 +160,7 @@ export default function TeamHierarchyPage() {
       {editSoldier && (
         <UnifiedSoldierModal
           soldier={editSoldier}
-          user={user}
+          score={null}
           nodes={nodes}
           onClose={() => setEditSoldier(null)}
           onRefresh={refresh}
