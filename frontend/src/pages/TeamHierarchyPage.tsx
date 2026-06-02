@@ -5,14 +5,15 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import Layout from "../components/Layout";
 import HierarchyTree from "../components/HierarchyTree";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
-import UnifiedSoldierModal from "../components/UnifiedSoldierModal";
 import { useAuth } from "../auth/AuthContext";
+import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { openSoldierModal } = useSoldierModal();
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [pn, setPn] = useState("");
@@ -20,7 +21,6 @@ export default function TeamHierarchyPage() {
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
-  const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const isAdmin = user?.role === "admin";
 
   async function refresh() {
@@ -133,7 +133,7 @@ export default function TeamHierarchyPage() {
                 header: "",
                 cell: (s) => (
                   <span className="space-x-2 space-x-reverse">
-                    <button onClick={() => setEditSoldier(s)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
+                    <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                   </span>
@@ -157,15 +157,6 @@ export default function TeamHierarchyPage() {
         <AddRootNodeDialog onClose={() => setShowAddRoot(false)} onCreated={refresh} />
       )}
 
-      {editSoldier && (
-        <UnifiedSoldierModal
-          soldier={editSoldier}
-          score={null}
-          nodes={nodes}
-          onClose={() => setEditSoldier(null)}
-          onRefresh={refresh}
-        />
-      )}
     </Layout>
   );
 }
