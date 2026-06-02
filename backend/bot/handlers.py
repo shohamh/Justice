@@ -50,6 +50,8 @@ async def handle_code_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = (update.message.text or "").strip().upper()
     if len(text) == 6 and text.isalnum():
         await _do_verify(update, text)
+    else:
+        await update.message.reply_text("קוד לא תקין. הקוד צריך להיות 6 תווים. אנא העתק אותו מהאתר ונסה שוב.")
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
