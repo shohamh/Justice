@@ -18,6 +18,7 @@ export interface SoldierDTO {
   discharge_date: string | null;
   last_mitvahim_date: string | null;
   last_alal_date: string | null;
+  telegram_linked: boolean;
 }
 
 export interface OnboardResult extends SoldierDTO {
