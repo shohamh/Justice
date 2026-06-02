@@ -93,3 +93,47 @@ def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
     assert r.status_code == 204
     admin_session.expire_all()
     assert admin_session.get(type(target), target.id).left_at is not None
+
+
+from app.db.models import TelegramLink
+
+
+def test_list_soldiers_telegram_linked_false_by_default(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000001", role="admin")
+    s = create_soldier(admin_session, personal_number="5100001")
+    admin_session.commit()
+    r = client.get("/api/soldiers", headers=auth_headers(admin))
+    assert r.status_code == 200
+    found = next(x for x in r.json() if x["personal_number"] == "5100001")
+    assert found["telegram_linked"] is False
+
+
+def test_list_soldiers_telegram_linked_true_when_verified(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000002", role="admin")
+    s = create_soldier(admin_session, personal_number="5100002")
+    admin_session.commit()
+    link = TelegramLink(
+        soldier_id=s.id,
+        is_verified=True,
+        telegram_chat_id=999,
+        telegram_username="testuser",
+    )
+    admin_session.add(link)
+    admin_session.commit()
+    r = client.get("/api/soldiers", headers=auth_headers(admin))
+    assert r.status_code == 200
+    found = next(x for x in r.json() if x["personal_number"] == "5100002")
+    assert found["telegram_linked"] is True
+
+
+def test_get_soldier_telegram_linked(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000003", role="admin")
+    s = create_soldier(admin_session, personal_number="5100003")
+    admin_session.commit()
+    r = client.get(f"/api/soldiers/{s.id}", headers=auth_headers(admin))
+    assert r.json()["telegram_linked"] is False
+    link = TelegramLink(soldier_id=s.id, is_verified=True, telegram_chat_id=111, telegram_username="u")
+    admin_session.add(link)
+    admin_session.commit()
+    r2 = client.get(f"/api/soldiers/{s.id}", headers=auth_headers(admin))
+    assert r2.json()["telegram_linked"] is True
