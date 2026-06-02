@@ -22,7 +22,7 @@ export default function TelegramBadge({ linked }: Props) {
         type="checkbox"
         checked={linked}
         readOnly
-        className="w-3 h-3 cursor-default accent-[#229ED9]"
+        className="w-3 h-3 cursor-default pointer-events-none accent-[#229ED9]"
         tabIndex={-1}
         aria-label={linked ? "Telegram מקושר" : "Telegram לא מקושר"}
       />
