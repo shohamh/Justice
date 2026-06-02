@@ -21,7 +21,8 @@
     "logout": "יציאה"
   },
   "common": {
-    "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש."
+    "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש.",
+    "no_permission": "אין הרשאה להציג מידע זה"
   },
   "change_password": {
     "title": "שינוי סיסמה",
