@@ -126,3 +126,18 @@ export async function rejectFieldUpdate(
 export async function getRanks(): Promise<{ enlisted: string[]; officers: string[] }> {
   return (await api.get<{ enlisted: string[]; officers: string[] }>("/soldiers/ranks")).data;
 }
+
+export interface SoldierScoreDTO {
+  soldier_id: string;
+  active_days: number;
+  cumulative_score: string;
+  normalised_score: string;
+}
+
+export async function getSoldier(id: string): Promise<SoldierDTO> {
+  return (await api.get<SoldierDTO>(`/soldiers/${id}`)).data;
+}
+
+export async function getSoldierScore(id: string): Promise<SoldierScoreDTO> {
+  return (await api.get<SoldierScoreDTO>(`/soldiers/${id}/score`)).data;
+}

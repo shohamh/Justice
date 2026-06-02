@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import type { ReactElement } from "react";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { SoldierModalProvider } from "./contexts/SoldierModalContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
@@ -30,6 +31,7 @@ function ForcedPasswordGate({ children }: { children: ReactElement }) {
 export default function App() {
   return (
     <AuthProvider>
+      <SoldierModalProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/notifications" element={<ForcedPasswordGate><NotificationsPage /></ForcedPasswordGate>} />
         </Route>
       </Routes>
+      </SoldierModalProvider>
     </AuthProvider>
   );
 }

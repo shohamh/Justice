@@ -109,3 +109,15 @@ export async function acceptProposal(jobId: string, assignmentId: string): Promi
 export async function rejectProposal(jobId: string, assignmentId: string): Promise<void> {
   await api.post(`/algorithm/jobs/${jobId}/proposals/${assignmentId}/reject`);
 }
+
+export async function resetPublished(daysAhead: number): Promise<{ cancelled: number }> {
+  return (await api.post<{ cancelled: number }>("/algorithm/reset-published", null, {
+    params: { days_ahead: daysAhead },
+  })).data;
+}
+
+export async function resetDrafts(daysAhead: number): Promise<{ rejected: number }> {
+  return (await api.post<{ rejected: number }>("/algorithm/reset-drafts", null, {
+    params: { days_ahead: daysAhead },
+  })).data;
+}

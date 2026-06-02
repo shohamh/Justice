@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { UpcomingDay, UpcomingAssignment } from "../api/commanderDashboard";
+import SoldierLink from "./SoldierLink";
 
 interface Props {
   data: UpcomingDay[] | null;
@@ -56,7 +57,13 @@ export default function UpcomingSnapshot({ data }: Props) {
       {selected && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
           <div className="bg-white rounded-lg shadow-xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <div className="font-bold text-lg mb-3">{selected.soldier_name || "?"}</div>
+            <div className="font-bold text-lg mb-3">
+              {selected.soldier_id ? (
+                <SoldierLink id={selected.soldier_id} name={selected.soldier_name || "?"} />
+              ) : (
+                selected.soldier_name || "?"
+              )}
+            </div>
             <div className="space-y-1 text-sm">
               <div><span className="text-gray-500">תורנות:</span> {selected.duty_type_name || selected.duty_type_id?.slice(0, 6) || "?"}</div>
               <div><span className="text-gray-500">יחידה:</span> {selected.node_name || "?"}</div>

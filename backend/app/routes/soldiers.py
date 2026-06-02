@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date as date_type
+from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.auth.deps import require_password_changed, require_roles
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
 from app.db.session import get_session
 from app.services import soldiers as svc
+from app.services import scoring as scoring_svc
 from app.services.soldiers import (
     approve_field_update,
     reject_field_update,
@@ -113,6 +115,13 @@ class TimelineEventOut(BaseModel):
     status: str | None
     metadata: dict
     created_at: str
+
+
+class SoldierScoreOut(BaseModel):
+    soldier_id: uuid.UUID
+    active_days: int
+    cumulative_score: Decimal
+    normalised_score: Decimal
 
 
 def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
@@ -288,6 +297,29 @@ def count_pending_field_updates(
     return {"count": total}
 
 
+@router.get("/{soldier_id}/score", response_model=SoldierScoreOut)
+def get_soldier_score(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+):
+    s = _load(session, soldier_id)
+    if s.id != user.id and user.role != "soldier":
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    ad = scoring_svc.active_days(session, soldier=s)
+    cum = scoring_svc.cumulative_score(session, soldier_id=s.id)
+    normalised = scoring_svc.normalised_score(session, soldier=s)
+    return SoldierScoreOut(
+        soldier_id=s.id,
+        active_days=ad,
+        cumulative_score=cum,
+        normalised_score=normalised,
+    )
+
+
+_PUBLIC_EVENT_TYPES = {"assignment", "cancellation"}
+
+
 @router.get("/{soldier_id}/duty-history", response_model=list[TimelineEventOut])
 def get_soldier_duty_history(
     soldier_id: uuid.UUID,
@@ -295,9 +327,17 @@ def get_soldier_duty_history(
     user: Soldier = Depends(require_password_changed),
 ):
     s = _load(session, soldier_id)
-    if s.id != user.id:
+    is_self = s.id == user.id
+    is_plain_soldier = user.role == "soldier"
+
+    if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+
     events = get_duty_history(session, soldier_id)
+
+    if is_plain_soldier and not is_self:
+        events = [e for e in events if e.event_type in _PUBLIC_EVENT_TYPES]
+
     return [
         TimelineEventOut(
             id=e.id,
@@ -321,7 +361,7 @@ def get_soldier(
     user: Soldier = Depends(require_password_changed),
 ) -> SoldierOut:
     s = _load(session, soldier_id)
-    if s.id != user.id:
+    if s.id != user.id and user.role != "soldier":
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     return _out(s, include_gender=_can_see_gender(session, user, s))
 

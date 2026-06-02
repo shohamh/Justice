@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -310,6 +310,74 @@ def cancel_job(
     job.status = "failed"
     job.error_message = "cancelled_by_user"
     session.commit()
+
+
+@router.post("/reset-published", status_code=status.HTTP_200_OK)
+def reset_published_assignments(
+    days_ahead: int = Query(ge=1),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    cutoff = date.today() + timedelta(days=days_ahead)
+    assignments = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.status == "published",
+            DutyAssignment.start_date > cutoff,
+        )
+    ).scalars().all()
+
+    # Bulk admin reset — direct mutation without per-soldier notifications (same pattern as reset-drafts).
+    for a in assignments:
+        a.status = "cancelled"
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="assignment.bulk_cancel",
+            entity_type="duty_assignment",
+            entity_id=a.id,
+            before={"status": "published"},
+            after={"status": "cancelled"},
+            context={"days_ahead": days_ahead},
+        )
+
+    session.commit()
+    return {"cancelled": len(assignments)}
+
+
+@router.post("/reset-drafts", status_code=status.HTTP_200_OK)
+def reset_draft_assignments(
+    days_ahead: int = Query(ge=1),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    cutoff = date.today() + timedelta(days=days_ahead)
+    assignments = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.status == "algorithm_draft",
+            DutyAssignment.start_date > cutoff,
+        )
+    ).scalars().all()
+
+    # Drafts are invisible to soldiers — no notification needed, just reject and audit.
+    for a in assignments:
+        a.status = "algorithm_rejected"
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="algorithm.proposal.bulk_reject",
+            entity_type="duty_assignment",
+            entity_id=a.id,
+            before={"status": "algorithm_draft"},
+            after={"status": "algorithm_rejected"},
+            context={"days_ahead": days_ahead},
+        )
+
+    session.commit()
+    return {"rejected": len(assignments)}
 
 
 @router.get("/jobs/{job_id}/explanations/{assignment_id}")

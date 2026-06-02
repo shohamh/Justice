@@ -21,7 +21,8 @@
     "logout": "יציאה"
   },
   "common": {
-    "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש."
+    "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש.",
+    "no_permission": "אין הרשאה להציג מידע זה"
   },
   "change_password": {
     "title": "שינוי סיסמה",
@@ -280,7 +281,17 @@
     "constraint_overlap": "חפיפה",
     "constraint_personal_constraint": "בקשה אישית",
     "select_eligible_nodes": "בחר יחידות כשירות",
-    "restrict_to_subtree": "הגבל לתת-עץ"
+    "restrict_to_subtree": "הגבל לתת-עץ",
+    "reset_published_label": "ביטול שיבוצים מפורסמים מעבר ל-",
+    "reset_published_btn": "בטל שיבוצים",
+    "reset_drafts_label": "דחיית טיוטות אלגוריתם מעבר ל-",
+    "reset_drafts_btn": "דחה טיוטות",
+    "reset_days_suffix": "ימים",
+    "reset_confirm_published": "לבטל את כל השיבוצים המפורסמים החל מ-{{date}}?",
+    "reset_confirm_drafts": "לדחות את כל טיוטות האלגוריתם החל מ-{{date}}?",
+    "reset_result_cancelled": "בוטלו {{count}} שיבוצים",
+    "reset_result_rejected": "נדחו {{count}} טיוטות",
+    "reset_none": "לא נמצאו שיבוצים לביטול"
   },
   "soldier_profile": {
     "section_title": "פרטי שירות",

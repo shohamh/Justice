@@ -1,24 +1,39 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO } from "../api/hierarchy";
-import { SoldierDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
+import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
-
-const TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
+import { useAuth } from "../auth/AuthContext";
 
 interface Props {
   soldier: SoldierDTO;
-  user: { role: string; id: string } | null;
+  score: SoldierScoreDTO | null;
   nodes: NodeDTO[];
   onClose: () => void;
   onRefresh: () => void;
 }
 
-export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onRefresh }: Props) {
+const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
+type TabKey = (typeof ALL_TABS)[number];
+
+export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh }: Props) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<(typeof TABS)[number]>("details");
+  const { user } = useAuth();
+  const isSelf = user?.id === soldier.id;
+  const isAdmin = user?.role === "admin";
+  const isDutyManager = user?.role === "duty_manager";
+  const isCommander = user?.role === "commander";
+  const canManage = isAdmin || isDutyManager;
+  const canViewAll = isAdmin || isDutyManager || isCommander;
+  const isLimitedView = !canViewAll && !isSelf;
+
+  const TABS: TabKey[] = canViewAll
+    ? ["details", "profile", "exemptions", "constraints", "duty_history"]
+    : ["details", "duty_history"];
+
+  const [tab, setTab] = useState<TabKey>("details");
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
@@ -36,10 +51,6 @@ export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onR
   const [profileMitvahim, setProfileMitvahim] = useState(soldier.last_mitvahim_date ?? "");
   const [profileAlal, setProfileAlal] = useState(soldier.last_alal_date ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
-
-  const isAdmin = user?.role === "admin";
-  const isDutyManager = user?.role === "duty_manager";
-  const canManage = isAdmin || isDutyManager || user?.role === "commander";
 
   useEffect(() => {
     void getRanks().then(setRankOptions);
@@ -70,6 +81,7 @@ export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onR
 
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
+    if (isCommander) return;  // UI hides button, but guard against keyboard submit
     setSavingProfile(true);
     await updateSoldierProfile(soldier.id, {
       gender: profileGender || null,
@@ -123,27 +135,64 @@ export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onR
         </div>
 
         {tab === "details" && (
-          <form onSubmit={handleSave} className="space-y-3">
-            <label className="block">
-              <span className="text-xs">{t("team.full_name")}</span>
-              <input className="border rounded p-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
-            </label>
-            <label className="block">
-              <span className="text-xs">{t("team.phone")}</span>
-              <input className="border rounded p-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
-            </label>
-            <label className="block">
-              <span className="text-xs">{t("team.title")}</span>
-              <select className="border rounded p-1 w-full" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
-                <option value="">—</option>
-                {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-              </select>
-            </label>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
-              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={saving} data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
+          isLimitedView ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">{t("team.full_name")}</span>
+                <span className="font-medium">{soldier.full_name}</span>
+              </div>
+              {soldier.rank && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{t("soldier_profile.rank")}</span>
+                  <span>{soldier.rank}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">{t("team.node")}</span>
+                <span>{nodes.find((n) => n.id === soldier.hierarchy_node_id)?.name ?? "—"}</span>
+              </div>
+              {soldier.phone && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{t("team.phone")}</span>
+                  <span dir="ltr">{soldier.phone}</span>
+                </div>
+              )}
+              {score && (
+                <div className="border-t pt-3 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">{t("transparency.active_days")}</span>
+                    <span>{score.active_days}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">{t("transparency.normalised")}</span>
+                    <span>{Number(score.normalised_score).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSave} className="space-y-3">
+              <label className="block">
+                <span className="text-xs">{t("team.full_name")}</span>
+                <input className="border rounded p-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
+              </label>
+              <label className="block">
+                <span className="text-xs">{t("team.phone")}</span>
+                <input className="border rounded p-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
+              </label>
+              <label className="block">
+                <span className="text-xs">{t("team.title")}</span>
+                <select className="border rounded p-1 w-full" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
+                  <option value="">—</option>
+                  {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+                </select>
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={saving} data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
+              </div>
+            </form>
+          )
         )}
 
         {tab === "profile" && (
@@ -207,10 +256,12 @@ export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onR
                 <input type="date" className="border rounded p-1 w-full" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
               </label>
             </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
-              <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("team.edit")}</button>
-            </div>
+            {!isCommander && (
+              <div className="flex justify-end gap-2">
+                <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("team.edit")}</button>
+              </div>
+            )}
           </form>
         )}
 

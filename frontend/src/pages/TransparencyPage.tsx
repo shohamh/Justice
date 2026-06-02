@@ -5,6 +5,7 @@ import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
 import { Breakdown, TransparencyRow, getBreakdown, getTransparency } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
+import SoldierLink from "../components/SoldierLink";
 
 export default function TransparencyPage() {
   const { t } = useTranslation();
@@ -50,7 +51,7 @@ export default function TransparencyPage() {
                     {r.full_name}
                   </button>
                 ) : (
-                  r.full_name
+                  <SoldierLink id={r.soldier_id} name={r.full_name} />
                 ),
               sortValue: (r) => r.full_name,
               filterValue: (r) => r.full_name,
