@@ -7,6 +7,7 @@ import AssignCommanderDialog from "./AssignCommanderDialog";
 import RenameNodeDialog from "./RenameNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
+import SoldierLink from "./SoldierLink";
 
 const LEVEL_COLORS: Record<string, string> = {
   division: "text-purple-700 bg-purple-50",
@@ -167,7 +168,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
             {nodeSoldiers.map((s) => (
               <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-600" data-testid={`tree-soldier-${s.personal_number}`}>
                 <span className="w-1 h-1 bg-gray-300 rounded-full inline-block" />
-                <span>{s.full_name}</span>
+                <SoldierLink id={s.id} name={s.full_name} />
                 <span className="text-xs text-gray-400">({s.personal_number})</span>
                 {isAdmin && (
                   <button
