@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO } from "../api/notifications";
 
@@ -9,6 +9,14 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  function notifLink(n: NotificationDTO): string | null {
+    if (n.reference_type === "algorithm_job" && n.reference_id) {
+      return `/algorithm?jobId=${n.reference_id}`;
+    }
+    return null;
+  }
 
   useEffect(() => {
     const fetch = async () => {
@@ -60,6 +68,7 @@ export default function NotificationBell() {
     constraint_approved: "✔️", constraint_rejected: "✖️",
     assignment_created: "📋", assignment_removed: "🗑️",
     score_adjusted: "⭐", announcement: "📢",
+    algorithm_job_done: "🤖", algorithm_job_failed: "⚠️",
   };
 
   return (
@@ -92,7 +101,16 @@ export default function NotificationBell() {
                 <div key={n.id} className="flex items-start gap-2 p-3 border-b hover:bg-gray-50">
                   <span className="text-lg">{typeLabels[n.type] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{n.title}</p>
+                    {notifLink(n) ? (
+                      <button
+                        className="text-sm font-medium truncate text-right w-full hover:text-indigo-600"
+                        onClick={() => { void handleMarkRead(n.id); navigate(notifLink(n)!); setOpen(false); }}
+                      >
+                        {n.title}
+                      </button>
+                    ) : (
+                      <p className="text-sm font-medium truncate">{n.title}</p>
+                    )}
                     {n.body && <p className="text-xs text-gray-500 truncate">{n.body}</p>}
                   </div>
                   <div className="flex gap-1">
