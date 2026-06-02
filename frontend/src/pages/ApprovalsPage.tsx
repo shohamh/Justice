@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import SoldierLink from "../components/SoldierLink";
 import {
   PersonalConstraint,
   approveConstraint,
@@ -185,7 +186,7 @@ export default function ApprovalsPage() {
                 return (
                 <li key={c.id} className="border rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <strong className="text-sm">{sd.name}</strong>
+                    <strong className="text-sm"><SoldierLink id={c.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
                   <p className="text-sm" dir="ltr">{c.start_date} → {c.end_date}</p>
@@ -226,7 +227,7 @@ export default function ApprovalsPage() {
                 return (
                 <li key={er.id} className="border rounded p-3" data-testid={`er-approval-row-${er.id}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <strong className="text-sm">{sd.name}</strong>
+                    <strong className="text-sm"><SoldierLink id={er.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
                   <p className="text-sm" dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</p>
@@ -266,7 +267,7 @@ export default function ApprovalsPage() {
               return (
               <div key={item.id} className="border rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">
-                  <strong>{sd.name}</strong>
+                  <strong><SoldierLink id={item.soldier_id} name={sd.name} /></strong>
                   {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   <span className="text-gray-400">—</span>
                   <span>{t(`soldier_profile.${item.field_name}`)}</span>
@@ -299,13 +300,13 @@ export default function ApprovalsPage() {
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
                     <strong>{t("swaps.requester")}:</strong>
-                    <span>{requesterSd.name}</span>
+                    <span><SoldierLink id={swap.requesting_soldier_id} name={requesterSd.name} /></span>
                     {requesterSd.node && <span className="text-xs text-gray-400">{requesterSd.node}</span>}
                   </div>
                   {coveringSd && (
                     <div className="flex items-center gap-2">
                       <strong>{t("swaps.covering")}:</strong>
-                      <span>{coveringSd.name}</span>
+                      <span><SoldierLink id={swap.covering_soldier_id!} name={coveringSd.name} /></span>
                     </div>
                   )}
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
