@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate
+from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.services import soldiers as svc
 from app.services import scoring as scoring_svc
@@ -47,6 +47,7 @@ class SoldierOut(BaseModel):
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
+    telegram_linked: bool = False
 
 
 class OnboardRequest(BaseModel):
@@ -138,7 +139,7 @@ def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
     return False
 
 
-def _out(s: Soldier, *, include_gender: bool = False) -> SoldierOut:
+def _out(s: Soldier, *, include_gender: bool = False, telegram_linked: bool = False) -> SoldierOut:
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -157,6 +158,7 @@ def _out(s: Soldier, *, include_gender: bool = False) -> SoldierOut:
         discharge_date=s.discharge_date,
         last_mitvahim_date=s.last_mitvahim_date,
         last_alal_date=s.last_alal_date,
+        telegram_linked=telegram_linked,
     )
 
 
