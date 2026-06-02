@@ -27,8 +27,6 @@ export default function AlgorithmPage() {
   const listPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const jobPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  if (!canManageDuties) return <Navigate to="/" replace />;
-
   const loadJobs = useCallback(async () => {
     try {
       const result = await listJobs();
@@ -88,6 +86,8 @@ export default function AlgorithmPage() {
       if (jobPollRef.current) clearInterval(jobPollRef.current);
     };
   }, [selectedJobId]);
+
+  if (!canManageDuties) return <Navigate to="/" replace />;
 
   function handleJobSubmitted(jobId: string) {
     setShowRunForm(false);
