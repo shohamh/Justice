@@ -21,6 +21,7 @@ from app.services.soldiers import (
     update_soldier_profile,
 )
 from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
+from app.services.duty_history import get_duty_history
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
 
@@ -100,6 +101,18 @@ class FieldUpdateOut(BaseModel):
     decided_at: Any
     decision_note: str | None
     created_at: Any
+
+
+class TimelineEventOut(BaseModel):
+    id: uuid.UUID
+    event_type: str
+    date: str
+    end_date: str | None
+    title: str
+    description: str | None
+    status: str | None
+    metadata: dict
+    created_at: str
 
 
 def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
@@ -214,7 +227,7 @@ def list_soldiers(
     return out
 
 
-# NOTE: /ranks and /field-updates/pending MUST come before /{soldier_id} routes
+# NOTE: /ranks, /field-updates/pending, and /{soldier_id}/duty-history MUST come before /{soldier_id} routes
 @router.get("/ranks")
 def get_ranks() -> dict[str, list[str]]:
     return {"enlisted": ENLISTED_RANKS, "officers": OFFICER_RANKS}
@@ -273,6 +286,32 @@ def count_pending_field_updates(
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 total += 1
     return {"count": total}
+
+
+@router.get("/{soldier_id}/duty-history", response_model=list[TimelineEventOut])
+def get_soldier_duty_history(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+):
+    s = _load(session, soldier_id)
+    if s.id != user.id:
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+    events = get_duty_history(session, soldier_id)
+    return [
+        TimelineEventOut(
+            id=e.id,
+            event_type=e.event_type,
+            date=e.date,
+            end_date=e.end_date,
+            title=e.title,
+            description=e.description,
+            status=e.status,
+            metadata=e.metadata,
+            created_at=e.created_at,
+        )
+        for e in events
+    ]
 
 
 @router.get("/{soldier_id}", response_model=SoldierOut)

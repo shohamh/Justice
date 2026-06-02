@@ -4,8 +4,9 @@ import { NodeDTO } from "../api/hierarchy";
 import { SoldierDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import ExemptionsPanel from "./ExemptionsPanel";
+import DutyHistoryPanel from "./DutyHistoryPanel";
 
-const TABS = ["details", "profile", "exemptions", "constraints"] as const;
+const TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
 
 interface Props {
   soldier: SoldierDTO;
@@ -245,6 +246,14 @@ export default function UnifiedSoldierModal({ soldier, user, nodes, onClose, onR
               </div>
             ))}
           </div>
+        )}
+
+        {tab === "duty_history" && (
+          <DutyHistoryPanel
+            soldierId={soldier.id}
+            canManage={canManage}
+            isActive={tab === "duty_history"}
+          />
         )}
       </div>
     </div>
