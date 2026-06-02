@@ -314,6 +314,9 @@ def get_soldier_score(
     )
 
 
+_PUBLIC_EVENT_TYPES = {"assignment", "cancellation"}
+
+
 @router.get("/{soldier_id}/duty-history", response_model=list[TimelineEventOut])
 def get_soldier_duty_history(
     soldier_id: uuid.UUID,
@@ -321,9 +324,17 @@ def get_soldier_duty_history(
     user: Soldier = Depends(require_password_changed),
 ):
     s = _load(session, soldier_id)
-    if s.id != user.id:
+    is_self = s.id == user.id
+    is_plain_soldier = user.role == "soldier"
+
+    if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+
     events = get_duty_history(session, soldier_id)
+
+    if is_plain_soldier and not is_self:
+        events = [e for e in events if e.event_type in _PUBLIC_EVENT_TYPES]
+
     return [
         TimelineEventOut(
             id=e.id,
