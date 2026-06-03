@@ -594,6 +594,9 @@ class NotificationType(str, _enum.Enum):
     announcement = "announcement"
     algorithm_job_done = "algorithm_job_done"
     algorithm_job_failed = "algorithm_job_failed"
+    enrollment_request_received = "enrollment_request_received"
+    enrollment_approved = "enrollment_approved"
+    enrollment_rejected = "enrollment_rejected"
     constraint_pending = "constraint_pending"
     exemption_request_pending = "exemption_request_pending"
     swap_offer_incoming = "swap_offer_incoming"
@@ -704,4 +707,45 @@ class DutyManagerScope(Base):
     )
     __table_args__ = (
         sa.UniqueConstraint("duty_manager_id", "hierarchy_node_id", name="uq_dm_scope"),
+    )
+
+
+class RegistrationInviteCode(Base):
+    __tablename__ = "registration_invite_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    code: Mapped[str] = mapped_column(Text, unique=True)
+    uses_left: Mapped[int] = mapped_column(server_default=text("1"), default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierEnrollmentRequest(Base):
+    __tablename__ = "soldier_enrollment_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    requested_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT")
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
     )
