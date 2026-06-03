@@ -6,8 +6,15 @@ from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.db.models import TelegramLink
+from app.db.models import TelegramActionToken, TelegramLink
 from app.db.session import session_scope
+from app.services.action_tokens import find_pending_reply, redeem_token, set_awaiting_reply
+from bot.actions import (
+    execute_action,
+    execute_action_with_reason,
+    execute_silence_depth,
+    execute_silence_step1,
+)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -22,7 +29,7 @@ async def _do_verify(update: Update, code: str) -> None:
         link = session.execute(
             select(TelegramLink).where(
                 TelegramLink.verification_code == code,
-                TelegramLink.is_verified == False,
+                TelegramLink.is_verified == False,  # noqa: E712
             )
         ).scalar_one_or_none()
         if link is None or (link.verification_expires_at and link.verification_expires_at < datetime.now(timezone.utc)):
@@ -45,13 +52,86 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _do_verify(update, context.args[0].strip().upper())
 
 
-async def handle_code_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Accept a bare 6-character code sent as a plain message."""
-    text = (update.message.text or "").strip().upper()
-    if len(text) == 6 and text.isalnum():
-        await _do_verify(update, text)
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle all free-text messages: pending-reply first, then verification code."""
+    text = (update.message.text or "").strip()
+    chat_id = update.effective_chat.id
+
+    # 1. Check if this chat is waiting to provide a rejection reason
+    with session_scope() as session:
+        pending = find_pending_reply(session, chat_id=chat_id)
+        if pending is not None:
+            pending.awaiting_text_from_chat_id = None
+            result = execute_action_with_reason(pending, session, reason=text)
+            pending.used_at = datetime.now(timezone.utc)
+            session.commit()
+            await update.message.reply_text(result)
+            return
+
+    # 2. Try as a 6-char verification code
+    upper = text.upper()
+    if len(upper) == 6 and upper.isalnum():
+        await _do_verify(update, upper)
     else:
-        await update.message.reply_text("קוד לא תקין. הקוד צריך להיות 6 תווים. אנא העתק אותו מהאתר ונסה שוב.")
+        await update.message.reply_text(
+            "קוד לא תקין. הקוד צריך להיות 6 תווים. אנא העתק אותו מהאתר ונסה שוב."
+        )
+
+
+async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle inline-keyboard button presses."""
+    query = update.callback_query
+    await query.answer()
+    token = query.data
+    chat_id = query.message.chat_id
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        t = session.execute(
+            select(TelegramActionToken).where(
+                TelegramActionToken.token == token,
+                TelegramActionToken.used_at.is_(None),
+                TelegramActionToken.expires_at > now,
+            )
+        ).scalar_one_or_none()
+
+        if t is None:
+            await query.message.reply_text("הפעולה פגה תוקף או שכבר בוצעה.")
+            return
+
+        if t.action == "silence:step1":
+            result = execute_silence_step1(t, session, chat_id)
+            t.used_at = now
+            session.commit()
+            if isinstance(result, tuple):
+                text, markup = result
+                await query.message.reply_text(text, reply_markup=markup)
+            else:
+                await query.message.reply_text(result)
+            return
+
+        if t.action == "silence:depth":
+            result = execute_silence_depth(t, session, chat_id)
+            t.used_at = now
+            session.commit()
+            await query.message.reply_text(result)
+            return
+
+        if t.action.endswith(":reject"):
+            # Ask for reason — leave token unconsumed, mark as awaiting reply
+            t.awaiting_text_from_chat_id = chat_id
+            session.commit()
+            await query.message.reply_text("נא כתוב את סיבת הדחייה:")
+            return
+
+        # Approve / claim actions: redeem and execute
+        validated = redeem_token(session, token=token, chat_id=chat_id)
+        if validated is None:
+            await query.message.reply_text("הפעולה פגה תוקף, כבר בוצעה, או שאין לך הרשאה.")
+            return
+        result = execute_action(validated, session)
+        session.commit()
+        await query.message.reply_text(result)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
