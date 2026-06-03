@@ -62,8 +62,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         pending = find_pending_reply(session, chat_id=chat_id)
         if pending is not None:
             pending.awaiting_text_from_chat_id = None
-            result = execute_action_with_reason(pending, session, reason=text)
             pending.used_at = datetime.now(timezone.utc)
+            result = execute_action_with_reason(pending, session, reason=text)
             session.commit()
             await update.message.reply_text(result)
             return

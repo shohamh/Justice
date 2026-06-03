@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -20,14 +19,6 @@ from app.db.models import (
     TelegramLink,
     TelegramOutbox,
 )
-
-# Notification types that carry approve/reject buttons
-_ACTIONABLE = frozenset([
-    NotificationType.constraint_pending,
-    NotificationType.exemption_request_pending,
-    NotificationType.swap_offer,
-    NotificationType.swap_offer_incoming,
-])
 
 # Depth filtering applies only to these types (others cascade without limit)
 _DEPTH_FILTERED_TYPES = frozenset([
