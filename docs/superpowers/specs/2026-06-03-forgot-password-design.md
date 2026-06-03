@@ -115,7 +115,7 @@ Add `email: str | null` field.
 Add `email: str | null` to the update payload (soldier edits their own email).
 
 ### `GET /soldiers/:id`
-Email included only when the requesting user passes the existing `_can_see_gender` check (self, commanders in chain, DMs, admins). Reuse the same boolean result: `include_email=include_gender`.
+Email included only when the requesting user passes the existing `_can_see_private_fields` check (self, commanders in chain, DMs, admins). Reuse the same boolean result: `include_email=include_gender`.
 
 ### `SoldierEditModal` (frontend)
 Email field shown only when the current user is admin (same as gender field visibility in the admin UI).
