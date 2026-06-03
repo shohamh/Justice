@@ -6,7 +6,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import DutyManagerScope, HierarchyNode, Soldier
+from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 
 
 class Action:
@@ -27,6 +28,9 @@ class Action:
     SCORE_ADJUST = "score.adjust"
     ALGORITHM_RUN = "algorithm.run"
     SWAP_APPROVE = "swap.approve"
+    ENROLLMENT_APPROVE = "enrollment.approve"
+    DM_SCOPE_MANAGE = "dm_scope.manage"
+    SHIFT_MANAGE = "shift.manage"
 
 
 _DM_ACTIONS = {
@@ -44,7 +48,7 @@ _DM_ACTIONS = {
     Action.SWAP_APPROVE,
     Action.ASSIGNMENT_MANAGE,
     Action.SCORE_ADJUST,
-    Action.ALGORITHM_RUN,
+    Action.ENROLLMENT_APPROVE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -54,25 +58,29 @@ _COMMANDER_ACTIONS = {
     Action.CONSTRAINT_READ,
     Action.CONSTRAINT_APPROVE,
     Action.SWAP_APPROVE,
+    Action.ENROLLMENT_APPROVE,
 }
 
 _DM_GLOBAL_ACTIONS = {
     Action.ALGORITHM_RUN,
-    Action.ASSIGNMENT_MANAGE,
-    Action.SWAP_APPROVE,
+    Action.SHIFT_MANAGE,
 }
 
 
 def scope_root_ids(session: Session, user: Soldier) -> set[uuid.UUID]:
-    """The node ids whose subtrees this user governs.
-
-    - duty_manager: their own assigned node.
-    - commander: every node where they are the commander.
-    - admin / soldier: none (admin is global; soldier has no scope).
-    """
+    """The node ids whose subtrees this user governs."""
     roots: set[uuid.UUID] = set()
-    if user.role == "duty_manager" and user.hierarchy_node_id is not None:
-        roots.add(user.hierarchy_node_id)
+    if user.role == "duty_manager":
+        dm_nodes = (
+            session.execute(
+                select(DutyManagerScope.hierarchy_node_id).where(
+                    DutyManagerScope.duty_manager_id == user.id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        roots.update(dm_nodes)
     commanded = (
         session.execute(select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id))
         .scalars()
@@ -96,14 +104,19 @@ def can(
     roots: set[uuid.UUID],
 ) -> bool:
     if user.role == "admin":
-        return True  # admin: account/role/hierarchy authority, global
+        return True
     if user.role == "duty_manager":
         if action in _DM_GLOBAL_ACTIONS:
-            return True  # no node-scoping for global DM actions
+            return True
         return action in _DM_ACTIONS and _node_in_scope(target_node, roots)
     if user.role == "commander":
+        if action == Action.DM_SCOPE_MANAGE:
+            return (
+                bool(user.rank and user.rank in RANKS_RASAN_AND_ABOVE)
+                and _node_in_scope(target_node, roots)
+            )
         return action in _COMMANDER_ACTIONS and _node_in_scope(target_node, roots)
-    return False  # plain soldier: management actions denied (self-reads handled at the route)
+    return False
 
 
 def authorize(

@@ -90,7 +90,7 @@ def list_shifts(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftOut]:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     return [_out(s, session) for s in svc.list_shifts(session, date_from=date_from, date_to=date_to, duty_type_id=duty_type_id)]
 
 
@@ -100,7 +100,7 @@ def create_shift(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> ShiftOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     try:
         shift = svc.create_shift(
             session,
@@ -126,7 +126,7 @@ def get_shift(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> ShiftOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     result = svc.get_shift_fill(session, shift_id=shift_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -141,7 +141,7 @@ def update_shift(
     user: Soldier = Depends(require_password_changed),
 ) -> ShiftOut:
     shift = _load(session, shift_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     extra: dict = {}
     if "notes" in body.model_fields_set:
         extra["notes"] = body.notes
@@ -172,7 +172,7 @@ def delete_shift(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     shift = _load(session, shift_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     try:
         svc.delete_shift(session, shift=shift, actor_id=user.id)
     except svc.ShiftError as exc:
@@ -196,7 +196,7 @@ def list_shift_assignments(
     user: Soldier = Depends(require_password_changed),
 ) -> list[AssignmentOut]:
     _load(session, shift_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     rows = session.execute(
         select(DutyAssignment).where(DutyAssignment.duty_shift_id == shift_id)
     ).scalars().all()

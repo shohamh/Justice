@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import issue_access_token
 from app.auth.password import hash_password
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 
 
 def create_node(
@@ -51,6 +51,11 @@ def create_soldier(
         must_change_password=must_change_password,
     )
     session.add(s)
+    session.flush()
+    # For duty_managers: automatically create a DutyManagerScope entry
+    # so scope_root_ids (which reads DutyManagerScope) works out-of-the-box in tests.
+    if role == "duty_manager" and hierarchy_node_id is not None:
+        session.add(DutyManagerScope(duty_manager_id=s.id, hierarchy_node_id=hierarchy_node_id))
     session.commit()
     session.refresh(s)
     return s
