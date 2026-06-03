@@ -25,6 +25,7 @@ export interface Me {
   discharge_date?: string | null;
   last_mitvahim_date?: string | null;
   last_alal_date?: string | null;
+  email?: string | null;
 }
 
 export interface NodeOut {
@@ -42,6 +43,7 @@ export interface RegisterPayload {
   full_name: string;
   password: string;
   phone: string | null;
+  email: string | null;
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
@@ -87,4 +89,17 @@ export async function fetchRegisterNodes(): Promise<NodeOut[]> {
 export async function validateInviteCode(code: string): Promise<boolean> {
   const r = await api.get<{ valid: boolean }>(`/auth/register/validate-code?code=${encodeURIComponent(code)}`);
   return r.data.valid;
+}
+
+export async function checkForgotPasswordChannels(personal_number: string): Promise<string[]> {
+  const r = await api.post<{ channels: string[] }>("/auth/forgot-password", { personal_number });
+  return r.data.channels;
+}
+
+export async function sendForgotPassword(personal_number: string, channel: string): Promise<void> {
+  await api.post("/auth/forgot-password/send", { personal_number, channel });
+}
+
+export async function resetPassword(token: string, new_password: string): Promise<void> {
+  await api.post("/auth/reset-password", { token, new_password });
 }
