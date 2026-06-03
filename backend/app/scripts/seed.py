@@ -35,6 +35,9 @@ from app.db.session import SessionLocal
 
 
 def seed(*, force: bool = False, with_assignments: bool = False):
+    from app.scripts.bootstrap import main as bootstrap_main
+    bootstrap_main()
+
     clear = force
     with SessionLocal() as session:
         hashed = hash_password("1234567890")
