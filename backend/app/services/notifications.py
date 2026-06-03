@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import (
+    CommanderNotificationDepth,
     CommanderNotificationScope,
     HierarchyNode,
     Notification,
@@ -19,9 +21,165 @@ from app.db.models import (
     TelegramOutbox,
 )
 
+# Notification types that carry approve/reject buttons
+_ACTIONABLE = frozenset([
+    NotificationType.constraint_pending,
+    NotificationType.exemption_request_pending,
+    NotificationType.swap_offer,
+    NotificationType.swap_offer_incoming,
+])
+
+# Depth filtering applies only to these types (others cascade without limit)
+_DEPTH_FILTERED_TYPES = frozenset([
+    NotificationType.constraint_pending,
+    NotificationType.exemption_request_pending,
+])
+
+DEFAULT_PENDING_MAX_DEPTH = 2
+
+_FRONTEND_PATHS: dict[str, str] = {
+    "constraint_pending": "/constraints",
+    "constraint_approved": "/constraints",
+    "constraint_rejected": "/constraints",
+    "exemption_request_pending": "/exemption-requests",
+    "exemption_approved": "/exemption-requests",
+    "exemption_rejected": "/exemption-requests",
+    "swap_offer": "/swaps",
+    "swap_offer_incoming": "/swaps",
+    "swap_accepted": "/swaps",
+    "swap_rejected": "/swaps",
+    "assignment_created": "/schedule",
+    "assignment_removed": "/schedule",
+    "score_adjusted": "/profile",
+    "announcement": "/notifications",
+    "algorithm_job_done": "/algorithm",
+    "algorithm_job_failed": "/algorithm",
+}
+
 
 class NotificationError(Exception):
     pass
+
+
+def _frontend_url(notification_type: NotificationType) -> str:
+    from app.settings import get_settings
+    base = get_settings().frontend_url.rstrip("/")
+    path = _FRONTEND_PATHS.get(notification_type.value, "/notifications")
+    return f"{base}{path}"
+
+
+def _action_pair(notification_type: NotificationType) -> tuple[str, str] | None:
+    """Return (approve_action, reject_action) for actionable types."""
+    if notification_type == NotificationType.constraint_pending:
+        return "constraint:approve", "constraint:reject"
+    if notification_type == NotificationType.exemption_request_pending:
+        return "exemption:approve", "exemption:reject"
+    if notification_type == NotificationType.swap_offer:
+        return "swap:approve_requester", "swap:reject"
+    if notification_type == NotificationType.swap_offer_incoming:
+        return "swap:approve_covering", "swap:reject"
+    return None
+
+
+def _commander_max_depth(
+    session: Session, commander_id: uuid.UUID, notification_type: NotificationType
+) -> int | None:
+    row = session.execute(
+        select(CommanderNotificationDepth).where(
+            CommanderNotificationDepth.commander_id == commander_id,
+            CommanderNotificationDepth.notification_type == notification_type,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return DEFAULT_PENDING_MAX_DEPTH
+    return row.max_depth  # None = unlimited
+
+
+def _build_reply_markup(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    notification_type: NotificationType,
+    reference_type: str | None,
+    reference_id: uuid.UUID | None,
+    soldier_gender: str | None,
+) -> str:
+    from app.services.action_tokens import (
+        DEFAULT_ACTION_EXPIRY,
+        DEFAULT_SILENCE_EXPIRY,
+        create_token,
+    )
+
+    keyboard: list[list[dict]] = []
+
+    pair = _action_pair(notification_type)
+    if pair and reference_id:
+        approve_action, reject_action = pair
+        approve_tok = create_token(
+            session, soldier_id=soldier_id, action=approve_action,
+            resource_type=reference_type, resource_id=reference_id,
+            expiry=DEFAULT_ACTION_EXPIRY,
+        )
+        reject_tok = create_token(
+            session, soldier_id=soldier_id, action=reject_action,
+            resource_type=reference_type, resource_id=reference_id,
+            expiry=DEFAULT_ACTION_EXPIRY,
+        )
+        keyboard.append([
+            {"text": "✅ אשר", "callback_data": approve_tok},
+            {"text": "❌ דחה", "callback_data": reject_tok},
+        ])
+
+    silence_tok = create_token(
+        session, soldier_id=soldier_id, action="silence:step1",
+        extra_json={"notification_type": notification_type.value},
+        expiry=DEFAULT_SILENCE_EXPIRY,
+    )
+    keyboard.append([{"text": "🔕 השתק", "callback_data": silence_tok}])
+
+    open_label = "פתחי במערכת" if soldier_gender == "female" else "פתח במערכת"
+    keyboard.append([{"text": f"🔗 {open_label}", "url": _frontend_url(notification_type)}])
+
+    return json.dumps({"inline_keyboard": keyboard}, ensure_ascii=False)
+
+
+def _enqueue_push(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    text: str,
+    notification_type: NotificationType | None = None,
+    reference_type: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    soldier_gender: str | None = None,
+) -> None:
+    link = session.execute(
+        select(TelegramLink).where(
+            TelegramLink.soldier_id == soldier_id,
+            TelegramLink.is_verified == True,  # noqa: E712
+            TelegramLink.notifications_enabled == True,  # noqa: E712
+            TelegramLink.telegram_chat_id.isnot(None),
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        return
+
+    reply_markup_json: str | None = None
+    if notification_type is not None:
+        reply_markup_json = _build_reply_markup(
+            session,
+            soldier_id=soldier_id,
+            notification_type=notification_type,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            soldier_gender=soldier_gender,
+        )
+
+    session.add(TelegramOutbox(
+        telegram_chat_id=link.telegram_chat_id,
+        message_text=text,
+        reply_markup_json=reply_markup_json,
+    ))
 
 
 def create_notification(
@@ -56,14 +214,42 @@ def create_notification(
                           reference_type=reference_type, reference_id=reference_id,
                           actor_id=actor_id, original_soldier_id=soldier_id)
     if pref is None or pref.push_enabled:
-        _enqueue_push(session, soldier_id=soldier_id, text=title)
+        soldier = session.get(Soldier, soldier_id)
+        _enqueue_push(
+            session, soldier_id=soldier_id, text=title,
+            notification_type=type,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            soldier_gender=soldier.gender if soldier else None,
+        )
     return notif
 
 
-def cascade_to_commanders(session: Session, *, type: NotificationType, title: str,
-                          body: str | None, reference_type: str | None,
-                          reference_id: uuid.UUID | None, actor_id: uuid.UUID | None,
-                          original_soldier_id: uuid.UUID) -> None:
+def notify_commanders_of_request(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    type: NotificationType,
+    title: str,
+    body: str | None = None,
+    reference_type: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    """Send notification only to commanders in scope — not to the soldier themselves."""
+    cascade_to_commanders(
+        session, type=type, title=title, body=body,
+        reference_type=reference_type, reference_id=reference_id,
+        actor_id=actor_id, original_soldier_id=soldier_id,
+    )
+
+
+def cascade_to_commanders(
+    session: Session, *, type: NotificationType, title: str,
+    body: str | None, reference_type: str | None,
+    reference_id: uuid.UUID | None, actor_id: uuid.UUID | None,
+    original_soldier_id: uuid.UUID,
+) -> None:
     soldier = session.get(Soldier, original_soldier_id)
     if soldier is None or soldier.hierarchy_node_id is None:
         return
@@ -79,16 +265,31 @@ def cascade_to_commanders(session: Session, *, type: NotificationType, title: st
     for scope in scopes:
         if scope.commander_id in seen:
             continue
+        # Depth filtering for pending approval types
+        if type in _DEPTH_FILTERED_TYPES:
+            max_depth = _commander_max_depth(session, scope.commander_id, type)
+            if max_depth is not None:
+                try:
+                    scope_idx = soldier_node.path_ids.index(scope.hierarchy_node_id)
+                except ValueError:
+                    continue
+                depth = len(soldier_node.path_ids) - 1 - scope_idx
+                if depth > max_depth:
+                    continue
         seen.add(scope.commander_id)
-        _create_notif(session, soldier_id=scope.commander_id,
-                      type=type, title=f"{soldier.full_name}: {title}",
-                      body=body, reference_type=reference_type,
-                      reference_id=reference_id, actor_id=actor_id)
+        _create_notif(
+            session, soldier_id=scope.commander_id,
+            type=type, title=f"{soldier.full_name}: {title}",
+            body=body, reference_type=reference_type,
+            reference_id=reference_id, actor_id=actor_id,
+        )
 
 
-def _create_notif(session: Session, *, soldier_id: uuid.UUID, type: NotificationType,
-                  title: str, body: str | None, reference_type: str | None,
-                  reference_id: uuid.UUID | None, actor_id: uuid.UUID | None) -> None:
+def _create_notif(
+    session: Session, *, soldier_id: uuid.UUID, type: NotificationType,
+    title: str, body: str | None, reference_type: str | None,
+    reference_id: uuid.UUID | None, actor_id: uuid.UUID | None,
+) -> None:
     pref = session.execute(
         select(NotificationPreference).where(
             NotificationPreference.soldier_id == soldier_id,
@@ -101,21 +302,14 @@ def _create_notif(session: Session, *, soldier_id: uuid.UUID, type: Notification
                          reference_type=reference_type, reference_id=reference_id)
     session.add(notif)
     if pref is None or pref.push_enabled:
-        _enqueue_push(session, soldier_id=soldier_id, text=title)
-
-
-def _enqueue_push(session: Session, *, soldier_id: uuid.UUID, text: str) -> None:
-    link = session.execute(
-        select(TelegramLink).where(
-            TelegramLink.soldier_id == soldier_id,
-            TelegramLink.is_verified == True,
-            TelegramLink.notifications_enabled == True,
-            TelegramLink.telegram_chat_id.isnot(None),
+        soldier = session.get(Soldier, soldier_id)
+        _enqueue_push(
+            session, soldier_id=soldier_id, text=title,
+            notification_type=type,
+            reference_type=reference_type,
+            reference_id=reference_id,
+            soldier_gender=soldier.gender if soldier else None,
         )
-    ).scalar_one_or_none()
-    if link is None:
-        return
-    session.add(TelegramOutbox(telegram_chat_id=link.telegram_chat_id, message_text=text))
 
 
 def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
@@ -205,7 +399,6 @@ def list_notifications(session: Session, *, soldier_id: uuid.UUID,
         q = q.where(Notification.is_read == is_read)
     if type is not None:
         q = q.where(Notification.type == NotificationType(type))
-    # Get total count first using a subquery or a separate count query
     count_q = select(Notification.id).where(Notification.soldier_id == soldier_id)
     if is_read is not None:
         count_q = count_q.where(Notification.is_read == is_read)
@@ -218,7 +411,7 @@ def list_notifications(session: Session, *, soldier_id: uuid.UUID,
 
 def unread_count(session: Session, *, soldier_id: uuid.UUID) -> int:
     return len(session.execute(
-        select(Notification.id).where(Notification.soldier_id == soldier_id, Notification.is_read == False)
+        select(Notification.id).where(Notification.soldier_id == soldier_id, Notification.is_read == False)  # noqa: E712
     ).scalars().all())
 
 
@@ -230,7 +423,7 @@ def mark_read(session: Session, *, notification_id: uuid.UUID, soldier_id: uuid.
 
 
 def mark_all_read(session: Session, *, soldier_id: uuid.UUID) -> int:
-    notifs = list(session.execute(select(Notification).where(Notification.soldier_id == soldier_id, Notification.is_read == False)).scalars().all())
+    notifs = list(session.execute(select(Notification).where(Notification.soldier_id == soldier_id, Notification.is_read == False)).scalars().all())  # noqa: E712
     for n in notifs:
         n.is_read = True
     return len(notifs)
