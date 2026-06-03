@@ -46,6 +46,7 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=10, max_length=200)
     phone: str | None = Field(default=None, max_length=40)
+    email: str | None = Field(default=None, max_length=200)
     gender: str | None = None
     is_officer: bool | None = None
     rank: str | None = None
@@ -219,6 +220,7 @@ def register(
             full_name=body.full_name,
             password=body.password,
             phone=body.phone,
+            email=body.email,
             gender=body.gender,
             is_officer=body.is_officer,
             rank=body.rank,

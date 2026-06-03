@@ -19,6 +19,7 @@ export interface SoldierDTO {
   last_mitvahim_date: string | null;
   last_alal_date: string | null;
   telegram_linked: boolean;
+  email?: string | null;
 }
 
 export interface OnboardResult extends SoldierDTO {
@@ -73,7 +74,7 @@ export async function updateSoldier(
 
 export async function updateSoldierProfile(
   soldierId: string,
-  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'bahad1_graduate' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date'>>
+  fields: Partial<Pick<SoldierDTO, 'gender' | 'is_officer' | 'rank' | 'bahad1_graduate' | 'enlistment_date' | 'mandatory_end_date' | 'discharge_date' | 'last_mitvahim_date' | 'last_alal_date' | 'email'>>
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${soldierId}/profile`, fields)).data;
 }

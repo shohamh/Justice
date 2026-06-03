@@ -50,6 +50,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileDischarge, setProfileDischarge] = useState(soldier.discharge_date ?? "");
   const [profileMitvahim, setProfileMitvahim] = useState(soldier.last_mitvahim_date ?? "");
   const [profileAlal, setProfileAlal] = useState(soldier.last_alal_date ?? "");
+  const [profileEmail, setProfileEmail] = useState(soldier.email ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
@@ -93,6 +94,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       discharge_date: profileDischarge || null,
       last_mitvahim_date: profileMitvahim || null,
       last_alal_date: profileAlal || null,
+      ...(isAdmin ? { email: profileEmail || null } : {}),
     });
     setSavingProfile(false);
     onRefresh();
@@ -265,6 +267,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
                 <input type="date" className="border rounded p-1 w-full" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
               </label>
+              {isAdmin && (
+                <label className="block col-span-2">
+                  <span className="text-xs">{t("profile.email")}</span>
+                  <input type="email" className="border rounded p-1 w-full" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
+                </label>
+              )}
             </div>
             {!isCommander && (
               <div className="flex justify-end gap-2">

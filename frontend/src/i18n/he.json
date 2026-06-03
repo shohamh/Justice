@@ -158,7 +158,8 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
-    "phone": "טלפון"
+    "phone": "טלפון",
+    "email": "כתובת אימייל"
   },
   "duty_management": {
     "title": "ניהול תורנויות",
