@@ -100,6 +100,18 @@ def submit_constraint(
             "status": c.status,
         },
     )
+    if c.status == "pending":
+        from app.services.notifications import notify_commanders_of_request
+        notify_commanders_of_request(
+            session,
+            soldier_id=soldier_id,
+            type=NotificationType.constraint_pending,
+            title=f"בקשת אילוץ חדשה: {start_date} – {end_date}",
+            body=reason,
+            reference_type="personal_constraint",
+            reference_id=c.id,
+            actor_id=actor_id,
+        )
     return c
 
 

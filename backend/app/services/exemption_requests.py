@@ -39,6 +39,17 @@ def submit_request(
     )
     session.add(req)
     session.flush()
+    from app.services.notifications import notify_commanders_of_request
+    notify_commanders_of_request(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.exemption_request_pending,
+        title="בקשת פטור חדשה",
+        body=reason,
+        reference_type="exemption_request",
+        reference_id=req.id,
+        actor_id=None,
+    )
     return req
 
 

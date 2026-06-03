@@ -162,3 +162,39 @@ def test_cascade_depth_filtering_includes_within_depth(admin_session: Session):
         select(TelegramOutbox).where(TelegramOutbox.telegram_chat_id == 2002)
     ).scalars().all())
     assert len(outbox) == 1
+
+
+def test_constraint_submit_notifies_commanders(admin_session: Session):
+    """Submitting a constraint creates a constraint_pending outbox row for commander."""
+    from app.db.models import CommanderNotificationScope, TelegramLink
+    from app.services.constraints import submit_constraint
+    from datetime import date, timedelta
+    from sqlalchemy import select
+
+    root = create_node(admin_session, level="division", name="DIV-CS")
+    soldier = create_soldier(admin_session, personal_number="CS-S1", hierarchy_node_id=root.id)
+    commander = create_soldier(admin_session, personal_number="CS-CMD1", role="commander")
+    admin_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=root.id))
+    link = TelegramLink(
+        soldier_id=commander.id, telegram_chat_id=3001,
+        is_verified=True, notifications_enabled=True,
+    )
+    admin_session.add(link)
+    admin_session.flush()
+
+    today = date.today()
+    submit_constraint(
+        admin_session, soldier_id=soldier.id,
+        start_date=today + timedelta(days=5),
+        end_date=today + timedelta(days=6),
+        reason="test",
+    )
+    admin_session.flush()
+
+    import json
+    outbox = list(admin_session.execute(
+        select(TelegramOutbox).where(TelegramOutbox.telegram_chat_id == 3001)
+    ).scalars().all())
+    assert len(outbox) == 1
+    keyboard = json.loads(outbox[0].reply_markup_json)["inline_keyboard"]
+    assert any("אשר" in btn["text"] for row in keyboard for btn in row)

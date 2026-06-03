@@ -70,6 +70,17 @@ def create_request(
             "status": "open",
         },
     )
+    if target_soldier_id is not None:
+        create_notification(
+            session,
+            soldier_id=target_soldier_id,
+            type=NotificationType.swap_offer_incoming,
+            title="הגיעה בקשת החלפה עבורך",
+            reference_type="swap_request",
+            reference_id=req.id,
+            actor_id=actor_id,
+        )
+
     return req
 
 
