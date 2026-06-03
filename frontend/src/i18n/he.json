@@ -253,6 +253,9 @@
     "title": "חלון תכנון",
     "run_button": "הרץ אלגוריתם",
     "running": "האלגוריתם רץ...",
+    "stage_pending": "ממתין להתחלה...",
+    "stage_phase1": "שלב 1: שיבוץ תורנים ראשיים",
+    "stage_phase2": "שלב 2: שיבוץ רזרבות",
     "elapsed": "{{seconds}} שניות",
     "done": "הצעות האלגוריתם",
     "failed": "האלגוריתם נכשל",
@@ -368,6 +371,10 @@
     "has_assignments_error": "לא ניתן למחוק משמרת עם שיבוצים פעילים",
     "view_assignments": "הצג שיבוצים",
     "confirm_delete": "האם למחוק את המשמרת?",
+    "clear_assignments": "נקה שיבוצים",
+    "confirm_clear_assignments": "האם לנקות את כל השיבוצים של המשמרת?",
+    "clear_all_assignments": "נקה את כל השיבוצים",
+    "confirm_clear_all": "האם לנקות את כל השיבוצים מכל המשמרות?",
     "notes": "הערות",
     "filter_from": "מתאריך",
     "filter_to": "עד תאריך",
@@ -582,6 +589,11 @@
     "type_assignment_created": "תורנות חדשה",
     "type_assignment_removed": "תורנות בוטלה",
     "type_score_adjusted": "ניקוד עודכן",
-    "type_announcement": "הודעה"
+    "type_announcement": "הודעה",
+    "type_constraint_pending": "בקשת אילוץ ממתינה",
+    "type_exemption_request_pending": "בקשת פטור ממתינה",
+    "type_swap_offer_incoming": "הצעת החלפה נכנסת",
+    "type_algorithm_job_done": "הרצת אלגוריתם הסתיימה",
+    "type_algorithm_job_failed": "הרצת אלגוריתם נכשלה"
   }
 }
