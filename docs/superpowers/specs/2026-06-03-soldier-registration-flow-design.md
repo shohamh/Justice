@@ -159,6 +159,13 @@ Six steps, state held in React until final submission:
 | 5. בחירת מפקד | Fuzzy search with `fuse.js` over node names + commander names; collapsible hierarchy tree browser; selected node shows commander name |
 | 6. סקירה ואישור | Read-only summary of all entered data; "הרשם" submits `POST /auth/register`; on success auto-login and redirect to `/setup/telegram` |
 
+### 3.2a `/me` endpoint extension
+`GET /me` gains two new fields:
+- `telegram_linked: bool` — true if a verified `TelegramLink` exists for this soldier
+- `telegram_required: bool` — value of `registration.telegram_required` system setting
+
+`AuthContext` reads these on every login/refresh and stores them in context state.
+
 ### 3.3 Telegram setup page (`/setup/telegram`)
 - Shows soldier's Telegram verification code and bot instructions
 - "בדוק אימות" button polls `GET /me/telegram-link` for `is_verified`
