@@ -74,6 +74,8 @@ def list_scope(
     session: Session = Depends(get_session),
     user=Depends(require_password_changed),
 ) -> list[ScopeEntryOut]:
+    if user.role != "admin" and user.id != soldier_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     entries = (
         session.execute(
             select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == soldier_id)
