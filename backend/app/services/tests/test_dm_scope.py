@@ -33,3 +33,11 @@ def test_duty_manager_scope_unique_constraint(admin_session):
     with pytest.raises(IntegrityError):
         admin_session.commit()
     admin_session.rollback()
+
+
+def test_ranks_rasan_and_above_contents():
+    from app.services.eligibility import RANKS_RASAN_AND_ABOVE
+    assert RANKS_RASAN_AND_ABOVE[0] == "רסן"
+    assert "סרן" not in RANKS_RASAN_AND_ABOVE
+    assert "סאל" in RANKS_RASAN_AND_ABOVE
+    assert "אלוף" in RANKS_RASAN_AND_ABOVE
