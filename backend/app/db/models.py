@@ -647,3 +647,20 @@ class TelegramOutbox(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class DutyManagerScope(Base):
+    __tablename__ = "duty_manager_scope"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_manager_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="CASCADE")
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("duty_manager_id", "hierarchy_node_id", name="uq_dm_scope"),
+    )
