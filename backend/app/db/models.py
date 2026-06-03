@@ -688,3 +688,20 @@ class CommanderNotificationDepth(Base):
     )
     max_depth: Mapped[int | None] = mapped_column(sa.Integer, nullable=True, default=2)
     __table_args__ = (sa.UniqueConstraint("commander_id", "notification_type"),)
+
+
+class DutyManagerScope(Base):
+    __tablename__ = "duty_manager_scope"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_manager_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="CASCADE")
+    )
+    __table_args__ = (
+        sa.UniqueConstraint("duty_manager_id", "hierarchy_node_id", name="uq_dm_scope"),
+    )
