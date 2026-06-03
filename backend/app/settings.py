@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_bot_username: str = Field(default="", alias="TELEGRAM_BOT_USERNAME")
+    frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
 
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
