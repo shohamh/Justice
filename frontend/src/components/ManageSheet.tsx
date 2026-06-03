@@ -70,6 +70,12 @@ export default function ManageSheet({ open, onClose }: Props) {
             <Link to="/algorithm" onClick={onClose} className={linkClass}>{t("nav.algorithm")}</Link>
           </div>
         )}
+        {role === "admin" && (
+          <div>
+            <h3 className={sectionHeadClass}>מנהל</h3>
+            <Link to="/admin/invite-codes" onClick={onClose} className={linkClass}>{t("invite_codes.title")}</Link>
+          </div>
+        )}
       </div>
     </>
   );

@@ -6,15 +6,6 @@ export interface LoginResponse {
   must_change_password: boolean;
 }
 
-export async function login(personal_number: string, password: string): Promise<LoginResponse> {
-  const r = await api.post<LoginResponse>("/auth/login", { personal_number, password });
-  return r.data;
-}
-
-export async function logout(): Promise<void> {
-  await api.post("/auth/logout");
-}
-
 export interface Me {
   id: string;
   personal_number: string;
@@ -22,8 +13,35 @@ export interface Me {
   role: "soldier" | "commander" | "duty_manager" | "admin";
   must_change_password: boolean;
   hierarchy_node_id: string | null;
+  telegram_linked: boolean;
+  telegram_required: boolean;
+  phone?: string | null;
+  gender?: string | null;
+  is_officer?: boolean | null;
+  rank?: string | null;
+  bahad1_graduate?: boolean;
+  enlistment_date?: string | null;
+  mandatory_end_date?: string | null;
+  discharge_date?: string | null;
+  last_mitvahim_date?: string | null;
+  last_alal_date?: string | null;
+}
+
+export interface NodeOut {
+  id: string;
+  name: string;
+  level: string;
+  path_ids: string[];
+  commander_name: string | null;
+  parent_id: string | null;
+}
+
+export interface RegisterPayload {
+  invite_code: string;
+  personal_number: string;
+  full_name: string;
+  password: string;
   phone: string | null;
-  left_at: string | null;
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
@@ -33,6 +51,18 @@ export interface Me {
   discharge_date: string | null;
   last_mitvahim_date: string | null;
   last_alal_date: string | null;
+  requested_node_id: string;
+  exemption_requests: object[];
+  personal_constraints: object[];
+}
+
+export async function login(personal_number: string, password: string): Promise<LoginResponse> {
+  const r = await api.post<LoginResponse>("/auth/login", { personal_number, password });
+  return r.data;
+}
+
+export async function logout(): Promise<void> {
+  await api.post("/auth/logout");
 }
 
 export async function fetchMe(): Promise<Me> {
@@ -42,4 +72,19 @@ export async function fetchMe(): Promise<Me> {
 
 export async function changePassword(current_password: string, new_password: string): Promise<void> {
   await api.post("/auth/change-password", { current_password, new_password });
+}
+
+export async function register(payload: RegisterPayload): Promise<LoginResponse> {
+  const r = await api.post<LoginResponse>("/auth/register", payload);
+  return r.data;
+}
+
+export async function fetchRegisterNodes(): Promise<NodeOut[]> {
+  const r = await api.get<NodeOut[]>("/auth/register/nodes");
+  return r.data;
+}
+
+export async function validateInviteCode(code: string): Promise<boolean> {
+  const r = await api.get<{ valid: boolean }>(`/auth/register/validate-code?code=${encodeURIComponent(code)}`);
+  return r.data.valid;
 }

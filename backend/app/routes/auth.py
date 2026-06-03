@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
@@ -10,9 +11,12 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.db.models import Soldier
+from app.db.models import HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
+from app.services import registration as reg_svc
+from app.services.invite_codes import InviteCodeError, validate_code
+from app.services.registration import RegistrationError
 from app.services.soldiers import PasswordPolicyError, validate_password
 from app.settings import get_settings
 
@@ -33,6 +37,35 @@ class LoginResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(min_length=1, max_length=200)
     new_password: str = Field(min_length=1, max_length=200)
+
+
+class RegisterRequest(BaseModel):
+    invite_code: str = Field(min_length=1, max_length=20)
+    personal_number: str = Field(min_length=1, max_length=20)
+    full_name: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=10, max_length=200)
+    phone: str | None = Field(default=None, max_length=40)
+    gender: str | None = None
+    is_officer: bool | None = None
+    rank: str | None = None
+    bahad1_graduate: bool = False
+    enlistment_date: date | None = None
+    mandatory_end_date: date | None = None
+    discharge_date: date | None = None
+    last_mitvahim_date: date | None = None
+    last_alal_date: date | None = None
+    requested_node_id: uuid.UUID
+    exemption_requests: list[dict] = []
+    personal_constraints: list[dict] = []
+
+
+class NodeOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    level: str
+    path_ids: list[uuid.UUID]
+    commander_name: str | None
+    parent_id: uuid.UUID | None
 
 
 def _client_context(request: Request) -> dict[str, str]:
@@ -150,3 +183,66 @@ def change_password(
     )
     session.commit()
     return {"status": "ok"}
+
+
+@router.post("/register", response_model=LoginResponse)
+def register(
+    body: RegisterRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> LoginResponse:
+    settings = get_settings()
+    try:
+        soldier = reg_svc.register(
+            session,
+            invite_code=body.invite_code,
+            personal_number=body.personal_number,
+            full_name=body.full_name,
+            password=body.password,
+            phone=body.phone,
+            gender=body.gender,
+            is_officer=body.is_officer,
+            rank=body.rank,
+            bahad1_graduate=body.bahad1_graduate,
+            enlistment_date=body.enlistment_date,
+            mandatory_end_date=body.mandatory_end_date,
+            discharge_date=body.discharge_date,
+            last_mitvahim_date=body.last_mitvahim_date,
+            last_alal_date=body.last_alal_date,
+            requested_node_id=body.requested_node_id,
+            exemption_requests=body.exemption_requests,
+            personal_constraints=body.personal_constraints,
+        )
+        session.commit()
+    except (InviteCodeError, RegistrationError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    access = issue_access_token(user_id=soldier.id, role=soldier.role)
+    refresh = issue_refresh_token(user_id=soldier.id)
+    response.set_cookie(
+        key="refresh_token", value=refresh,
+        max_age=settings.refresh_token_days * 24 * 3600,
+        httponly=True, secure=False, samesite="strict", path="/api/auth",
+    )
+    return LoginResponse(access_token=access, must_change_password=False)
+
+
+@router.get("/register/nodes", response_model=list[NodeOut])
+def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
+    from sqlalchemy import select as sa_select
+    nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
+    result = []
+    for n in nodes:
+        commander_name: str | None = None
+        if n.commander_id:
+            s = session.get(Soldier, n.commander_id)
+            commander_name = s.full_name if s else None
+        result.append(NodeOut(
+            id=n.id, name=n.name, level=n.level,
+            path_ids=n.path_ids, commander_name=commander_name, parent_id=n.parent_id,
+        ))
+    return result
+
+
+@router.get("/register/validate-code")
+def validate_invite_code(code: str, session: Session = Depends(get_session)) -> dict:
+    return {"valid": validate_code(session, code=code)}

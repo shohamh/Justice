@@ -84,6 +84,12 @@ export default function LoginPage() {
         >
           {submitting ? t("login.submitting") : t("login.submit")}
         </button>
+
+        <p className="text-center text-sm text-gray-500 mt-2">
+          <a href="/register" className="text-indigo-600 hover:underline">
+            {t("register.signup_button")}
+          </a>
+        </p>
       </form>
     </main>
   );

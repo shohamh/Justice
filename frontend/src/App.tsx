@@ -22,6 +22,9 @@ import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
 import CommandDashboardPage from "./pages/CommandDashboardPage";
 import AlgorithmPage from "./pages/AlgorithmPage";
+import RegisterPage from "./pages/RegisterPage";
+import TelegramSetupPage from "./pages/TelegramSetupPage";
+import AdminInviteCodesPage from "./pages/AdminInviteCodesPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -29,32 +32,45 @@ function ForcedPasswordGate({ children }: { children: ReactElement }) {
   return children;
 }
 
+function TelegramGate({ children }: { children: ReactElement }) {
+  const { telegramRequired, telegramLinked } = useAuth();
+  if (telegramRequired && !telegramLinked) return <Navigate to="/setup/telegram" replace />;
+  return children;
+}
+
+function AppGate({ children }: { children: ReactElement }) {
+  return <ForcedPasswordGate><TelegramGate>{children}</TelegramGate></ForcedPasswordGate>;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <SoldierModalProvider>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<ProtectedRoute />}>
-          <Route path="/change-password" element={<ChangePasswordPage />} />
-          <Route path="/" element={<ForcedPasswordGate><HomePage /></ForcedPasswordGate>} />
-          <Route path="/team" element={<ForcedPasswordGate><TeamHierarchyPage /></ForcedPasswordGate>} />
-          <Route path="/duty-config" element={<ForcedPasswordGate><DutyConfigPage /></ForcedPasswordGate>} />
-          <Route path="/duty-management" element={<ForcedPasswordGate><DutyManagementPage /></ForcedPasswordGate>} />
-          <Route path="/transparency" element={<ForcedPasswordGate><TransparencyPage /></ForcedPasswordGate>} />
-          <Route path="/my-duties" element={<ForcedPasswordGate><MyDutiesPage /></ForcedPasswordGate>} />
-          <Route path="/my-requests" element={<ForcedPasswordGate><MyRequestsPage /></ForcedPasswordGate>} />
-          <Route path="/approvals" element={<ForcedPasswordGate><ApprovalsPage /></ForcedPasswordGate>} />
-          <Route path="/unit-calendar" element={<ForcedPasswordGate><UnitCalendarPage /></ForcedPasswordGate>} />
-          <Route path="/shifts" element={<ForcedPasswordGate><ShiftsPage /></ForcedPasswordGate>} />
-          <Route path="/shift-templates" element={<ForcedPasswordGate><ShiftTemplatesPage /></ForcedPasswordGate>} />
-          <Route path="/swaps" element={<ForcedPasswordGate><SwapsPage /></ForcedPasswordGate>} />
-          <Route path="/profile" element={<ForcedPasswordGate><ProfilePage /></ForcedPasswordGate>} />
-          <Route path="/command-dashboard" element={<ForcedPasswordGate><CommandDashboardPage /></ForcedPasswordGate>} />
-          <Route path="/notifications" element={<ForcedPasswordGate><NotificationsPage /></ForcedPasswordGate>} />
-          <Route path="/algorithm" element={<ForcedPasswordGate><AlgorithmPage /></ForcedPasswordGate>} />
-        </Route>
-      </Routes>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/change-password" element={<ChangePasswordPage />} />
+            <Route path="/setup/telegram" element={<TelegramSetupPage />} />
+            <Route path="/" element={<AppGate><HomePage /></AppGate>} />
+            <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
+            <Route path="/duty-config" element={<AppGate><DutyConfigPage /></AppGate>} />
+            <Route path="/duty-management" element={<AppGate><DutyManagementPage /></AppGate>} />
+            <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
+            <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
+            <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
+            <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
+            <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
+            <Route path="/shifts" element={<AppGate><ShiftsPage /></AppGate>} />
+            <Route path="/shift-templates" element={<AppGate><ShiftTemplatesPage /></AppGate>} />
+            <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
+            <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
+            <Route path="/command-dashboard" element={<AppGate><CommandDashboardPage /></AppGate>} />
+            <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
+            <Route path="/algorithm" element={<AppGate><AlgorithmPage /></AppGate>} />
+            <Route path="/admin/invite-codes" element={<AppGate><AdminInviteCodesPage /></AppGate>} />
+          </Route>
+        </Routes>
       </SoldierModalProvider>
     </AuthProvider>
   );

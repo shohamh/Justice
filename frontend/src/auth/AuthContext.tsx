@@ -7,9 +7,13 @@ interface AuthContextValue {
   user: Me | null;
   loggedIn: boolean;
   mustChangePassword: boolean;
+  telegramLinked: boolean;
+  telegramRequired: boolean;
   login: (personal_number: string, password: string) => Promise<void>;
+  loginWithToken: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
+  refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -20,6 +24,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (personal_number: string, password: string) => {
     const r = await apiLogin(personal_number, password);
     setAccessToken(r.access_token);
+    setUser(await fetchMe());
+  }, []);
+
+  const loginWithToken = useCallback(async (token: string) => {
+    setAccessToken(token);
     setUser(await fetchMe());
   }, []);
 
@@ -37,9 +46,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await fetchMe());
   }, []);
 
+  const refreshMe = useCallback(async () => {
+    setUser(await fetchMe());
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loggedIn: user !== null, mustChangePassword: user?.must_change_password ?? false, login, logout, changePassword }),
-    [user, login, logout, changePassword],
+    () => ({
+      user,
+      loggedIn: user !== null,
+      mustChangePassword: user?.must_change_password ?? false,
+      telegramLinked: user?.telegram_linked ?? false,
+      telegramRequired: user?.telegram_required ?? false,
+      login,
+      loginWithToken,
+      logout,
+      changePassword,
+      refreshMe,
+    }),
+    [user, login, loginWithToken, logout, changePassword, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
