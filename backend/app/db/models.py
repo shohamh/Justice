@@ -497,6 +497,7 @@ class AlgorithmJob(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    progress_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -593,6 +594,9 @@ class NotificationType(str, _enum.Enum):
     announcement = "announcement"
     algorithm_job_done = "algorithm_job_done"
     algorithm_job_failed = "algorithm_job_failed"
+    constraint_pending = "constraint_pending"
+    exemption_request_pending = "exemption_request_pending"
+    swap_offer_incoming = "swap_offer_incoming"
 
 
 class Notification(Base):
@@ -647,3 +651,40 @@ class TelegramOutbox(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    reply_markup_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class TelegramActionToken(Base):
+    __tablename__ = "telegram_action_tokens"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    token: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resource_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    resource_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, default=None)
+    extra_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    awaiting_text_from_chat_id: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class CommanderNotificationDepth(Base):
+    __tablename__ = "commander_notification_depth"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    commander_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), nullable=False
+    )
+    notification_type: Mapped[NotificationType] = mapped_column(
+        Enum(NotificationType, name="notification_type"), nullable=False
+    )
+    max_depth: Mapped[int | None] = mapped_column(sa.Integer, nullable=True, default=2)
+    __table_args__ = (sa.UniqueConstraint("commander_id", "notification_type"),)
