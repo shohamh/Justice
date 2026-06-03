@@ -48,6 +48,7 @@ class SoldierOut(BaseModel):
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
     telegram_linked: bool = False
+    email: str | None = None
 
 
 class OnboardRequest(BaseModel):
@@ -82,6 +83,7 @@ class UpdateProfileRequest(BaseModel):
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
+    email: str | None = None
 
 
 class FieldUpdateRequest(BaseModel):
@@ -125,8 +127,8 @@ class SoldierScoreOut(BaseModel):
     normalised_score: Decimal
 
 
-def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
-    """Gender is visible to self, commanders in chain, DMs, admins."""
+def _can_see_private_fields(session: Session, user: Soldier, target: Soldier) -> bool:
+    """Private fields (gender, email) visible to self, commanders in chain, DMs, admins."""
     if user.id == target.id:
         return True
     if user.role == "admin":
@@ -139,7 +141,7 @@ def _can_see_gender(session: Session, user: Soldier, target: Soldier) -> bool:
     return False
 
 
-def _out(s: Soldier, *, include_gender: bool = False, telegram_linked: bool = False) -> SoldierOut:
+def _out(s: Soldier, *, include_private: bool = False, telegram_linked: bool = False) -> SoldierOut:
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -149,7 +151,7 @@ def _out(s: Soldier, *, include_gender: bool = False, telegram_linked: bool = Fa
         phone=s.phone,
         must_change_password=s.must_change_password,
         left_at=s.left_at.isoformat() if s.left_at else None,
-        gender=s.gender if include_gender else None,
+        gender=s.gender if include_private else None,
         is_officer=s.is_officer,
         rank=s.rank,
         bahad1_graduate=s.bahad1_graduate,
@@ -159,6 +161,7 @@ def _out(s: Soldier, *, include_gender: bool = False, telegram_linked: bool = Fa
         last_mitvahim_date=s.last_mitvahim_date,
         last_alal_date=s.last_alal_date,
         telegram_linked=telegram_linked,
+        email=s.email if include_private else None,
     )
 
 
@@ -376,7 +379,7 @@ def get_soldier(
             TelegramLink.is_verified == True,
         )
     ).scalar_one_or_none()
-    return _out(s, include_gender=_can_see_gender(session, user, s), telegram_linked=link is not None)
+    return _out(s, include_private=_can_see_private_fields(session, user, s), telegram_linked=link is not None)
 
 
 @router.patch("/{soldier_id}", response_model=SoldierOut)
@@ -410,7 +413,7 @@ def update_profile(
     update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
     session.commit()
     session.refresh(s)
-    return _out(s, include_gender=_can_see_gender(session, user, s))
+    return _out(s, include_private=_can_see_private_fields(session, user, s))
 
 
 @router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)

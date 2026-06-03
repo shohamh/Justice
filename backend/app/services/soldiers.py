@@ -180,7 +180,7 @@ def assign_role(
 PROFILE_FIELDS = {
     "gender", "is_officer", "rank", "bahad1_graduate",
     "enlistment_date", "mandatory_end_date", "discharge_date",
-    "last_mitvahim_date", "last_alal_date",
+    "last_mitvahim_date", "last_alal_date", "email",
 }
 
 
