@@ -25,6 +25,7 @@ import AlgorithmPage from "./pages/AlgorithmPage";
 import RegisterPage from "./pages/RegisterPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
 import AdminInviteCodesPage from "./pages/AdminInviteCodesPage";
+import SystemSettingsPage from "./pages/SystemSettingsPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
             <Route path="/algorithm" element={<AppGate><AlgorithmPage /></AppGate>} />
             <Route path="/admin/invite-codes" element={<AppGate><AdminInviteCodesPage /></AppGate>} />
+            <Route path="/admin/system-settings" element={<AppGate><SystemSettingsPage /></AppGate>} />
           </Route>
         </Routes>
       </SoldierModalProvider>

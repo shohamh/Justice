@@ -27,6 +27,7 @@ from app.routes import notifications as notification_routes
 from app.routes import dm_scope as dm_scope_routes
 from app.routes import enrollment as enrollment_routes
 from app.routes import invite_codes as invite_code_routes
+from app.routes import system_settings as system_settings_routes
 from app.settings import get_settings
 
 
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(dm_scope_routes.router, prefix="/api")
     app.include_router(enrollment_routes.router, prefix="/api")
     app.include_router(invite_code_routes.router, prefix="/api")
+    app.include_router(system_settings_routes.router, prefix="/api")
     return app
 
 

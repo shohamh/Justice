@@ -74,6 +74,7 @@ export default function ManageSheet({ open, onClose }: Props) {
           <div>
             <h3 className={sectionHeadClass}>מנהל</h3>
             <Link to="/admin/invite-codes" onClick={onClose} className={linkClass}>{t("invite_codes.title")}</Link>
+            <Link to="/admin/system-settings" onClick={onClose} className={linkClass}>{t("system_settings.title")}</Link>
           </div>
         )}
       </div>
