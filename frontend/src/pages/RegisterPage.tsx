@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
@@ -83,8 +84,16 @@ export default function RegisterPage() {
       });
       await loginWithToken(resp.access_token);
       navigate("/setup/telegram", { replace: true });
-    } catch {
-      setError(t("register.errors.network"));
+    } catch (err) {
+      const detail = isAxiosError(err) ? (err.response?.data?.detail as string | undefined) : undefined;
+      const knownErrors: Record<string, string> = {
+        "invalid invite code": t("register.errors.invite_code_invalid"),
+        "invite code exhausted": t("register.errors.invite_code_exhausted"),
+        "personal_number already exists": t("register.errors.personal_number_exists"),
+        "holding node not bootstrapped": t("register.errors.node_not_bootstrapped"),
+        "requested node not found": t("register.errors.node_not_found"),
+      };
+      setError(detail ? (knownErrors[detail] ?? detail) : t("register.errors.network"));
     } finally {
       setSubmitting(false);
     }

@@ -625,7 +625,10 @@
     "reason": "סיבה",
     "errors": {
       "invite_code_exhausted": "קוד ההזמנה מוצה",
+      "invite_code_invalid": "קוד הזמנה לא תקין",
       "personal_number_exists": "מספר אישי כבר קיים במערכת",
+      "node_not_bootstrapped": "מסגרת זו אינה פתוחה לרישום עדיין",
+      "node_not_found": "המסגרת שנבחרה לא נמצאה",
       "network": "שגיאת רשת. נסה שוב."
     }
   },
