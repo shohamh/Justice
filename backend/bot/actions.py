@@ -37,8 +37,8 @@ _TYPE_LABELS: dict[str, str] = {
     "constraint_rejected": "דחיות אילוץ",
     "exemption_approved": "אישורי פטור",
     "exemption_rejected": "דחיות פטור",
-    "algorithm_job_done": "עבודות אלגוריתם",
-    "algorithm_job_failed": "כשלי אלגוריתם",
+    "algorithm_job_done": "הרצות אלגוריתם",
+    "algorithm_job_failed": "כישלונות הרצת אלגוריתם",
 }
 
 
