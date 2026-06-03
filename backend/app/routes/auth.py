@@ -14,6 +14,7 @@ from app.auth.password import hash_password, verify_password
 from app.db.models import HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
+from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
 from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
@@ -57,6 +58,24 @@ class RegisterRequest(BaseModel):
     requested_node_id: uuid.UUID
     exemption_requests: list[dict] = []
     personal_constraints: list[dict] = []
+
+
+class ForgotPasswordCheckRequest(BaseModel):
+    personal_number: str = Field(min_length=1, max_length=20)
+
+
+class ForgotPasswordChannelsResponse(BaseModel):
+    channels: list[str]
+
+
+class ForgotPasswordSendRequest(BaseModel):
+    personal_number: str = Field(min_length=1, max_length=20)
+    channel: str = Field(pattern="^(telegram|email)$")
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=100)
+    new_password: str = Field(min_length=1, max_length=200)
 
 
 class NodeOut(BaseModel):
@@ -246,3 +265,39 @@ def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
 @router.get("/register/validate-code")
 def validate_invite_code(code: str, session: Session = Depends(get_session)) -> dict:
     return {"valid": validate_code(session, code=code)}
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordChannelsResponse)
+@limiter.limit(get_settings().login_rate_limit)
+def forgot_password_check(
+    body: Annotated[ForgotPasswordCheckRequest, Body()],
+    request: Request,
+    session: Session = Depends(get_session),
+) -> ForgotPasswordChannelsResponse:
+    channels = pwd_reset_svc.available_channels(session, personal_number=body.personal_number)
+    return ForgotPasswordChannelsResponse(channels=channels)
+
+
+@router.post("/forgot-password/send", status_code=200)
+@limiter.limit(get_settings().login_rate_limit)
+def forgot_password_send(
+    body: Annotated[ForgotPasswordSendRequest, Body()],
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict:
+    pwd_reset_svc.create_and_send(session, personal_number=body.personal_number, channel=body.channel)
+    session.commit()
+    return {}
+
+
+@router.post("/reset-password", status_code=200)
+def reset_password(
+    body: ResetPasswordRequest,
+    session: Session = Depends(get_session),
+) -> dict:
+    result = pwd_reset_svc.redeem_reset_token(session, token=body.token, new_password=body.new_password)
+    if result == "ok":
+        session.commit()
+        return {}
+    session.rollback()
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
