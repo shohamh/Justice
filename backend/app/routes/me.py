@@ -24,6 +24,16 @@ class MeResponse(BaseModel):
     hierarchy_node_id: uuid.UUID | None
     telegram_linked: bool
     telegram_required: bool
+    phone: str | None = None
+    gender: str | None = None
+    is_officer: bool | None = None
+    rank: str | None = None
+    bahad1_graduate: bool = False
+    enlistment_date: str | None = None
+    mandatory_end_date: str | None = None
+    discharge_date: str | None = None
+    last_mitvahim_date: str | None = None
+    last_alal_date: str | None = None
 
 
 @router.get("", response_model=MeResponse)
@@ -41,6 +51,9 @@ def me(
         telegram_required = bool(get_setting(session, "registration.telegram_required"))
     except Exception:
         telegram_required = True
+    def _date(d) -> str | None:
+        return str(d) if d is not None else None
+
     return MeResponse(
         id=user.id,
         personal_number=user.personal_number,
@@ -50,4 +63,14 @@ def me(
         hierarchy_node_id=user.hierarchy_node_id,
         telegram_linked=link is not None,
         telegram_required=telegram_required,
+        phone=user.phone,
+        gender=user.gender,
+        is_officer=user.is_officer,
+        rank=user.rank,
+        bahad1_graduate=user.bahad1_graduate or False,
+        enlistment_date=_date(user.enlistment_date),
+        mandatory_end_date=_date(user.mandatory_end_date),
+        discharge_date=_date(user.discharge_date),
+        last_mitvahim_date=_date(user.last_mitvahim_date),
+        last_alal_date=_date(user.last_alal_date),
     )

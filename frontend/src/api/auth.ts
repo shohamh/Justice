@@ -15,6 +15,16 @@ export interface Me {
   hierarchy_node_id: string | null;
   telegram_linked: boolean;
   telegram_required: boolean;
+  phone?: string | null;
+  gender?: string | null;
+  is_officer?: boolean | null;
+  rank?: string | null;
+  bahad1_graduate?: boolean;
+  enlistment_date?: string | null;
+  mandatory_end_date?: string | null;
+  discharge_date?: string | null;
+  last_mitvahim_date?: string | null;
+  last_alal_date?: string | null;
 }
 
 export interface NodeOut {

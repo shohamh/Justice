@@ -30,8 +30,9 @@ import {
   listPendingSwaps,
   rejectSwap,
 } from "../api/swaps";
+import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 
-type Tab = "constraints" | "exemptions" | "field_updates" | "swaps";
+type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
 
 function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
   const map = new Map<string, NodeDTO>();
@@ -57,6 +58,8 @@ export default function ApprovalsPage() {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
+  const [enrollItems, setEnrollItems] = useState<EnrollmentRequestDTO[]>([]);
+  const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
   const [soldierMap, setSoldierMap] = useState<Map<string, SoldierDTO>>(new Map());
   const [nodeMap, setNodeMap] = useState<Map<string, NodeDTO>>(new Map());
 
@@ -73,6 +76,7 @@ export default function ApprovalsPage() {
     setErItems(await listPendingExemptionRequests());
     setFuItems(await listPendingFieldUpdates());
     setSwapItems(await listPendingSwaps());
+    setEnrollItems(await listPendingEnrollments());
   }, []);
 
   useEffect(() => {
@@ -139,7 +143,21 @@ export default function ApprovalsPage() {
     await refresh();
   }
 
-  const total = items.length + erItems.length + fuItems.length + swapItems.length;
+  async function onEnrollApprove(id: string) {
+    await approveEnrollment(id);
+    await refresh();
+  }
+  async function onEnrollReject(id: string) {
+    const note = enrollRejectNotes[id];
+    if (!note) return;
+    await rejectEnrollment(id, note);
+    const next = { ...enrollRejectNotes };
+    delete next[id];
+    setEnrollRejectNotes(next);
+    await refresh();
+  }
+
+  const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length;
 
   return (
     <Layout>
@@ -174,6 +192,13 @@ export default function ApprovalsPage() {
             data-testid="approvals-tab-swaps"
           >
             {t("swaps.title")}{swapItems.length > 0 ? ` (${swapItems.length})` : ""}
+          </button>
+          <button
+            className={`pb-2 text-sm ${tab === "enrollment" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
+            onClick={() => setTab("enrollment")}
+            data-testid="approvals-tab-enrollment"
+          >
+            {t("enrollment.tab")}{enrollItems.length > 0 ? ` (${enrollItems.length})` : ""}
           </button>
         </div>
 
@@ -336,6 +361,41 @@ export default function ApprovalsPage() {
                       className="bg-red-600 text-white px-2 py-1 rounded text-xs"
                     >
                       {t("approvals.reject")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab === "enrollment" && (
+          <div className="space-y-3" dir="rtl">
+            {enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
+            {enrollItems.map(req => {
+              const sd = soldierDisplay(req.soldier_id);
+              const nodeName = nodeMap.get(req.requested_node_id)?.name ?? req.requested_node_id.slice(0, 8);
+              return (
+                <div key={req.id} className="border rounded p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2">
+                    <strong><SoldierLink id={req.soldier_id} name={sd.name} /></strong>
+                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                  </div>
+                  <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
+                  <div className="flex gap-2 items-center">
+                    <button onClick={() => onEnrollApprove(req.id)}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs">
+                      {t("enrollment.approve")}
+                    </button>
+                    <input
+                      placeholder={t("enrollment.decision_note_placeholder")}
+                      value={enrollRejectNotes[req.id] ?? ""}
+                      onChange={e => setEnrollRejectNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
+                      className="border rounded p-1 text-xs flex-1"
+                    />
+                    <button onClick={() => onEnrollReject(req.id)}
+                      disabled={!enrollRejectNotes[req.id]}
+                      className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">
+                      {t("enrollment.reject")}
                     </button>
                   </div>
                 </div>
