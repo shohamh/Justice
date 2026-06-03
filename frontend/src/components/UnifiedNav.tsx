@@ -39,7 +39,7 @@ export default function UnifiedNav() {
       ]);
       setPendingCount(c + e + f);
     })();
-  }, [canApprove]);
+  }, [canApprove, location.pathname]);
 
   const soldierTabs: NavTab[] = [
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
