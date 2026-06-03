@@ -659,5 +659,30 @@
     "uses_left": "שימושים שנותרו",
     "revoke": "בטל",
     "uses_left_label": "מספר שימושים"
+  },
+  "forgot_password": {
+    "title": "שכחתי סיסמה",
+    "personal_number_label": "מספר אישי",
+    "continue": "המשך",
+    "send_telegram": "📱 שלח לטלגרם",
+    "send_email": "📧 שלח לאימייל",
+    "no_channels": "לא נמצאו אמצעי קשר — פנה למנהל",
+    "sent": "נשלח קישור לאיפוס סיסמה",
+    "link_label": "שכחתי סיסמה",
+    "back_to_login": "חזרה להתחברות"
+  },
+  "reset_password": {
+    "title": "איפוס סיסמה",
+    "new_password": "סיסמה חדשה",
+    "confirm": "אימות סיסמה",
+    "submit": "עדכן סיסמה",
+    "submitting": "מעדכן...",
+    "success": "הסיסמה עודכנה. ניתן להתחבר.",
+    "errors": {
+      "token_invalid": "קישור לא תקין או כבר נוצל",
+      "token_expired": "פג תוקף הקישור — בקש קישור חדש",
+      "password_too_short": "הסיסמה חייבת להכיל לפחות 10 תווים",
+      "passwords_mismatch": "הסיסמאות אינן תואמות"
+    }
   }
 }

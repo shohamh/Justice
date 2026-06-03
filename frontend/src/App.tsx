@@ -23,6 +23,8 @@ import UnitCalendarPage from "./pages/UnitCalendarPage";
 import CommandDashboardPage from "./pages/CommandDashboardPage";
 import AlgorithmPage from "./pages/AlgorithmPage";
 import RegisterPage from "./pages/RegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
 import AdminInviteCodesPage from "./pages/AdminInviteCodesPage";
 import SystemSettingsPage from "./pages/SystemSettingsPage";
@@ -50,6 +52,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route path="/setup/telegram" element={<TelegramSetupPage />} />

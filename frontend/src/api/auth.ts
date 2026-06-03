@@ -43,7 +43,7 @@ export interface RegisterPayload {
   full_name: string;
   password: string;
   phone: string | null;
-  email: string | null;
+  email?: string | null;
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
