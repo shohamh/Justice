@@ -595,5 +595,59 @@
     "type_swap_offer_incoming": "הצעת החלפה נכנסת",
     "type_algorithm_job_done": "הרצת אלגוריתם הסתיימה",
     "type_algorithm_job_failed": "הרצת אלגוריתם נכשלה"
+  },
+  "register": {
+    "title": "הרשמה",
+    "signup_button": "הרשמה לחייל חדש",
+    "step_invite": "קוד הזמנה",
+    "step_personal": "פרטים אישיים",
+    "step_exemptions": "בקשות פטור",
+    "step_constraints": "אילוצים אישיים",
+    "step_commander": "בחירת מסגרת",
+    "step_review": "סקירה ואישור",
+    "invite_code_label": "קוד הזמנה",
+    "invite_code_invalid": "קוד שגוי או מוצה",
+    "next": "הבא",
+    "back": "חזור",
+    "skip": "דלג",
+    "submit": "הרשם",
+    "submitting": "נרשם...",
+    "search_commander": "חפש מסגרת או מפקד",
+    "no_results": "לא נמצאו תוצאות",
+    "selected_node": "מסגרת נבחרת",
+    "commander_label": "מפקד",
+    "add_exemption": "הוסף פטור",
+    "add_constraint": "הוסף אילוץ",
+    "remove": "הסר",
+    "reason": "סיבה",
+    "errors": {
+      "invite_code_exhausted": "קוד ההזמנה מוצה",
+      "personal_number_exists": "מספר אישי כבר קיים במערכת",
+      "network": "שגיאת רשת. נסה שוב."
+    }
+  },
+  "telegram_setup": {
+    "title": "חיבור טלגרם",
+    "instructions": "שלח את הקוד הבא לבוט שלנו כדי לקשר את החשבון:",
+    "check_button": "בדוק אימות",
+    "checking": "בודק...",
+    "verified": "החשבון אומת בהצלחה!",
+    "bot_link": "פתח את הבוט",
+    "skip_for_now": "דלג כרגע"
+  },
+  "enrollment": {
+    "tab": "הצטרפות",
+    "none": "אין בקשות הצטרפות ממתינות",
+    "requested_node": "מסגרת מבוקשת",
+    "approve": "אשר",
+    "reject": "דחה",
+    "decision_note_placeholder": "הערת החלטה (חובה לדחייה)"
+  },
+  "invite_codes": {
+    "title": "קודי הזמנה",
+    "create": "צור קוד",
+    "uses_left": "שימושים שנותרו",
+    "revoke": "בטל",
+    "uses_left_label": "מספר שימושים"
   }
 }
