@@ -1,15 +1,15 @@
 """duty_manager_scope table — multi-node DM scoping, seeds existing DMs
 
-Revision ID: 0031
-Revises: 0030
+Revision ID: 0033
+Revises: 0032
 Create Date: 2026-06-03
 """
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0031"
-down_revision = "0030"
+revision = "0033"
+down_revision = "0032"
 branch_labels = None
 depends_on = None
 
