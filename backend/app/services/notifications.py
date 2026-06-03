@@ -46,6 +46,9 @@ _FRONTEND_PATHS: dict[str, str] = {
     "announcement": "/notifications",
     "algorithm_job_done": "/algorithm",
     "algorithm_job_failed": "/algorithm",
+    "enrollment_request_received": "/approvals",
+    "enrollment_approved": "/profile",
+    "enrollment_rejected": "/profile",
 }
 
 

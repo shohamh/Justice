@@ -39,6 +39,9 @@ _TYPE_LABELS: dict[str, str] = {
     "exemption_rejected": "דחיות פטור",
     "algorithm_job_done": "הרצות אלגוריתם",
     "algorithm_job_failed": "כישלונות הרצת אלגוריתם",
+    "enrollment_request_received": "בקשות הצטרפות",
+    "enrollment_approved": "אישורי הצטרפות",
+    "enrollment_rejected": "דחיות הצטרפות",
 }
 
 
