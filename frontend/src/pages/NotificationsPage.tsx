@@ -48,7 +48,7 @@ export default function NotificationsPage() {
 
   return (
     <Layout>
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">{t("notifications.title")}</h2>
           <button onClick={handleMarkAll} className="text-sm text-indigo-600 hover:text-indigo-800">
@@ -57,11 +57,11 @@ export default function NotificationsPage() {
         </div>
         <div className="flex gap-2 mb-4">
           <button onClick={() => { setFilter("all"); setOffset(0); }}
-                  className={`px-3 py-1 rounded text-sm ${filter === "all" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100"}`}>
+                  className={`px-3 py-1 rounded text-sm ${filter === "all" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
             {t("notifications.all")} ({total})
           </button>
           <button onClick={() => { setFilter("unread"); setOffset(0); }}
-                  className={`px-3 py-1 rounded text-sm ${filter === "unread" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100"}`}>
+                  className={`px-3 py-1 rounded text-sm ${filter === "unread" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
             {t("notifications.unread")}
           </button>
         </div>
@@ -70,7 +70,7 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {notifications.map((n) => (
-              <div key={n.id} className={`flex items-start gap-3 p-3 rounded border ${n.is_read ? "bg-gray-50" : "bg-white"}`}>
+              <div key={n.id} className={`flex items-start gap-3 p-3 rounded border dark:border-gray-600 ${n.is_read ? "bg-gray-50 dark:bg-gray-700" : "bg-white dark:bg-gray-800"}`}>
                 <span className="text-xl">{typeLabels[n.type] || "🔔"}</span>
                 <div className="flex-1">
                   <p className={`${n.is_read ? "text-gray-600" : "font-semibold"}`}>{n.title}</p>
@@ -95,7 +95,7 @@ export default function NotificationsPage() {
           <div className="flex justify-center gap-2 mt-4">
             {Array.from({ length: pages }, (_, i) => (
               <button key={i} onClick={() => setOffset(i * limit)}
-                      className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100"}`}>
+                      className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
                 {i + 1}
               </button>
             ))}

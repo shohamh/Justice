@@ -64,7 +64,7 @@ export function ShiftsContent() {
 
   return (
     <>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
           <div className="flex gap-2">
@@ -88,11 +88,11 @@ export function ShiftsContent() {
         <div className="flex gap-4 text-sm">
           <label className="flex items-center gap-2">
             {t("shifts.filter_from")}
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border rounded p-1" />
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           <label className="flex items-center gap-2">
             {t("shifts.filter_to")}
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border rounded p-1" />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
         </div>
 

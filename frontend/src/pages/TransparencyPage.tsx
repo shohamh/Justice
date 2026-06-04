@@ -38,7 +38,7 @@ export default function TransparencyPage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4" data-testid="transparency-page">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" data-testid="transparency-page">
         <h2 className="text-xl font-semibold">{t("transparency.title")}</h2>
         {(() => {
           const transCols: ColDef<TransparencyRow>[] = [

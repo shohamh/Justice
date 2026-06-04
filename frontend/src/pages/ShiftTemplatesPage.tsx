@@ -63,7 +63,7 @@ export function ShiftTemplatesContent() {
       cell: (tmpl) => (
         <span className="flex gap-1 flex-wrap">
           {tmpl.weekdays.map(d => (
-            <span key={d} className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-xs">
+            <span key={d} className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-xs">
               {t(`weekday_${d}`)}
             </span>
           ))}
@@ -80,7 +80,7 @@ export function ShiftTemplatesContent() {
       id: "auto_roll",
       header: t("shift_templates.auto_roll"),
       cell: (tmpl) => tmpl.auto_roll
-        ? <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-medium">{t("shift_templates.auto_badge")}</span>
+        ? <span className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded text-xs font-medium">{t("shift_templates.auto_badge")}</span>
         : null,
     },
     {
@@ -116,7 +116,7 @@ export function ShiftTemplatesContent() {
 
   return (
     <>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shift-templates-page">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shift-templates-page">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("shift_templates.title")}</h2>
           <button

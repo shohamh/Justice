@@ -115,7 +115,7 @@ export default function ProfilePage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-3">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-3">
         <h2 className="text-xl font-semibold">{t("profile.title")}</h2>
         <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
@@ -130,7 +130,7 @@ export default function ProfilePage() {
         )}
       </section>
 
-      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-4" dir="rtl">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-4" dir="rtl">
         <h3 className="text-lg font-semibold">{t("soldier_profile.section_title")}</h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
           {user?.gender && <div><span className="font-medium">{t("soldier_profile.gender")}:</span> {user.gender === "male" ? t("soldier_profile.gender_male") : user.gender === "female" ? t("soldier_profile.gender_female") : user.gender}</div>}
@@ -152,7 +152,7 @@ export default function ProfilePage() {
           <p className="font-medium">{t("soldier_profile.submit_update")}</p>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.gender")}</label>
-            <select value={genderReq} onChange={e => setGenderReq(e.target.value)} className="border rounded p-1 text-sm">
+            <select value={genderReq} onChange={e => setGenderReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
               <option value="">—</option>
               <option value="male">{t("soldier_profile.gender_male")}</option>
               <option value="female">{t("soldier_profile.gender_female")}</option>
@@ -163,14 +163,14 @@ export default function ProfilePage() {
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
-            <input type="date" value={mitvahimReq} onChange={e => setMitvahimReq(e.target.value)} className="border rounded p-1 text-sm" />
+            <input type="date" value={mitvahimReq} onChange={e => setMitvahimReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
-            <input type="date" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm" />
+            <input type="date" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
@@ -178,7 +178,7 @@ export default function ProfilePage() {
           <div className="space-y-1">
             <div className="flex gap-2 items-center">
               <label className="w-40">{t("profile.email")}</label>
-              <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1" placeholder="כתובת אימייל" />
+              <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="כתובת אימייל" />
               <button type="button" disabled={emailSaving} onClick={async () => {
                 setEmailSaving(true); setEmailMsg(null);
                 try {
@@ -210,7 +210,7 @@ export default function ProfilePage() {
           <div className="space-y-2 text-sm">
             <p className="font-medium">{t("soldier_profile.field_updates_tab")}</p>
             {fieldUpdates.map((u) => (
-              <div key={u.id} className="border rounded p-3 space-y-1">
+              <div key={u.id} className="border dark:border-gray-600 rounded p-3 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{t(`soldier_profile.${u.field_name}`)}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded ${u.status === "pending" ? "bg-yellow-100 text-yellow-800" : u.status === "approved" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
@@ -229,7 +229,7 @@ export default function ProfilePage() {
         )}
       </section>
 
-      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.telegram")}</h3>
         {tgCode ? (
           <div className="space-y-2">
@@ -245,13 +245,13 @@ export default function ProfilePage() {
               </a>
             )}
             <div className="flex items-center gap-2">
-              <code className="bg-gray-100 px-3 py-1 rounded text-lg font-mono">{tgCode}</code>
+              <code className="bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded text-lg font-mono">{tgCode}</code>
               <button onClick={() => navigator.clipboard.writeText(tgCode)} className="text-xs text-indigo-600 hover:text-indigo-800">
                 {t("notifications.copy")}
               </button>
             </div>
             <div className="flex items-center gap-2">
-              <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono text-gray-700">/verify {tgCode}</code>
+              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm font-mono text-gray-700 dark:text-gray-200">/verify {tgCode}</code>
               <button onClick={() => navigator.clipboard.writeText(`/verify ${tgCode}`)} className="text-xs text-indigo-600 hover:text-indigo-800">
                 {t("notifications.copy")}
               </button>
@@ -272,11 +272,11 @@ export default function ProfilePage() {
         )}
       </section>
 
-      <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>
         <div className="space-y-2">
           {prefs.map((p) => (
-            <div key={p.notification_type} className="flex items-center justify-between py-1 border-b text-sm">
+            <div key={p.notification_type} className="flex items-center justify-between py-1 border-b dark:border-gray-600 text-sm">
               <span>{t(`notifications.type_${p.notification_type}`)}</span>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1">
@@ -294,7 +294,7 @@ export default function ProfilePage() {
       </section>
 
       {(user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") && (
-        <section className="bg-white rounded-lg shadow p-6 mt-4 space-y-3">
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
           <h3 className="text-lg font-semibold">{t("notifications.commander_scopes")}</h3>
           <p className="text-xs text-gray-500">{t("notifications.commander_scopes_hint")}</p>
           {scopes.length === 0 ? (
@@ -302,7 +302,7 @@ export default function ProfilePage() {
           ) : (
             <ul className="space-y-1">
               {scopes.map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm py-1 border-b">
+                <li key={s.id} className="flex items-center justify-between text-sm py-1 border-b dark:border-gray-600">
                   <span>{s.hierarchy_node_id}</span>
                   <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
                     {t("notifications.remove")}

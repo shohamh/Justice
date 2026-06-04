@@ -134,10 +134,10 @@ export default function MyRequestsPage() {
 
         {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
 
-        <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b pb-4">
-          <input type="date" className="border rounded p-1" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
-          <input type="date" className="border rounded p-1" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="req-end" />
-          <input className="border rounded p-1" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("my_requests.reason")} required data-testid="req-reason" />
+        <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
+          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
+          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="req-end" />
+          <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("my_requests.reason")} required data-testid="req-reason" />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting} data-testid="req-submit">
             {submitting ? t("app.loading") : t("my_requests.send")}
           </button>
@@ -160,19 +160,19 @@ export default function MyRequestsPage() {
           ))}
         </ul>
 
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("exemption_requests.title")}</h3>
           {erError && <div className="text-red-600 text-sm" data-testid="er-error">{erError}</div>}
           <form onSubmit={onErSubmit} className="flex flex-wrap items-end gap-2 mt-2">
-            <select className="border rounded p-1" value={erTypeId} onChange={(e) => setErTypeId(e.target.value)} required data-testid="er-type">
+            <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erTypeId} onChange={(e) => setErTypeId(e.target.value)} required data-testid="er-type">
               <option value="">{t("exemption_requests.type")}</option>
               {exemptionTypes.map((et) => (
                 <option key={et.id} value={et.id}>{et.name}</option>
               ))}
             </select>
-            <input type="date" className="border rounded p-1" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
-            <input type="date" className="border rounded p-1" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
-            <input className="border rounded p-1" value={erReason} onChange={(e) => setErReason(e.target.value)} placeholder={t("exemption_requests.reason")} data-testid="er-reason" />
+            <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
+            <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
+            <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erReason} onChange={(e) => setErReason(e.target.value)} placeholder={t("exemption_requests.reason")} data-testid="er-reason" />
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={erSubmitting} data-testid="er-submit">
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
             </button>
@@ -239,7 +239,7 @@ export default function MyRequestsPage() {
           </ul>
         </div>
 
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("my_requests.my_exemptions")}</h3>
           {exemptions.length === 0 && <p className="text-sm text-gray-500">{t("exemptions.none")}</p>}
           <ul className="text-sm space-y-1">

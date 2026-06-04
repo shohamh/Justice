@@ -123,7 +123,7 @@ export default function CommandDashboardPage() {
         <h2 className="text-xl font-semibold">{t("command_dashboard.title")}</h2>
         <SummaryCards data={summaryData} onCardClick={handleCardClick} />
         {panels.map((panel) => (
-          <details key={panel.id} open className="bg-white rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
+          <details key={panel.id} open className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
             <summary className="cursor-pointer font-medium text-lg mb-2">{panel.title}</summary>
             {panel.content}
           </details>

@@ -70,25 +70,25 @@ export function DutyConfigContent() {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-8" data-testid="duty-config-page">
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-8" data-testid="duty-config-page">
       <h2 className="text-xl font-semibold">{t("duty_config.title")}</h2>
 
       <div data-testid="duty-types-section">
         <h3 className="font-medium mb-2">{t("duty_config.duty_types")}</h3>
         <form onSubmit={addDutyType} className="flex items-end gap-2 mb-2" data-testid="duty-type-form">
           <label className="block"><span className="text-xs">{t("duty_config.name")}</span>
-            <input className="block border rounded p-1" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
+            <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
           <label className="block"><span className="text-xs">{t("duty_config.score_per_day")}</span>
-            <input className="block border rounded p-1 w-24" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
+            <input className="block border rounded p-1 w-24 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
           <label className="block"><span className="text-xs">{t("reserve_ratio")}</span>
-            <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
+            <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
           <label className="block"><span className="text-xs">{t("reserve_minimum")}</span>
-            <input type="number" min="0" step="1" className="block border rounded p-1 w-16" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
+            <input type="number" min="0" step="1" className="block border rounded p-1 w-16 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dt-submit">{t("duty_config.add")}</button>
         </form>
         <div className="space-y-1 text-sm" data-testid="duty-type-list">
           {dutyTypes.map((d) => (
-            <div key={d.id} data-testid={`dt-row-${d.name}`} className="border rounded p-2 space-y-2">
+            <div key={d.id} data-testid={`dt-row-${d.name}`} className="border dark:border-gray-600 rounded p-2 space-y-2">
               <div className="flex items-center gap-2">
                 <span>{d.name} — {d.score_per_day}</span>
                 {d.reserve_ratio && parseFloat(d.reserve_ratio) > 0 && (
@@ -119,7 +119,7 @@ export function DutyConfigContent() {
       <div data-testid="locations-section">
         <h3 className="font-medium mb-2">{t("duty_config.locations")}</h3>
         <form onSubmit={addLocation} className="flex items-end gap-2 mb-2" data-testid="location-form">
-          <input className="border rounded p-1" value={locName} onChange={(e) => setLocName(e.target.value)} required data-testid="loc-name" placeholder={t("duty_config.name")} />
+          <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={locName} onChange={(e) => setLocName(e.target.value)} required data-testid="loc-name" placeholder={t("duty_config.name")} />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="loc-submit">{t("duty_config.add")}</button>
         </form>
         <ul className="text-sm" data-testid="location-list">
@@ -130,7 +130,7 @@ export function DutyConfigContent() {
       <div data-testid="exemption-types-section">
         <h3 className="font-medium mb-2">{t("duty_config.exemption_types")}</h3>
         <form onSubmit={addExType} className="flex items-end gap-2 mb-2 flex-wrap" data-testid="exemption-type-form">
-          <input className="border rounded p-1" value={exName} onChange={(e) => setExName(e.target.value)} required data-testid="et-name" placeholder={t("duty_config.name")} />
+          <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exName} onChange={(e) => setExName(e.target.value)} required data-testid="et-name" placeholder={t("duty_config.name")} />
           <label className="flex items-center gap-1 text-xs">
             <input type="checkbox" checked={exGlobal} onChange={(e) => setExGlobal(e.target.checked)} data-testid="et-global" />
             {t("duty_config.global")}
@@ -139,10 +139,10 @@ export function DutyConfigContent() {
         </form>
         <ul className="text-sm space-y-2" data-testid="exemption-type-list">
           {exTypes.map((et) => (
-            <li key={et.id} data-testid={`et-row-${et.name}`} className="border rounded p-2">
+            <li key={et.id} data-testid={`et-row-${et.name}`} className="border dark:border-gray-600 rounded p-2">
               <div className="flex items-center gap-2">
                 <span>{et.name}</span>
-                {et.is_global && <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
+                {et.is_global && <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
               </div>
               {et.is_global ? (
                 <div className="text-xs text-gray-500 mt-1">{t("duty_config.global_exempt_desc")}</div>

@@ -30,16 +30,16 @@ export default function TelegramSetupPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
-      <div className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4 text-center">
+      <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4 text-center">
         <h1 className="text-2xl font-bold">{t("telegram_setup.title")}</h1>
         {verified ? (
           <p className="text-green-600 font-semibold">{t("telegram_setup.verified")}</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600">{t("telegram_setup.instructions")}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300">{t("telegram_setup.instructions")}</p>
             {codeInfo && (
               <>
-                <div className="bg-gray-100 rounded p-3 font-mono text-xl tracking-widest select-all">
+                <div className="bg-gray-100 dark:bg-gray-700 rounded p-3 font-mono text-xl tracking-widest select-all dark:text-gray-100">
                   {codeInfo.code}
                 </div>
                 {codeInfo.bot_username && (

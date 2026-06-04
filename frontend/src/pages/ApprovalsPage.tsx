@@ -172,10 +172,10 @@ export default function ApprovalsPage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
 
-        <div className="flex gap-4 border-b">
+        <div className="flex gap-4 border-b dark:border-gray-600">
           <button
             className={`pb-2 text-sm ${tab === "constraints" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
             onClick={() => setTab("constraints")}
@@ -220,7 +220,7 @@ export default function ApprovalsPage() {
               {items.map((c) => {
                 const sd = soldierDisplay(c.soldier_id);
                 return (
-                <li key={c.id} className="border rounded p-3" data-testid={`approval-row-${c.id}`}>
+                <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <strong className="text-sm"><SoldierLink id={c.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
@@ -232,7 +232,7 @@ export default function ApprovalsPage() {
                       {t("approvals.approve")}
                     </button>
                     <input
-                      className="border rounded p-1 text-sm w-28"
+                      className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       value={rejectNotes[c.id] ?? ""}
                       onChange={(e) => setRejectNotes((prev) => ({ ...prev, [c.id]: e.target.value }))}
                       placeholder={t("approvals.decision_note")}
@@ -261,7 +261,7 @@ export default function ApprovalsPage() {
               {erItems.map((er) => {
                 const sd = soldierDisplay(er.soldier_id);
                 return (
-                <li key={er.id} className="border rounded p-3" data-testid={`er-approval-row-${er.id}`}>
+                <li key={er.id} className="border dark:border-gray-600 rounded p-3" data-testid={`er-approval-row-${er.id}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <strong className="text-sm"><SoldierLink id={er.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
@@ -288,7 +288,7 @@ export default function ApprovalsPage() {
                       {t("approvals.approve")}
                     </button>
                     <input
-                      className="border rounded p-1 text-sm w-28"
+                      className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       value={rejectNotes[`er-${er.id}`] ?? ""}
                       onChange={(e) => setRejectNotes((prev) => ({ ...prev, [`er-${er.id}`]: e.target.value }))}
                       placeholder={t("approvals.decision_note")}
@@ -316,22 +316,22 @@ export default function ApprovalsPage() {
             {fuItems.map(item => {
               const sd = soldierDisplay(item.soldier_id);
               return (
-              <div key={item.id} className="border rounded p-3 text-sm space-y-2">
+              <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">
                   <strong><SoldierLink id={item.soldier_id} name={sd.name} /></strong>
                   {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   <span className="text-gray-400">—</span>
                   <span>{t(`soldier_profile.${item.field_name}`)}</span>
                 </div>
-                <div className="text-gray-500">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
-                <div className="text-gray-600">{t("approvals.field_update_new_value")}<strong>{item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
+                <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
+                <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input
                     placeholder={t("approvals.decision_note")}
                     value={fuNotes[item.id] ?? ""}
                     onChange={e => setFuNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
-                    className="border rounded p-1 text-xs flex-1"
+                    className="border rounded p-1 text-xs flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                   <button onClick={() => onFuReject(item)} disabled={!fuNotes[item.id]} className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">{t("approvals.reject")}</button>
                 </div>
@@ -380,7 +380,7 @@ export default function ApprovalsPage() {
                       placeholder={t("approvals.decision_note")}
                       value={swapRejectNotes[swap.id] ?? ""}
                       onChange={e => setSwapRejectNotes(prev => ({ ...prev, [swap.id]: e.target.value }))}
-                      className="border rounded p-1 text-xs w-28"
+                      className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     />
                     <button
                       onClick={() => onSwapReject(swap.id)}
@@ -416,7 +416,7 @@ export default function ApprovalsPage() {
                       placeholder={t("enrollment.decision_note_placeholder")}
                       value={enrollRejectNotes[req.id] ?? ""}
                       onChange={e => setEnrollRejectNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                      className="border rounded p-1 text-xs flex-1"
+                      className="border rounded p-1 text-xs flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     />
                     <button onClick={() => onEnrollReject(req.id)}
                       disabled={!enrollRejectNotes[req.id]}

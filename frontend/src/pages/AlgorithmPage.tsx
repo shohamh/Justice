@@ -105,8 +105,8 @@ export function AlgorithmContent() {
   return (
     <div className="flex flex-col md:flex-row h-full gap-4 overflow-hidden" dir="rtl">
       {/* Left panel: job history */}
-      <div className="w-full md:w-72 md:shrink-0 border rounded-lg bg-white flex flex-col overflow-hidden max-h-48 md:max-h-none">
-        <div className="flex justify-between items-center p-3 border-b">
+      <div className="w-full md:w-72 md:shrink-0 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 flex flex-col overflow-hidden max-h-48 md:max-h-none">
+        <div className="flex justify-between items-center p-3 border-b dark:border-gray-600">
           <h2 className="font-semibold text-sm">{t("algorithm.runs_title")}</h2>
           <button
             onClick={() => setShowRunForm(true)}
@@ -125,8 +125,8 @@ export function AlgorithmContent() {
               onClick={() => setSelectedJobId(job.id)}
               className={`w-full text-right px-3 py-2 rounded border text-sm transition-colors ${
                 selectedJobId === job.id
-                  ? "bg-indigo-50 border-indigo-300 text-indigo-800"
-                  : "hover:bg-gray-50 border-transparent"
+                  ? "bg-indigo-50 dark:bg-indigo-950 border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200"
+                  : "hover:bg-gray-50 dark:hover:bg-gray-700 border-transparent"
               }`}
             >
               <div className="flex items-center gap-2">
@@ -144,7 +144,7 @@ export function AlgorithmContent() {
       </div>
 
       {/* Right panel: job detail */}
-      <div className="flex-1 border rounded-lg bg-white overflow-y-auto p-4">
+      <div className="flex-1 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 overflow-y-auto p-4">
         {!selectedJobId && (
           <p className="text-gray-400 text-sm text-center mt-16">{t("algorithm.select_run")}</p>
         )}
@@ -156,7 +156,7 @@ export function AlgorithmContent() {
         {selectedJob && (
           <div className="space-y-4">
             {/* Job header */}
-            <div className="text-sm space-y-1 border-b pb-3">
+            <div className="text-sm space-y-1 border-b dark:border-gray-600 pb-3">
               <div className="flex items-center gap-3">
                 <span className={`font-semibold text-base ${selectedJob.status === "done" ? "text-green-700" : selectedJob.status === "failed" ? "text-red-600" : "text-gray-600"}`}>
                   {statusIcon(selectedJob.status)}
@@ -192,7 +192,7 @@ export function AlgorithmContent() {
                     </div>
 
                     {/* Progress bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
                       <div
                         className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
                         style={{ width: `${pct}%` }}
@@ -257,7 +257,7 @@ export function AlgorithmContent() {
       {showRunForm && (
         <>
           <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setShowRunForm(false)} />
-          <div className="fixed inset-y-0 right-0 w-96 bg-white z-50 shadow-xl overflow-y-auto">
+          <div className="fixed inset-y-0 right-0 w-96 bg-white dark:bg-gray-800 z-50 shadow-xl overflow-y-auto">
             <div className="p-6 space-y-4">
               <div className="flex justify-between items-center">
                 <h2 className="font-semibold">{t("algorithm.new_run")}</h2>

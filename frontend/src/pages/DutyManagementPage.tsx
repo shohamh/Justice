@@ -73,24 +73,24 @@ export function DutyManagementContent() {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-6" data-testid="duty-management-page">
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6" data-testid="duty-management-page">
       <h2 className="text-xl font-semibold">{t("duty_management.title")}</h2>
 
       <label className="block text-sm">{t("duty_management.soldier")}
-        <select className="block border rounded p-1" value={soldierId} onChange={(e) => setSoldierId(e.target.value)} data-testid="dm-soldier">
+        <select className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={soldierId} onChange={(e) => setSoldierId(e.target.value)} data-testid="dm-soldier">
           {soldiers.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
         </select>
       </label>
 
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2" data-testid="assignment-form">
-        <select className="border rounded p-1" value={typeId} onChange={(e) => setTypeId(e.target.value)} data-testid="dm-type">
+        <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={typeId} onChange={(e) => setTypeId(e.target.value)} data-testid="dm-type">
           {types.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select className="border rounded p-1" value={locId} onChange={(e) => setLocId(e.target.value)} data-testid="dm-loc">
+        <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={locId} onChange={(e) => setLocId(e.target.value)} data-testid="dm-loc">
           {locs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
-        <input type="date" className="border rounded p-1" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="dm-start" />
-        <input type="date" className="border rounded p-1" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="dm-end" />
+        <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="dm-start" />
+        <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="dm-end" />
         <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dm-create">{t("duty_management.create")}</button>
       </form>
       {error && <p className="text-red-600 text-sm" data-testid="dm-error">{error}</p>}
@@ -106,10 +106,10 @@ export function DutyManagementContent() {
         ))}
       </ul>
 
-      <form onSubmit={submitAdj} className="flex items-end gap-2 border-t pt-4" data-testid="adjustment-form">
+      <form onSubmit={submitAdj} className="flex items-end gap-2 border-t dark:border-gray-600 pt-4" data-testid="adjustment-form">
         <h3 className="font-medium">{t("duty_management.score_adjustment")}</h3>
-        <input className="border rounded p-1 w-24" value={adjDelta} onChange={(e) => setAdjDelta(e.target.value)} placeholder={t("duty_management.delta")} required data-testid="adj-delta" />
-        <input className="border rounded p-1" value={adjReason} onChange={(e) => setAdjReason(e.target.value)} placeholder={t("duty_management.reason")} required data-testid="adj-reason" />
+        <input className="border rounded p-1 w-24 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={adjDelta} onChange={(e) => setAdjDelta(e.target.value)} placeholder={t("duty_management.delta")} required data-testid="adj-delta" />
+        <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={adjReason} onChange={(e) => setAdjReason(e.target.value)} placeholder={t("duty_management.reason")} required data-testid="adj-reason" />
         <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="adj-submit">{t("duty_management.apply")}</button>
       </form>
     </section>

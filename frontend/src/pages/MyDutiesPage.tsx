@@ -60,7 +60,7 @@ export default function MyDutiesPage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-4" data-testid="my-duties-page" dir="rtl">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" data-testid="my-duties-page" dir="rtl">
         <h2 className="text-xl font-semibold">{t("my_duties.title")}</h2>
 
         <div className="text-sm" data-testid="duty-calendar">
@@ -84,12 +84,12 @@ export default function MyDutiesPage() {
         )}
 
         {selectedDuty && (
-          <div className="border rounded-lg p-4 text-sm space-y-2 bg-gray-50">
+          <div className="border dark:border-gray-600 rounded-lg p-4 text-sm space-y-2 bg-gray-50 dark:bg-gray-700">
             <div className="flex justify-between items-start">
               <h3 className="font-medium">{types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id}</h3>
               <button onClick={() => setSelectedDuty(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
             </div>
-            <p className="text-gray-600">{locs[selectedDuty.duty_location_id] ?? selectedDuty.duty_location_id}</p>
+            <p className="text-gray-600 dark:text-gray-300">{locs[selectedDuty.duty_location_id] ?? selectedDuty.duty_location_id}</p>
             <p>{selectedDuty.start_date} ← {selectedDuty.end_date}</p>
             <button
               type="button"
