@@ -52,7 +52,18 @@
     "section_personal": "אישי",
     "section_team": "צוות",
     "section_planning": "תכנון",
-    "algorithm": "ניהול אלגוריתם"
+    "algorithm": "ניהול אלגוריתם",
+    "commander": "מפקד",
+    "planning": "תכנון",
+    "planning_assignment": "שיבוץ",
+    "planning_config": "הגדרת תורנויות ומשמרות",
+    "assignment_manual": "שיבוץ ידני",
+    "assignment_algorithm": "אלגוריתם",
+    "config_duty_types": "סוגי תורנויות",
+    "config_shifts": "משמרות",
+    "config_templates": "תבניות",
+    "admin_settings": "הגדרות מערכת",
+    "admin_invite_codes": "קודי הזמנה"
   },
   "my_requests": {
     "title": "הבקשות והפטורים שלי",
