@@ -45,6 +45,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   }, [shift]);
 
   async function handleOpenCoverModal(swap: SwapRequest) {
+    setCoverSwap(swap);
     if (user) {
       const [duties, dts] = await Promise.all([
         listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
@@ -53,7 +54,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       setMyDuties(duties);
       setDutyTypeNames(Object.fromEntries(dts.map((d) => [d.id, d.name])));
     }
-    setCoverSwap(swap);
   }
 
   const dismissed = shift.assignees.filter((a) => (!a.is_reserve || a.called_up_from) && a.dismissals.length > 0);
