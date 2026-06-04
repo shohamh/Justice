@@ -100,12 +100,12 @@ export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings 
       {visible.map((a) => (
         <div
           key={a.key}
-          className="flex items-center justify-between bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 cursor-pointer hover:bg-amber-100"
+          className="flex items-center justify-between bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-700 rounded-lg px-4 py-3 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900"
           onClick={() => navigate("/profile")}
           role="alert"
           data-testid={`alert-banner-${a.key}`}
         >
-          <span className="text-sm text-amber-800 font-medium">⚠️ {a.message}</span>
+          <span className="text-sm text-amber-800 dark:text-amber-200 font-medium">⚠️ {a.message}</span>
           <button
             className="text-amber-500 hover:text-amber-700 text-lg leading-none ml-4"
             onClick={(e) => { e.stopPropagation(); setDismissed((prev) => new Set([...prev, a.key])); }}

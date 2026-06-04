@@ -213,7 +213,7 @@ export default function ProfilePage() {
               <div key={u.id} className="border dark:border-gray-600 rounded p-3 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{t(`soldier_profile.${u.field_name}`)}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${u.status === "pending" ? "bg-yellow-100 text-yellow-800" : u.status === "approved" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${u.status === "pending" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : u.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
                     {t(`soldier_profile.update_${u.status}`)}
                   </span>
                 </div>

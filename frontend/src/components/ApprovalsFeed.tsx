@@ -46,7 +46,7 @@ export default function ApprovalsFeed({ data, onRefresh }: Props) {
   return (
     <div className="space-y-2" data-testid="approvals-feed">
       {data.map((item) => (
-        <div key={item.id} className="border rounded p-2 text-sm">
+        <div key={item.id} className="border dark:border-gray-600 rounded p-2 text-sm">
           <div className="flex items-center justify-between mb-1">
             <div>
               <SoldierLink id={item.soldier_id} name={item.soldier_name} className="font-medium" />
@@ -57,7 +57,7 @@ export default function ApprovalsFeed({ data, onRefresh }: Props) {
           </div>
           <div className="flex items-center gap-2 mt-1">
             <input
-              className="border rounded px-2 py-1 text-xs flex-1"
+              className="border rounded px-2 py-1 text-xs flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
               placeholder={t("approvals.decision_note")}
               value={notes[item.id] ?? ""}
               onChange={(e) => setNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}

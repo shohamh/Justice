@@ -11,7 +11,7 @@ export default function PendingApprovalsWidget({ pendingEnrollments, pendingSwap
   if (pendingEnrollments.length === 0 && pendingSwaps.length === 0) return null;
 
   return (
-    <section className="bg-white rounded-lg shadow p-4" dir="rtl">
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
       <h2 className="text-lg font-semibold mb-3">ממתינים לאישורך</h2>
       <ul className="space-y-2 text-sm">
         {pendingEnrollments.length > 0 && (

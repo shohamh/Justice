@@ -84,7 +84,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-5">
           <div>
             <h3 className="font-bold text-lg">{t("dismiss_modal.title")}</h3>
@@ -94,7 +94,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         <div className="mb-5">
-          <label className="text-sm font-medium text-gray-600 mb-2 block">{t("dismiss_modal.date_range")}</label>
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-2 block">{t("dismiss_modal.date_range")}</label>
           <div className="flex flex-wrap gap-1.5 justify-center">
             {allDates.map((d, i) => {
               const dt = new Date(d);
@@ -123,7 +123,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
               );
             })}
           </div>
-          <div className="flex justify-center gap-6 mt-3 text-sm text-gray-600">
+          <div className="flex justify-center gap-6 mt-3 text-sm text-gray-600 dark:text-gray-300">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
               {t("dismiss_modal.from")}: <span className="font-medium text-gray-800" dir="ltr">{fromDate}</span>
@@ -136,11 +136,11 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         <div className="mb-4">
-          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.covering_reserve")}</label>
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">{t("dismiss_modal.covering_reserve")}</label>
           <select
             value={selectedReserveId}
             onChange={e => setSelectedReserveId(e.target.value)}
-            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
+            className="border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
           >
             {reserveOptions.length === 0 && <option value="">{t("dismiss_modal.no_reserves")}</option>}
             {reserveOptions.map(a => (
@@ -153,9 +153,9 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         <div className="mb-4">
-          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.reason")}</label>
+          <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">{t("dismiss_modal.reason")}</label>
           <input
-            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
+            className="border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
             value={reason}
             onChange={e => setReason(e.target.value)}
             placeholder={t("dismiss_modal.reason_placeholder")}
@@ -163,7 +163,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         </div>
 
         {mutation.isError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
             <p className="text-red-600 text-sm">
               {(mutation.error as any)?.response?.data?.detail ?? t("dismiss_modal.error")}
             </p>
@@ -171,7 +171,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
             {t("dismiss_modal.cancel")}
           </button>
           <button

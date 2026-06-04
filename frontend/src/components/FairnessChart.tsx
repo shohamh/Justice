@@ -33,7 +33,7 @@ export function ExternalFairness({ data }: ExternalProps) {
     <div className="overflow-x-auto" data-testid="external-fairness">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b">
+          <tr className="border-b dark:border-gray-600">
             <th className="text-right p-1">{t("command_dashboard.unit")}</th>
             <th className="text-right p-1">{t("command_dashboard.mean")}</th>
             <th className="text-right p-1">{t("command_dashboard.median")}</th>
@@ -43,7 +43,7 @@ export function ExternalFairness({ data }: ExternalProps) {
         </thead>
         <tbody>
           {data.map((n) => (
-            <tr key={n.node_id} className="border-b hover:bg-gray-50">
+            <tr key={n.node_id} className="border-b dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700">
               <td className="p-1 font-medium">{n.node_name}</td>
               <td className="p-1">{n.stats.mean}</td>
               <td className="p-1">{n.stats.median}</td>

@@ -64,7 +64,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">{t("shift_templates.generate_title")}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
@@ -73,29 +73,29 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
         <div className="space-y-3">
           <label className="block text-sm">
             {t("shift_templates.range_start")}
-            <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" />
+            <input type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           <label className="block text-sm">
             {t("shift_templates.range_end")}
-            <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" />
+            <input type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
 
           <button
             type="button"
             onClick={handlePreview}
             disabled={loading}
-            className="bg-gray-100 border px-3 py-1 rounded text-sm hover:bg-gray-200 disabled:opacity-50"
+            className="bg-gray-100 dark:bg-gray-700 border dark:border-gray-600 px-3 py-1 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
           >
             {t("shift_templates.preview_btn")}
           </button>
 
           {preview && (
-            <div className="max-h-48 overflow-y-auto border rounded p-2 space-y-1 text-sm">
+            <div className="max-h-48 overflow-y-auto border dark:border-gray-600 rounded p-2 space-y-1 text-sm">
               {preview.length === 0 && <p className="text-gray-500">אין תאריכים</p>}
               {preview.map(row => (
                 <div key={row.date} className="flex items-center justify-between">
                   <span dir="ltr">{row.date}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.exists ? "bg-gray-100 text-gray-600" : "bg-green-100 text-green-700"}`}>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.exists ? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" : "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"}`}>
                     {row.exists ? t("shift_templates.exists_badge") : t("shift_templates.new_badge")}
                   </span>
                 </div>
@@ -112,7 +112,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
           {error && <p className="text-red-500 text-xs">{error}</p>}
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded">{t("shift_templates.cancel")}</button>
+            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shift_templates.cancel")}</button>
             <button
               type="button"
               onClick={handleGenerate}

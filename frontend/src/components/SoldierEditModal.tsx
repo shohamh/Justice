@@ -35,26 +35,26 @@ export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="soldier-edit-modal">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="soldier-edit-modal">
         <h3 className="font-semibold mb-4">{t("team.edit_soldier")}: {soldier.full_name}</h3>
         <form onSubmit={onSubmit} className="space-y-3">
           <label className="block">
             <span className="text-xs">{t("team.full_name")}</span>
-            <input className="border rounded p-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
+            <input className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
           </label>
           <label className="block">
             <span className="text-xs">{t("profile.phone")}</span>
-            <input className="border rounded p-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
+            <input className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
           </label>
           <label className="block">
             <span className="text-xs">{t("team.title")}</span>
-            <select className="border rounded p-1 w-full" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
+            <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
               <option value="">—</option>
               {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
             </select>
           </label>
           <div className="flex justify-end gap-2">
-            <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+            <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
           </div>
         </form>

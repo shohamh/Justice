@@ -204,16 +204,16 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
             data={job.proposals}
             filterPlaceholder={t("table.filter_placeholder")}
             rowClassName={(p) =>
-              p.status === "published" ? "bg-green-50" : p.status === "algorithm_rejected" ? "bg-gray-100 opacity-50" : ""
+              p.status === "published" ? "bg-green-50 dark:bg-green-950" : p.status === "algorithm_rejected" ? "bg-gray-100 dark:bg-gray-700 opacity-50" : ""
             }
           />
         </>
       )}
 
-      <div className="border-t pt-3 space-y-3">
+      <div className="border-t dark:border-gray-600 pt-3 space-y-3">
         <div className="flex items-center gap-2 text-sm flex-wrap">
           <span className="text-gray-700">{t("algorithm.reset_published_label")}</span>
-          <input type="number" min={1} value={resetPublishedDays} onChange={e => setResetPublishedDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center" />
+          <input type="number" min={1} value={resetPublishedDays} onChange={e => setResetPublishedDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
           <button type="button" onClick={handleResetPublished} disabled={resetPublishedLoading} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-50">
             {t("algorithm.reset_published_btn")}
@@ -222,7 +222,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
         </div>
         <div className="flex items-center gap-2 text-sm flex-wrap">
           <span className="text-gray-700">{t("algorithm.reset_drafts_label")}</span>
-          <input type="number" min={1} value={resetDraftsDays} onChange={e => setResetDraftsDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center" />
+          <input type="number" min={1} value={resetDraftsDays} onChange={e => setResetDraftsDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
           <button type="button" onClick={handleResetDrafts} disabled={resetDraftsLoading} className="bg-amber-600 text-white px-3 py-1 rounded text-xs hover:bg-amber-700 disabled:opacity-50">
             {t("algorithm.reset_drafts_btn")}

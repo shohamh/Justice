@@ -55,7 +55,7 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">{existing ? t("shifts.edit") : t("shifts.create")}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
@@ -65,13 +65,13 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
             <>
               <label className="block text-sm">
                 {t("shifts.duty_type")}
-                <select value={dtId} onChange={e => setDtId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm">
+                <select value={dtId} onChange={e => setDtId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                   {dutyTypes.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </label>
               <label className="block text-sm">
                 {t("shifts.location")}
-                <select value={locId} onChange={e => setLocId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm">
+                <select value={locId} onChange={e => setLocId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
                   {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </label>
@@ -79,30 +79,30 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" required />
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" required />
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
           </label>
           <label className="block text-sm">
             {t("shifts.required_count")}
-            <input type="number" min={1} value={count} onChange={e => setCount(parseInt(e.target.value))} className="mt-1 block w-full border rounded p-1 text-sm" required />
+            <input type="number" min={1} value={count} onChange={e => setCount(parseInt(e.target.value))} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
           </label>
           <label className="block text-sm">
             {t("shifts.notes")}
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" rows={2} />
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" rows={2} />
           </label>
           <label className="block text-sm">
             {t("reserve_count_override")}
-            <input type="number" min="0" step="1" value={reserveOverride} onChange={e => setReserveOverride(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" placeholder={existing?.calculated_reserve_count?.toString() ?? ""} />
+            <input type="number" min="0" step="1" value={reserveOverride} onChange={e => setReserveOverride(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder={existing?.calculated_reserve_count?.toString() ?? ""} />
             {existing?.calculated_reserve_count != null && (
               <span className="text-xs text-gray-500">({t("reserve_calculated_count")}: {existing.calculated_reserve_count})</span>
             )}
           </label>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded">{t("shifts.cancel")}</button>
+            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shifts.cancel")}</button>
             <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">{t("shifts.save")}</button>
           </div>
         </form>

@@ -93,16 +93,16 @@ export function DataTable<T>({
         value={globalFilter}
         onChange={(e) => setGlobalFilter(e.target.value)}
         placeholder={filterPlaceholder}
-        className="mb-2 border rounded p-1 text-sm w-full sm:w-64"
+        className="mb-2 border rounded p-1 text-sm w-full sm:w-64 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />
       <table className="w-full text-xs border-collapse">
         <thead>
           {table.getHeaderGroups().map((hg) => (
-            <tr key={hg.id} className="bg-gray-100 text-right">
+            <tr key={hg.id} className="bg-gray-100 dark:bg-gray-700 text-right">
               {hg.headers.map((header) => (
                 <th
                   key={header.id}
-                  className={`border px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
+                  className={`border dark:border-gray-600 px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   <span className="inline-flex items-center gap-1">{flexRender(header.column.columnDef.header, header.getContext())}{(header.column.columnDef.meta as { tooltip?: string })?.tooltip && <button type="button" onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: string }).tooltip!)} className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer">?</button>}</span>
@@ -127,7 +127,7 @@ export function DataTable<T>({
                 className={rowClassName ? rowClassName(row.original) : undefined}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border px-2 py-1">
+                  <td key={cell.id} className="border dark:border-gray-600 px-2 py-1">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -139,7 +139,7 @@ export function DataTable<T>({
 
       {tooltipModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipModal(null)}>
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm whitespace-pre-line">{tooltipModal}</p>
             <div className="mt-4 text-left">
               <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipModal(null)}>סגור</button>

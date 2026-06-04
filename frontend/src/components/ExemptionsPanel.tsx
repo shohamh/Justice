@@ -62,13 +62,13 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
       </ul>
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2" data-testid="grant-form">
-          <select className="border rounded p-1" value={typeId} onChange={(e) => setTypeId(e.target.value)} required data-testid="grant-type">
+          <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={typeId} onChange={(e) => setTypeId(e.target.value)} required data-testid="grant-type">
             <option value="">{t("exemptions.type")}</option>
             {types.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
           </select>
-          <input type="date" className="border rounded p-1" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
-          <input type="date" className="border rounded p-1" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="grant-end" />
-          <input className="border rounded p-1" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
+          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
+          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="grant-end" />
+          <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="grant-submit">{t("exemptions.grant")}</button>
         </form>
       )}

@@ -79,11 +79,11 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
           {t("shifts.filter_from")}
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" />
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
         <label className="block">
           {t("shifts.filter_to")}
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm" />
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
       </div>
 
@@ -94,7 +94,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
             <button type="button" onClick={() => setSelectedShiftIds(availableShifts.map(s => s.id))} className="text-xs text-blue-600 hover:underline">בחר הכל</button>
             <button type="button" onClick={() => setSelectedShiftIds([])} className="text-xs text-blue-600 hover:underline">בטל בחירה</button>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto border rounded p-2">
+          <div className="space-y-1 max-h-48 overflow-y-auto border dark:border-gray-600 rounded p-2">
             {availableShifts.map(shift => (
               <label key={shift.id} className="flex items-center gap-2 text-xs">
                 <input
@@ -116,7 +116,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
 
       <label className="block">
         {t("algorithm.mode_label")}
-        <select value={mode} onChange={e => setMode(e.target.value as "shadow" | "dm_reviewed")} className="mt-1 block w-full border rounded p-1 text-sm">
+        <select value={mode} onChange={e => setMode(e.target.value as "shadow" | "dm_reviewed")} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
           <option value="shadow">{t("algorithm.shadow_mode")}</option>
           <option value="dm_reviewed">{t("algorithm.dm_reviewed_mode")}</option>
         </select>
@@ -126,7 +126,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         {t("algorithm.settings")}
       </button>
       {showSettings && (
-        <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 p-3 rounded">
+        <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 dark:bg-gray-700 p-3 rounded">
           {(["K", "T", "W", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
             <label key={key} className="block">
               {key}
@@ -134,7 +134,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
                 type="number"
                 value={settings[key]}
                 onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
-                className="mt-1 block w-full border rounded p-1"
+                className="mt-1 block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 step={key === "alpha" || key === "beta" ? 0.1 : 1}
               />
             </label>
@@ -142,7 +142,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         </div>
       )}
 
-      <details className="border rounded p-2">
+      <details className="border dark:border-gray-600 rounded p-2">
         <summary className="cursor-pointer">{t("algorithm.restrict_to_subtree")}</summary>
         <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />
       </details>

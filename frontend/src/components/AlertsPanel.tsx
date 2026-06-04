@@ -6,8 +6,8 @@ interface Props {
 }
 
 const severityColor: Record<string, string> = {
-  warning: "text-yellow-700 bg-yellow-50 border-yellow-200",
-  info: "text-blue-700 bg-blue-50 border-blue-200",
+  warning: "text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800",
+  info: "text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800",
 };
 
 export default function AlertsPanel({ data }: Props) {
@@ -16,7 +16,7 @@ export default function AlertsPanel({ data }: Props) {
   return (
     <div className="space-y-2" data-testid="alerts-panel">
       {data.map((a, i) => (
-        <div key={i} className={`border rounded p-2 text-sm ${severityColor[a.severity] || "text-gray-700 bg-gray-50"}`}>
+        <div key={i} className={`border rounded p-2 text-sm ${severityColor[a.severity] || "text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700"}`}>
           <span className="font-medium">{a.soldier_name}</span>: {a.message}
         </div>
       ))}

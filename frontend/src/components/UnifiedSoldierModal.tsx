@@ -119,7 +119,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
         <div className="flex items-start justify-between mb-2">
           <h3 className="font-semibold">{t("team.edit_soldier")}: {soldier.full_name}</h3>
           <button
@@ -131,13 +131,13 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             ×
           </button>
         </div>
-        <p className="text-xs text-gray-400 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
 
-        <div className="flex gap-4 border-b mb-4">
+        <div className="flex gap-4 border-b dark:border-gray-600 mb-4">
           {TABS.map((tKey) => (
             <button
               key={tKey}
-              className={`pb-1 text-sm ${tab === tKey ? "border-b-2 border-indigo-600 text-indigo-600 font-medium" : "text-gray-500"}`}
+              className={`pb-1 text-sm ${tab === tKey ? "border-b-2 border-indigo-600 text-indigo-600 font-medium" : "text-gray-500 dark:text-gray-400"}`}
               onClick={() => setTab(tKey)}
               data-testid={`modal-tab-${tKey}`}
             >
@@ -186,21 +186,21 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             <form onSubmit={handleSave} className="space-y-3">
               <label className="block">
                 <span className="text-xs">{t("team.full_name")}</span>
-                <input className="border rounded p-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
+                <input className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={fullName} onChange={(e) => setFullName(e.target.value)} required data-testid="edit-soldier-name" />
               </label>
               <label className="block">
                 <span className="text-xs">{t("team.phone")}</span>
-                <input className="border rounded p-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
+                <input className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="edit-soldier-phone" />
               </label>
               <label className="block">
                 <span className="text-xs">{t("team.title")}</span>
-                <select className="border rounded p-1 w-full" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
+                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
                   <option value="">—</option>
                   {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
                 </select>
               </label>
               <div className="flex justify-end gap-2">
-                <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
                 <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={saving} data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
               </div>
             </form>
@@ -212,7 +212,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.gender")}</span>
-                <select className="border rounded p-1 w-full" value={profileGender} onChange={(e) => setProfileGender(e.target.value)}>
+                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileGender} onChange={(e) => setProfileGender(e.target.value)}>
                   <option value="">—</option>
                   <option value="male">{t("soldier_profile.gender_male")}</option>
                   <option value="female">{t("soldier_profile.gender_female")}</option>
@@ -224,7 +224,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
-                <select className="border rounded p-1 w-full" value={profileRank} onChange={(e) => setProfileRank(e.target.value)}>
+                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileRank} onChange={(e) => setProfileRank(e.target.value)}>
                   <option value="">—</option>
                   {rankOptions.enlisted.length > 0 && (
                     <optgroup label={t("soldier_profile.enlisted")}>
@@ -244,16 +244,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
-                <input type="date" className="border rounded p-1 w-full" value={profileEnlistment} onChange={(e) => setProfileEnlistment(e.target.value)} />
+                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={(e) => setProfileEnlistment(e.target.value)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.mandatory_end_date")}</span>
-                <input type="date" className="border rounded p-1 w-full" value={profileMandEnd} onChange={(e) => setProfileMandEnd(e.target.value)} />
+                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={(e) => setProfileMandEnd(e.target.value)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
                 <div className="flex gap-1 items-center">
-                  <input type="date" className="border rounded p-1 flex-1" value={profileDischarge} onChange={(e) => setProfileDischarge(e.target.value)} />
+                  <input type="date" className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={(e) => setProfileDischarge(e.target.value)} />
                   {profileDischarge && (
                     <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setProfileDischarge("")}>{t("soldier_profile.clear")}</button>
                   )}
@@ -261,22 +261,22 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
-                <input type="date" className="border rounded p-1 w-full" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
+                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
-                <input type="date" className="border rounded p-1 w-full" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
               </label>
               {isAdmin && (
                 <label className="block col-span-2">
                   <span className="text-xs">{t("profile.email")}</span>
-                  <input type="email" className="border rounded p-1 w-full" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
+                  <input type="email" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
                 </label>
               )}
             </div>
             {!isCommander && (
               <div className="flex justify-end gap-2">
-                <button type="button" className="border rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
                 <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("team.edit")}</button>
               </div>
             )}
@@ -293,10 +293,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               <p className="text-sm text-gray-500">{t("team.no_constraints")}</p>
             )}
             {constraints.map((c) => (
-              <div key={c.id} className="border rounded p-3 text-sm space-y-1" data-testid={`constraint-row-${c.id}`}>
+              <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-1" data-testid={`constraint-row-${c.id}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500" dir="ltr">{c.start_date} → {c.end_date}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${statusBadge[c.status] ?? ""}`}>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.status === "pending" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : c.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
                     {t(`my_requests.${c.status}`)}
                   </span>
                 </div>

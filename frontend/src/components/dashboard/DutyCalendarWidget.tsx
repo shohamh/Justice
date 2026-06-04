@@ -28,7 +28,7 @@ export default function DutyCalendarWidget({ duties, typeNames }: Props) {
   [duties, typeNames]);
 
   return (
-    <section className="bg-white rounded-lg shadow p-4" dir="rtl">
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
       <h2 className="text-lg font-semibold mb-3">היומן שלי</h2>
       <FullCalendar
         plugins={[dayGridPlugin]}

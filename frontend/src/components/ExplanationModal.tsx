@@ -46,7 +46,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -88,7 +88,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
 
         {data && isDmExplanation(data) && (
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded text-xs">
+            <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
               <p>
                 {t("algorithm.min_gap_before")}: <strong>{data.global_before?.min_gap}</strong>
               </p>
@@ -135,7 +135,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                   columns={candidateCols}
                   data={data.candidates}
                   filterPlaceholder={t("table.filter_placeholder")}
-                  rowClassName={(c) => (c.blocked ? "bg-red-50" : "bg-green-50")}
+                  rowClassName={(c) => (c.blocked ? "bg-red-50 dark:bg-red-950" : "bg-green-50 dark:bg-green-950")}
                 />
               );
             })()}
