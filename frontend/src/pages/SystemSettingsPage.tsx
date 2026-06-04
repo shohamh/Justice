@@ -61,6 +61,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       { key: "home.alal_warn_days", label: 'אזהרה לפני פקיעת אל"ל (ימים)', description: 'כמה ימים לפני פקיעת האל"ל תופיע אזהרה בדף הבית', type: "number", defaultValue: 30 },
     ],
   },
+  {
+    label: "התראות",
+    settings: [
+      {
+        key: "alerts.upcoming_duty_days",
+        label: "ימי הקדמה להתראת תורנות",
+        description: "כמה ימים לפני תורנות תוצג התראה (0 = ללא התראה)",
+        type: "number" as const,
+        defaultValue: 3,
+      },
+    ],
+  },
 ];
 
 function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {

@@ -572,6 +572,13 @@
     "reserve": "רזרבה",
     "called_up": "הוקפץ"
   },
+  "upcoming_duty_alert": {
+    "today": "היום",
+    "tomorrow": "מחר",
+    "day_after": "מחרתיים",
+    "in_days": "בעוד {{count}} ימים",
+    "title": "תורנות קרובה"
+  },
   "notifications": {
     "title": "התראות",
     "all": "הכל",
