@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   const [personalNumber, setPersonalNumber] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<ErrKey>(null);
 
