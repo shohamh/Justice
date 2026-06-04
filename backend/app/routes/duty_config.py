@@ -204,12 +204,14 @@ class CreateExemptionTypeRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
     is_global: bool = False
+    is_medical: bool = False
 
 
 class UpdateExemptionTypeRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
     is_global: bool | None = None
+    is_medical: bool | None = None
 
 
 class SetDutyTypesRequest(BaseModel):
@@ -239,7 +241,7 @@ def create_exemption_type(
 ) -> ExemptionTypeOut:
     try:
         et = svc.create_exemption_type(
-            session, name=body.name, description=body.description, is_global=body.is_global, actor_id=user.id
+            session, name=body.name, description=body.description, is_global=body.is_global, is_medical=body.is_medical, actor_id=user.id
         )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -265,6 +267,7 @@ def update_exemption_type(
             name=body.name,
             description=body.description,
             is_global=body.is_global,
+            is_medical=body.is_medical,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:

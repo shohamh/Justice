@@ -196,11 +196,12 @@ def create_exemption_type(
     name: str,
     description: str | None = None,
     is_global: bool = False,
+    is_medical: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
     if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
         raise DutyConfigError("name_taken")
-    et = ExemptionType(name=name, description=description, is_global=is_global)
+    et = ExemptionType(name=name, description=description, is_global=is_global, is_medical=is_medical)
     session.add(et)
     session.flush()
     write_audit(
@@ -209,7 +210,7 @@ def create_exemption_type(
         action="exemption_type.create",
         entity_type="exemption_type",
         entity_id=et.id,
-        after={"name": name, "is_global": is_global},
+        after={"name": name, "is_global": is_global, "is_medical": is_medical},
     )
     return et
 
@@ -221,9 +222,10 @@ def update_exemption_type(
     name: str | None,
     description: str | None,
     is_global: bool | None = None,
+    is_medical: bool | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
-    before = {"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global}
+    before = {"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global, "is_medical": exemption_type.is_medical}
     if name is not None and name != exemption_type.name:
         if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
             raise DutyConfigError("name_taken")
@@ -232,6 +234,8 @@ def update_exemption_type(
         exemption_type.description = description
     if is_global is not None:
         exemption_type.is_global = is_global
+    if is_medical is not None:
+        exemption_type.is_medical = is_medical
     write_audit(
         session,
         actor_id=actor_id,
@@ -239,7 +243,7 @@ def update_exemption_type(
         entity_type="exemption_type",
         entity_id=exemption_type.id,
         before=before,
-        after={"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global},
+        after={"name": exemption_type.name, "description": exemption_type.description, "is_global": exemption_type.is_global, "is_medical": exemption_type.is_medical},
     )
     return exemption_type
 

@@ -16,6 +16,7 @@ import {
   listLocations,
   setExemptionDutyTypes,
   updateDutyType,
+  updateExemptionType,
 } from "../api/dutyConfig";
 
 export function DutyConfigContent() {
@@ -30,6 +31,7 @@ export function DutyConfigContent() {
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
+  const [exMedical, setExMedical] = useState(false);
   const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
   const [expandedDtId, setExpandedDtId] = useState<string | null>(null);
 
@@ -58,8 +60,8 @@ export function DutyConfigContent() {
   }
   async function addExType(e: FormEvent) {
     e.preventDefault();
-    await createExemptionType({ name: exName, is_global: exGlobal });
-    setExName(""); setExGlobal(false);
+    await createExemptionType({ name: exName, is_global: exGlobal, is_medical: exMedical });
+    setExName(""); setExGlobal(false); setExMedical(false);
     await refresh();
   }
   async function toggleMap(etId: string, dtId: string) {
@@ -131,18 +133,35 @@ export function DutyConfigContent() {
         <h3 className="font-medium mb-2">{t("duty_config.exemption_types")}</h3>
         <form onSubmit={addExType} className="flex items-end gap-2 mb-2 flex-wrap" data-testid="exemption-type-form">
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exName} onChange={(e) => setExName(e.target.value)} required data-testid="et-name" placeholder={t("duty_config.name")} />
-          <label className="flex items-center gap-1 text-xs">
+          <label className="flex items-center gap-1 text-xs cursor-pointer">
             <input type="checkbox" checked={exGlobal} onChange={(e) => setExGlobal(e.target.checked)} data-testid="et-global" />
             {t("duty_config.global")}
+          </label>
+          <label className="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" checked={exMedical} onChange={(e) => setExMedical(e.target.checked)} data-testid="et-medical" />
+            🏥 {t("duty_config.medical")}
           </label>
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="et-submit">{t("duty_config.add")}</button>
         </form>
         <ul className="text-sm space-y-2" data-testid="exemption-type-list">
           {exTypes.map((et) => (
             <li key={et.id} data-testid={`et-row-${et.name}`} className="border dark:border-gray-600 rounded p-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>{et.name}</span>
                 {et.is_global && <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
+                {et.is_medical && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">🏥 {t("duty_config.medical")}</span>}
+                <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400 mr-auto">
+                  <input
+                    type="checkbox"
+                    checked={et.is_medical ?? false}
+                    onChange={async (e) => {
+                      await updateExemptionType(et.id, { is_medical: e.target.checked });
+                      await refresh();
+                    }}
+                    data-testid={`et-medical-toggle-${et.name}`}
+                  />
+                  🏥 {t("duty_config.medical")}
+                </label>
               </div>
               {et.is_global ? (
                 <div className="text-xs text-gray-500 mt-1">{t("duty_config.global_exempt_desc")}</div>

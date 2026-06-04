@@ -108,6 +108,7 @@
     "exempts_from": "פוטר מ-",
     "global": "גלובלי",
     "global_exempt_desc": "פוטר מכל סוגי התורנויות",
+    "medical": "פטור רפואי",
     "delete": "מחק"
   },
   "exemptions": {

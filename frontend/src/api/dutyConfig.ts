@@ -58,8 +58,11 @@ export async function updateLocation(id: string, input: Partial<{ name: string; 
 export async function listExemptionTypes(): Promise<ExemptionType[]> {
   return (await api.get<ExemptionType[]>("/duty-config/exemption-types")).data;
 }
-export async function createExemptionType(input: { name: string; description?: string | null; is_global?: boolean }): Promise<ExemptionType> {
+export async function createExemptionType(input: { name: string; description?: string | null; is_global?: boolean; is_medical?: boolean }): Promise<ExemptionType> {
   return (await api.post<ExemptionType>("/duty-config/exemption-types", input)).data;
+}
+export async function updateExemptionType(id: string, input: { is_medical?: boolean; is_global?: boolean; name?: string }): Promise<ExemptionType> {
+  return (await api.patch<ExemptionType>(`/duty-config/exemption-types/${id}`, input)).data;
 }
 export async function deleteExemptionType(id: string): Promise<void> {
   await api.delete(`/duty-config/exemption-types/${id}`);
