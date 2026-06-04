@@ -124,7 +124,7 @@ export default function CommandDashboardPage() {
         <SummaryCards data={summaryData} onCardClick={handleCardClick} />
         {panels.map((panel) => (
           <details key={panel.id} open className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-testid={`panel-${panel.id}`}>
-            <summary className="cursor-pointer font-medium text-lg mb-2">{panel.title}</summary>
+            <summary className="cursor-pointer font-medium text-lg mb-2 dark:text-gray-100">{panel.title}</summary>
             {panel.content}
           </details>
         ))}

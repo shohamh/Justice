@@ -24,7 +24,7 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
       }`}
     >
       {a.soldier_name || a.duty_type_id?.slice(0, 6) || "?"}
-      {a.is_reserve ? <span className="text-[10px] bg-amber-100 text-amber-800 rounded px-1 mr-1">רזרבה</span> : null}
+      {a.is_reserve ? <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 rounded px-1 mr-1">רזרבה</span> : null}
     </button>
   );
 }
@@ -40,7 +40,7 @@ export default function UpcomingSnapshot({ data }: Props) {
         const isToday = day.date === today;
         const { weekday, dayMonth } = formatDate(day.date);
         return (
-          <div key={day.date} className={`flex items-center gap-3 p-2 rounded ${isToday ? "bg-indigo-50" : ""}`}>
+          <div key={day.date} className={`flex items-center gap-3 p-2 rounded ${isToday ? "bg-indigo-50 dark:bg-indigo-950" : ""}`}>
             <span className="text-sm font-medium w-20 text-left" dir="ltr">{weekday} {dayMonth}</span>
             <div className="flex-1 flex flex-wrap gap-1">
               {day.assignments.length === 0 ? (
@@ -49,7 +49,7 @@ export default function UpcomingSnapshot({ data }: Props) {
                 day.assignments.map((a) => <Badge key={a.assignment_id} a={a} onSelect={setSelected} />)
               )}
             </div>
-            <span className="text-xs text-gray-500">{day.assignments.length}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{day.assignments.length}</span>
           </div>
         );
       })}
@@ -65,11 +65,11 @@ export default function UpcomingSnapshot({ data }: Props) {
               )}
             </div>
             <div className="space-y-1 text-sm">
-              <div><span className="text-gray-500">תורנות:</span> {selected.duty_type_name || selected.duty_type_id?.slice(0, 6) || "?"}</div>
-              <div><span className="text-gray-500">יחידה:</span> {selected.node_name || "?"}</div>
-              {selected.is_reserve && <div className="text-amber-700 font-medium">רזרבה</div>}
+              <div><span className="text-gray-500 dark:text-gray-400">תורנות:</span> {selected.duty_type_name || selected.duty_type_id?.slice(0, 6) || "?"}</div>
+              <div><span className="text-gray-500 dark:text-gray-400">יחידה:</span> {selected.node_name || "?"}</div>
+              {selected.is_reserve && <div className="text-amber-700 dark:text-amber-400 font-medium">רזרבה</div>}
             </div>
-            <button onClick={() => setSelected(null)} className="mt-4 px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
+            <button onClick={() => setSelected(null)} className="mt-4 px-3 py-1 border dark:border-gray-600 dark:text-gray-300 rounded text-sm">{t("command_dashboard.cancel")}</button>
           </div>
         </div>
       )}

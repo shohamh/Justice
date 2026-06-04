@@ -25,6 +25,27 @@ body {
   box-shadow: 0 0 0 2px #d8b4fe;
 }
 
+/* Details/summary disclosure marker in dark mode */
+@media (prefers-color-scheme: dark) {
+  details > summary {
+    list-style: none;
+  }
+  details > summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-left: 0.4em;
+    font-size: 0.65em;
+    color: #9ca3af;
+    transition: transform 0.15s;
+  }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
 /* FullCalendar dark mode overrides */
 @media (prefers-color-scheme: dark) {
   /* Toolbar */
