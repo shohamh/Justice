@@ -98,16 +98,13 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
                 s_dates.add(d)
                 d += timedelta(days=1)
 
-    from app.db.models import SystemSetting
     from app.services.eligibility import compute_eligibility_exclusions
+    from app.services.settings_loader import get_setting
 
     def _setting_int(key: str, default: int) -> int:
-        row = session.get(SystemSetting, key)
-        if row is None:
-            return default
         try:
-            return int(row.value)
-        except (TypeError, ValueError):
+            return int(get_setting(session, key))
+        except Exception:
             return default
 
     mitvahim_months = _setting_int("eligibility.mitvahim_months", 6)

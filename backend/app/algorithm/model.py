@@ -158,7 +158,7 @@ def build_model(
                 if any(ws <= dt <= we for dt in _duty_dates(d)):
                     var_for_window.append(x[(di, si)])
 
-            if not var_for_window and existing_fixed <= T:
+            if not var_for_window:
                 ws += timedelta(days=1)
                 continue
 
