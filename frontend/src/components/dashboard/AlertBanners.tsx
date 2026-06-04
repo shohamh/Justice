@@ -41,7 +41,7 @@ export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings 
 
   const alerts: { key: string; message: string }[] = [];
 
-  const mitvMsg = alertMessage(lastMitvahimDate, mitvahimValidity, mitvahimWarn, "מיתווחים");
+  const mitvMsg = alertMessage(lastMitvahimDate, mitvahimValidity, mitvahimWarn, "מטווחים");
   if (mitvMsg) alerts.push({ key: "mitvahim", message: mitvMsg });
 
   const alalMsg = alertMessage(lastAlalDate, alalValidity, alalWarn, 'אל"ל');

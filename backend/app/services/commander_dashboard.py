@@ -271,7 +271,7 @@ def potential_counts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[
     keva = sum(1 for s in soldiers if s.rank and s.rank in ("sgan_aluf", "rav_saren", "saren"))
     counts.append({"label": "קבע", "count": keva, "unit_total": None})
     bahad1 = sum(1 for s in soldiers if s.bahad1_graduate)
-    counts.append({"label": 'בוגרי בהד"1', "count": bahad1, "unit_total": None})
+    counts.append({"label": 'בוגרי בה"ד 1', "count": bahad1, "unit_total": None})
     officers = sum(1 for s in soldiers if s.is_officer)
     counts.append({"label": "קצינים", "count": officers, "unit_total": None})
     counts.append({"label": 'סה"כ חיילים', "count": total_soldiers, "unit_total": None})

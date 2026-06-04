@@ -55,8 +55,8 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "דף הבית",
     settings: [
-      { key: "home.mitvahim_validity_days", label: "תוקף מיתווחים (ימים)", description: "מספר ימים שמיתווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
-      { key: "home.mitvahim_warn_days", label: "אזהרה לפני פקיעת מיתווחים (ימים)", description: "כמה ימים לפני פקיעת המיתווחים תופיע אזהרה בדף הבית", type: "number", defaultValue: 30 },
+      { key: "home.mitvahim_validity_days", label: "תוקף מטווחים (ימים)", description: "מספר ימים שמטווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
+      { key: "home.mitvahim_warn_days", label: "אזהרה לפני פקיעת מטווחים (ימים)", description: "כמה ימים לפני פקיעת המטווחים תופיע אזהרה בדף הבית", type: "number", defaultValue: 30 },
       { key: "home.alal_validity_days", label: 'תוקף אל"ל (ימים)', description: 'מספר ימים שאל"ל בתוקף לאחר ביצוע', type: "number", defaultValue: 90 },
       { key: "home.alal_warn_days", label: 'אזהרה לפני פקיעת אל"ל (ימים)', description: 'כמה ימים לפני פקיעת האל"ל תופיע אזהרה בדף הבית', type: "number", defaultValue: 30 },
     ],
