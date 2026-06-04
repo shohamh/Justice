@@ -26,6 +26,7 @@ export interface Me {
   last_mitvahim_date?: string | null;
   last_alal_date?: string | null;
   email?: string | null;
+  email_verified?: boolean;
 }
 
 export interface NodeOut {
@@ -102,4 +103,13 @@ export async function sendForgotPassword(personal_number: string, channel: strin
 
 export async function resetPassword(token: string, new_password: string): Promise<void> {
   await api.post("/auth/reset-password", { token, new_password });
+}
+
+export async function setEmail(email: string | null): Promise<{ email_verified: boolean }> {
+  const r = await api.patch<{ email_verified: boolean }>("/me/email", { email });
+  return r.data;
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  await api.post("/auth/verify-email", { token });
 }

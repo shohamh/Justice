@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, require_password_changed
 from app.db.models import Soldier, TelegramLink
 from app.db.session import get_session
+from app.services import email_verification as ev_svc
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -35,6 +37,11 @@ class MeResponse(BaseModel):
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
     email: str | None = None
+    email_verified: bool = False
+
+
+class SetEmailRequest(BaseModel):
+    email: str | None = Field(default=None, max_length=200)
 
 
 @router.get("", response_model=MeResponse)
@@ -52,6 +59,7 @@ def me(
         telegram_required = bool(get_setting(session, "registration.telegram_required"))
     except Exception:
         telegram_required = True
+
     def _date(d) -> str | None:
         return str(d) if d is not None else None
 
@@ -75,4 +83,22 @@ def me(
         last_mitvahim_date=_date(user.last_mitvahim_date),
         last_alal_date=_date(user.last_alal_date),
         email=user.email,
+        email_verified=user.email_verified,
     )
+
+
+@router.patch("/email", status_code=200)
+def set_email(
+    body: Annotated[SetEmailRequest, Body()],
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict:
+    new_email = body.email or None
+    changed = user.email != new_email
+    user.email = new_email
+    if changed:
+        user.email_verified = False
+    if new_email and changed:
+        ev_svc.request_verification(session, soldier=user)
+    session.commit()
+    return {"email_verified": user.email_verified}

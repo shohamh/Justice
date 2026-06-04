@@ -170,7 +170,12 @@
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
     "phone": "טלפון",
-    "email": "כתובת אימייל"
+    "email": "כתובת אימייל",
+    "email_verified": "מאומת",
+    "email_unverified": "לא מאומת",
+    "resend_verification": "שלח אימות מחדש",
+    "email_verification_sent": "נשלח קישור אימות לאימייל",
+    "email_cleared": "האימייל הוסר"
   },
   "duty_management": {
     "title": "ניהול תורנויות",

@@ -32,7 +32,7 @@ def available_channels(session: Session, *, personal_number: str) -> list[str]:
     ).scalar_one_or_none()
     if link is not None:
         channels.append("telegram")
-    if soldier.email:
+    if soldier.email and soldier.email_verified:
         channels.append("email")
     return channels
 

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="utf-8"><title>Unit Calendar Layout Options</title>
+<style>
+body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 0 auto; padding: 2rem; background: #f9fafb; color: #1f2937; }
+h2 { margin-top: 2rem; color: #111827; }
+.subtitle { color: #6b7280; margin-top: -0.5rem; }
+.mockup { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 1rem 0; background: white; }
+.mockup-header { background: #f3f4f6; padding: 8px 12px; font-size: 12px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+.mockup-body { padding: 12px; }
+table { border-collapse: collapse; }
+th, td { text-align: right; }
+.pros-cons { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 13px; }
+.pros, .cons { flex: 1; background: #f9fafb; padding: 0.75rem; border-radius: 8px; }
+.pros h4, .cons h4 { margin: 0 0 0.25rem 0; font-size: 13px; }
+.pros h4 { color: #059669; }
+.cons h4 { color: #dc2626; }
+.pros ul, .cons ul { margin: 0; padding-right: 1.25rem; }
+.pros li, .cons li { margin-bottom: 2px; }
+.option-card { background: white; border: 2px solid #e5e7eb; border-radius: 12px; padding: 1rem; margin: 1rem 0; cursor: default; }
+.option-card:hover { border-color: #6366f1; }
+.option-card.selected { border-color: #6366f1; background: #eef2ff; }
+</style>
+</head>
+<body>
+<h1>יומן יחידה — אפשרויות עיצוב</h1>
+<p class="subtitle">איך להציג את כל התורנויות של היחידה בלוח שנה אחד?</p>
+
+<div class="option-card">
+<h2>אופציה א׳: לוח שנה חודשי + פירוט יומי</h2>
+<div class="mockup">
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:13px">
+    <div style="background:#f3f4f6;padding:6px;font-weight:600">א</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ב</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ג</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ד</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ה</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ו</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ש</div>
+    <div></div><div></div><div></div><div></div><div></div><div>1</div>
+    <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">2<br><span style="font-size:11px;font-weight:400;color:#6366f1">8 תורנויות</span></div>
+    <div>3</div><div>4</div>
+    <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">5<br><span style="font-size:11px;font-weight:400;color:#6366f1">12 תורנויות</span></div>
+    <div>6</div><div>7</div><div>8</div><div>9</div>
+    <div>10</div>
+    <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">11<br><span style="font-size:11px;font-weight:400;color:#6366f1">6 תורנויות</span></div>
+    <div>12</div><div>13</div>
+    <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">14<br><span style="font-size:11px;font-weight:400;color:#6366f1">5 תורנויות</span></div>
+    <div>15</div><div>16</div>
+    <div>17</div>
+  </div>
+  <div style="margin-top:12px;background:#f9fafb;padding:12px;border-radius:8px">
+    <div style="font-weight:600;font-size:14px;margin-bottom:8px">2 ביוני 2026 — 8 תורנויות</div>
+    <table style="width:100%;font-size:13px">
+      <tr style="border-bottom:1px solid #e5e7eb"><th style="padding:6px;text-align:right">חייל</th><th style="padding:6px;text-align:right">סוג תורנות</th><th style="padding:6px;text-align:right">מיקום</th></tr>
+      <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px">מפקד מבצעים</td><td style="padding:6px">תורנות שדה</td><td style="padding:6px">בסיס מרכז</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px">לוחם מצטיין</td><td style="padding:6px">תורנות ביטחון</td><td style="padding:6px">בסיס מרכז</td></tr>
+      <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px">טייס קרב</td><td style="padding:6px">תורנות שדה</td><td style="padding:6px">בסיס דרום</td></tr>
+    </table>
+  </div>
+</div>
+<div class="pros-cons">
+  <div class="pros"><h4>יתרונות</h4><ul><li>לוח שנה מוכר</li><li>רואה חודש שלם בסקירה</li><li>לוחץ על יום → רואה פירוט</li></ul></div>
+  <div class="cons"><h4>חסרונות</h4><ul><li>לא רואה מי בתורנות בלי ללחוץ</li><li>צריך ללחוץ על כל יום</li></ul></div>
+</div>
+</div>
+
+<div class="option-card">
+<h2>אופציה ב׳: ציר זמן חיילים (Gantt)</h2>
+<div class="mockup">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;font-size:14px">
+    <span style="font-weight:600">1–15 יוני 2026</span>
+    <span style="font-size:12px;color:#6366f1;cursor:pointer">◀ הקודם | הבא ▶</span>
+  </div>
+  <div style="display:flex;margin-bottom:6px">
+    <div style="width:130px;font-size:11px;color:#6b7280">שם</div>
+    <div style="display:grid;grid-template-columns:repeat(15,1fr);flex:1;font-size:10px;color:#6b7280">
+      <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div>10</div><div>11</div><div>12</div><div>13</div><div>14</div><div>15</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;height:28px">
+    <div style="width:130px;font-size:13px;white-space:nowrap;overflow:hidden">מפקד מבצעים</div>
+    <div style="flex:1;position:relative;height:24px">
+      <div style="position:absolute;left:0%;width:40%;height:20px;background:#818cf8;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות שדה</div>
+      <div style="position:absolute;left:46%;width:27%;height:20px;background:#6366f1;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות מטה</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;height:28px">
+    <div style="width:130px;font-size:13px;white-space:nowrap;overflow:hidden">לוחם מצטיין</div>
+    <div style="flex:1;position:relative;height:24px">
+      <div style="position:absolute;left:6%;width:33%;height:20px;background:#818cf8;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות ביטחון</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;height:28px">
+    <div style="width:130px;font-size:13px;white-space:nowrap;overflow:hidden">מפקדת מודיעין</div>
+    <div style="flex:1;position:relative;height:24px">
+      <div style="position:absolute;left:13%;width:53%;height:20px;background:#a78bfa;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות מודיעין</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;height:28px">
+    <div style="width:130px;font-size:13px;white-space:nowrap;overflow:hidden">לוחם ותיק</div>
+    <div style="flex:1;position:relative;height:24px">
+      <div style="position:absolute;left:0%;width:60%;height:20px;background:#818cf8;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות שדה</div>
+      <div style="position:absolute;left:66%;width:34%;height:20px;background:#6366f1;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות מטה</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;height:28px">
+    <div style="width:130px;font-size:13px;white-space:nowrap;overflow:hidden">אנליסט מודיעין</div>
+    <div style="flex:1;position:relative;height:24px">
+      <div style="position:absolute;left:20%;width:40%;height:20px;background:#a78bfa;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;color:white">תורנות מודיעין</div>
+    </div>
+  </div>
+</div>
+<div class="pros-cons">
+  <div class="pros"><h4>יתרונות</h4><ul><li>רואה את כל התורנויות בבת אחת</li><li>מזהה חיילים עמוסים מיד</li><li>תכנון כוח אדם קל</li></ul></div>
+  <div class="cons"><h4>חסרונות</h4><ul><li>גלילה אנכית (29+ חיילים)</li><li>גלילה אופקית לחודש מלא</li></ul></div>
+</div>
+</div>
+
+<div class="option-card">
+<h2>אופציה ג׳: היברידי — לוח + פירוט חיילים לפי יום</h2>
+<div class="mockup">
+  <div style="display:flex;gap:20px;flex-wrap:wrap">
+    <div style="min-width:300px;font-size:13px">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">
+        <div style="background:#f3f4f6;padding:6px;font-weight:600">א</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ב</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ג</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ד</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ה</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ו</div><div style="background:#f3f4f6;padding:6px;font-weight:600">ש</div>
+        <div></div><div></div><div></div><div></div><div></div><div>1</div>
+        <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">2<br><span style="font-size:11px;font-weight:400;color:#6366f1">8</span></div>
+        <div>3</div><div>4</div>
+        <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">5<br><span style="font-size:11px;font-weight:400;color:#6366f1">12</span></div>
+        <div>6</div><div>7</div><div>8</div><div>9</div>
+        <div>10</div>
+        <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">11<br><span style="font-size:11px;font-weight:400;color:#6366f1">6</span></div>
+        <div>12</div><div>13</div>
+        <div style="background:#eef2ff;border-radius:6px;padding:4px;font-weight:700">14<br><span style="font-size:11px;font-weight:400;color:#6366f1">5</span></div>
+        <div>15</div><div>16</div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:300px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px">2 ביוני 2026</div>
+      <table style="width:100%;font-size:13px">
+        <tr style="border-bottom:1px solid #e5e7eb"><th style="padding:6px;text-align:right">חייל</th><th style="padding:6px;text-align:right">תורנויות</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px">מפקד מבצעים</td><td style="padding:6px"><span style="background:#e0e7ff;padding:2px 8px;border-radius:4px;font-size:12px;color:#4338ca">תורנות שדה - בסיס מרכז</span></td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:6px">לוחם מצטיין</td><td style="padding:6px"><span style="background:#e0e7ff;padding:2px 8px;border-radius:4px;font-size:12px;color:#4338ca">תורנות ביטחון - בסיס מרכז</span> <span style="background:#f3e8ff;padding:2px 8px;border-radius:4px;font-size:12px;color:#7c3aed">תורנות מטה - בסיס צפון</span></td></tr>
+        <tr><td style="padding:6px">טייס קרב</td><td style="padding:6px"><span style="background:#e0e7ff;padding:2px 8px;border-radius:4px;font-size:12px;color:#4338ca">תורנות שדה - בסיס דרום</span></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="pros-cons">
+  <div class="pros"><h4>יתרונות</h4><ul><li>הכי טוב משני העולמות</li><li>תואם ל-react-calendar הקיים</li><li>רואה הרבה תורניות ביום אחד</li></ul></div>
+  <div class="cons"><h4>חסרונות</h4><ul><li>פירוט רק ליום אחד בכל פעם</li><li>נווט בין ימים דורש לחיצה</li></ul></div>
+</div>
+</div>
+
+<h2>מה מתאים לך?</h2>
+<p>תגיד לי בתרמינל (לא כאן בדף):</p>
+<ul>
+  <li><strong>א:</strong> חודשי + פירוט יומי — פשוט, מוכר</li>
+  <li><strong>ב:</strong> ציר זמן Gantt — כיסוי מלא, רואה הכל</li>
+  <li><strong>ג:</strong> היברידי — איזון טוב</li>
+  <li><strong>שילוב או אחר</strong> — תסביר מה בא לך</li>
+</ul>
+</body>
+</html>

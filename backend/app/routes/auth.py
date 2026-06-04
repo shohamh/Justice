@@ -14,6 +14,7 @@ from app.auth.password import hash_password, verify_password
 from app.db.models import HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
+from app.services import email_verification as ev_svc
 from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
 from app.services.invite_codes import InviteCodeError, validate_code
@@ -298,6 +299,23 @@ def reset_password(
     session: Session = Depends(get_session),
 ) -> dict:
     result = pwd_reset_svc.redeem_reset_token(session, token=body.token, new_password=body.new_password)
+    if result == "ok":
+        session.commit()
+        return {}
+    session.rollback()
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/verify-email", status_code=200)
+def verify_email(
+    body: VerifyEmailRequest,
+    session: Session = Depends(get_session),
+) -> dict:
+    result = ev_svc.verify_token(session, token=body.token)
     if result == "ok":
         session.commit()
         return {}

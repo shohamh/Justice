@@ -1,0 +1,196 @@
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
+import { dismissAndReallocate } from "../api/reserves";
+
+interface Props {
+  shift: CalendarShift;
+  primary: CalendarShiftAssignee;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+
+export default function DismissalModal({ shift, primary, onClose, onDone }: Props) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+
+  const allDates = useMemo(() => {
+    const dates: string[] = [];
+    const d = new Date(shift.start_date);
+    const stop = new Date(shift.end_date);
+    while (d <= stop) {
+      dates.push(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+    return dates;
+  }, [shift.start_date, shift.end_date]);
+
+  const [fromIdx, setFromIdx] = useState<number | null>(0);
+  const [toIdx, setToIdx] = useState<number | null>(allDates.length - 1);
+  const [selectedReserveId, setSelectedReserveId] = useState(primary.reserve_assignment_id ?? "");
+  const [reason, setReason] = useState("");
+
+  const reserveOptions = useMemo(
+    () => shift.assignees.filter(a => a.is_reserve && a.assignment_id && !a.called_up_from),
+    [shift.assignees]
+  );
+
+  useMemo(() => {
+    if (!selectedReserveId && primary.reserve_assignment_id) {
+      setSelectedReserveId(primary.reserve_assignment_id);
+    } else if (!selectedReserveId && reserveOptions.length > 0) {
+      setSelectedReserveId(reserveOptions[0].assignment_id ?? "");
+    }
+  }, [primary.reserve_assignment_id, reserveOptions, selectedReserveId]);
+
+  const fromDate = fromIdx !== null ? allDates[fromIdx] : null;
+  const toDate = toIdx !== null ? allDates[toIdx] : null;
+
+  function handleDateClick(i: number) {
+    if (fromIdx === null || toIdx === null) {
+      setFromIdx(i);
+      setToIdx(i);
+    } else if (i < fromIdx) {
+      setFromIdx(i);
+    } else if (i > toIdx) {
+      setToIdx(i);
+    } else if (i === fromIdx && i === toIdx) {
+      return;
+    } else {
+      const dFrom = Math.abs(i - fromIdx);
+      const dTo = Math.abs(i - toIdx);
+      if (dFrom <= dTo) setFromIdx(i);
+      else setToIdx(i);
+    }
+  }
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      dismissAndReallocate(shift.id, {
+        primary_assignment_id: primary.assignment_id,
+        covering_reserve_assignment_id: selectedReserveId,
+        from_date: fromDate ?? shift.start_date,
+        to_date: toDate ?? shift.end_date,
+        reason: reason || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendarShifts"] });
+      onDone();
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-5">
+          <div>
+            <h3 className="font-bold text-lg">{t("dismiss_modal.title")}</h3>
+            <p className="text-sm text-gray-500 mt-0.5">{primary.soldier_name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">✕</button>
+        </div>
+
+        <div className="mb-5">
+          <label className="text-sm font-medium text-gray-600 mb-2 block">{t("dismiss_modal.date_range")}</label>
+          <div className="flex flex-wrap gap-1.5 justify-center">
+            {allDates.map((d, i) => {
+              const dt = new Date(d);
+              const dayName = DAY_NAMES[dt.getDay()];
+              const dayNum = dt.getDate();
+              const isStart = fromIdx === i;
+              const isEnd = toIdx === i;
+              const isSelected = fromIdx !== null && toIdx !== null && i >= fromIdx && i <= toIdx;
+              const isRange = isSelected && !isStart && !isEnd;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => handleDateClick(i)}
+                  className={`flex flex-col items-center rounded-lg px-2.5 py-1.5 text-xs min-w-[48px] transition-colors
+                    ${isStart || isEnd
+                      ? "bg-amber-500 text-white shadow-md font-bold"
+                      : isRange
+                        ? "bg-amber-100 text-amber-900"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                >
+                  <span className="text-[10px] opacity-70">{dayName}</span>
+                  <span className="text-sm font-medium">{dayNum}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-center gap-6 mt-3 text-sm text-gray-600">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+              {t("dismiss_modal.from")}: <span className="font-medium text-gray-800" dir="ltr">{fromDate}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+              {t("dismiss_modal.to")}: <span className="font-medium text-gray-800" dir="ltr">{toDate}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.covering_reserve")}</label>
+          <select
+            value={selectedReserveId}
+            onChange={e => setSelectedReserveId(e.target.value)}
+            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
+          >
+            {reserveOptions.length === 0 && <option value="">{t("dismiss_modal.no_reserves")}</option>}
+            {reserveOptions.map(a => (
+              <option key={a.assignment_id} value={a.assignment_id}>
+                {a.soldier_name}
+                {a.assignment_id === primary.reserve_assignment_id ? ` (${t("reserve_standby")})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mb-4">
+          <label className="text-sm font-medium text-gray-600 mb-1.5 block">{t("dismiss_modal.reason")}</label>
+          <input
+            className="border border-gray-300 rounded-lg p-2 w-full text-sm bg-white focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder={t("dismiss_modal.reason_placeholder")}
+          />
+        </div>
+
+        {mutation.isError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <p className="text-red-600 text-sm">
+              {(mutation.error as any)?.response?.data?.detail ?? t("dismiss_modal.error")}
+            </p>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
+            {t("dismiss_modal.cancel")}
+          </button>
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || selectedReserveId === ""}
+            className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+          >
+            {mutation.isPending ? (
+              <span className="flex items-center gap-1.5">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                {t("dismiss_modal.submitting")}
+              </span>
+            ) : t("dismiss_modal.confirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

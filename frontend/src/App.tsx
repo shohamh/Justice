@@ -18,6 +18,9 @@ import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
 import CommandDashboardPage from "./pages/CommandDashboardPage";
 import RegisterPage from "./pages/RegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
 import AssignmentPage from "./pages/planning/AssignmentPage";
 import ConfigPage from "./pages/planning/ConfigPage";
@@ -46,6 +49,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route path="/setup/telegram" element={<TelegramSetupPage />} />

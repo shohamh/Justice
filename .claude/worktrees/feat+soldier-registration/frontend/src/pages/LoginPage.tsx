@@ -1,0 +1,96 @@
+import { FormEvent, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { AxiosError } from "axios";
+
+import { useAuth } from "../auth/AuthContext";
+
+type ErrKey = "invalid_credentials" | "network" | "rate_limited" | null;
+
+export default function LoginPage() {
+  const { t } = useTranslation();
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const [personalNumber, setPersonalNumber] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorKey, setErrorKey] = useState<ErrKey>(null);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErrorKey(null);
+    setSubmitting(true);
+    try {
+      await login(personalNumber, password);
+      navigate("/", { replace: true });
+    } catch (err) {
+      if (err instanceof AxiosError) {
+        if (err.response?.status === 401) setErrorKey("invalid_credentials");
+        else if (err.response?.status === 429) setErrorKey("rate_limited");
+        else setErrorKey("network");
+      } else {
+        setErrorKey("network");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4" data-testid="login-form">
+        <h1 className="text-2xl font-bold text-center">{t("login.title")}</h1>
+
+        <label className="block">
+          <span className="text-sm font-medium">{t("login.personal_number_label")}</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="username"
+            required
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border"
+            value={personalNumber}
+            onChange={(e) => setPersonalNumber(e.target.value)}
+            data-testid="personal-number-input"
+            placeholder={t("login.personal_number_placeholder")}
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-medium">{t("login.password_label")}</span>
+          <input
+            type="password"
+            autoComplete="current-password"
+            required
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            data-testid="password-input"
+          />
+        </label>
+
+        {errorKey && (
+          <div className="text-rejected text-sm" data-testid="login-error">
+            {t(`login.errors.${errorKey}`)}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium py-2 rounded-md"
+          data-testid="login-submit"
+        >
+          {submitting ? t("login.submitting") : t("login.submit")}
+        </button>
+
+        <p className="text-center text-sm text-gray-500 mt-2">
+          <a href="/register" className="text-indigo-600 hover:underline">
+            {t("register.signup_button")}
+          </a>
+        </p>
+      </form>
+    </main>
+  );
+}

@@ -9,8 +9,8 @@ import {
   FieldUpdateDTO,
   submitFieldUpdate,
   listFieldUpdates,
-  updateSoldierProfile,
 } from "../api/soldiers";
+import { setEmail } from "../api/auth";
 import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
 import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref, CommanderScope } from "../api/notifications";
 
@@ -22,6 +22,8 @@ export default function ProfilePage() {
   const [alalReq, setAlalReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
@@ -173,12 +175,34 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
-          <div className="flex gap-2 items-center">
-            <label className="w-40">{t("profile.email")}</label>
-            <input type="email" value={emailReq} onChange={e => setEmailReq(e.target.value)} className="border rounded p-1 text-sm flex-1" placeholder="כתובת אימייל" />
-            <button type="button" onClick={async () => { if (!user) return; await updateSoldierProfile(user.id, { email: emailReq || null }); }} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
-              {t("approvals.approve")}
-            </button>
+          <div className="space-y-1">
+            <div className="flex gap-2 items-center">
+              <label className="w-40">{t("profile.email")}</label>
+              <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1" placeholder="כתובת אימייל" />
+              <button type="button" disabled={emailSaving} onClick={async () => {
+                setEmailSaving(true); setEmailMsg(null);
+                try {
+                  await setEmail(emailReq || null);
+                  setEmailMsg(emailReq ? t("profile.email_verification_sent") : t("profile.email_cleared"));
+                } catch { setEmailMsg(t("login.errors.network")); }
+                finally { setEmailSaving(false); }
+              }} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+                {emailSaving ? "..." : t("approvals.approve")}
+              </button>
+            </div>
+            <div className="flex items-center gap-2 text-xs mr-40 pr-2">
+              {user?.email_verified
+                ? <span className="text-green-600">✓ {t("profile.email_verified")}</span>
+                : user?.email
+                  ? <><span className="text-yellow-600">{t("profile.email_unverified")}</span>
+                      <button type="button" className="text-indigo-600 hover:underline" onClick={async () => {
+                        await setEmail(user.email ?? null);
+                        setEmailMsg(t("profile.email_verification_sent"));
+                      }}>{t("profile.resend_verification")}</button>
+                    </>
+                  : null}
+              {emailMsg && <span className="text-gray-500">{emailMsg}</span>}
+            </div>
           </div>
         </div>
 
