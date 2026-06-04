@@ -140,6 +140,7 @@ export function SystemSettingsContent() {
                 <div className="flex-shrink-0">
                   {def.type === "boolean" ? (
                     <button
+                      dir="ltr"
                       onClick={() => setValue(def.key, !value)}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${value ? "bg-indigo-600" : "bg-gray-200"}`}
                       aria-pressed={Boolean(value)}
