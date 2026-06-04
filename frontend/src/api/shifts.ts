@@ -52,3 +52,7 @@ export async function updateShift(id: string, input: UpdateShiftInput): Promise<
 export async function deleteShift(id: string): Promise<void> {
   await api.delete(`/shifts/${id}`);
 }
+
+export async function clearShiftAssignments(id: string): Promise<void> {
+  await api.delete(`/shifts/${id}/assignments`);
+}

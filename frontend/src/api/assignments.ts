@@ -41,3 +41,7 @@ export async function setOverride(id: string, day: string, input: { effective_so
 export async function clearOverride(id: string, day: string): Promise<void> {
   await api.delete(`/assignments/${id}/overrides/${day}`);
 }
+
+export async function clearAllAssignments(): Promise<void> {
+  await api.delete("/assignments");
+}

@@ -47,9 +47,9 @@ export default function UnifiedNav() {
   const baseTabs: NavTab[] = [
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", testId: "nav-swaps" },
-    { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
     { label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" },
+    { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
   ];
 
   const commanderTab: NavTab = {
