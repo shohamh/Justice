@@ -44,6 +44,21 @@ export default function UnifiedNav() {
     })();
   }, [canApprove, location.pathname]);
 
+  useEffect(() => {
+    const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
+    if (!vv) return;
+    const update = () => {
+      document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   const baseTabs: NavTab[] = [
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
@@ -107,12 +122,12 @@ export default function UnifiedNav() {
 
   const mobileTabClass = (active: boolean) =>
     `flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] text-xs gap-1 relative ${
-      active ? "text-indigo-600" : "text-gray-400"
+      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-400"
     }`;
 
   const desktopTabClass = (active: boolean) =>
     `relative flex flex-col items-center justify-center py-4 gap-1 text-xs w-full ${
-      active ? "text-indigo-600" : "text-gray-400 hover:text-gray-600"
+      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 hover:text-gray-600 dark:text-gray-400"
     }`;
 
   return (
@@ -133,7 +148,7 @@ export default function UnifiedNav() {
       {/* Mobile bottom bar */}
       <nav
         aria-label="ניווט ראשי"
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30"
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30 dark:bg-gray-800 dark:border-gray-700"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="flex">
@@ -165,7 +180,7 @@ export default function UnifiedNav() {
       {/* Desktop sidebar */}
       <nav
         aria-label="ניווט צדדי"
-        className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30"
+        className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30 dark:bg-gray-800 dark:border-gray-700"
         data-testid="sidebar"
       >
         {tabs.map((tab) => {
@@ -178,7 +193,7 @@ export default function UnifiedNav() {
               data-testid={`desktop-${tab.testId}`}
             >
               {active && (
-                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 rounded-lg -z-10" />
+                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 dark:bg-indigo-950 rounded-lg -z-10" />
               )}
               {tabContent(tab)}
             </Link>

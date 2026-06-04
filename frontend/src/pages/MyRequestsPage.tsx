@@ -119,7 +119,7 @@ export default function MyRequestsPage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-6">
+      <section className="bg-white rounded-lg shadow p-6 space-y-6 dark:bg-gray-800">
         <h2 className="text-xl font-semibold">{t("my_requests.title")}</h2>
 
         {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}

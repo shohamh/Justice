@@ -15,7 +15,7 @@ interface NavSheetProps {
 export default function NavSheet({ open, onClose, items, testId }: NavSheetProps) {
   if (!open) return null;
 
-  const linkClass = "block px-4 py-3 rounded hover:bg-gray-100 text-sm font-medium" as const;
+  const linkClass = "block px-4 py-3 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium" as const;
 
   return (
     <>
@@ -28,7 +28,7 @@ export default function NavSheet({ open, onClose, items, testId }: NavSheetProps
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed bottom-0 right-0 left-0 md:bottom-0 md:right-24 md:left-auto md:top-0 bg-white z-50 rounded-t-2xl md:rounded-none shadow-xl overflow-y-auto max-h-[50vh] md:max-h-full md:w-48 py-4 space-y-1"
+        className="fixed bottom-0 right-0 left-0 md:bottom-0 md:right-24 md:left-auto md:top-0 bg-white z-50 rounded-t-2xl md:rounded-none shadow-xl overflow-y-auto max-h-[50vh] md:max-h-full md:w-48 py-4 space-y-1 dark:bg-gray-800 dark:text-gray-100"
         onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
         data-testid={testId}
       >

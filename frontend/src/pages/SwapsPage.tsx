@@ -126,7 +126,7 @@ export default function SwapsPage() {
 
   return (
     <Layout>
-      <section className="bg-white rounded-lg shadow p-6 space-y-6" dir="rtl" data-testid="swaps-page">
+      <section className="bg-white rounded-lg shadow p-6 space-y-6 dark:bg-gray-800" dir="rtl" data-testid="swaps-page">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("swaps.title")}</h2>
           <button

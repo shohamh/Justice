@@ -127,15 +127,15 @@ export function SystemSettingsContent() {
       {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
 
       {SETTING_GROUPS.map(group => (
-        <div key={group.label} className="bg-white rounded-lg shadow p-5 space-y-4">
-          <h2 className="font-semibold text-gray-700 border-b pb-2">{group.label}</h2>
+        <div key={group.label} className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">
+          <h2 className="font-semibold text-gray-700 border-b pb-2 dark:text-gray-200 dark:border-gray-600">{group.label}</h2>
           {group.settings.map(def => {
             const value = resolveValue(draft, def);
             return (
               <div key={def.key} className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800">{def.label}</div>
-                  {def.description && <div className="text-xs text-gray-400 mt-0.5">{def.description}</div>}
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{def.label}</div>
+                  {def.description && <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{def.description}</div>}
                 </div>
                 <div className="flex-shrink-0">
                   {def.type === "boolean" ? (
@@ -154,7 +154,7 @@ export function SystemSettingsContent() {
                       min="0"
                       value={String(value)}
                       onChange={e => setValue(def.key, def.type === "decimal" ? e.target.value : Number(e.target.value))}
-                      className="w-28 border rounded px-2 py-1 text-sm text-right"
+                      className="w-28 border rounded px-2 py-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       dir="ltr"
                     />
                   )}
