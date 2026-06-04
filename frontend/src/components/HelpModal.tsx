@@ -198,10 +198,13 @@ function FairnessTab() {
         {/* Score scale cards with person indicators */}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-orange-700 flex items-center justify-center gap-1">
-              <span>👤</span><span>{"< 1"}</span>
+            <p className="text-lg font-bold text-orange-700 flex items-end justify-center gap-1">
+              <span className="flex flex-col items-center leading-none">
+                <span>👤</span>
+                <span className="text-[8px] text-orange-400 font-normal mt-0.5">את/ה כאן</span>
+              </span>
+              <span>{"< 1"}</span>
             </p>
-            <p className="text-[10px] text-orange-500 font-medium">את/ה כאן</p>
             <p className="text-orange-700 font-medium">עשית פחות מהממוצע</p>
             <p className="text-orange-600">תשובץ יותר בעתיד</p>
           </div>
@@ -212,10 +215,13 @@ function FairnessTab() {
             <p className="text-blue-600">מצב אידיאלי</p>
           </div>
           <div className="bg-green-100 border border-green-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-green-700 flex items-center justify-center gap-1">
-              <span>👤</span><span>{"> 1"}</span>
+            <p className="text-lg font-bold text-green-700 flex items-end justify-center gap-1">
+              <span className="flex flex-col items-center leading-none">
+                <span>👤</span>
+                <span className="text-[8px] text-green-400 font-normal mt-0.5">את/ה כאן</span>
+              </span>
+              <span>{"> 1"}</span>
             </p>
-            <p className="text-[10px] text-green-500 font-medium">את/ה כאן</p>
             <p className="text-green-700 font-medium">עשית יותר מהממוצע</p>
             <p className="text-green-600">תשובץ פחות בעתיד</p>
           </div>
