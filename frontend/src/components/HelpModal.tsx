@@ -141,6 +141,33 @@ function AlgorithmTab() {
           </div>
         ))}
       </div>
+
+      <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200 space-y-3">
+        <p className="font-semibold text-indigo-800">📝 דוגמה מספרית</p>
+        <p className="text-indigo-700 text-xs leading-relaxed">
+          נניח שיש 3 חיילים: דן (ניקוד מנורמל 0.8), יעל (1.0), ורוני (1.4).
+          משמרת חדשה צריכה מישהו עם תג "חוגרים". דן ורוני מתאימים — יעל פטורה.
+          האלגוריתם ממיין לפי ניקוד: דן (0.8) ← קודם.
+          אם K=3 (עומק הגרלה), הוא מגריל מתוך שני המועמדים: סיכוי גבוה יותר לדן.
+        </p>
+        <div className="grid grid-cols-3 gap-2 text-xs text-center">
+          <div className="bg-white rounded p-2 border border-indigo-200">
+            <p className="font-bold text-indigo-700">דן</p>
+            <p>ניקוד: 0.8</p>
+            <p className="text-green-600">⬆ עדיפות גבוהה</p>
+          </div>
+          <div className="bg-white rounded p-2 border border-indigo-200">
+            <p className="font-bold text-purple-700">יעל</p>
+            <p>ניקוד: 1.0</p>
+            <p className="text-gray-500">✗ פטור חל</p>
+          </div>
+          <div className="bg-white rounded p-2 border border-indigo-200">
+            <p className="font-bold text-orange-700">רוני</p>
+            <p>ניקוד: 1.4</p>
+            <p className="text-orange-600">⬇ עדיפות נמוכה</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -202,6 +229,47 @@ function FairnessTab() {
             <span className="text-blue-600 font-medium">= 1</span>
             <span>ניקוד גבוה</span>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200 space-y-3">
+        <p className="font-semibold text-indigo-800">📝 דוגמה: חישוב ניקוד מנורמל</p>
+        <div className="text-xs space-y-2 text-indigo-700">
+          <p>נניח יחידה עם 3 חיילים לאחר 60 יום:</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-center border-collapse text-xs">
+              <thead>
+                <tr className="bg-indigo-100">
+                  <th className="p-1 border border-indigo-200">חייל</th>
+                  <th className="p-1 border border-indigo-200">ניקוד מצטבר</th>
+                  <th className="p-1 border border-indigo-200">ימים פעילים</th>
+                  <th className="p-1 border border-indigo-200">ניקוד מנורמל</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="p-1 border border-indigo-200">דן</td>
+                  <td className="p-1 border border-indigo-200">30</td>
+                  <td className="p-1 border border-indigo-200">60</td>
+                  <td className="p-1 border border-indigo-200 font-bold text-orange-600">0.75</td>
+                </tr>
+                <tr className="bg-white">
+                  <td className="p-1 border border-indigo-200">יעל</td>
+                  <td className="p-1 border border-indigo-200">40</td>
+                  <td className="p-1 border border-indigo-200">60</td>
+                  <td className="p-1 border border-indigo-200 font-bold text-blue-600">1.00</td>
+                </tr>
+                <tr>
+                  <td className="p-1 border border-indigo-200">רוני</td>
+                  <td className="p-1 border border-indigo-200">50</td>
+                  <td className="p-1 border border-indigo-200">60</td>
+                  <td className="p-1 border border-indigo-200 font-bold text-green-600">1.25</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>ממוצע ניקוד: (30+40+50)÷3 = 40. ממוצע ימים: 60. ניקוד מנורמל יעל: (40÷60)÷(40÷60) = <strong>1.00</strong>.</p>
+          <p>דן עשה פחות (0.75) → <strong>יקבל תורנות הבאה</strong>. רוני עשה יותר (1.25) → <strong>יחכה</strong>.</p>
         </div>
       </div>
 
