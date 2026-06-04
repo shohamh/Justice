@@ -27,7 +27,7 @@ All fetched in parallel on mount via `Promise.all`:
 | Data | Endpoint | Notes |
 |------|----------|-------|
 | Current user | auth context (`/me`) | Already available; provides `last_mitvahim_date`, `last_alal_date` |
-| Upcoming duties | `GET /assignments/effective?soldier_id=…&date_from=today&date_to=today+60d` | Filter to next 5 |
+| Upcoming duties + calendar | `GET /assignments/effective?soldier_id=…&date_from=today-30d&date_to=today+60d` | List uses next 5; calendar uses full range |
 | My swaps | `GET /swaps/my` | Filter to non-cancelled, non-applied |
 | Pending approvals | `GET /enrollment-requests/pending` + `GET /swaps/pending` | Commander/admin only |
 | Settings | `GET /system-settings` | For validity/warn thresholds |
@@ -45,7 +45,17 @@ Expiry logic: `expiry_date = last_X_date + validity_days`. Show banner if `expir
 - Each banner is dismissible (session-only, no persistence needed)
 - Clicking a banner navigates to ProfilePage
 
-### 2. Upcoming Duties
+### 2. Duty Calendar
+
+Card title: "היומן שלי"
+
+- FullCalendar `dayGridMonth` view, read-only, same color-by-duty-type logic as MyDutiesPage
+- Duties fetched from `GET /assignments/effective` for a wider window (today−30d to today+60d) to populate the current month view
+- Clicking a duty event does nothing (no modal needed on homepage)
+- "לכל היומן שלי →" link to MyDutiesPage
+- Reuses `dutyTypeColor()` helper (extract to shared util or duplicate)
+
+### 3. Upcoming Duties
 
 Card title: "תורנויות קרובות"
 
@@ -79,6 +89,7 @@ Shown only when `user.role === 'commander' || user.role === 'admin'`.
 - `HomePage.tsx` — orchestrates all data fetching, renders 4 widgets
 - Extract each widget as a sub-component in `frontend/src/components/dashboard/`:
   - `AlertBanners.tsx`
+  - `DutyCalendarWidget.tsx`
   - `UpcomingDutiesWidget.tsx`
   - `SwapStatusWidget.tsx`
   - `PendingApprovalsWidget.tsx`
