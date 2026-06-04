@@ -159,8 +159,8 @@ function FairnessTab() {
           הניקוד המנורמל משווה את העומס שנשאת ביחס לממוצע היחידה, תוך התחשבות בכמה זמן כל חייל משרת.
         </p>
 
-        {/* Formula visualization */}
-        <div className="bg-white rounded-lg p-3 border border-indigo-200 space-y-2">
+        {/* Formula */}
+        <div className="bg-white rounded-lg p-3 border border-indigo-200">
           <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
             <div className="bg-indigo-100 rounded px-2 py-1 text-indigo-800 font-medium">הניקוד שלך ÷ הימים הפעילים שלך</div>
             <div className="text-gray-500 font-bold">÷</div>
@@ -168,37 +168,45 @@ function FairnessTab() {
           </div>
         </div>
 
-        {/* Score scale */}
-        <div className="grid grid-cols-3 gap-2 text-center text-xs mt-2">
-          <div className="bg-green-100 border border-green-300 rounded-lg p-2">
-            <p className="text-xl font-bold text-green-700">{"< 1"}</p>
-            <p className="text-green-700 font-medium">עשית יותר מהממוצע</p>
-            <p className="text-green-600 text-xs mt-0.5">פחות סיכוי להישבץ</p>
+        {/* Visual scale with person indicator */}
+        <div className="space-y-2">
+          {/* Person marker */}
+          <div className="relative h-8 flex items-end justify-center">
+            <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
+              <span className="text-base">👤</span>
+              <span className="text-[10px] text-blue-600 font-semibold leading-none">את/ה כאן</span>
+              <span className="text-[10px] text-blue-400">כשניקוד = 1</span>
+            </div>
           </div>
-          <div className="bg-blue-100 border border-blue-300 rounded-lg p-2">
-            <p className="text-xl font-bold text-blue-700">= 1</p>
-            <p className="text-blue-700 font-medium">בדיוק כמו הממוצע</p>
-            <p className="text-blue-600 text-xs mt-0.5">הכי הוגן</p>
+          {/* Gradient bar */}
+          <div className="relative h-4 rounded-full overflow-hidden bg-gradient-to-l from-orange-300 via-blue-300 to-green-300">
+            {/* Centre marker */}
+            <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-blue-700 opacity-60" />
           </div>
-          <div className="bg-orange-100 border border-orange-300 rounded-lg p-2">
-            <p className="text-xl font-bold text-orange-700">{"> 1"}</p>
-            <p className="text-orange-700 font-medium">עשית פחות מהממוצע</p>
-            <p className="text-orange-600 text-xs mt-0.5">עדיפות גבוהה להישבץ</p>
+          {/* Scale labels */}
+          <div className="grid grid-cols-3 gap-0 text-center text-xs text-gray-500">
+            <span>ניקוד נמוך</span>
+            <span className="text-blue-600 font-medium">= 1</span>
+            <span>ניקוד גבוה</span>
           </div>
         </div>
 
-        {/* Visual bar */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>עשית הרבה</span>
-            <span>עשית מעט</span>
+        {/* Score scale cards — corrected logic */}
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 space-y-0.5">
+            <p className="text-lg font-bold text-orange-700">{"< 1"}</p>
+            <p className="text-orange-700 font-medium">עשית פחות מהממוצע</p>
+            <p className="text-orange-600">האלגוריתם ישבץ אותך יותר</p>
           </div>
-          <div className="h-3 bg-gradient-to-l from-orange-300 via-blue-300 to-green-300 rounded-full relative">
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-600 rounded" />
+          <div className="bg-blue-100 border border-blue-300 rounded-lg p-2 space-y-0.5">
+            <p className="text-lg font-bold text-blue-700">= 1</p>
+            <p className="text-blue-700 font-medium">בדיוק כמו הממוצע</p>
+            <p className="text-blue-600">מצב אידיאלי</p>
           </div>
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>ניקוד מנורמל נמוך</span>
-            <span>ניקוד מנורמל גבוה</span>
+          <div className="bg-green-100 border border-green-300 rounded-lg p-2 space-y-0.5">
+            <p className="text-lg font-bold text-green-700">{"> 1"}</p>
+            <p className="text-green-700 font-medium">עשית יותר מהממוצע</p>
+            <p className="text-green-600">תשובץ פחות בעתיד</p>
           </div>
         </div>
       </div>
@@ -208,8 +216,8 @@ function FairnessTab() {
         <p className="text-amber-700">בדקו בדף השקיפות. אם אתם רואים אחד מאלה — כדאי לפנות:</p>
         <div className="space-y-2">
           {[
-            { n: "❶", text: "הניקוד שלכם נמוך משמעותית מהממוצע (נמוך מ-0.7) — שיבצו אתכם יותר מדי." },
-            { n: "❷", text: "חייל ספציפי תמיד בעל ניקוד גבוה מאוד (מעל 1.5) — ייתכן פטור/אילוץ שאינו מוצדק." },
+            { n: "❶", text: "הניקוד שלכם גבוה משמעותית (מעל 1.3) ואתם עדיין מקבלים הרבה תורנויות — ייתכן שגיאה באלגוריתם." },
+            { n: "❷", text: "חייל ספציפי תמיד בעל ניקוד נמוך מאוד (מתחת ל-0.7) — ייתכן שיש פטור/אילוץ קבוע שאינו מוצדק." },
             { n: "❸", text: "הניקוד שלכם לא השתנה למרות ביצוע תורנויות — ייתכן שגיאה בשיבוץ." },
           ].map(({ n, text }) => (
             <div key={n} className="flex gap-2 text-amber-700">
