@@ -14,10 +14,10 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col md:mr-24">
+    <div className="min-h-screen flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-4 py-3 flex items-center justify-between">
           {/* Left side: profile icon + optional gear icon */}
           <div className="flex items-center gap-3">

@@ -41,9 +41,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4" data-testid="login-form">
-        <h1 className="text-2xl font-bold text-center">{t("login.title")}</h1>
+    <main className="min-h-screen flex items-center justify-center p-6 dark:bg-gray-900">
+      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4 dark:bg-gray-800" data-testid="login-form">
+        <h1 className="text-2xl font-bold text-center dark:text-gray-100">{t("login.title")}</h1>
 
         {resetSuccess && (
           <div className="text-green-700 text-sm bg-green-50 rounded p-2 text-center">
@@ -52,13 +52,13 @@ export default function LoginPage() {
         )}
 
         <label className="block">
-          <span className="text-sm font-medium">{t("login.personal_number_label")}</span>
+          <span className="text-sm font-medium dark:text-gray-100">{t("login.personal_number_label")}</span>
           <input
             type="text"
             inputMode="numeric"
             autoComplete="username"
             required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
             value={personalNumber}
             onChange={(e) => setPersonalNumber(e.target.value)}
             data-testid="personal-number-input"
@@ -67,12 +67,12 @@ export default function LoginPage() {
         </label>
 
         <label className="block">
-          <span className="text-sm font-medium">{t("login.password_label")}</span>
+          <span className="text-sm font-medium dark:text-gray-100">{t("login.password_label")}</span>
           <input
             type="password"
             autoComplete="current-password"
             required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 p-2 border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             data-testid="password-input"

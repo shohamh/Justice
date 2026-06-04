@@ -107,12 +107,12 @@ export default function UnifiedNav() {
 
   const mobileTabClass = (active: boolean) =>
     `flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] text-xs gap-1 relative ${
-      active ? "text-indigo-600" : "text-gray-400"
+      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-400"
     }`;
 
   const desktopTabClass = (active: boolean) =>
     `relative flex flex-col items-center justify-center py-4 gap-1 text-xs w-full ${
-      active ? "text-indigo-600" : "text-gray-400 hover:text-gray-600"
+      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 hover:text-gray-600 dark:text-gray-400"
     }`;
 
   return (
@@ -133,7 +133,7 @@ export default function UnifiedNav() {
       {/* Mobile bottom bar */}
       <nav
         aria-label="ניווט ראשי"
-        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30"
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-30 dark:bg-gray-800 dark:border-gray-700"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="flex">
@@ -165,7 +165,7 @@ export default function UnifiedNav() {
       {/* Desktop sidebar */}
       <nav
         aria-label="ניווט צדדי"
-        className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30"
+        className="hidden md:flex fixed right-0 top-0 bottom-0 w-24 bg-white border-l flex-col z-30 dark:bg-gray-800 dark:border-gray-700"
         data-testid="sidebar"
       >
         {tabs.map((tab) => {
