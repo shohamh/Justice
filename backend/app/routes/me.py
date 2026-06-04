@@ -34,6 +34,7 @@ class MeResponse(BaseModel):
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
+    email: str | None = None
 
 
 @router.get("", response_model=MeResponse)
@@ -73,4 +74,5 @@ def me(
         discharge_date=_date(user.discharge_date),
         last_mitvahim_date=_date(user.last_mitvahim_date),
         last_alal_date=_date(user.last_alal_date),
+        email=user.email,
     )

@@ -27,9 +27,9 @@ vi.mock("../api/soldiers", () => ({
   getPendingFieldUpdateCount: vi.fn(() => Promise.resolve(0)),
 }));
 
-vi.mock("./ManageSheet", () => ({
-  default: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="manage-sheet-open" /> : null,
+vi.mock("./NavSheet", () => ({
+  default: ({ open, testId }: { open: boolean; testId?: string }) =>
+    open ? <div data-testid={testId ?? "nav-sheet-open"} /> : null,
 }));
 
 describe("UnifiedNav — soldier role", () => {
@@ -37,49 +37,87 @@ describe("UnifiedNav — soldier role", () => {
     mockUseAuth.mockReturnValue({ user: { role: "soldier" } });
   });
 
-  test("renders Home, My Duties, Requests, Swaps, Profile tabs", () => {
+  test("renders 5 base tabs: my-requests, swaps, home, unit-calendar, transparency", () => {
     render(<UnifiedNav />);
-    expect(screen.getAllByTestId("nav-home").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-my-duties").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-my-requests").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-swaps").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-profile").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-home").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-unit-calendar").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-transparency").length).toBeGreaterThan(0);
   });
 
-  test("does not render Approvals or Manage tabs", () => {
+  test("does not render commander or planning tabs", () => {
     render(<UnifiedNav />);
-    expect(screen.queryByTestId("nav-approvals")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("nav-manage")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("nav-commander")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("nav-planning")).not.toBeInTheDocument();
+  });
+
+  test("does not render profile tab (profile is in header now)", () => {
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("nav-profile")).not.toBeInTheDocument();
   });
 });
 
-describe("UnifiedNav — manager role", () => {
+describe("UnifiedNav — commander role", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "duty_manager" } });
+    mockUseAuth.mockReturnValue({ user: { role: "commander" } });
   });
 
-  test("renders Home, My Duties, Approvals, Manage, Profile tabs", () => {
+  test("renders base tabs plus commander tab", () => {
     render(<UnifiedNav />);
     expect(screen.getAllByTestId("nav-home").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-my-duties").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-approvals").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-manage").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-profile").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
   });
 
-  test("shows approval badge when pending count > 0", async () => {
+  test("does not render planning tab", () => {
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("nav-planning")).not.toBeInTheDocument();
+  });
+
+  test("commander button opens commander sheet", () => {
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("commander-sheet")).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByTestId("nav-commander")[0]);
+    expect(screen.getByTestId("commander-sheet")).toBeInTheDocument();
+  });
+
+  test("shows pending badge on commander tab when approvals pending", async () => {
     const { getPendingCount } = await import("../api/constraints");
     vi.mocked(getPendingCount).mockResolvedValueOnce(3);
     render(<UnifiedNav />);
     await waitFor(() => {
-      expect(screen.getByTestId("pending-badge")).toBeInTheDocument();
+      expect(screen.getAllByTestId("pending-badge").length).toBeGreaterThan(0);
     });
   });
+});
 
-  test("Manage button opens ManageSheet", () => {
+describe("UnifiedNav — duty_manager role", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager" } });
+  });
+
+  test("renders base tabs plus commander and planning tabs", () => {
     render(<UnifiedNav />);
-    expect(screen.queryByTestId("manage-sheet-open")).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByTestId("nav-manage")[0]);
-    expect(screen.getByTestId("manage-sheet-open")).toBeInTheDocument();
+    expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+
+  test("planning button opens planning sheet", () => {
+    render(<UnifiedNav />);
+    expect(screen.queryByTestId("planning-sheet")).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+    expect(screen.getByTestId("planning-sheet")).toBeInTheDocument();
+  });
+});
+
+describe("UnifiedNav — admin role", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin" } });
+  });
+
+  test("renders base tabs plus commander and planning tabs", () => {
+    render(<UnifiedNav />);
+    expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
   });
 });

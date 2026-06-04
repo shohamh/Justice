@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AxiosError } from "axios";
 
@@ -11,6 +11,8 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const resetSuccess = (location.state as { resetSuccess?: boolean } | null)?.resetSuccess;
 
   const [personalNumber, setPersonalNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -41,6 +43,12 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4" data-testid="login-form">
         <h1 className="text-2xl font-bold text-center">{t("login.title")}</h1>
+
+        {resetSuccess && (
+          <div className="text-green-700 text-sm bg-green-50 rounded p-2 text-center">
+            {t("reset_password.success")}
+          </div>
+        )}
 
         <label className="block">
           <span className="text-sm font-medium">{t("login.personal_number_label")}</span>
@@ -88,6 +96,11 @@ export default function LoginPage() {
         <p className="text-center text-sm text-gray-500 mt-2">
           <a href="/register" className="text-indigo-600 hover:underline">
             {t("register.signup_button")}
+          </a>
+        </p>
+        <p className="text-center text-sm text-gray-500">
+          <a href="/forgot-password" className="text-indigo-600 hover:underline">
+            {t("forgot_password.link_label")}
           </a>
         </p>
       </form>

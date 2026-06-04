@@ -36,6 +36,7 @@ class Soldier(Base):
     )
     left_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    email: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -746,6 +747,23 @@ class SoldierEnrollmentRequest(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), nullable=False
+    )
+    token: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

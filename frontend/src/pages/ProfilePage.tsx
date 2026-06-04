@@ -9,6 +9,7 @@ import {
   FieldUpdateDTO,
   submitFieldUpdate,
   listFieldUpdates,
+  updateSoldierProfile,
 } from "../api/soldiers";
 import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
 import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref, CommanderScope } from "../api/notifications";
@@ -20,6 +21,7 @@ export default function ProfilePage() {
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
+  const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
@@ -169,6 +171,13 @@ export default function ProfilePage() {
             <input type="date" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("profile.email")}</label>
+            <input type="email" value={emailReq} onChange={e => setEmailReq(e.target.value)} className="border rounded p-1 text-sm flex-1" placeholder="כתובת אימייל" />
+            <button type="button" onClick={async () => { if (!user) return; await updateSoldierProfile(user.id, { email: emailReq || null }); }} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700">
+              {t("approvals.approve")}
             </button>
           </div>
         </div>

@@ -15,7 +15,7 @@ interface ExemptionRow { exemption_type_id: string; start_date: string; end_date
 interface ConstraintRow { start_date: string; end_date: string; reason: string; }
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
-  password: string; confirm_password: string; phone: string;
+  password: string; confirm_password: string; phone: string; email: string;
   gender: string; is_officer: boolean; rank: string; bahad1_graduate: boolean;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
@@ -26,7 +26,7 @@ interface FormData {
 
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
-  confirm_password: "", phone: "", gender: "", is_officer: false, rank: "",
+  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
   bahad1_graduate: false, enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
@@ -69,6 +69,7 @@ export default function RegisterPage() {
         full_name: form.full_name,
         password: form.password,
         phone: form.phone || null,
+        email: form.email || null,
         gender: form.gender || null,
         is_officer: form.is_officer,
         rank: form.rank || null,
@@ -131,6 +132,7 @@ export default function RegisterPage() {
           <div className="space-y-2">
             <h2 className="font-semibold">{t("register.step_personal")}</h2>
             {([["personal_number","מספר אישי","text"],["full_name","שם מלא","text"],["phone","טלפון","tel"],
+               ["email","אימייל","email"],
                ["enlistment_date","תאריך גיוס","date"],["mandatory_end_date","סיום חובה","date"],
                ["discharge_date","שחרור","date"],["last_mitvahim_date","מטווח אחרון","date"],
                ["last_alal_date","אל\"ל אחרון","date"]] as [keyof FormData, string, string][]).map(([key, label, type]) => (

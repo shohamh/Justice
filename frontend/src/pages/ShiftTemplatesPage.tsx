@@ -7,7 +7,7 @@ import { ShiftTemplate, deleteTemplate, listTemplates } from "../api/shiftTempla
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
 
-export default function ShiftTemplatesPage() {
+export function ShiftTemplatesContent() {
   const { t } = useTranslation();
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
@@ -115,7 +115,7 @@ export default function ShiftTemplatesPage() {
   ];
 
   return (
-    <Layout>
+    <>
       <section className="bg-white rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shift-templates-page">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("shift_templates.title")}</h2>
@@ -161,6 +161,10 @@ export default function ShiftTemplatesPage() {
           onGenerated={() => setGenerateTemplateId(null)}
         />
       )}
-    </Layout>
+    </>
   );
+}
+
+export default function ShiftTemplatesPage() {
+  return <Layout><ShiftTemplatesContent /></Layout>;
 }

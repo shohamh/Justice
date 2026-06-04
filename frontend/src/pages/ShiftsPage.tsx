@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
-import { DutyShift, deleteShift, listShifts } from "../api/shifts";
+import { DutyShift, clearShiftAssignments, deleteShift, listShifts } from "../api/shifts";
+import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
 
@@ -12,7 +13,7 @@ const FILL_COLORS: Record<string, string> = {
   full: "bg-green-100 text-green-700",
 };
 
-export default function ShiftsPage() {
+export function ShiftsContent() {
   const { t } = useTranslation();
   const [shifts, setShifts] = useState<DutyShift[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
@@ -35,6 +36,18 @@ export default function ShiftsPage() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  async function handleClearAll() {
+    if (!window.confirm(t("shifts.confirm_clear_all"))) return;
+    await clearAllAssignments();
+    await refresh();
+  }
+
+  async function handleClearAssignments(shift: DutyShift) {
+    if (!window.confirm(t("shifts.confirm_clear_assignments"))) return;
+    await clearShiftAssignments(shift.id);
+    await refresh();
+  }
+
   async function handleDelete(shift: DutyShift) {
     if (!window.confirm(t("shifts.confirm_delete"))) return;
     try {
@@ -50,17 +63,26 @@ export default function ShiftsPage() {
   const locName = (id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8);
 
   return (
-    <Layout>
+    <>
       <section className="bg-white rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-          >
-            {t("shifts.create")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+            >
+              {t("shifts.clear_all_assignments")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+            >
+              {t("shifts.create")}
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-4 text-sm">
@@ -151,6 +173,14 @@ export default function ShiftsPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleClearAssignments(s)}
+                    className="text-orange-600 text-xs hover:underline disabled:opacity-40"
+                    disabled={s.assigned_count === 0}
+                  >
+                    {t("shifts.clear_assignments")}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleDelete(s)}
                     className="text-red-600 text-xs hover:underline"
                     disabled={s.assigned_count > 0}
@@ -189,6 +219,10 @@ export default function ShiftsPage() {
           onClose={() => setEditShift(null)}
         />
       )}
-    </Layout>
+    </>
   );
+}
+
+export default function ShiftsPage() {
+  return <Layout><ShiftsContent /></Layout>;
 }

@@ -2,14 +2,14 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  House, Shield, FileText, ArrowLeftRight, CircleUser,
-  ClipboardCheck, LayoutGrid,
+  House, FileText, ArrowLeftRight, Users, Wrench,
+  Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
-import ManageSheet from "./ManageSheet";
+import NavSheet from "./NavSheet";
 
 interface NavTab {
   label: string;
@@ -25,9 +25,12 @@ export default function UnifiedNav() {
   const { user } = useAuth();
   const location = useLocation();
   const role = user?.role;
-  const canApprove = role === "duty_manager" || role === "admin" || role === "commander";
+  const canApprove = role === "commander" || role === "duty_manager" || role === "admin";
+  const canPlan = role === "duty_manager" || role === "admin";
+
   const [pendingCount, setPendingCount] = useState(0);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
+  const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!canApprove) return;
@@ -41,23 +44,45 @@ export default function UnifiedNav() {
     })();
   }, [canApprove, location.pathname]);
 
-  const soldierTabs: NavTab[] = [
-    { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
-    { label: t("nav.my_duties"), icon: <Shield size={20} />, to: "/my-duties", testId: "nav-my-duties" },
+  const baseTabs: NavTab[] = [
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", testId: "nav-swaps" },
-    { label: t("nav.profile"), icon: <CircleUser size={20} />, to: "/profile", testId: "nav-profile" },
-  ];
-
-  const managerTabs: NavTab[] = [
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
-    { label: t("nav.my_duties"), icon: <Shield size={20} />, to: "/my-duties", testId: "nav-my-duties" },
-    { label: t("nav.approvals"), icon: <ClipboardCheck size={20} />, to: "/approvals", badge: pendingCount, testId: "nav-approvals" },
-    { label: t("nav.manage"), icon: <LayoutGrid size={20} />, onClick: () => setManageOpen(true), testId: "nav-manage" },
-    { label: t("nav.profile"), icon: <CircleUser size={20} />, to: "/profile", testId: "nav-profile" },
+    { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
+    { label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" },
   ];
 
-  const tabs = canApprove ? managerTabs : soldierTabs;
+  const commanderTab: NavTab = {
+    label: t("nav.commander"),
+    icon: <Users size={20} />,
+    onClick: () => setCommanderSheetOpen(true),
+    badge: pendingCount,
+    testId: "nav-commander",
+  };
+
+  const planningTab: NavTab = {
+    label: t("nav.planning"),
+    icon: <Wrench size={20} />,
+    onClick: () => setPlanningSheetOpen(true),
+    testId: "nav-planning",
+  };
+
+  const tabs: NavTab[] = [
+    ...baseTabs,
+    ...(canApprove ? [commanderTab] : []),
+    ...(canPlan ? [planningTab] : []),
+  ];
+
+  const commanderItems = [
+    { label: t("nav.team_hierarchy"), to: "/team" },
+    { label: t("nav.approvals"), to: "/approvals" },
+    { label: t("nav.command_dashboard"), to: "/command-dashboard" },
+  ];
+
+  const planningItems = [
+    { label: t("nav.planning_assignment"), to: "/planning/assignment" },
+    { label: t("nav.planning_config"), to: "/planning/config" },
+  ];
 
   const isActive = (to?: string) => {
     if (!to) return false;
@@ -65,13 +90,13 @@ export default function UnifiedNav() {
     return location.pathname.startsWith(to);
   };
 
-  const tabContent = (tab: NavTab, active: boolean, isDesktop = false) => (
+  const tabContent = (tab: NavTab) => (
     <>
       {tab.icon}
       {tab.badge != null && tab.badge > 0 && (
         <span
           className="absolute top-1 right-1/4 md:top-2 md:left-3 bg-red-500 text-white text-[10px] rounded-full px-1.5 leading-5"
-          data-testid={isDesktop ? "desktop-pending-badge" : "pending-badge"}
+          data-testid="pending-badge"
         >
           {tab.badge}
         </span>
@@ -92,7 +117,18 @@ export default function UnifiedNav() {
 
   return (
     <>
-      <ManageSheet open={manageOpen} onClose={() => setManageOpen(false)} />
+      <NavSheet
+        open={commanderSheetOpen}
+        onClose={() => setCommanderSheetOpen(false)}
+        items={commanderItems}
+        testId="commander-sheet"
+      />
+      <NavSheet
+        open={planningSheetOpen}
+        onClose={() => setPlanningSheetOpen(false)}
+        items={planningItems}
+        testId="planning-sheet"
+      />
 
       {/* Mobile bottom bar */}
       <nav
@@ -110,16 +146,16 @@ export default function UnifiedNav() {
                 className={mobileTabClass(active)}
                 data-testid={tab.testId}
               >
-                {tabContent(tab, active)}
+                {tabContent(tab)}
               </Link>
             ) : (
               <button
                 key={tab.testId}
                 onClick={tab.onClick}
-                className={mobileTabClass(active)}
+                className={mobileTabClass(false)}
                 data-testid={tab.testId}
               >
-                {tabContent(tab, active)}
+                {tabContent(tab)}
               </button>
             );
           })}
@@ -144,19 +180,16 @@ export default function UnifiedNav() {
               {active && (
                 <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 rounded-lg -z-10" />
               )}
-              {tabContent(tab, active, true)}
+              {tabContent(tab)}
             </Link>
           ) : (
             <button
               key={tab.testId}
               onClick={tab.onClick}
-              className={desktopTabClass(active)}
+              className={desktopTabClass(false)}
               data-testid={`desktop-${tab.testId}`}
             >
-              {active && (
-                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 rounded-lg -z-10" />
-              )}
-              {tabContent(tab, active, true)}
+              {tabContent(tab)}
             </button>
           );
         })}

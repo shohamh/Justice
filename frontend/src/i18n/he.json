@@ -52,7 +52,18 @@
     "section_personal": "אישי",
     "section_team": "צוות",
     "section_planning": "תכנון",
-    "algorithm": "ניהול אלגוריתם"
+    "algorithm": "ניהול אלגוריתם",
+    "commander": "מפקד",
+    "planning": "תכנון",
+    "planning_assignment": "שיבוץ",
+    "planning_config": "הגדרת תורנויות ומשמרות",
+    "assignment_manual": "שיבוץ ידני",
+    "assignment_algorithm": "אלגוריתם",
+    "config_duty_types": "סוגי תורנויות",
+    "config_shifts": "משמרות",
+    "config_templates": "תבניות",
+    "admin_settings": "הגדרות מערכת",
+    "admin_invite_codes": "קודי הזמנה"
   },
   "my_requests": {
     "title": "הבקשות והפטורים שלי",
@@ -158,7 +169,8 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
-    "phone": "טלפון"
+    "phone": "טלפון",
+    "email": "כתובת אימייל"
   },
   "duty_management": {
     "title": "ניהול תורנויות",
@@ -659,5 +671,30 @@
     "uses_left": "שימושים שנותרו",
     "revoke": "בטל",
     "uses_left_label": "מספר שימושים"
+  },
+  "forgot_password": {
+    "title": "שכחתי סיסמה",
+    "personal_number_label": "מספר אישי",
+    "continue": "המשך",
+    "send_telegram": "📱 שלח לטלגרם",
+    "send_email": "📧 שלח לאימייל",
+    "no_channels": "לא נמצאו אמצעי קשר — פנה למנהל",
+    "sent": "נשלח קישור לאיפוס סיסמה",
+    "link_label": "שכחתי סיסמה",
+    "back_to_login": "חזרה להתחברות"
+  },
+  "reset_password": {
+    "title": "איפוס סיסמה",
+    "new_password": "סיסמה חדשה",
+    "confirm": "אימות סיסמה",
+    "submit": "עדכן סיסמה",
+    "submitting": "מעדכן...",
+    "success": "הסיסמה עודכנה. ניתן להתחבר.",
+    "errors": {
+      "token_invalid": "קישור לא תקין או כבר נוצל",
+      "token_expired": "פג תוקף הקישור — בקש קישור חדש",
+      "password_too_short": "הסיסמה חייבת להכיל לפחות 10 תווים",
+      "passwords_mismatch": "הסיסמאות אינן תואמות"
+    }
   }
 }

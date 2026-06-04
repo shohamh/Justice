@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     telegram_bot_username: str = Field(default="", alias="TELEGRAM_BOT_USERNAME")
     frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
 
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+
     bootstrap_admin_personal_number: str | None = Field(
         default=None, alias="BOOTSTRAP_ADMIN_PERSONAL_NUMBER"
     )
