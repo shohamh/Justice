@@ -11,11 +11,11 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
 
 const STATUS_COLORS: Record<string, string> = {
-  applied: "bg-green-100 text-green-700",
-  pending_approval: "bg-amber-100 text-amber-700",
-  open: "bg-amber-100 text-amber-700",
-  rejected: "bg-red-100 text-red-700",
-  cancelled: "bg-gray-100 text-gray-600",
+  applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
+  pending_approval: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+  open: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+  rejected: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
+  cancelled: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
 };
 
 function statusKey(status: string) {

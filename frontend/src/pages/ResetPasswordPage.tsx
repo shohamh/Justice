@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
-      <div className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4">
+      <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
         <h1 className="text-2xl font-bold text-center">{t("reset_password.title")}</h1>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
@@ -63,7 +63,7 @@ export default function ResetPasswordPage() {
           {t("reset_password.new_password")}
           <input
             type="password"
-            className="mt-1 block w-full border rounded p-2"
+            className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={password}
             onChange={e => setPassword(e.target.value)}
           />
@@ -73,7 +73,7 @@ export default function ResetPasswordPage() {
           {t("reset_password.confirm")}
           <input
             type="password"
-            className="mt-1 block w-full border rounded p-2"
+            className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
           />

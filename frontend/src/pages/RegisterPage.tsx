@@ -104,11 +104,11 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
-      <div className="w-full max-w-lg bg-white shadow rounded-lg p-6 space-y-4">
+      <div className="w-full max-w-lg bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
         <h1 className="text-2xl font-bold text-center">{t("register.title")}</h1>
         <div className="flex gap-1 justify-center">
           {[1,2,3,4,5,6].map(s => (
-            <span key={s} className={`px-2 py-1 rounded text-xs ${step === s ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-400"}`}>{s}</span>
+            <span key={s} className={`px-2 py-1 rounded text-xs ${step === s ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500"}`}>{s}</span>
           ))}
         </div>
         {error && <div className="text-red-600 text-sm">{error}</div>}
@@ -117,7 +117,7 @@ export default function RegisterPage() {
           <div className="space-y-3">
             <h2 className="font-semibold">{t("register.step_invite")}</h2>
             <label className="block text-sm">{t("register.invite_code_label")}
-              <input className="mt-1 block w-full border rounded p-2" value={form.invite_code}
+              <input className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.invite_code}
                 onChange={e => { set("invite_code", e.target.value); setCodeValid(null); }} />
             </label>
             {codeValid === false && <p className="text-red-600 text-sm">{t("register.invite_code_invalid")}</p>}
@@ -137,18 +137,18 @@ export default function RegisterPage() {
                ["discharge_date","שחרור","date"],["last_mitvahim_date","מטווח אחרון","date"],
                ["last_alal_date","אל\"ל אחרון","date"]] as [keyof FormData, string, string][]).map(([key, label, type]) => (
               <label key={key as string} className="block text-sm">{label}
-                <input type={type} className="mt-1 block w-full border rounded p-2"
+                <input type={type} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string}
                   onChange={e => set(key, e.target.value as any)} />
               </label>
             ))}
             <label className="block text-sm">מגדר
-              <select className="mt-1 block w-full border rounded p-2" value={form.gender} onChange={e => set("gender", e.target.value)}>
+              <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option>
               </select>
             </label>
             <label className="block text-sm">דרגה
-              <select className="mt-1 block w-full border rounded p-2" value={form.rank} onChange={e => set("rank", e.target.value)}>
+              <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.rank} onChange={e => set("rank", e.target.value)}>
                 <option value="">בחר</option>
                 {ALL_RANKS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -160,10 +160,10 @@ export default function RegisterPage() {
               <input type="checkbox" checked={form.bahad1_graduate} onChange={e => set("bahad1_graduate", e.target.checked)} /> בוגר בה"ד 1
             </label>
             <label className="block text-sm">סיסמה
-              <input type="password" className="mt-1 block w-full border rounded p-2" value={form.password} onChange={e => set("password", e.target.value)} />
+              <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
             </label>
             <label className="block text-sm">אימות סיסמה
-              <input type="password" className="mt-1 block w-full border rounded p-2" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
+              <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (
               <p className="text-red-600 text-sm">הסיסמאות אינן תואמות</p>
@@ -182,13 +182,13 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_exemptions")}</h2>
             {form.exemption_requests.map((er, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
-                <input placeholder="מזהה סוג פטור (UUID)" className="block w-full border rounded p-1" value={er.exemption_type_id}
+                <input placeholder="מזהה סוג פטור (UUID)" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.exemption_type_id}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], exemption_type_id: e.target.value}; set("exemption_requests", rows); }} />
-                <input type="date" className="block w-full border rounded p-1" value={er.start_date}
+                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: e.target.value}; set("exemption_requests", rows); }} />
-                <input type="date" className="block w-full border rounded p-1" value={er.end_date}
+                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: e.target.value}; set("exemption_requests", rows); }} />
-                <input placeholder={t("register.reason")} className="block w-full border rounded p-1" value={er.reason}
+                <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.reason}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], reason: e.target.value}; set("exemption_requests", rows); }} />
                 <button className="text-red-600 text-xs" onClick={() => set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
@@ -209,11 +209,11 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_constraints")}</h2>
             {form.personal_constraints.map((pc, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
-                <input type="date" className="block w-full border rounded p-1" value={pc.start_date}
+                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], start_date: e.target.value}; set("personal_constraints", rows); }} />
-                <input type="date" className="block w-full border rounded p-1" value={pc.end_date}
+                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: e.target.value}; set("personal_constraints", rows); }} />
-                <input placeholder={t("register.reason")} className="block w-full border rounded p-1" value={pc.reason}
+                <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.reason}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], reason: e.target.value}; set("personal_constraints", rows); }} />
                 <button className="text-red-600 text-xs" onClick={() => set("personal_constraints", form.personal_constraints.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
@@ -232,7 +232,7 @@ export default function RegisterPage() {
         {step === 5 && (
           <div className="space-y-3">
             <h2 className="font-semibold">{t("register.step_commander")}</h2>
-            <input className="block w-full border rounded p-2 text-sm" placeholder={t("register.search_commander")}
+            <input className="block w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder={t("register.search_commander")}
               value={nodeSearch} onChange={e => setNodeSearch(e.target.value)} />
             <div className="max-h-52 overflow-y-auto border rounded divide-y text-sm">
               {searchResults.length === 0 && <p className="p-2 text-gray-400">{t("register.no_results")}</p>}

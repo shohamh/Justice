@@ -89,7 +89,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
             data-testid="soldier-search-input"
           />
           {showDropdown && results.length > 0 && (
-            <ul className="absolute z-10 bg-white border rounded w-full mt-1 shadow-lg max-h-48 overflow-y-auto" data-testid="soldier-search-dropdown">
+            <ul className="absolute z-10 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded w-full mt-1 shadow-lg max-h-48 overflow-y-auto" data-testid="soldier-search-dropdown">
               {results.map((s) => (
                 <li
                   key={s.id}
@@ -101,7 +101,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
                 </li>
               ))}
               <li
-                className="px-2 py-1 hover:bg-gray-50 cursor-pointer text-sm text-indigo-600 border-t"
+                className="px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm text-indigo-600 dark:text-indigo-400 border-t dark:border-gray-700"
                 onClick={handleCreateNew}
                 data-testid="soldier-search-create-new"
               >

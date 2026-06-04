@@ -35,11 +35,11 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="assign-commander-dialog">
-        <h3 className="font-semibold mb-4">{t("team.assign_commander")}: {node.name}</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="assign-commander-dialog">
+        <h3 className="font-semibold mb-4 dark:text-gray-100">{t("team.assign_commander")}: {node.name}</h3>
         <form onSubmit={onSubmit} className="space-y-3">
-          <input className="border rounded p-1 w-full" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("team.search_soldier_placeholder")} data-testid="commander-search" />
-          <select className="border rounded p-1 w-full" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} data-testid="commander-select">
+          <input className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("team.search_soldier_placeholder")} data-testid="commander-search" />
+          <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} data-testid="commander-select">
             <option value="">—</option>
             {filtered.map((s) => (
               <option key={s.id} value={s.id}>{s.full_name} ({s.personal_number}) [{s.role}]</option>

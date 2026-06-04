@@ -39,7 +39,7 @@ export default function ChangePasswordPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
-      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4" data-testid="change-password-form">
+      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4" data-testid="change-password-form">
         <h1 className="text-2xl font-bold text-center">{t("change_password.title")}</h1>
         {mustChangePassword && (
           <div className="bg-pending/10 border border-pending/30 text-pending px-3 py-2 text-sm rounded" data-testid="forced-notice">
@@ -48,12 +48,12 @@ export default function ChangePasswordPage() {
         )}
         <label className="block">
           <span className="text-sm font-medium">{t("change_password.current")}</span>
-          <input type="password" required className="mt-1 block w-full rounded-md border p-2" value={current}
+          <input type="password" required className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={current}
                  onChange={(e) => setCurrent(e.target.value)} data-testid="current-password" />
         </label>
         <label className="block">
           <span className="text-sm font-medium">{t("change_password.new")}</span>
-          <input type="password" required className="mt-1 block w-full rounded-md border p-2" value={next}
+          <input type="password" required className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={next}
                  onChange={(e) => setNext(e.target.value)} data-testid="new-password" />
         </label>
         {error && <div className="text-rejected text-sm" data-testid="change-password-error">{error}</div>}

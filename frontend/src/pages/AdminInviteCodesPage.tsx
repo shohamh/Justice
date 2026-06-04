@@ -18,11 +18,11 @@ export function AdminInviteCodesContent() {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-6 space-y-4" dir="rtl">
-      <h2 className="text-xl font-semibold">{t("invite_codes.title")}</h2>
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl">
+      <h2 className="text-xl font-semibold dark:text-gray-100">{t("invite_codes.title")}</h2>
       <div className="flex gap-2 items-end">
-        <label className="text-sm">{t("invite_codes.uses_left_label")}
-          <input type="number" min={1} className="mt-1 block w-24 border rounded p-2"
+        <label className="text-sm dark:text-gray-300">{t("invite_codes.uses_left_label")}
+          <input type="number" min={1} className="mt-1 block w-24 border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={usesLeft} onChange={e => setUsesLeft(Number(e.target.value))} />
         </label>
         <button className="bg-indigo-600 text-white px-4 py-2 rounded disabled:opacity-50"

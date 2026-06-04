@@ -40,7 +40,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
   }, [t, allRows, avgActiveDays]);
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-4" dir="rtl">
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" dir="rtl">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">היסטוריית תורנויות</h2>
         <Link to="/transparency" className="text-sm text-indigo-600 hover:text-indigo-800">
@@ -50,17 +50,17 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
 
       {/* Scoring metrics */}
       <div className="grid grid-cols-3 gap-3 text-sm">
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1">ניקוד מצטבר</div>
           <div className="text-lg font-semibold text-indigo-700">{Number(myRow?.cumulative_score ?? 0).toFixed(2)}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgScore}</div>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1">ימים פעילים</div>
           <div className="text-lg font-semibold text-indigo-700">{myRow?.active_days ?? 0}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgActiveDays}</div>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1 inline-flex items-center gap-1">
             ניקוד מנורמל
             <button
@@ -104,7 +104,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
       {/* Tooltip modal */}
       {tooltipOpen && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipOpen(false)}>
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm whitespace-pre-line">{normTooltip}</p>
             <div className="mt-4 text-left">
               <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipOpen(false)}>סגור</button>

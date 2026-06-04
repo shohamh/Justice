@@ -123,7 +123,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
               onClick={() => toggleFilter(dt.id)}
               data-testid={`filter-chip-${dt.id}`}
               className={`px-2 py-1 rounded-full border text-xs ${
-                dutyTypeFilter === dt.id ? "bg-indigo-100 border-indigo-400 text-indigo-700" : "bg-white border-gray-300 text-gray-600"
+                dutyTypeFilter === dt.id ? "bg-indigo-100 dark:bg-indigo-900 border-indigo-400 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
               }`}
             >
               {dt.name}

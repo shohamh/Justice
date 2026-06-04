@@ -20,7 +20,7 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
     <button
       onClick={() => onSelect(a)}
       className={`text-xs rounded px-2 py-0.5 cursor-pointer border ${
-        a.is_reserve ? "bg-amber-50 border-amber-200" : "bg-gray-100 border-gray-200"
+        a.is_reserve ? "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800" : "bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600"
       }`}
     >
       {a.soldier_name || a.duty_type_id?.slice(0, 6) || "?"}
@@ -56,7 +56,7 @@ export default function UpcomingSnapshot({ data }: Props) {
 
       {selected && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-lg shadow-xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
             <div className="font-bold text-lg mb-3">
               {selected.soldier_id ? (
                 <SoldierLink id={selected.soldier_id} name={selected.soldier_name || "?"} />

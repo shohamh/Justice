@@ -25,7 +25,7 @@ export default function SubHierarchySelector({ value, onChange }: Props) {
     const checked = value.includes(node.id);
     return (
       <div key={node.id}>
-        <label className="flex items-center gap-2 py-1 hover:bg-gray-50 cursor-pointer" style={{ paddingRight: `${depth * 16 + 8}px` }}>
+        <label className="flex items-center gap-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" style={{ paddingRight: `${depth * 16 + 8}px` }}>
           <input type="checkbox" checked={checked} onChange={() => toggleNode(node.id)} className="rounded" />
           <span className="text-sm">{node.name}</span>
         </label>
@@ -35,7 +35,7 @@ export default function SubHierarchySelector({ value, onChange }: Props) {
   }
 
   return (
-    <div className="border rounded p-2 max-h-60 overflow-y-auto" data-testid="sub-hierarchy-selector">
+    <div className="border rounded p-2 max-h-60 overflow-y-auto dark:border-gray-600 dark:bg-gray-800" data-testid="sub-hierarchy-selector">
       <p className="text-xs text-gray-500 mb-2">{t("algorithm.select_eligible_nodes")}</p>
       {nodes.map((n) => renderNode(n))}
     </div>

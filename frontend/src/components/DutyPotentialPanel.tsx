@@ -11,7 +11,7 @@ export default function DutyPotentialPanel({ data }: Props) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3" data-testid="duty-potential">
       {data.map((pc) => (
-        <div key={pc.label} className="bg-gray-50 rounded p-3 text-center">
+        <div key={pc.label} className="bg-gray-50 dark:bg-gray-700 rounded p-3 text-center">
           <div className="text-2xl font-bold">{pc.count}</div>
           <div className="text-sm text-gray-600">{pc.label}</div>
         </div>

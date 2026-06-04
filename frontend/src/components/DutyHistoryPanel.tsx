@@ -25,9 +25,9 @@ const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  assignment: "border-indigo-500 bg-indigo-50",
-  cancellation: "border-red-400 bg-red-50",
-  call_up: "border-orange-400 bg-orange-50",
+  assignment: "border-indigo-500 bg-indigo-50 dark:bg-indigo-950",
+  cancellation: "border-red-400 bg-red-50 dark:bg-red-950",
+  call_up: "border-orange-400 bg-orange-50 dark:bg-orange-950",
   dismissal: "border-yellow-400 bg-yellow-50",
   exemption_request: "border-blue-400 bg-blue-50",
   personal_constraint: "border-purple-400 bg-purple-50",
@@ -78,9 +78,9 @@ function EventCard({
   onRejectConstraint: (id: string) => void;
   t: (key: string) => string;
 }) {
-  const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50";
+  const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
   const dotColor = DOT_COLORS[e.event_type] ?? "bg-gray-400";
-  const badgeClass = e.status ? (STATUS_BADGE[e.status] ?? "bg-gray-100 text-gray-600") : null;
+  const badgeClass = e.status ? (STATUS_BADGE[e.status] ?? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300") : null;
 
   return (
     <div

@@ -16,7 +16,7 @@ const LEVEL_COLORS: Record<string, string> = {
   department: "text-blue-700 bg-blue-50",
   branch: "text-green-700 bg-green-50",
   group: "text-yellow-700 bg-yellow-50",
-  team: "text-gray-700 bg-gray-100",
+  team: "text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-700",
 };
 
 const LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"];
@@ -107,7 +107,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
 
     return (
       <li key={node.id} className="select-none">
-        <div className={`flex items-center gap-2 py-1 px-2 hover:bg-gray-50 rounded ${depth > 0 ? "mr-4" : ""}`}>
+        <div className={`flex items-center gap-2 py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded ${depth > 0 ? "mr-4" : ""}`}>
           <button
             className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren || nodeSoldiers.length > 0 ? "visible" : "invisible"}`}
             onClick={() => toggle(node.id)}
