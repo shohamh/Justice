@@ -447,7 +447,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     from app.algorithm.explain import build_explanations
     from app.algorithm.reserve import compute_reserve_dist
     from app.algorithm.solver import solve
-    from app.db.models import SystemSetting
     from app.db.session import session_scope
     from app.services.settings_loader import get_setting
 
@@ -476,12 +475,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         return Decimal(default)
 
                 def _setting_int(key: str, default: int) -> int:
-                    row = session.get(SystemSetting, key)
-                    if row is None:
-                        return default
                     try:
-                        return int(row.value)
-                    except (TypeError, ValueError):
+                        return int(get_setting(session, key))
+                    except Exception:
                         return default
 
                 settings = SolverSettings(
