@@ -28,6 +28,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     personal_number: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=1, max_length=200)
+    remember_me: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -138,7 +139,7 @@ def login(
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600,
+        max_age=settings.refresh_token_days * 24 * 3600 if body.remember_me else None,
         httponly=True,
         secure=False,  # set to True behind TLS in slice 7; left False so local dev over http works
         samesite="strict",

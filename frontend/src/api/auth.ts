@@ -59,8 +59,8 @@ export interface RegisterPayload {
   personal_constraints: object[];
 }
 
-export async function login(personal_number: string, password: string): Promise<LoginResponse> {
-  const r = await api.post<LoginResponse>("/auth/login", { personal_number, password });
+export async function login(personal_number: string, password: string, remember_me = false): Promise<LoginResponse> {
+  const r = await api.post<LoginResponse>("/auth/login", { personal_number, password, remember_me });
   return r.data;
 }
 

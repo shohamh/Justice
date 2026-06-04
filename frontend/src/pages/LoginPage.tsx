@@ -16,6 +16,7 @@ export default function LoginPage() {
 
   const [personalNumber, setPersonalNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<ErrKey>(null);
 
@@ -24,7 +25,7 @@ export default function LoginPage() {
     setErrorKey(null);
     setSubmitting(true);
     try {
-      await login(personalNumber, password);
+      await login(personalNumber, password, rememberMe);
       navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof AxiosError) {
@@ -76,6 +77,17 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             data-testid="password-input"
           />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none" dir="rtl">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="rounded"
+            data-testid="remember-me-checkbox"
+          />
+          {t("login.remember_me")}
         </label>
 
         {errorKey && (
