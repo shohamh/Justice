@@ -12,6 +12,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { dutyTypeColor } from "../utils/dutyTypeColor";
+import { downloadDutyICS } from "../utils/icsCalendar";
 
 export default function MyDutiesPage() {
   const { t } = useTranslation();
@@ -96,6 +97,17 @@ export default function MyDutiesPage() {
               className="text-blue-600 underline text-xs"
             >
               {t("algorithm.why_button")}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadDutyICS(
+                selectedDuty,
+                types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id,
+                locs[selectedDuty.duty_location_id] ?? ""
+              )}
+              className="text-xs text-indigo-600 hover:underline flex items-center gap-1 mt-2"
+            >
+              📅 {t("my_duties.add_to_calendar")}
             </button>
           </div>
         )}

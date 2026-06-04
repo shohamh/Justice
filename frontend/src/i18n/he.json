@@ -219,7 +219,9 @@
     "to": "עד תאריך",
     "none": "אין תורנויות",
     "showing_for_date": "תורנויות לתאריך: {{date}}",
-    "show_all": "הצג הכל"
+    "show_all": "הצג הכל",
+    "add_to_calendar": "הוסף ליומן",
+    "download_ics": "הורד אירוע (.ics)"
   },
   "unit_calendar": {
     "title": "יומן יחידה",
