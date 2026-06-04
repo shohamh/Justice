@@ -134,8 +134,8 @@ export function SystemSettingsContent() {
             return (
               <div key={def.key} className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800">{def.label}</div>
-                  {def.description && <div className="text-xs text-gray-400 mt-0.5">{def.description}</div>}
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{def.label}</div>
+                  {def.description && <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{def.description}</div>}
                 </div>
                 <div className="flex-shrink-0">
                   {def.type === "boolean" ? (
@@ -154,7 +154,7 @@ export function SystemSettingsContent() {
                       min="0"
                       value={String(value)}
                       onChange={e => setValue(def.key, def.type === "decimal" ? e.target.value : Number(e.target.value))}
-                      className="w-28 border rounded px-2 py-1 text-sm text-right"
+                      className="w-28 border rounded px-2 py-1 text-sm text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       dir="ltr"
                     />
                   )}

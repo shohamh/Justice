@@ -178,7 +178,7 @@ export default function UnifiedNav() {
               data-testid={`desktop-${tab.testId}`}
             >
               {active && (
-                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 rounded-lg -z-10" />
+                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 dark:bg-indigo-950 rounded-lg -z-10" />
               )}
               {tabContent(tab)}
             </Link>
