@@ -94,7 +94,7 @@ export default function MyDutiesPage() {
             <button
               type="button"
               onClick={() => setWhyTarget({ assignmentId: selectedDuty.assignment_id })}
-              className="text-blue-600 underline text-xs"
+              className="text-blue-600 dark:text-blue-400 underline text-xs"
             >
               {t("algorithm.why_button")}
             </button>
@@ -105,7 +105,7 @@ export default function MyDutiesPage() {
                 types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id,
                 locs[selectedDuty.duty_location_id] ?? ""
               )}
-              className="text-xs text-indigo-600 hover:underline flex items-center gap-1 mt-2"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mt-2"
             >
               📅 {t("my_duties.add_to_calendar")}
             </button>

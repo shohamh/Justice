@@ -8,9 +8,9 @@ import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dut
 import { DataTable, type ColDef } from "../components/DataTable";
 
 const FILL_COLORS: Record<string, string> = {
-  empty: "bg-red-100 text-red-700",
-  partial: "bg-amber-100 text-amber-700",
-  full: "bg-green-100 text-green-700",
+  empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
+  partial: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+  full: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
 };
 
 export function ShiftsContent() {

@@ -130,7 +130,7 @@ export function AlgorithmContent() {
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className={job.status === "done" ? "text-green-600" : job.status === "failed" ? "text-red-600" : "text-gray-400"}>
+                <span className={job.status === "done" ? "text-green-600 dark:text-green-400" : job.status === "failed" ? "text-red-600 dark:text-red-400" : "text-gray-400"}>
                   {statusIcon(job.status)}
                 </span>
                 <span className="font-medium truncate text-xs">
@@ -158,7 +158,7 @@ export function AlgorithmContent() {
             {/* Job header */}
             <div className="text-sm space-y-1 border-b dark:border-gray-600 pb-3">
               <div className="flex items-center gap-3">
-                <span className={`font-semibold text-base ${selectedJob.status === "done" ? "text-green-700" : selectedJob.status === "failed" ? "text-red-600" : "text-gray-600"}`}>
+                <span className={`font-semibold text-base ${selectedJob.status === "done" ? "text-green-700 dark:text-green-400" : selectedJob.status === "failed" ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"}`}>
                   {statusIcon(selectedJob.status)}
                 </span>
                 <span className="font-semibold">{selectedJob.planning_start} — {selectedJob.planning_end}</span>
@@ -180,13 +180,13 @@ export function AlgorithmContent() {
                   <div className="space-y-2">
                     {/* Stage steps */}
                     <div className="flex items-center gap-2 text-xs">
-                      <span className={`flex items-center gap-1 font-medium ${phase >= 1 ? "text-indigo-600" : "text-gray-400"}`}>
-                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 1 ? "bg-indigo-500" : "bg-gray-300"}`}>1</span>
+                      <span className={`flex items-center gap-1 font-medium ${phase >= 1 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>
+                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 1 ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-600"}`}>1</span>
                         {t("algorithm.stage_phase1")}
                       </span>
-                      <span className="text-gray-300 mx-1">←</span>
-                      <span className={`flex items-center gap-1 font-medium ${phase >= 2 ? "text-indigo-600" : "text-gray-400"}`}>
-                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 2 ? "bg-indigo-500" : "bg-gray-300"}`}>2</span>
+                      <span className="text-gray-300 dark:text-gray-600 mx-1">←</span>
+                      <span className={`flex items-center gap-1 font-medium ${phase >= 2 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>
+                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 2 ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-600"}`}>2</span>
                         {t("algorithm.stage_phase2")}
                       </span>
                     </div>

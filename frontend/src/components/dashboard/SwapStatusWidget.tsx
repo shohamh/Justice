@@ -6,8 +6,8 @@ interface Props {
 }
 
 const STATUS_CHIPS: Record<string, string> = {
-  open: "bg-amber-100 text-amber-700",
-  pending_approval: "bg-blue-100 text-blue-700",
+  open: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+  pending_approval: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
 };
 
 const STATUS_LABELS: Record<string, string> = {

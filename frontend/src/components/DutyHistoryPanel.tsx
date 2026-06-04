@@ -360,7 +360,7 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
         <div className="space-y-4">
           {/* Upcoming section */}
           <div>
-            <h4 className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide mb-2">
               {t("duty_history.upcoming")}
             </h4>
             {upcoming.length === 0 ? (

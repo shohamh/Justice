@@ -47,7 +47,7 @@ export default function TransparencyPage() {
               header: t("transparency.name"),
               cell: (r) =>
                 r.soldier_id === user?.id ? (
-                  <button className="text-indigo-600" onClick={toggleOwn} data-testid="own-row-toggle">
+                  <button className="text-indigo-600 dark:text-indigo-400" onClick={toggleOwn} data-testid="own-row-toggle">
                     {r.full_name}
                   </button>
                 ) : (

@@ -47,7 +47,7 @@ function Arrow({ split }: { split?: boolean }) {
 function SwapsTab() {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
-      <h3 className="text-base font-semibold text-indigo-700">איך עובדות החלפות?</h3>
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך עובדות החלפות?</h3>
       <p className="text-gray-700 dark:text-gray-300">
         מנגנון ההחלפות מאפשר לשני חיילים להחליף ביניהם תורנויות, בכפוף לאישור. כך זה עובד:
       </p>
@@ -103,7 +103,7 @@ function SwapsTab() {
 function AlgorithmTab() {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
-      <h3 className="text-base font-semibold text-indigo-700">איך האלגוריתם מחלק תורנויות?</h3>
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך האלגוריתם מחלק תורנויות?</h3>
       <p className="text-gray-700 dark:text-gray-300">
         האלגוריתם מחלק תורנויות באופן אוטומטי ועובר על כל משמרת לפי הסדר:
       </p>
@@ -175,7 +175,7 @@ function AlgorithmTab() {
 function FairnessTab() {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
-      <h3 className="text-base font-semibold text-indigo-700">הוגנות ושקיפות</h3>
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">הוגנות ושקיפות</h3>
       <p className="text-gray-700 dark:text-gray-300">
         המערכת מספקת שקיפות מלאה — כל חייל יכול לראות את הניקוד שלו ושל שאר חברי היחידה בדף השקיפות.
       </p>
@@ -209,30 +209,30 @@ function FairnessTab() {
             <p className="text-orange-600">תשובץ יותר בעתיד</p>
           </div>
           <div className="bg-blue-100 border border-blue-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-blue-700">= 1</p>
+            <p className="text-lg font-bold text-blue-700 dark:text-blue-300">= 1</p>
             <div className="h-4" />
-            <p className="text-blue-700 font-medium">בדיוק כמו הממוצע</p>
-            <p className="text-blue-600">מצב אידיאלי</p>
+            <p className="text-blue-700 dark:text-blue-300 font-medium">בדיוק כמו הממוצע</p>
+            <p className="text-blue-600 dark:text-blue-400">מצב אידיאלי</p>
           </div>
           <div className="bg-green-100 border border-green-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-green-700 flex items-end justify-center gap-1">
+            <p className="text-lg font-bold text-green-700 dark:text-green-300 flex items-end justify-center gap-1">
               <span className="flex flex-col items-center leading-none">
                 <span>👤</span>
                 <span className="text-[8px] text-green-400 font-normal mt-0.5">את/ה כאן</span>
               </span>
               <span>{"> 1"}</span>
             </p>
-            <p className="text-green-700 font-medium">עשית יותר מהממוצע</p>
+            <p className="text-green-700 dark:text-green-300 font-medium">עשית יותר מהממוצע</p>
             <p className="text-green-600">תשובץ פחות בעתיד</p>
           </div>
         </div>
 
         {/* Gradient bar */}
         <div className="space-y-1">
-          <div className="h-3 rounded-full bg-gradient-to-l from-green-300 via-blue-300 to-orange-300" />
+          <div className="h-3 rounded-full bg-gradient-to-l from-orange-300 via-blue-300 to-green-300" />
           <div className="grid grid-cols-3 text-center text-xs text-gray-400">
             <span>ניקוד נמוך</span>
-            <span className="text-blue-600 font-medium">= 1</span>
+            <span className="text-blue-600 dark:text-blue-400 font-medium">= 1</span>
             <span>ניקוד גבוה</span>
           </div>
         </div>
@@ -240,7 +240,7 @@ function FairnessTab() {
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה: חישוב ניקוד מנורמל</p>
-        <div className="text-xs space-y-2 text-indigo-700">
+        <div className="text-xs space-y-2 text-indigo-700 dark:text-indigo-300">
           <p>נניח יחידה עם 3 חיילים לאחר 60 יום:</p>
           <div className="overflow-x-auto">
             <table className="w-full text-center border-collapse text-xs">
@@ -263,7 +263,7 @@ function FairnessTab() {
                   <td className="p-1 border border-indigo-200">יעל</td>
                   <td className="p-1 border border-indigo-200">40</td>
                   <td className="p-1 border border-indigo-200">60</td>
-                  <td className="p-1 border border-indigo-200 font-bold text-blue-600">1.00</td>
+                  <td className="p-1 border border-indigo-200 font-bold text-blue-600 dark:text-blue-400">1.00</td>
                 </tr>
                 <tr>
                   <td className="p-1 border border-indigo-200">רוני</td>

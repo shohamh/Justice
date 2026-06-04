@@ -52,12 +52,12 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1">ניקוד מצטבר</div>
-          <div className="text-lg font-semibold text-indigo-700">{Number(myRow?.cumulative_score ?? 0).toFixed(2)}</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{Number(myRow?.cumulative_score ?? 0).toFixed(2)}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgScore}</div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
           <div className="text-xs text-gray-500 mb-1">ימים פעילים</div>
-          <div className="text-lg font-semibold text-indigo-700">{myRow?.active_days ?? 0}</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{myRow?.active_days ?? 0}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgActiveDays}</div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
@@ -72,7 +72,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
               ?
             </button>
           </div>
-          <div className="text-lg font-semibold text-indigo-700">{Number(myRow?.normalised_score ?? 0).toFixed(3)}</div>
+          <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">{Number(myRow?.normalised_score ?? 0).toFixed(3)}</div>
           <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgNorm}</div>
         </div>
       </div>

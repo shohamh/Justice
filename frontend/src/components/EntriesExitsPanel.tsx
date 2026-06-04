@@ -87,8 +87,8 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
               <td className="p-1"><SoldierLink id={s.id} name={s.full_name} /></td>
               <td className="p-1">{s.status}</td>
               <td className="p-1 space-x-2 space-x-reverse">
-                <button onClick={() => setExemptTarget(s)} className="text-indigo-600 text-xs">{t("command_dashboard.exempt")}</button>
-                <button onClick={() => setMoveTarget(s)} className="text-indigo-600 text-xs">{t("command_dashboard.move")}</button>
+                <button onClick={() => setExemptTarget(s)} className="text-indigo-600 dark:text-indigo-400 text-xs">{t("command_dashboard.exempt")}</button>
+                <button onClick={() => setMoveTarget(s)} className="text-indigo-600 dark:text-indigo-400 text-xs">{t("command_dashboard.move")}</button>
                 <button onClick={() => handleRelease(s.id)} className="text-red-600 text-xs">{t("command_dashboard.release")}</button>
               </td>
             </tr>

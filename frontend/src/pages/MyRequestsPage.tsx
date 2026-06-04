@@ -120,9 +120,9 @@ export default function MyRequestsPage() {
 
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
-      pending: "text-amber-600",
-      approved: "text-green-600",
-      rejected: "text-red-600",
+      pending: "text-amber-600 dark:text-amber-400",
+      approved: "text-green-600 dark:text-green-400",
+      rejected: "text-red-600 dark:text-red-400",
     };
     return <span className={colors[status] ?? ""}>{t(`my_requests.${status}`)}</span>;
   };
@@ -231,8 +231,8 @@ export default function MyRequestsPage() {
                 <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
                 {er.reason && <span className="text-gray-500">{er.reason}</span>}
                 <span className={`text-xs ${
-                  er.status === "approved" ? "text-green-600" :
-                  er.status === "rejected" ? "text-red-600" : "text-amber-600"
+                  er.status === "approved" ? "text-green-600 dark:text-green-400" :
+                  er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
                 }`}>{t(`exemption_requests.${er.status}`)}</span>
               </li>
             ))}

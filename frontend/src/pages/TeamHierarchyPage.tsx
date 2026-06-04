@@ -67,7 +67,7 @@ export default function TeamHierarchyPage() {
         <div className="flex items-center gap-3">
           <h3 className="font-medium">{t("team.title")}</h3>
           {isAdmin && (
-            <button onClick={() => setShowAddRoot(true)} className="text-sm text-indigo-600" data-testid="add-department">
+            <button onClick={() => setShowAddRoot(true)} className="text-sm text-indigo-600 dark:text-indigo-400" data-testid="add-department">
               {t("team.add_node")}
             </button>
           )}
@@ -140,8 +140,8 @@ export default function TeamHierarchyPage() {
                 header: "",
                 cell: (s) => (
                   <span className="space-x-2 space-x-reverse">
-                    <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
-                    <button onClick={() => onReset(s.id)} className="text-indigo-600" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
+                    <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-400" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
+                    <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-400" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                   </span>
                 ),

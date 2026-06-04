@@ -15,9 +15,9 @@ const DEFAULT_SETTINGS: SolverSettings = {
 };
 
 const FILL_COLORS: Record<string, string> = {
-  empty: "text-red-600",
-  partial: "text-amber-600",
-  full: "text-green-600",
+  empty: "text-red-600 dark:text-red-400",
+  partial: "text-amber-600 dark:text-amber-400",
+  full: "text-green-600 dark:text-green-400",
 };
 
 export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
@@ -122,7 +122,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         </select>
       </label>
 
-      <button type="button" className="text-xs text-blue-600 underline" onClick={() => setShowSettings(s => !s)}>
+      <button type="button" className="text-xs text-blue-600 dark:text-blue-400 underline" onClick={() => setShowSettings(s => !s)}>
         {t("algorithm.settings")}
       </button>
       {showSettings && (

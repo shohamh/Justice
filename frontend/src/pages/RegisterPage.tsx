@@ -193,7 +193,7 @@ export default function RegisterPage() {
                 <button className="text-red-600 text-xs" onClick={() => set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
             ))}
-            <button className="text-indigo-600 text-sm"
+            <button className="text-indigo-600 dark:text-indigo-400 text-sm"
               onClick={() => set("exemption_requests", [...form.exemption_requests, {exemption_type_id:"",start_date:"",end_date:"",reason:""}])}>
               + {t("register.add_exemption")}
             </button>
@@ -218,7 +218,7 @@ export default function RegisterPage() {
                 <button className="text-red-600 text-xs" onClick={() => set("personal_constraints", form.personal_constraints.filter((_,j) => j !== i))}>{t("register.remove")}</button>
               </div>
             ))}
-            <button className="text-indigo-600 text-sm"
+            <button className="text-indigo-600 dark:text-indigo-400 text-sm"
               onClick={() => set("personal_constraints", [...form.personal_constraints, {start_date:"",end_date:"",reason:""}])}>
               + {t("register.add_constraint")}
             </button>
@@ -247,7 +247,7 @@ export default function RegisterPage() {
               ))}
             </div>
             {selectedNode && (
-              <p className="text-sm text-indigo-700">
+              <p className="text-sm text-indigo-700 dark:text-indigo-300">
                 {t("register.selected_node")}: <strong>{selectedNode.name}</strong>
                 {selectedNode.commander_name && <> · {t("register.commander_label")}: {selectedNode.commander_name}</>}
               </p>

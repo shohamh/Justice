@@ -92,14 +92,14 @@ export function DutyConfigContent() {
               <div className="flex items-center gap-2">
                 <span>{d.name} — {d.score_per_day}</span>
                 {d.reserve_ratio && parseFloat(d.reserve_ratio) > 0 && (
-                  <span className="text-xs text-purple-600">ר:{d.reserve_ratio} מינ:{d.reserve_minimum ?? 0}</span>
+                  <span className="text-xs text-purple-600 dark:text-purple-400">ר:{d.reserve_ratio} מינ:{d.reserve_minimum ?? 0}</span>
                 )}
-                <button className="text-xs text-indigo-600" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
+                <button className="text-xs text-indigo-600 dark:text-indigo-400" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
                   {d.active ? t("duty_config.active") : "—"}
                 </button>
                 <button
                   type="button"
-                  className="text-xs text-blue-600 underline ml-auto"
+                  className="text-xs text-blue-600 dark:text-blue-400 underline ml-auto"
                   onClick={() => setExpandedDtId(expandedDtId === d.id ? null : d.id)}
                 >
                   {t("eligibility.title")}
