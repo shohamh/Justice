@@ -1123,6 +1123,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     }),
                     (8, "rejected", {}),
                     (9, "cancelled", {}),
+                    # new entries — indices 10 and 12 intentionally cross-reference each other's
+                    # assignments (10 offers 11's duty; 12 offers 10's duty) to simulate a real trade.
                     # Trade offer: covering soldier offered one of their own duties
                     (10, "pending_approval", {
                         "covering_soldier_id": _other(future_assignments[10].soldier_id).id,
