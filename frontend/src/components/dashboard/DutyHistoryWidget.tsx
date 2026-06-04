@@ -1,3 +1,6 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow } from "../../api/scoring";
 
@@ -20,6 +23,8 @@ function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
 }
 
 export default function DutyHistoryWidget({ duties, typeNames, locationNames, myRow, allRows }: Props) {
+  const { t } = useTranslation();
+  const [tooltipOpen, setTooltipOpen] = useState(false);
   const today = new Date().toISOString().split("T")[0];
   const past = duties
     .filter((d) => d.end_date < today)
@@ -29,23 +34,47 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
   const avgScore = avg(allRows, "cumulative_score").toFixed(2);
   const avgNorm = avg(allRows, "normalised_score").toFixed(3);
 
+  const normTooltip = useMemo(() => {
+    const avgCumFmt = avg(allRows, "cumulative_score").toFixed(3);
+    return t("transparency.normalised_tooltip", { avgCumulative: avgCumFmt, avgActiveDays });
+  }, [t, allRows, avgActiveDays]);
+
   return (
     <section className="bg-white rounded-lg shadow p-4 space-y-4" dir="rtl">
-      <h2 className="text-lg font-semibold">היסטוריית תורנויות</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-semibold">היסטוריית תורנויות</h2>
+        <Link to="/transparency" className="text-sm text-indigo-600 hover:text-indigo-800">
+          לדף השקיפות →
+        </Link>
+      </div>
 
       {/* Scoring metrics */}
       <div className="grid grid-cols-3 gap-3 text-sm">
-        {[
-          { label: "ניקוד מצטבר", my: Number(myRow?.cumulative_score ?? 0).toFixed(2), unit: avgScore },
-          { label: "ימים פעילים", my: myRow?.active_days ?? 0, unit: avgActiveDays },
-          { label: "ניקוד מנורמל", my: Number(myRow?.normalised_score ?? 0).toFixed(3), unit: avgNorm },
-        ].map(({ label, my, unit }) => (
-          <div key={label} className="bg-gray-50 rounded-lg p-3 text-center">
-            <div className="text-xs text-gray-500 mb-1">{label}</div>
-            <div className="text-lg font-semibold text-indigo-700">{my}</div>
-            <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {unit}</div>
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 mb-1">ניקוד מצטבר</div>
+          <div className="text-lg font-semibold text-indigo-700">{Number(myRow?.cumulative_score ?? 0).toFixed(2)}</div>
+          <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgScore}</div>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 mb-1">ימים פעילים</div>
+          <div className="text-lg font-semibold text-indigo-700">{myRow?.active_days ?? 0}</div>
+          <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgActiveDays}</div>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
+          <div className="text-xs text-gray-500 mb-1 inline-flex items-center gap-1">
+            ניקוד מנורמל
+            <button
+              type="button"
+              onClick={() => setTooltipOpen(true)}
+              className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center"
+              aria-label="הסבר ניקוד מנורמל"
+            >
+              ?
+            </button>
           </div>
-        ))}
+          <div className="text-lg font-semibold text-indigo-700">{Number(myRow?.normalised_score ?? 0).toFixed(3)}</div>
+          <div className="text-xs text-gray-400 mt-1">ממוצע יחידה: {avgNorm}</div>
+        </div>
       </div>
 
       {/* Past duties list */}
@@ -70,6 +99,18 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
             ))}
           </tbody>
         </table>
+      )}
+
+      {/* Tooltip modal */}
+      {tooltipOpen && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm whitespace-pre-line">{normTooltip}</p>
+            <div className="mt-4 text-left">
+              <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipOpen(false)}>סגור</button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
