@@ -66,3 +66,29 @@ def test_alpha_zero_no_score_preference():
     # Just assert it's feasible; don't care which soldier is chosen
     assigned = _solve([low, high], [duty], K=Decimal("20"), T=7, W=14, alpha=Decimal("0"))
     assert duty.id in assigned
+
+
+def test_density_hard_constraint_infeasible_when_violated():
+    """With T=1, W=2 and 1 soldier covering 2 consecutive duties, solver must be INFEASIBLE."""
+    solo = _soldier(score=0.0)
+    d1 = _duty(date(2026, 8, 1))
+    d2 = _duty(date(2026, 8, 2))
+
+    settings = SolverSettings(K=Decimal("20"), T=1, W=2, alpha=Decimal("0"))
+    model, x = build_model([solo], [d1, d2], [], settings)
+    solver = CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+    status = solver.Solve(model)
+    assert solver.StatusName(status) == "INFEASIBLE"
+
+
+def test_density_hard_constraint_distributes_across_soldiers():
+    """With T=1, W=2 and 2 soldiers, 2 consecutive duties are assigned to different soldiers."""
+    s1 = _soldier(score=0.0)
+    s2 = _soldier(score=0.0)
+    d1 = _duty(date(2026, 8, 1))
+    d2 = _duty(date(2026, 8, 2))
+
+    assigned = _solve([s1, s2], [d1, d2], K=Decimal("20"), T=1, W=2, alpha=Decimal("0"))
+
+    assert assigned[d1.id] != assigned[d2.id], "Consecutive duties must go to different soldiers"

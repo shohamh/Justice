@@ -133,7 +133,7 @@ def build_model(
         K_int = int(settings.K * 1000)
         model.Add(max_norm - min_norm <= K_int)
 
-    # Density window tracking (variables kept for Task 4 hard constraint)
+    # Hard constraint: max T duty-days in any rolling W-day window per soldier
     existing_by_soldier = {
         s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
     }
@@ -163,20 +163,7 @@ def build_model(
                 continue
 
             total_density = existing_fixed + (sum(var_for_window) if var_for_window else 0)
-
-            excess = model.NewIntVar(0, W, f"excess_s{si}_w{ws}")
-            model.Add(excess >= total_density - T)
-            model.Add(excess >= 0)
-
-            # Piecewise-linear: 1x, 3x, 5x marginal costs
-            # Cost minimisation naturally fills cheaper buckets first.
-            e1 = model.NewIntVar(0, 1, f"e1_s{si}_w{ws}")
-            e2 = model.NewIntVar(0, 2, f"e2_s{si}_w{ws}")
-            e3 = model.NewIntVar(0, W, f"e3_s{si}_w{ws}")
-            model.Add(e1 + e2 + e3 == excess)
-
-            cost = e1 + 3 * e2 + 5 * e3  # noqa: F841 — kept for Task 4
-
+            model.Add(total_density <= T)
             ws += timedelta(days=1)
 
     # Soft objective: hierarchy proximity for reserve blocks

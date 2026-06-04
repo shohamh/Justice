@@ -450,6 +450,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     from app.algorithm.explain import build_explanations
     from app.algorithm.reserve import compute_reserve_dist
     from app.algorithm.solver import solve
+    from app.db.models import SystemSetting
     from app.db.session import session_scope
     from app.services.settings_loader import get_setting
 
@@ -477,10 +478,19 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     except Exception:
                         return Decimal(default)
 
+                def _setting_int(key: str, default: int) -> int:
+                    row = session.get(SystemSetting, key)
+                    if row is None:
+                        return default
+                    try:
+                        return int(row.value)
+                    except (TypeError, ValueError):
+                        return default
+
                 settings = SolverSettings(
                     K=Decimal(str(job.settings_json.get("K", 8))),
-                    T=int(job.settings_json.get("T", 7)),
-                    W=int(job.settings_json.get("W", 14)),
+                    T=int(job.settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
+                    W=int(job.settings_json.get("W", _setting_int("algorithm.window_days", 14))),
                     alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
                     time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
                     reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
