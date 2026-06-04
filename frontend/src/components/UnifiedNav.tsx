@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
+import { getIncomingSwapCount } from "../api/swaps";
 import NavSheet from "./NavSheet";
 
 interface NavTab {
@@ -29,6 +30,7 @@ export default function UnifiedNav() {
   const canPlan = role === "duty_manager" || role === "admin";
 
   const [pendingCount, setPendingCount] = useState(0);
+  const [swapIncomingCount, setSwapIncomingCount] = useState(0);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
 
@@ -43,6 +45,13 @@ export default function UnifiedNav() {
       setPendingCount(c + e + f);
     })();
   }, [canApprove, location.pathname]);
+
+  useEffect(() => {
+    void (async () => {
+      const count = await getIncomingSwapCount().catch(() => 0);
+      setSwapIncomingCount(count);
+    })();
+  }, [location.pathname]);
 
   useEffect(() => {
     const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
@@ -62,7 +71,7 @@ export default function UnifiedNav() {
   const baseTabs: NavTab[] = [
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
-    { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", testId: "nav-swaps" },
+    { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
     { label: t("nav.transparency"), icon: <BarChart2 size={20} />, to: "/transparency", testId: "nav-transparency" },
   ];

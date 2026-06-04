@@ -457,7 +457,10 @@
     "covering": "מכסה",
     "duty_date_col": "תאריך",
     "status_col": "סטטוס",
-    "actions_col": "פעולות"
+    "actions_col": "פעולות",
+    "incoming": "בקשות אליי",
+    "none_incoming": "אין בקשות החלפה אליך",
+    "accept_cover": "אני מכסה"
   },
   "command_dashboard": {
     "title": "דף מפקד",

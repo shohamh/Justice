@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -71,6 +72,36 @@ def my_swaps(
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
     return [_out(r) for r in svc.list_own(session, soldier_id=user.id)]
+
+
+@router.get("/swaps/incoming/count")
+def get_incoming_swap_count(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    count = session.execute(
+        select(func.count())
+        .select_from(SwapRequest)
+        .where(
+            SwapRequest.target_soldier_id == user.id,
+            SwapRequest.status == "open",
+        )
+    ).scalar_one()
+    return {"count": count}
+
+
+@router.get("/swaps/incoming", response_model=list[SwapOut])
+def list_incoming_swaps(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[SwapOut]:
+    rows = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.target_soldier_id == user.id,
+            SwapRequest.status == "open",
+        ).order_by(SwapRequest.created_at.desc())
+    ).scalars().all()
+    return [_out(r) for r in rows]
 
 
 @router.get("/swaps/board", response_model=list[SwapOut])

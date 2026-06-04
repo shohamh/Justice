@@ -53,3 +53,13 @@ export async function approveSwapSide(id: string, side: "requester" | "covering"
 export async function rejectSwap(id: string, decision_note?: string): Promise<SwapRequest> {
   return (await api.post<SwapRequest>(`/swaps/${id}/reject`, { decision_note })).data;
 }
+
+export async function getIncomingSwapCount(): Promise<number> {
+  const res = await api.get<{ count: number }>("/swaps/incoming/count");
+  return res.data.count;
+}
+
+export async function listIncomingSwaps(): Promise<SwapRequest[]> {
+  const res = await api.get<SwapRequest[]>("/swaps/incoming");
+  return res.data;
+}

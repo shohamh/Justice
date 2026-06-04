@@ -26,6 +26,9 @@ vi.mock("../api/exemptions", () => ({
 vi.mock("../api/soldiers", () => ({
   getPendingFieldUpdateCount: vi.fn(() => Promise.resolve(0)),
 }));
+vi.mock("../api/swaps", () => ({
+  getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
+}));
 
 vi.mock("./NavSheet", () => ({
   default: ({ open, testId }: { open: boolean; testId?: string }) =>

@@ -8,6 +8,7 @@ import {
   claimSwap,
   createSwap,
   listBoard,
+  listIncomingSwaps,
   listMySwaps,
 } from "../api/swaps";
 
@@ -94,12 +95,14 @@ export default function SwapsPage() {
   const { t } = useTranslation();
   const [mySwaps, setMySwaps] = useState<SwapRequest[]>([]);
   const [boardSwaps, setBoardSwaps] = useState<SwapRequest[]>([]);
+  const [incomingSwaps, setIncomingSwaps] = useState<SwapRequest[]>([]);
   const [showCreate, setShowCreate] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [mine, board] = await Promise.all([listMySwaps(), listBoard()]);
+    const [mine, board, incoming] = await Promise.all([listMySwaps(), listBoard(), listIncomingSwaps()]);
     setMySwaps(mine);
     setBoardSwaps(board);
+    setIncomingSwaps(incoming);
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -186,6 +189,34 @@ export default function SwapsPage() {
                   className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700"
                 >
                   {t("swaps.cover")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Incoming swap requests directed at me */}
+        <div>
+          <h3 className="text-base font-medium mb-2">{t("swaps.incoming")}</h3>
+          {incomingSwaps.length === 0 && (
+            <p className="text-sm text-gray-500">{t("swaps.none_incoming")}</p>
+          )}
+          <ul className="space-y-2">
+            {incomingSwaps.map(swap => (
+              <li key={swap.id} className="border rounded p-3 text-sm space-y-1 border-indigo-200 bg-indigo-50 dark:bg-indigo-950 dark:border-indigo-800">
+                <div className="flex items-center justify-between">
+                  <span dir="ltr" className="font-medium">{swap.duty_date}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[swap.status] ?? ""}`}>
+                    {t(statusKey(swap.status))}
+                  </span>
+                </div>
+                {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
+                <button
+                  type="button"
+                  onClick={() => handleClaim(swap.id)}
+                  className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700"
+                >
+                  {t("swaps.accept_cover")}
                 </button>
               </li>
             ))}
