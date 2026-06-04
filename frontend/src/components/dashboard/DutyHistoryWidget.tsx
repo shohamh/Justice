@@ -83,7 +83,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-gray-500 border-b">
+            <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
               <th className="text-right pb-2 font-medium">תאריך</th>
               <th className="text-right pb-2 font-medium">סוג</th>
               <th className="text-right pb-2 font-medium">מיקום</th>
@@ -91,7 +91,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
           </thead>
           <tbody>
             {past.map((d) => (
-              <tr key={d.assignment_id} className="border-b last:border-0">
+              <tr key={d.assignment_id} className="border-b dark:border-gray-600 last:border-0">
                 <td className="py-2">{formatDateRange(d.start_date, d.end_date)}</td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
                 <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>

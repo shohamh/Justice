@@ -75,7 +75,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
     <div className="overflow-x-auto" data-testid="entries-exits-panel">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b">
+          <tr className="border-b dark:border-gray-700">
             <th className="text-right p-1">{t("command_dashboard.name")}</th>
             <th className="text-right p-1">{t("command_dashboard.status")}</th>
             <th className="text-right p-1">{t("command_dashboard.actions")}</th>

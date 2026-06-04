@@ -32,7 +32,7 @@ export function AdminInviteCodesContent() {
       </div>
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="border-b text-gray-500 text-right">
+          <tr className="border-b dark:border-gray-700 text-gray-500 dark:text-gray-400 text-right">
             <th className="py-2">קוד</th>
             <th className="py-2">{t("invite_codes.uses_left")}</th>
             <th className="py-2"></th>
@@ -40,7 +40,7 @@ export function AdminInviteCodesContent() {
         </thead>
         <tbody>
           {codes.map(c => (
-            <tr key={c.id} className={`border-b ${c.uses_left === 0 ? "opacity-40" : ""}`}>
+            <tr key={c.id} className={`border-b dark:border-gray-700 ${c.uses_left === 0 ? "opacity-40" : ""}`}>
               <td className="py-2 font-mono">{c.code}</td>
               <td className="py-2">{c.uses_left}</td>
               <td className="py-2">
