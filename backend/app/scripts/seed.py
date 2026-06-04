@@ -25,13 +25,16 @@ from app.db.models import (
     ExemptionType,
     HierarchyNode,
     PersonalConstraint,
+    RegistrationInviteCode,
     ScoreAdjustment,
     Soldier,
+    SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
     SwapRequest,
 )
 from app.db.session import SessionLocal
+from app.services.invite_codes import create_invite_code
 
 
 def seed(*, force: bool = False, with_assignments: bool = False):
@@ -627,6 +630,43 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 )
                 session.add(sa)
 
+        # ── Invite code ────────────────────────────────────────────
+        if not session.query(RegistrationInviteCode).first():
+            create_invite_code(session, uses_left=10, actor_id=s_admin.id)
+
+        # ── Unassigned soldiers + enrollment requests ───────────────
+        if not session.query(Soldier).filter(Soldier.personal_number == "9000001").first():
+            unassigned = []
+            for i, pn in enumerate(["9000001", "9000002", "9000003", "9000004"]):
+                s = make_soldier(
+                    pn,
+                    f"חייל ממתין {i + 1}",
+                    "soldier",
+                    None,
+                    enlistment_date=date(2025, 6, 1),
+                    mandatory_end_date=_mandatory_end(date(2025, 6, 1)),
+                    gender="male",
+                )
+                unassigned.append(s)
+
+            node_mars = next(n for n in all_teams if n.name == "צוות מארס")
+            node_mehkar = next(n for n in focus_groups if n.name == "מחקר")
+            node_rei = next(n for n in all_teams if n.name == "צוות ריי")
+            node_ark = next(n for n in all_teams if n.name == "צוות ארק")
+
+            for soldier, node_id, status, decided_by in [
+                (unassigned[0], node_mars.id, "pending", None),
+                (unassigned[1], node_mehkar.id, "pending", None),
+                (unassigned[2], node_rei.id, "approved", s_admin.id),
+                (unassigned[3], node_ark.id, "rejected", s_admin.id),
+            ]:
+                session.add(SoldierEnrollmentRequest(
+                    soldier_id=soldier.id,
+                    requested_node_id=node_id,
+                    status=status,
+                    decided_by=decided_by,
+                ))
+
         # ── Exemption requests (pending, from soldiers) ────────────
         er_reasons = [
             ("מבקש פטור משמירות בגלל ניתוח", 0),
@@ -1055,67 +1095,45 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     )
                     links_created += 1
 
-            # ── Swap requests ──────────────────────────────────────────
-            # Pick future assignments for swaps
-            from datetime import timedelta
-
+            # ── Swap requests ────────────────────────────────────────
             today = date.today()
             future_assignments = [
                 a for a in created_assignments if a.start_date >= today - timedelta(days=1)
             ]
-            if len(future_assignments) >= 6:
-                # Swap 1: open — soldier wants to swap, no specific target
-                s_a = future_assignments[0]
-                session.add(
-                    SwapRequest(
-                        duty_assignment_id=s_a.id,
-                        duty_date=s_a.start_date,
-                        requesting_soldier_id=s_a.soldier_id,
-                        status="open",
-                        reason="מבקש להחליף תורנות",
-                    )
-                )
-                # Swap 2: open with target
-                s_b = future_assignments[1]
-                target_s = session.query(Soldier).filter(Soldier.id != s_b.soldier_id).first()
-                session.add(
-                    SwapRequest(
-                        duty_assignment_id=s_b.id,
-                        duty_date=s_b.start_date,
-                        requesting_soldier_id=s_b.soldier_id,
-                        target_soldier_id=target_s.id,
-                        status="open",
-                        reason="מבקש להחליף עם חייל ספציפי",
-                    )
-                )
-                # Swap 3: pending_approval — covering soldier agreed, waiting for approval
-                s_c = future_assignments[2]
-                cover_s = session.query(Soldier).filter(Soldier.id != s_c.soldier_id).first()
-                session.add(
-                    SwapRequest(
-                        duty_assignment_id=s_c.id,
-                        duty_date=s_c.start_date,
-                        requesting_soldier_id=s_c.soldier_id,
-                        covering_soldier_id=cover_s.id,
-                        status="pending_approval",
-                        reason="סוכם עם המחליף",
-                    )
-                )
-                # Swap 4: applied — completed swap
-                s_d = future_assignments[3]
-                cover_d = session.query(Soldier).filter(Soldier.id != s_d.soldier_id).first()
-                session.add(
-                    SwapRequest(
-                        duty_assignment_id=s_d.id,
-                        duty_date=s_d.start_date,
-                        requesting_soldier_id=s_d.soldier_id,
-                        covering_soldier_id=cover_d.id,
-                        status="applied",
-                        requester_side_approved=True,
-                        covering_side_approved=True,
-                        reason="החלפה אושרה ובוצעה",
-                    )
-                )
+            if len(future_assignments) >= 10:
+                def _other(exclude_id):
+                    return session.query(Soldier).filter(Soldier.id != exclude_id).first()
+
+                swap_defs = [
+                    (0, "open", {}),
+                    (1, "open", {"target_soldier_id": _other(future_assignments[1].soldier_id).id}),
+                    (2, "open", {}),
+                    (3, "open", {}),
+                    (4, "pending_approval", {"covering_soldier_id": _other(future_assignments[4].soldier_id).id}),
+                    (5, "pending_approval", {"covering_soldier_id": _other(future_assignments[5].soldier_id).id}),
+                    (6, "applied", {
+                        "covering_soldier_id": _other(future_assignments[6].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
+                    (7, "applied", {
+                        "covering_soldier_id": _other(future_assignments[7].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
+                    (8, "rejected", {}),
+                    (9, "cancelled", {}),
+                ]
+                for idx, status, extra in swap_defs:
+                    a = future_assignments[idx]
+                    session.add(SwapRequest(
+                        duty_assignment_id=a.id,
+                        duty_date=a.start_date,
+                        requesting_soldier_id=a.soldier_id,
+                        status=status,
+                        reason="בקשת החלפה לצורכי בדיקה",
+                        **extra,
+                    ))
 
         session.commit()
         import sys
@@ -1136,11 +1154,11 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             _safe_print(f"  {shift_assignments} primary duty assignments")
             _safe_print(f"  {reserve_count_total} reserve assignments")
             _safe_print(f"  {links_created} reserve-to-primary links")
-            _safe_print(
-                "  4 swap requests (1 open, 1 open with target, 1 pending approval, 1 applied)"
-            )
+            _safe_print("  10 swap requests (4 open, 2 pending approval, 2 applied, 1 rejected, 1 cancelled)")
         else:
             _safe_print("  0 shift assignments (pass --with-assignments to include)")
+        _safe_print(f"  1 invite code")
+        _safe_print(f"  4 enrollment requests (2 pending, 1 approved, 1 rejected)")
         _safe_print(f"  15 personal constraints")
         _safe_print(f"  12 soldier exemptions")
         _safe_print(f"  5 score adjustments")
