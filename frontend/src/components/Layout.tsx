@@ -1,19 +1,22 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { CircleUser, Settings } from "lucide-react";
+import { CircleUser, Settings, HelpCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
+import HelpModal from "./HelpModal";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { logout, user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [helpOpen, setHelpOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col md:mr-24">
       <UnifiedNav />
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <header className="bg-white shadow-sm border-b">
         <div className="px-4 py-3 flex items-center justify-between">
           {/* Left side: profile icon + optional gear icon */}
@@ -29,8 +32,15 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           {/* Center: app title */}
           <h1 className="text-lg font-bold">{t("app.title")}</h1>
-          {/* Right side: notification bell + logout */}
+          {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setHelpOpen(true)}
+              aria-label="עזרה"
+              className="text-gray-500 hover:text-indigo-600"
+            >
+              <HelpCircle size={22} />
+            </button>
             <NotificationBell />
             <button
               onClick={() => logout()}
