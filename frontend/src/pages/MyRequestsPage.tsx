@@ -38,9 +38,10 @@ export default function MyRequestsPage() {
   const [erReason, setErReason] = useState("");
   const [erError, setErError] = useState<string | null>(null);
   const [erSubmitting, setErSubmitting] = useState(false);
-  const [pendingUploadRequestId, setPendingUploadRequestId] = useState<string | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const selectedExemptionType = exemptionTypes.find(et => et.id === erTypeId);
+  const isMedical = selectedExemptionType?.is_medical ?? false;
 
   const refresh = useCallback(async () => {
     setItems(await listMyConstraints());
@@ -97,14 +98,13 @@ export default function MyRequestsPage() {
         end_date: erEnd || null,
         reason: erReason || null,
       });
-      const selectedType = exemptionTypes.find(et => et.id === erTypeId);
-      if (selectedType?.is_medical) {
-        setPendingUploadRequestId(createdReq.id);
-        // don't clear the form yet
-      } else {
-        setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-        await refresh();
+      // Upload any attached files automatically
+      for (const f of uploadFiles) {
+        await uploadExemptionFile(createdReq.id, f);
       }
+      setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
+      setUploadFiles([]);
+      await refresh();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -162,66 +162,96 @@ export default function MyRequestsPage() {
 
         <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("exemption_requests.title")}</h3>
-          {erError && <div className="text-red-600 text-sm" data-testid="er-error">{erError}</div>}
-          <form onSubmit={onErSubmit} className="flex flex-wrap items-end gap-2 mt-2">
-            <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erTypeId} onChange={(e) => setErTypeId(e.target.value)} required data-testid="er-type">
-              <option value="">{t("exemption_requests.type")}</option>
-              {exemptionTypes.map((et) => (
-                <option key={et.id} value={et.id}>{et.name}</option>
-              ))}
-            </select>
-            <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
-            <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
-            <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erReason} onChange={(e) => setErReason(e.target.value)} placeholder={t("exemption_requests.reason")} data-testid="er-reason" />
-            <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={erSubmitting} data-testid="er-submit">
-              {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
-            </button>
-          </form>
-
-          {pendingUploadRequestId && (
-            <div className="mt-3 p-3 border border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800 rounded space-y-2" dir="rtl">
-              <p className="text-sm font-medium text-blue-800 dark:text-blue-200">{t("exemption_requests.upload_required")}</p>
-              <p className="text-xs text-blue-600 dark:text-blue-400">{t("exemption_requests.upload_hint")}</p>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,image/*"
-                onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
-                className="text-xs"
-              />
-              {uploadError && <p className="text-red-500 text-xs">{uploadError}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setUploadError(null);
-                    try {
-                      for (const f of uploadFiles) {
-                        await uploadExemptionFile(pendingUploadRequestId, f);
-                      }
-                      setPendingUploadRequestId(null);
-                      setUploadFiles([]);
-                      setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-                      await refresh();
-                    } catch {
-                      setUploadError("שגיאה בהעלאת הקובץ");
-                    }
-                  }}
-                  disabled={uploadFiles.length === 0}
-                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded disabled:opacity-50"
+          {erError && <div className="text-red-600 dark:text-red-400 text-sm" data-testid="er-error">{erError}</div>}
+          <form onSubmit={onErSubmit} className="mt-2 space-y-3" dir="rtl">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.type")}</label>
+                <select
+                  className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={erTypeId}
+                  onChange={(e) => { setErTypeId(e.target.value); setUploadFiles([]); }}
+                  required
+                  data-testid="er-type"
                 >
-                  {t("exemption_requests.upload_send")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setPendingUploadRequestId(null); setUploadFiles([]); setErTypeId(""); setErStart(""); setErEnd(""); setErReason(""); void refresh(); }}
-                  className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300"
-                >
-                  {t("exemption_requests.upload_skip")}
-                </button>
+                  <option value="">— {t("exemption_requests.type")} —</option>
+                  {exemptionTypes.map((et) => (
+                    <option key={et.id} value={et.id}>
+                      {et.name}{et.is_medical ? " 🏥" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
+                <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
+                <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-32">
+                <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.reason")}</label>
+                <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 w-full" value={erReason} onChange={(e) => setErReason(e.target.value)} placeholder={t("exemption_requests.reason")} data-testid="er-reason" />
               </div>
             </div>
-          )}
+
+            {/* Inline file upload — shown only for medical exemption types */}
+            {isMedical && (
+              <div className="rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🏥</span>
+                  <div>
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">{t("exemption_requests.upload_required")}</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">{t("exemption_requests.upload_hint")}</p>
+                  </div>
+                </div>
+                <label className="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 p-3 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors">
+                  <span className="text-2xl">📎</span>
+                  <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                    {uploadFiles.length > 0
+                      ? `${uploadFiles.length} ${uploadFiles.length === 1 ? "קובץ נבחר" : "קבצים נבחרו"}`
+                      : "בחר קבצים או גרור לכאן"}
+                  </span>
+                  <span className="text-xs text-gray-400">PDF, JPG, PNG, GIF</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,image/*"
+                    className="hidden"
+                    onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
+                    data-testid="er-files"
+                  />
+                </label>
+                {uploadFiles.length > 0 && (
+                  <ul className="text-xs space-y-0.5">
+                    {uploadFiles.map((f, i) => (
+                      <li key={i} className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+                        <span>📄</span> {f.name}
+                        <button
+                          type="button"
+                          className="text-red-400 hover:text-red-600 mr-1"
+                          onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
+                        >✕</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
+              disabled={erSubmitting || (isMedical && uploadFiles.length === 0)}
+              data-testid="er-submit"
+            >
+              {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
+            </button>
+            {isMedical && uploadFiles.length === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t("exemption_requests.upload_required_hint")}</p>
+            )}
+          </form>
 
           {exemptionRequests.length === 0 && <p className="text-sm text-gray-500 mt-2">{t("exemption_requests.none")}</p>}
           <ul className="text-sm space-y-1 mt-2" data-testid="er-list">

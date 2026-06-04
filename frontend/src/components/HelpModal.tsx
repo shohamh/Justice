@@ -187,12 +187,13 @@ function FairnessTab() {
         </p>
 
         {/* Formula */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-2">
           <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
-            <div className="bg-indigo-100 rounded px-2 py-1 text-indigo-800 font-medium">הניקוד שלך ÷ הימים הפעילים שלך</div>
+            <div className="bg-indigo-100 dark:bg-indigo-900 rounded px-2 py-1 text-indigo-800 dark:text-indigo-200 font-medium">ניקוד ליום שלך</div>
             <div className="text-gray-500 font-bold">÷</div>
-            <div className="bg-purple-100 rounded px-2 py-1 text-purple-800 font-medium">ממוצע יחידה ÷ ממוצע ימים פעילים</div>
+            <div className="bg-purple-100 dark:bg-purple-900 rounded px-2 py-1 text-purple-800 dark:text-purple-200 font-medium">ממוצע ניקוד ליום ביחידה</div>
           </div>
+          <p className="text-xs text-center text-gray-400">כאשר: ניקוד ליום = ניקוד מצטבר ÷ ימים פעילים</p>
         </div>
 
         {/* Score scale cards with person indicators */}
@@ -246,35 +247,39 @@ function FairnessTab() {
             <table className="w-full text-center border-collapse text-xs">
               <thead>
                 <tr className="bg-indigo-100 dark:bg-indigo-900">
-                  <th className="p-1 border border-indigo-200">חייל</th>
-                  <th className="p-1 border border-indigo-200">ניקוד מצטבר</th>
-                  <th className="p-1 border border-indigo-200">ימים פעילים</th>
-                  <th className="p-1 border border-indigo-200">ניקוד מנורמל</th>
+                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">חייל</th>
+                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד מצטבר</th>
+                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ימים פעילים</th>
+                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד ליום</th>
+                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד מנורמל</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="p-1 border border-indigo-200">דן</td>
-                  <td className="p-1 border border-indigo-200">30</td>
-                  <td className="p-1 border border-indigo-200">60</td>
-                  <td className="p-1 border border-indigo-200 font-bold text-orange-600">0.75</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">דן</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">30</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.50</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-orange-600">0.75</td>
                 </tr>
                 <tr className="bg-white dark:bg-gray-800">
-                  <td className="p-1 border border-indigo-200">יעל</td>
-                  <td className="p-1 border border-indigo-200">40</td>
-                  <td className="p-1 border border-indigo-200">60</td>
-                  <td className="p-1 border border-indigo-200 font-bold text-blue-600 dark:text-blue-400">1.00</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">יעל</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">40</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.67</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-blue-600 dark:text-blue-400">1.00</td>
                 </tr>
                 <tr>
-                  <td className="p-1 border border-indigo-200">רוני</td>
-                  <td className="p-1 border border-indigo-200">50</td>
-                  <td className="p-1 border border-indigo-200">60</td>
-                  <td className="p-1 border border-indigo-200 font-bold text-green-600">1.25</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">רוני</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">50</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.83</td>
+                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-green-600">1.25</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <p>ממוצע ניקוד: (30+40+50)÷3 = 40. ממוצע ימים: 60. ניקוד מנורמל יעל: (40÷60)÷(40÷60) = <strong>1.00</strong>.</p>
+          <p>ממוצע ניקוד ליום: (0.50+0.67+0.83)÷3 = 0.67. ניקוד מנורמל יעל: 0.67÷0.67 = <strong>1.00</strong>.</p>
           <p>דן עשה פחות (0.75) → <strong>יקבל תורנות הבאה</strong>. רוני עשה יותר (1.25) → <strong>יחכה</strong>.</p>
         </div>
       </div>

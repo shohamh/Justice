@@ -7,6 +7,7 @@ export interface TransparencyRow {
   enrolled_at: string;
   active_days: number;
   cumulative_score: string;
+  score_per_day: string;
   normalised_score: string;
 }
 
