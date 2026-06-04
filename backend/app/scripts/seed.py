@@ -1100,7 +1100,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             future_assignments = [
                 a for a in created_assignments if a.start_date >= today - timedelta(days=1)
             ]
-            if len(future_assignments) >= 10:
+            if len(future_assignments) >= 13:
                 def _other(exclude_id):
                     return session.query(Soldier).filter(Soldier.id != exclude_id).first()
 
@@ -1123,6 +1123,24 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     }),
                     (8, "rejected", {}),
                     (9, "cancelled", {}),
+                    # Trade offer: covering soldier offered one of their own duties
+                    (10, "pending_approval", {
+                        "covering_soldier_id": _other(future_assignments[10].soldier_id).id,
+                        "offered_assignment_ids": [str(future_assignments[11].id)],
+                    }),
+                    # One-sided approval: requester approved, covering has not yet
+                    (11, "pending_approval", {
+                        "covering_soldier_id": _other(future_assignments[11].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": None,
+                    }),
+                    # Applied trade: both approved a trade
+                    (12, "applied", {
+                        "covering_soldier_id": _other(future_assignments[12].soldier_id).id,
+                        "offered_assignment_ids": [str(future_assignments[10].id)],
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
                 ]
                 for idx, status, extra in swap_defs:
                     a = future_assignments[idx]
@@ -1154,7 +1172,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             _safe_print(f"  {shift_assignments} primary duty assignments")
             _safe_print(f"  {reserve_count_total} reserve assignments")
             _safe_print(f"  {links_created} reserve-to-primary links")
-            _safe_print("  10 swap requests (4 open, 2 pending approval, 2 applied, 1 rejected, 1 cancelled)")
+            _safe_print("  13 swap requests (4 open, 4 pending approval, 3 applied, 1 rejected, 1 cancelled)")
         else:
             _safe_print("  0 shift assignments (pass --with-assignments to include)")
         _safe_print(f"  1 invite code")
