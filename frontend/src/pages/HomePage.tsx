@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -7,6 +7,7 @@ import DutyCalendarWidget from "../components/dashboard/DutyCalendarWidget";
 import UpcomingDutiesWidget from "../components/dashboard/UpcomingDutiesWidget";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
+import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
@@ -14,6 +15,7 @@ import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dut
 import { SwapRequest, listMySwaps, listPendingSwaps } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
+import { TransparencyRow, getTransparency } from "../api/scoring";
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -32,14 +34,16 @@ export default function HomePage() {
   const [pendingEnrollments, setPendingEnrollments] = useState<EnrollmentRequestDTO[]>([]);
   const [pendingSwaps, setPendingSwaps] = useState<SwapRequest[]>([]);
   const [settings, setSettings] = useState<SettingsMap>({});
+  const [transparencyRows, setTransparencyRows] = useState<TransparencyRow[]>([]);
 
   const canApprove = user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin";
+  const myRow = useMemo(() => transparencyRows.find((r) => r.soldier_id === user?.id) ?? null, [transparencyRows, user]);
 
   useEffect(() => {
     if (!user) return;
 
     const dutyFetch = listEffectiveDuties(user.id, {
-      date_from: offsetDate(-30),
+      date_from: offsetDate(-365),
       date_to: offsetDate(60),
     }).catch(() => [] as EffectiveDuty[]);
 
@@ -47,6 +51,7 @@ export default function HomePage() {
     const locsFetch = listLocations().catch(() => [] as DutyLocation[]);
     const swapsFetch = listMySwaps().catch(() => [] as SwapRequest[]);
     const settingsFetch = getSystemSettings().catch(() => ({} as SettingsMap));
+    const transparencyFetch = getTransparency().catch(() => [] as TransparencyRow[]);
 
     const enrollFetch = canApprove
       ? listPendingEnrollments().catch(() => [] as EnrollmentRequestDTO[])
@@ -56,8 +61,8 @@ export default function HomePage() {
       ? listPendingSwaps().catch(() => [] as SwapRequest[])
       : Promise.resolve([] as SwapRequest[]);
 
-    void Promise.all([dutyFetch, typesFetch, locsFetch, swapsFetch, settingsFetch, enrollFetch, pendingSwapsFetch]).then(
-      ([d, dts, locs, sw, sett, enr, psw]) => {
+    void Promise.all([dutyFetch, typesFetch, locsFetch, swapsFetch, settingsFetch, enrollFetch, pendingSwapsFetch, transparencyFetch]).then(
+      ([d, dts, locs, sw, sett, enr, psw, tr]) => {
         setDuties(d);
         setTypeNames(Object.fromEntries((dts as DutyType[]).map((t) => [t.id, t.name])));
         setLocationNames(Object.fromEntries((locs as DutyLocation[]).map((l) => [l.id, l.name])));
@@ -65,6 +70,7 @@ export default function HomePage() {
         setSettings(sett);
         setPendingEnrollments(enr as EnrollmentRequestDTO[]);
         setPendingSwaps(psw as SwapRequest[]);
+        setTransparencyRows(tr as TransparencyRow[]);
       }
     );
   }, [user, canApprove]);
@@ -96,6 +102,14 @@ export default function HomePage() {
             pendingSwaps={pendingSwaps}
           />
         )}
+
+        <DutyHistoryWidget
+          duties={duties}
+          typeNames={typeNames}
+          locationNames={locationNames}
+          myRow={myRow}
+          allRows={transparencyRows}
+        />
       </div>
     </Layout>
   );

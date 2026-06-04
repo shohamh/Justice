@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { EffectiveDuty } from "../../api/assignments";
 
 interface Props {
@@ -16,17 +15,11 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames 
   const today = new Date().toISOString().split("T")[0];
   const upcoming = duties
     .filter((d) => d.end_date >= today)
-    .sort((a, b) => a.start_date.localeCompare(b.start_date))
-    .slice(0, 5);
+    .sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   return (
     <section className="bg-white rounded-lg shadow p-4" dir="rtl">
-      <div className="flex justify-between items-center mb-3">
-        <h2 className="text-lg font-semibold">תורנויות קרובות</h2>
-        <Link to="/my-duties" className="text-sm text-indigo-600 hover:text-indigo-800">
-          לכל התורנויות שלי →
-        </Link>
-      </div>
+      <h2 className="text-lg font-semibold mb-3">תורנויות קרובות</h2>
       {upcoming.length === 0 ? (
         <p className="text-sm text-gray-500">אין תורנויות קרובות</p>
       ) : (

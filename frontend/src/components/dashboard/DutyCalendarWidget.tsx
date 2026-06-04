@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import heLocale from "@fullcalendar/core/locales/he";
@@ -30,12 +29,7 @@ export default function DutyCalendarWidget({ duties, typeNames }: Props) {
 
   return (
     <section className="bg-white rounded-lg shadow p-4" dir="rtl">
-      <div className="flex justify-between items-center mb-3">
-        <h2 className="text-lg font-semibold">היומן שלי</h2>
-        <Link to="/my-duties" className="text-sm text-indigo-600 hover:text-indigo-800">
-          לכל היומן שלי →
-        </Link>
-      </div>
+      <h2 className="text-lg font-semibold mb-3">היומן שלי</h2>
       <FullCalendar
         plugins={[dayGridPlugin]}
         initialView="dayGridMonth"
