@@ -6,8 +6,6 @@ import { SoldierModalProvider } from "./contexts/SoldierModalContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
-import DutyConfigPage from "./pages/DutyConfigPage";
-import DutyManagementPage from "./pages/DutyManagementPage";
 import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyDutiesPage from "./pages/MyDutiesPage";
@@ -15,17 +13,12 @@ import MyRequestsPage from "./pages/MyRequestsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import ProfilePage from "./pages/ProfilePage";
 import TeamHierarchyPage from "./pages/TeamHierarchyPage";
-import ShiftsPage from "./pages/ShiftsPage";
-import ShiftTemplatesPage from "./pages/ShiftTemplatesPage";
 import SwapsPage from "./pages/SwapsPage";
 import TransparencyPage from "./pages/TransparencyPage";
 import UnitCalendarPage from "./pages/UnitCalendarPage";
 import CommandDashboardPage from "./pages/CommandDashboardPage";
-import AlgorithmPage from "./pages/AlgorithmPage";
 import RegisterPage from "./pages/RegisterPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
-import AdminInviteCodesPage from "./pages/AdminInviteCodesPage";
-import SystemSettingsPage from "./pages/SystemSettingsPage";
 import AssignmentPage from "./pages/planning/AssignmentPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
@@ -80,14 +73,6 @@ export default function App() {
             <Route path="/shift-templates" element={<Navigate to="/planning/config?tab=2" replace />} />
             <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
             <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
-            {/* Scaffold routes for smoke-testing old pages directly (removed in Task 12) */}
-            <Route path="/duty-config-old" element={<AppGate><DutyConfigPage /></AppGate>} />
-            <Route path="/duty-management-old" element={<AppGate><DutyManagementPage /></AppGate>} />
-            <Route path="/shifts-old" element={<AppGate><ShiftsPage /></AppGate>} />
-            <Route path="/shift-templates-old" element={<AppGate><ShiftTemplatesPage /></AppGate>} />
-            <Route path="/algorithm-old" element={<AppGate><AlgorithmPage /></AppGate>} />
-            <Route path="/admin/system-settings-old" element={<AppGate><SystemSettingsPage /></AppGate>} />
-            <Route path="/admin/invite-codes-old" element={<AppGate><AdminInviteCodesPage /></AppGate>} />
           </Route>
         </Routes>
       </SoldierModalProvider>
