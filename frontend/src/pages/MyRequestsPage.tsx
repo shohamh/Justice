@@ -39,9 +39,10 @@ export default function MyRequestsPage() {
   const [erError, setErError] = useState<string | null>(null);
   const [erSubmitting, setErSubmitting] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [erMedical, setErMedical] = useState(false);
 
   const selectedExemptionType = exemptionTypes.find(et => et.id === erTypeId);
-  const isMedical = selectedExemptionType?.is_medical ?? false;
+  const isMedical = erMedical || (selectedExemptionType?.is_medical ?? false);
 
   const refresh = useCallback(async () => {
     setItems(await listMyConstraints());
@@ -103,7 +104,7 @@ export default function MyRequestsPage() {
         await uploadExemptionFile(createdReq.id, f);
       }
       setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-      setUploadFiles([]);
+      setUploadFiles([]); setErMedical(false);
       await refresh();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
@@ -173,7 +174,13 @@ export default function MyRequestsPage() {
                 <select
                   className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={erTypeId}
-                  onChange={(e) => { setErTypeId(e.target.value); setUploadFiles([]); }}
+                  onChange={(e) => {
+                    const typeId = e.target.value;
+                    setErTypeId(typeId);
+                    setUploadFiles([]);
+                    const type = exemptionTypes.find(et => et.id === typeId);
+                    setErMedical(type?.is_medical ?? false);
+                  }}
                   required
                   data-testid="er-type"
                 >
@@ -198,6 +205,19 @@ export default function MyRequestsPage() {
                 <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 w-full" value={erReason} onChange={(e) => setErReason(e.target.value)} placeholder={t("exemption_requests.reason")} data-testid="er-reason" />
               </div>
             </div>
+
+            {/* Medical checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer w-fit" data-testid="er-medical-check">
+              <input
+                type="checkbox"
+                checked={erMedical}
+                onChange={(e) => { setErMedical(e.target.checked); setUploadFiles([]); }}
+                className="w-4 h-4 accent-blue-600"
+              />
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                🏥 {t("duty_config.medical")}
+              </span>
+            </label>
 
             {/* File upload — always available, required for medical types */}
             <div className={`rounded-lg border-2 border-dashed p-4 space-y-2 ${
