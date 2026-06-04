@@ -171,7 +171,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
                 <button type="button" onClick={() => handleReject(p)} className="text-red-700 hover:underline">{t("algorithm.reject")}</button>{" "}
               </>
             )}
-            <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 hover:underline">
+            <button type="button" onClick={() => setExplanationTarget({ jobId, assignmentId: p.assignment_id })} className="text-blue-600 dark:text-blue-400 hover:underline">
               {t("algorithm.why_button")}
             </button>
           </span>
@@ -187,7 +187,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       ) : (
         <>
           <div className="flex items-center gap-3 text-sm">
-            <button type="button" onClick={toggleSelectAll} className="text-blue-600 hover:underline">
+            <button type="button" onClick={toggleSelectAll} className="text-blue-600 dark:text-blue-400 hover:underline">
               {allPendingSelected ? "בטל בחירה הכל" : "בחר הכל"}
             </button>
             <button

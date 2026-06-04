@@ -94,7 +94,7 @@ export default function TransparencyPage() {
               columns={transCols}
               data={rows}
               filterPlaceholder={t("table.filter_placeholder")}
-              rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50" : "")}
+              rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
             />
           );
         })()}

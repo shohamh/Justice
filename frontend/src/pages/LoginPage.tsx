@@ -106,12 +106,12 @@ export default function LoginPage() {
         </button>
 
         <p className="text-center text-sm text-gray-500 mt-2">
-          <a href="/register" className="text-indigo-600 hover:underline">
+          <a href="/register" className="text-indigo-600 dark:text-indigo-400 hover:underline">
             {t("register.signup_button")}
           </a>
         </p>
         <p className="text-center text-sm text-gray-500">
-          <a href="/forgot-password" className="text-indigo-600 hover:underline">
+          <a href="/forgot-password" className="text-indigo-600 dark:text-indigo-400 hover:underline">
             {t("forgot_password.link_label")}
           </a>
         </p>

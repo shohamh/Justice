@@ -14,7 +14,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
+    <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
@@ -44,7 +44,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NotificationBell />
             <button
               onClick={() => logout()}
-              className="text-sm text-indigo-600 hover:text-indigo-800"
+              className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
               data-testid="logout-button"
             >
               {t("home.logout")}
@@ -52,7 +52,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 px-4 py-6 pb-20 md:pb-6">{children}</main>
+      <main className="flex-1 overflow-y-auto px-4 py-6 pb-24 md:pb-6">{children}</main>
     </div>
   );
 }

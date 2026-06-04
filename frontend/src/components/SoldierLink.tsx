@@ -12,7 +12,7 @@ export default function SoldierLink({ id, name, className }: Props) {
   return (
     <button
       type="button"
-      className={`text-indigo-600 hover:underline ${className ?? ""}`}
+      className={`text-indigo-600 dark:text-indigo-400 hover:underline ${className ?? ""}`}
       onClick={(e) => {
         e.stopPropagation();
         void openSoldierModal(id);

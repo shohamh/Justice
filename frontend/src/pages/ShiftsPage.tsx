@@ -167,7 +167,7 @@ export function ShiftsContent() {
                   <button
                     type="button"
                     onClick={() => setEditShift(s)}
-                    className="text-blue-600 text-xs hover:underline"
+                    className="text-blue-600 dark:text-blue-400 text-xs hover:underline"
                   >
                     {t("shifts.edit")}
                   </button>

@@ -120,7 +120,7 @@ export default function ProfilePage() {
         <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
         <p>{t("team.role")}: {user?.role}</p>
-        <Link to="/change-password" className="text-indigo-600 hover:text-indigo-800" data-testid="profile-change-password">
+        <Link to="/change-password" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
         {user?.id && (
@@ -195,7 +195,7 @@ export default function ProfilePage() {
                 ? <span className="text-green-600">✓ {t("profile.email_verified")}</span>
                 : user?.email
                   ? <><span className="text-yellow-600">{t("profile.email_unverified")}</span>
-                      <button type="button" className="text-indigo-600 hover:underline" onClick={async () => {
+                      <button type="button" className="text-indigo-600 dark:text-indigo-400 hover:underline" onClick={async () => {
                         await setEmail(user.email ?? null);
                         setEmailMsg(t("profile.email_verification_sent"));
                       }}>{t("profile.resend_verification")}</button>
@@ -239,7 +239,7 @@ export default function ProfilePage() {
                 href={`https://t.me/${tgBotUsername}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block text-sm text-indigo-600 hover:text-indigo-800 underline"
+                className="inline-block text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline"
               >
                 @{tgBotUsername}
               </a>

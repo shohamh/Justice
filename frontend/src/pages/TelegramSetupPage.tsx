@@ -44,7 +44,7 @@ export default function TelegramSetupPage() {
                 </div>
                 {codeInfo.bot_username && (
                   <a href={`https://t.me/${codeInfo.bot_username}`} target="_blank" rel="noreferrer"
-                    className="text-indigo-600 text-sm underline block">
+                    className="text-indigo-600 dark:text-indigo-400 text-sm underline block">
                     {t("telegram_setup.bot_link")}
                   </a>
                 )}

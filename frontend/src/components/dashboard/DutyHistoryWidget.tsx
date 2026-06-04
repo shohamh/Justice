@@ -43,7 +43,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" dir="rtl">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">היסטוריית תורנויות</h2>
-        <Link to="/transparency" className="text-sm text-indigo-600 hover:text-indigo-800">
+        <Link to="/transparency" className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
           לדף השקיפות →
         </Link>
       </div>

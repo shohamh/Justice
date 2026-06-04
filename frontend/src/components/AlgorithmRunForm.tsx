@@ -91,8 +91,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <p className="font-medium">בחר משמרות להרצה</p>
-            <button type="button" onClick={() => setSelectedShiftIds(availableShifts.map(s => s.id))} className="text-xs text-blue-600 hover:underline">בחר הכל</button>
-            <button type="button" onClick={() => setSelectedShiftIds([])} className="text-xs text-blue-600 hover:underline">בטל בחירה</button>
+            <button type="button" onClick={() => setSelectedShiftIds(availableShifts.map(s => s.id))} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">בחר הכל</button>
+            <button type="button" onClick={() => setSelectedShiftIds([])} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">בטל בחירה</button>
           </div>
           <div className="space-y-1 max-h-48 overflow-y-auto border dark:border-gray-600 rounded p-2">
             {availableShifts.map(shift => (

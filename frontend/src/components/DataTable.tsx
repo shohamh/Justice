@@ -95,6 +95,7 @@ export function DataTable<T>({
         placeholder={filterPlaceholder}
         className="mb-2 border rounded p-1 text-sm w-full sm:w-64 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />
+      <div className="overflow-x-auto -mx-1">
       <table className="w-full text-xs border-collapse">
         <thead>
           {table.getHeaderGroups().map((hg) => (
@@ -136,6 +137,7 @@ export function DataTable<T>({
           )}
         </tbody>
       </table>
+      </div>
 
       {tooltipModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipModal(null)}>

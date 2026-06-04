@@ -98,7 +98,7 @@ export function ShiftTemplatesContent() {
           <button
             type="button"
             onClick={() => setEditTemplate(tmpl)}
-            className="text-blue-600 text-xs hover:underline"
+            className="text-blue-600 dark:text-blue-400 text-xs hover:underline"
           >
             {t("shift_templates.edit")}
           </button>

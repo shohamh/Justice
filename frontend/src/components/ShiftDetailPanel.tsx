@@ -90,7 +90,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                     {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
                     {isCalledUp && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                      <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
                         {a.called_up_from === a.called_up_to
                           ? `${t("reserve_called_up")} ${a.called_up_from}`
                           : `${t("reserve_called_up")} ${a.called_up_from}–${a.called_up_to}`}
@@ -114,7 +114,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     </span>
                   )}
                   {isCalledUp && a.primary_assignment_ids.length > 0 && (
-                    <span className="text-blue-600">
+                    <span className="text-blue-600 dark:text-blue-400">
                       {t("reserve_covers")}: {a.primary_assignment_ids.map((id, i) => (
                         <span key={id}>{i > 0 && ", "}{soldierNode(id)}</span>
                       ))}
