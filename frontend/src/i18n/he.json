@@ -257,7 +257,8 @@
     "already_exists": "כבר קיים במערכת",
     "exemption_request_not_found": "בקשת הפטור לא נמצאה",
     "exemption_request_not_pending": "בקשת הפטור כבר טופלה",
-    "exemption_type_not_found": "סוג הפטור לא נמצא"
+    "exemption_type_not_found": "סוג הפטור לא נמצא",
+    "insufficient_rank_for_exemption_approval": "נדרש דרג רסן ומעלה לאישור פטורים"
   },
   "exemption_requests": {
     "title": "בקשות פטור",

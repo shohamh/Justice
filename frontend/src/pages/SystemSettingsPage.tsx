@@ -73,6 +73,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       },
     ],
   },
+  {
+    label: "פטורים",
+    settings: [
+      {
+        key: "exemptions.require_rasn_approver",
+        label: "מאשר פטורים — דרג רסן ומעלה בלבד",
+        description: "אם מסומן, רק מפקדים בדרג רסן ומעלה יוכלו לאשר פטורים (בנוסף למנהלי תורניות)",
+        type: "boolean" as const,
+        defaultValue: false,
+      },
+    ],
+  },
 ];
 
 function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {

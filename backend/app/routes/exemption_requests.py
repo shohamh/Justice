@@ -12,6 +12,7 @@ from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier
 from app.db.session import get_session
+from app.services.settings_loader import exemptions_require_rasn
 from app.services.exemption_requests import (
     ExemptionRequestError,
     approve_request,
@@ -159,6 +160,13 @@ def approve_exemption_request(
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
+    if exemptions_require_rasn(session):
+        RASN_AND_ABOVE = {"רסן", "סגן אלוף", "אלוף משנה", "אלוף", "תת אלוף"}
+        if user.role not in ("duty_manager", "admin") and (user.rank is None or user.rank not in RASN_AND_ABOVE):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="insufficient_rank_for_exemption_approval",
+            )
     try:
         result = approve_request(session, request_id, decided_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:
@@ -180,6 +188,13 @@ def reject_exemption_request(
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
+    if exemptions_require_rasn(session):
+        RASN_AND_ABOVE = {"רסן", "סגן אלוף", "אלוף משנה", "אלוף", "תת אלוף"}
+        if user.role not in ("duty_manager", "admin") and (user.rank is None or user.rank not in RASN_AND_ABOVE):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="insufficient_rank_for_exemption_approval",
+            )
     try:
         result = reject_request(session, request_id, decided_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:
@@ -238,6 +253,12 @@ def list_exemption_files(
         root_ids = scope_root_ids(session, user)
         if not root_ids:
             raise HTTPException(status_code=403, detail="no_permission")
+        target_soldier = session.get(Soldier, req.soldier_id)
+        if target_soldier is None or target_soldier.hierarchy_node_id is None:
+            raise HTTPException(status_code=403, detail="no_permission")
+        node = session.get(HierarchyNode, target_soldier.hierarchy_node_id)
+        if node is None or not any(r in (node.path_ids or []) for r in root_ids):
+            raise HTTPException(status_code=403, detail="no_permission")
     files = session.execute(
         select(ExemptionRequestFile)
         .where(ExemptionRequestFile.exemption_request_id == request_id)
@@ -262,6 +283,12 @@ def download_exemption_file(
     if req.soldier_id != user.id:
         root_ids = scope_root_ids(session, user)
         if not root_ids:
+            raise HTTPException(status_code=403, detail="no_permission")
+        target_soldier = session.get(Soldier, req.soldier_id)
+        if target_soldier is None or target_soldier.hierarchy_node_id is None:
+            raise HTTPException(status_code=403, detail="no_permission")
+        node = session.get(HierarchyNode, target_soldier.hierarchy_node_id)
+        if node is None or not any(r in (node.path_ids or []) for r in root_ids):
             raise HTTPException(status_code=403, detail="no_permission")
     ef = session.get(ExemptionRequestFile, file_id)
     if ef is None or ef.exemption_request_id != request_id:
