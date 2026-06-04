@@ -29,6 +29,7 @@ class SwapOut(BaseModel):
     requester_side_approved: bool | None
     covering_side_approved: bool | None
     decision_note: str | None
+    offered_assignment_ids: list[str] = []
     created_at: datetime
 
 
@@ -58,7 +59,9 @@ def _out(r: SwapRequest) -> SwapOut:
         covering_soldier_id=r.covering_soldier_id, status=r.status, reason=r.reason,
         requester_side_approved=r.requester_side_approved,
         covering_side_approved=r.covering_side_approved,
-        decision_note=r.decision_note, created_at=r.created_at,
+        decision_note=r.decision_note,
+        offered_assignment_ids=[str(x) for x in (r.offered_assignment_ids or [])],
+        created_at=r.created_at,
     )
 
 
@@ -144,6 +147,31 @@ def create(
     session.commit()
     session.refresh(r)
     return _out(r)
+
+
+class CoverOfferInput(BaseModel):
+    offered_assignment_ids: list[uuid.UUID] = []
+
+
+@router.post("/swaps/{swap_id}/offer", response_model=SwapOut)
+def submit_cover_offer(
+    swap_id: uuid.UUID,
+    body: CoverOfferInput,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SwapOut:
+    swap = session.get(SwapRequest, swap_id)
+    if swap is None:
+        raise HTTPException(status_code=404, detail="swap_not_found")
+    if swap.status != "open":
+        raise HTTPException(status_code=400, detail="swap_not_open")
+    if swap.requesting_soldier_id == user.id:
+        raise HTTPException(status_code=400, detail="cannot_cover_own_swap")
+    swap.covering_soldier_id = user.id
+    swap.offered_assignment_ids = [str(aid) for aid in body.offered_assignment_ids]
+    swap.status = "pending_approval"
+    session.commit()
+    return _out(swap)
 
 
 @router.post("/swaps/{request_id}/claim", response_model=SwapOut)

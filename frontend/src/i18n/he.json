@@ -465,7 +465,20 @@
     "actions_col": "פעולות",
     "incoming": "בקשות אליי",
     "none_incoming": "אין בקשות החלפה אליך",
-    "accept_cover": "אני מכסה"
+    "accept_cover": "אני מכסה",
+    "tab_mine": "הבקשות שלי",
+    "tab_board": "לוח פתוח",
+    "tab_incoming": "בקשות אליי",
+    "ask_swap": "בקש החלפה",
+    "post_open": "פרסם בלוח הפתוח",
+    "send_to_soldier": "שלח לחייל ספציפי",
+    "personal_message": "הודעה אישית (לעורר אמפתיה...)",
+    "cover_free": "כסה בחינם (מוסיף לניקוד שלך)",
+    "offer_trade": "הצע שיבוץ בתמורה",
+    "select_duties_to_offer": "בחר תורנויות להציע בתמורה",
+    "submit_offer": "שלח הצעה",
+    "no_duties": "אין תורנויות להצגה",
+    "my_upcoming_duties": "התורנויות שלי"
   },
   "command_dashboard": {
     "title": "דף מפקד",

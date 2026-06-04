@@ -12,6 +12,7 @@ export interface SwapRequest {
   requester_side_approved: boolean | null;
   covering_side_approved: boolean | null;
   decision_note: string | null;
+  offered_assignment_ids: string[];
   created_at: string;
 }
 
@@ -66,5 +67,15 @@ export async function listIncomingSwaps(): Promise<SwapRequest[]> {
 
 export async function listSwapsForAssignment(assignmentId: string): Promise<SwapRequest[]> {
   const res = await api.get<SwapRequest[]>(`/swaps/for-assignment/${assignmentId}`);
+  return res.data;
+}
+
+export async function submitCoverOffer(
+  swapId: string,
+  offeredAssignmentIds: string[] = [],
+): Promise<SwapRequest> {
+  const res = await api.post<SwapRequest>(`/swaps/${swapId}/offer`, {
+    offered_assignment_ids: offeredAssignmentIds,
+  });
   return res.data;
 }
