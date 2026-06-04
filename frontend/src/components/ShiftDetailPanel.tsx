@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
+import { SwapRequest, listSwapsForAssignment, claimSwap } from "../api/swaps";
 import DismissalModal from "./DismissalModal";
 import SoldierLink from "./SoldierLink";
 
@@ -13,6 +14,38 @@ interface Props {
 export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Props) {
   const { t } = useTranslation();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);
+  const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
+  const [claimingSwap, setClaimingSwap] = useState<string | null>(null);
+
+  useEffect(() => {
+    const primaryIds = shift.assignees
+      .filter(a => !a.is_reserve || a.called_up_from)
+      .map(a => a.assignment_id);
+    if (primaryIds.length === 0) return;
+    Promise.all(
+      primaryIds.map(id =>
+        listSwapsForAssignment(id)
+          .then(swaps => ({ id, swaps }))
+          .catch(() => ({ id, swaps: [] as SwapRequest[] }))
+      )
+    ).then(results => {
+      const map: Record<string, SwapRequest[]> = {};
+      for (const { id, swaps } of results) {
+        if (swaps.length > 0) map[id] = swaps;
+      }
+      setSwapsByAssignment(map);
+    });
+  }, [shift]);
+
+  async function handleClaimSwap(swapId: string) {
+    setClaimingSwap(swapId);
+    try {
+      await claimSwap(swapId);
+      onRefreshNeeded();
+    } finally {
+      setClaimingSwap(null);
+    }
+  }
 
   const dismissed = shift.assignees.filter(a => (!a.is_reserve || a.called_up_from) && a.dismissals.length > 0);
   const primaries = shift.assignees.filter(a => (!a.is_reserve || a.called_up_from) && a.dismissals.length === 0);
@@ -49,6 +82,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             {primaries.length === 0 && <p className="text-xs text-gray-400">{t("unit_calendar.none")}</p>}
             {primaries.map(a => {
               const isCalledUp = a.is_reserve && a.called_up_from;
+              const openSwaps = swapsByAssignment[a.assignment_id] ?? [];
               return (
               <div key={a.assignment_id} className={`border rounded p-2 text-sm flex flex-col gap-1 ${isCalledUp ? "border-blue-200 bg-blue-50" : ""}`}>
                 <div className="flex justify-between items-center">
@@ -87,6 +121,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     </span>
                   )}
                 </div>
+                {openSwaps.map(swap => (
+                  <div key={swap.id} className="flex items-center gap-2 mt-1 bg-orange-50 border border-orange-200 rounded px-2 py-1 text-xs">
+                    <span className="text-orange-700 flex-1">{t("unit_calendar.swap_requests_has")}</span>
+                    <button
+                      disabled={claimingSwap === swap.id}
+                      onClick={() => handleClaimSwap(swap.id)}
+                      className="bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600 disabled:opacity-50"
+                    >
+                      {t("unit_calendar.cover_for_free")}
+                    </button>
+                  </div>
+                ))}
               </div>
               );
             })}

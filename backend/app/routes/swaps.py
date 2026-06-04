@@ -112,6 +112,21 @@ def board(
     return [_out(r) for r in svc.list_open_board(session, for_soldier_id=user.id)]
 
 
+@router.get("/swaps/for-assignment/{assignment_id}", response_model=list[SwapOut])
+def list_swaps_for_assignment(
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[SwapOut]:
+    rows = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.duty_assignment_id == assignment_id,
+            SwapRequest.status == "open",
+        )
+    ).scalars().all()
+    return [_out(r) for r in rows]
+
+
 @router.post("/me/swaps", response_model=SwapOut, status_code=status.HTTP_201_CREATED)
 def create(
     body: CreateSwapRequest,

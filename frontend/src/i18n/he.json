@@ -238,7 +238,10 @@
     "detail_table": "פירוט תורנויות לתאריך",
     "click_hint": "לחץ על יום או תורנות לפרטים",
     "duty_detail": "פרטי תורנות",
-    "filter_label": "סינון לפי סוג:"
+    "filter_label": "סינון לפי סוג:",
+    "swap_requests_count": "{{count}} בקשות החלפה",
+    "swap_requests_has": "יש בקשת החלפה",
+    "cover_for_free": "כסה בחינם"
   },
   "errors": {
     "bad_date_range": "טווח תאריכים לא תקין",

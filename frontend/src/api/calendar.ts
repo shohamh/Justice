@@ -58,6 +58,7 @@ export interface CalendarShift {
   fill_status: string;
   reserve_count: number;
   assignees: CalendarShiftAssignee[];
+  swap_request_count?: number;
 }
 
 export interface CalendarShiftsResponse {

@@ -71,7 +71,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       backgroundColor: string;
       borderColor: string;
       classNames: string[];
-      extendedProps: { shiftId: string; dutyTypeId: string };
+      extendedProps: { shiftId: string; dutyTypeId: string; swapCount: number };
     }[] = [];
     for (const s of filteredShifts) {
       const endDate = new Date(s.end_date);
@@ -84,7 +84,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
         backgroundColor: s.duty_type_color,
         borderColor: s.duty_type_color,
         classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
-        extendedProps: { shiftId: s.id, dutyTypeId: s.duty_type_id },
+        extendedProps: { shiftId: s.id, dutyTypeId: s.duty_type_id, swapCount: s.swap_request_count ?? 0 },
       });
     }
     return out;
@@ -153,9 +153,17 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           eventContent={(arg) => {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
+            const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
             return (
               <div className="text-xs leading-tight px-1 overflow-hidden w-full">
-                <div className="font-semibold truncate">{shift.duty_type_name} — {shift.duty_location_name}</div>
+                <div className="flex items-center gap-1 w-full">
+                  <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
+                  {swapCount > 0 && (
+                    <span className="bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
+                      {swapCount}
+                    </span>
+                  )}
+                </div>
                 <div className="truncate">
                   {shift.assigned_count} {t("unit_calendar.soldiers_count")}
                   {shift.reserve_count > 0 && (

@@ -63,3 +63,8 @@ export async function listIncomingSwaps(): Promise<SwapRequest[]> {
   const res = await api.get<SwapRequest[]>("/swaps/incoming");
   return res.data;
 }
+
+export async function listSwapsForAssignment(assignmentId: string): Promise<SwapRequest[]> {
+  const res = await api.get<SwapRequest[]>(`/swaps/for-assignment/${assignmentId}`);
+  return res.data;
+}

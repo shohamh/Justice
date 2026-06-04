@@ -5,12 +5,12 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyLocation, DutyType, HierarchyNode, Soldier
+from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
 from app.services.calendar_shifts import get_calendar_shifts
@@ -70,6 +70,7 @@ class CalendarShiftOut(BaseModel):
     fill_status: str
     reserve_count: int
     assignees: list[CalendarShiftAssignee]
+    swap_request_count: int = 0
 
 
 class CalendarShiftsResponse(BaseModel):
@@ -79,6 +80,18 @@ class CalendarShiftsResponse(BaseModel):
 def _duty_type_color(duty_type_id: uuid.UUID) -> str:
     h = hash(duty_type_id) % 360
     return f"hsl({h}, 65%, 55%)"
+
+
+def _swap_count_for_shift(session: Session, shift_id: uuid.UUID) -> int:
+    return session.execute(
+        select(func.count())
+        .select_from(SwapRequest)
+        .join(DutyAssignment, DutyAssignment.id == SwapRequest.duty_assignment_id)
+        .where(
+            DutyAssignment.duty_shift_id == shift_id,
+            SwapRequest.status == "open",
+        )
+    ).scalar_one()
 
 
 @router.get("/unit", response_model=list[CalRow])
@@ -157,5 +170,8 @@ def calendar_shifts(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     authorize(session, user, Action.HIERARCHY_READ, target_node=node)
     raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
-    shifts = [CalendarShiftOut(**s) for s in raw]
+    shifts = [
+        CalendarShiftOut(**s, swap_request_count=_swap_count_for_shift(session, s["id"]))
+        for s in raw
+    ]
     return CalendarShiftsResponse(shifts=shifts)
