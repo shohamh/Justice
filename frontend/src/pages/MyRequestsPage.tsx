@@ -39,7 +39,16 @@ export default function MyRequestsPage() {
   const [erError, setErError] = useState<string | null>(null);
   const [erSubmitting, setErSubmitting] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
+
+  const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   const selectedExemptionType = exemptionTypes.find(et => et.id === erTypeId);
   const isMedical = erMedical || (selectedExemptionType?.is_medical ?? false);
@@ -104,7 +113,7 @@ export default function MyRequestsPage() {
         await uploadExemptionFile(createdReq.id, f);
       }
       setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-      setUploadFiles([]); setErMedical(false);
+      setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false);
       await refresh();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
@@ -177,7 +186,7 @@ export default function MyRequestsPage() {
                   onChange={(e) => {
                     const typeId = e.target.value;
                     setErTypeId(typeId);
-                    setUploadFiles([]);
+                    setUploadFiles([]); setUploadSizeErrors([]);
                     const type = exemptionTypes.find(et => et.id === typeId);
                     setErMedical(type?.is_medical ?? false);
                   }}
@@ -211,7 +220,7 @@ export default function MyRequestsPage() {
               <input
                 type="checkbox"
                 checked={erMedical}
-                onChange={(e) => { setErMedical(e.target.checked); setUploadFiles([]); }}
+                onChange={(e) => { setErMedical(e.target.checked); setUploadFiles([]); setUploadSizeErrors([]); }}
                 className="w-4 h-4 accent-blue-600"
               />
               <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -247,24 +256,44 @@ export default function MyRequestsPage() {
                     ? `${uploadFiles.length} ${uploadFiles.length === 1 ? "קובץ נבחר" : "קבצים נבחרו"}`
                     : "בחר קבצים"}
                 </span>
-                <span className="text-xs text-gray-400">PDF, JPG, PNG, GIF</span>
+                <span className="text-xs text-gray-400">PDF, JPG, PNG, GIF · {t("exemption_requests.max_file_size")}</span>
                 <input
                   type="file"
                   multiple
                   accept=".pdf,image/*"
                   className="hidden"
-                  onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
+                  onChange={e => {
+                    const picked = Array.from(e.target.files ?? []);
+                    const valid = picked.filter(f => f.size <= MAX_FILE_BYTES);
+                    const oversized = picked.filter(f => f.size > MAX_FILE_BYTES).map(f => f.name);
+                    setUploadFiles(prev => {
+                      const merged = [...prev, ...valid.filter(v => !prev.some(p => p.name === v.name))];
+                      return merged;
+                    });
+                    setUploadSizeErrors(oversized);
+                    e.target.value = "";
+                  }}
                   data-testid="er-files"
                 />
               </label>
+              {uploadSizeErrors.length > 0 && (
+                <div className="rounded p-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+                  <p className="text-xs font-medium text-red-700 dark:text-red-300">{t("exemption_requests.file_too_large")}</p>
+                  <ul className="text-xs text-red-600 dark:text-red-400 mt-0.5 list-disc list-inside">
+                    {uploadSizeErrors.map(name => <li key={name}>{name}</li>)}
+                  </ul>
+                </div>
+              )}
               {uploadFiles.length > 0 && (
                 <ul className="text-xs space-y-0.5">
                   {uploadFiles.map((f, i) => (
                     <li key={i} className={`flex items-center gap-1 ${isMedical ? "text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-300"}`}>
-                      <span>📄</span> {f.name}
+                      <span>📄</span>
+                      <span className="truncate max-w-48">{f.name}</span>
+                      <span className="text-gray-400 dark:text-gray-500 shrink-0">({formatBytes(f.size)})</span>
                       <button
                         type="button"
-                        className="text-red-400 hover:text-red-600 mr-1"
+                        className="text-red-400 hover:text-red-600 mr-1 shrink-0"
                         onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
                       >✕</button>
                     </li>
