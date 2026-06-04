@@ -41,15 +41,15 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "ניקוד",
     settings: [
-      { key: "scoring.reserve_standby_multiplier", label: "מכפיל עתודה במצב המתנה", description: "מכפיל ניקוד לחייל עתודה שלא הוקפץ", type: "decimal", defaultValue: 0.2 },
-      { key: "scoring.reserve_called_up_multiplier", label: "מכפיל עתודה שהוקפץ", description: "מכפיל ניקוד לחייל עתודה שהוקפץ לשירות", type: "decimal", defaultValue: 1.0 },
+      { key: "scoring.reserve_standby_multiplier", label: "מכפיל רזרבה במצב המתנה", description: "מכפיל ניקוד לחייל רזרבה שלא הוקפץ", type: "decimal", defaultValue: 0.2 },
+      { key: "scoring.reserve_called_up_multiplier", label: "מכפיל רזרבה שהוקפץ", description: "מכפיל ניקוד לחייל רזרבה שהוקפץ לשירות", type: "decimal", defaultValue: 1.0 },
       { key: "scoring.dismissed_multiplier", label: "מכפיל שחרור", description: "מכפיל ניקוד לימים בהם החייל שוחרר מתורנות", type: "decimal", defaultValue: 0.0 },
     ],
   },
   {
     label: "הוגנות אלגוריתם",
     settings: [
-      { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לעתודה", description: "משקל קרבה היררכית בבחירת חיילי עתודה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
+      { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
     ],
   },
   {
@@ -140,6 +140,7 @@ export function SystemSettingsContent() {
                 <div className="flex-shrink-0">
                   {def.type === "boolean" ? (
                     <button
+                      dir="ltr"
                       onClick={() => setValue(def.key, !value)}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${value ? "bg-indigo-600" : "bg-gray-200"}`}
                       aria-pressed={Boolean(value)}

@@ -129,7 +129,7 @@ function AlgorithmTab() {
           { icon: "📊", title: "ניקוד מנורמל", desc: "מי שעשה פחות תורנויות ביחס לאחרים מקבל עדיפות. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
-          { icon: "🔢", title: "מכסת עתודה", desc: "האלגוריתם שובץ גם עתודאים שיוכפצו אם הזכאי לא יוכל להגיע." },
+          { icon: "🔢", title: "מכסת עתודאים", desc: "האלגוריתם שובץ גם עתודאים שיוקפצו לכשהזכאי לא יוכל להגיע." },
           { icon: "🎲", title: "אקראיות מבוקרת", desc: "כשיש כמה מועמדים בעלי ניקוד דומה — מגרילים ביניהם לשוויון טוב יותר לאורך זמן." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 rounded-lg p-3 border border-gray-200">
@@ -168,45 +168,37 @@ function FairnessTab() {
           </div>
         </div>
 
-        {/* Visual scale with person indicator */}
-        <div className="space-y-2">
-          {/* Person marker */}
-          <div className="relative h-8 flex items-end justify-center">
-            <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
-              <span className="text-base">👤</span>
-              <span className="text-[10px] text-blue-600 font-semibold leading-none">את/ה כאן</span>
-              <span className="text-[10px] text-blue-400">כשניקוד = 1</span>
-            </div>
-          </div>
-          {/* Gradient bar */}
-          <div className="relative h-4 rounded-full overflow-hidden bg-gradient-to-l from-orange-300 via-blue-300 to-green-300">
-            {/* Centre marker */}
-            <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-blue-700 opacity-60" />
-          </div>
-          {/* Scale labels */}
-          <div className="grid grid-cols-3 gap-0 text-center text-xs text-gray-500">
-            <span>ניקוד נמוך</span>
-            <span className="text-blue-600 font-medium">= 1</span>
-            <span>ניקוד גבוה</span>
-          </div>
-        </div>
-
-        {/* Score scale cards — corrected logic */}
+        {/* Score scale cards with person indicators */}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 space-y-0.5">
+            <p className="text-xl">👤</p>
+            <p className="text-xs text-orange-500 font-medium -mt-0.5">את/ה</p>
             <p className="text-lg font-bold text-orange-700">{"< 1"}</p>
             <p className="text-orange-700 font-medium">עשית פחות מהממוצע</p>
-            <p className="text-orange-600">האלגוריתם ישבץ אותך יותר</p>
+            <p className="text-orange-600">תשובץ יותר בעתיד</p>
           </div>
           <div className="bg-blue-100 border border-blue-300 rounded-lg p-2 space-y-0.5">
+            <div className="h-7" />
             <p className="text-lg font-bold text-blue-700">= 1</p>
             <p className="text-blue-700 font-medium">בדיוק כמו הממוצע</p>
             <p className="text-blue-600">מצב אידיאלי</p>
           </div>
           <div className="bg-green-100 border border-green-300 rounded-lg p-2 space-y-0.5">
+            <p className="text-xl">👤</p>
+            <p className="text-xs text-green-500 font-medium -mt-0.5">את/ה</p>
             <p className="text-lg font-bold text-green-700">{"> 1"}</p>
             <p className="text-green-700 font-medium">עשית יותר מהממוצע</p>
             <p className="text-green-600">תשובץ פחות בעתיד</p>
+          </div>
+        </div>
+
+        {/* Gradient bar */}
+        <div className="space-y-1">
+          <div className="h-3 rounded-full bg-gradient-to-l from-green-300 via-blue-300 to-orange-300" />
+          <div className="grid grid-cols-3 text-center text-xs text-gray-400">
+            <span>ניקוד נמוך</span>
+            <span className="text-blue-600 font-medium">= 1</span>
+            <span>ניקוד גבוה</span>
           </div>
         </div>
       </div>
