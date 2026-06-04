@@ -11,12 +11,7 @@ import ExplanationModal from "../components/ExplanationModal";
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
-
-function dutyTypeColor(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffffffff;
-  return `hsl(${Math.abs(h) % 360}, 65%, 55%)`;
-}
+import { dutyTypeColor } from "../utils/dutyTypeColor";
 
 export default function MyDutiesPage() {
   const { t } = useTranslation();

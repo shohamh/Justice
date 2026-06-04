@@ -10,6 +10,7 @@
     "password_label": "סיסמה",
     "submit": "התחבר",
     "submitting": "מתחבר...",
+    "remember_me": "זכור אותי",
     "errors": {
       "invalid_credentials": "מספר אישי או סיסמה שגויים",
       "network": "שגיאת רשת. נסה שוב.",

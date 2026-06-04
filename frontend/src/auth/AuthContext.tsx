@@ -9,7 +9,7 @@ interface AuthContextValue {
   mustChangePassword: boolean;
   telegramLinked: boolean;
   telegramRequired: boolean;
-  login: (personal_number: string, password: string) => Promise<void>;
+  login: (personal_number: string, password: string, remember_me?: boolean) => Promise<void>;
   loginWithToken: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
@@ -21,8 +21,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
 
-  const login = useCallback(async (personal_number: string, password: string) => {
-    const r = await apiLogin(personal_number, password);
+  const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
+    const r = await apiLogin(personal_number, password, remember_me);
     setAccessToken(r.access_token);
     setUser(await fetchMe());
   }, []);

@@ -52,6 +52,15 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לעתודה", description: "משקל קרבה היררכית בבחירת חיילי עתודה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
     ],
   },
+  {
+    label: "דף הבית",
+    settings: [
+      { key: "home.mitvahim_validity_days", label: "תוקף מיתווחים (ימים)", description: "מספר ימים שמיתווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
+      { key: "home.mitvahim_warn_days", label: "אזהרה לפני פקיעת מיתווחים (ימים)", description: "כמה ימים לפני פקיעת המיתווחים תופיע אזהרה בדף הבית", type: "number", defaultValue: 30 },
+      { key: "home.alal_validity_days", label: 'תוקף אל"ל (ימים)', description: 'מספר ימים שאל"ל בתוקף לאחר ביצוע', type: "number", defaultValue: 90 },
+      { key: "home.alal_warn_days", label: 'אזהרה לפני פקיעת אל"ל (ימים)', description: 'כמה ימים לפני פקיעת האל"ל תופיע אזהרה בדף הבית', type: "number", defaultValue: 30 },
+    ],
+  },
 ];
 
 function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {
