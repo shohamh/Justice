@@ -32,6 +32,7 @@ export interface ExemptionType {
   name: string;
   description: string | null;
   is_global?: boolean;
+  is_medical?: boolean;
 }
 
 export async function listDutyTypes(): Promise<DutyType[]> {

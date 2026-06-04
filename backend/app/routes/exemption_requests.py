@@ -3,14 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionRequest, HierarchyNode, Soldier
+from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services.exemption_requests import (
     ExemptionRequestError,
@@ -47,6 +47,13 @@ class CreateExemptionRequest(BaseModel):
 
 class ApproveRejectRequest(BaseModel):
     decision_note: str | None = None
+
+
+class ExemptionFileOut(BaseModel):
+    id: uuid.UUID
+    file_name: str
+    content_type: str
+    created_at: str
 
 
 def _out(req: ExemptionRequest) -> ExemptionRequestOut:
@@ -179,3 +186,88 @@ def reject_exemption_request(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     return _out(result)
+
+
+@router.post(
+    "/me/exemption-requests/{request_id}/files",
+    response_model=ExemptionFileOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_exemption_file(
+    request_id: uuid.UUID,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionFileOut:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None or req.soldier_id != user.id:
+        raise HTTPException(status_code=404, detail="exemption_request_not_found")
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/gif"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="invalid_file_type")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="file_too_large")
+    ef = ExemptionRequestFile(
+        exemption_request_id=request_id,
+        file_name=file.filename or "file",
+        content_type=file.content_type,
+        data=data,
+        uploaded_by=user.id,
+    )
+    session.add(ef)
+    session.commit()
+    return ExemptionFileOut(
+        id=ef.id,
+        file_name=ef.file_name,
+        content_type=ef.content_type,
+        created_at=ef.created_at.isoformat(),
+    )
+
+
+@router.get("/exemption-requests/{request_id}/files", response_model=list[ExemptionFileOut])
+def list_exemption_files(
+    request_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ExemptionFileOut]:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="exemption_request_not_found")
+    if req.soldier_id != user.id:
+        root_ids = scope_root_ids(session, user)
+        if not root_ids:
+            raise HTTPException(status_code=403, detail="no_permission")
+    files = session.execute(
+        select(ExemptionRequestFile)
+        .where(ExemptionRequestFile.exemption_request_id == request_id)
+        .order_by(ExemptionRequestFile.created_at)
+    ).scalars().all()
+    return [
+        ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+        for f in files
+    ]
+
+
+@router.get("/exemption-requests/{request_id}/files/{file_id}")
+def download_exemption_file(
+    request_id: uuid.UUID,
+    file_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Response:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="exemption_request_not_found")
+    if req.soldier_id != user.id:
+        root_ids = scope_root_ids(session, user)
+        if not root_ids:
+            raise HTTPException(status_code=403, detail="no_permission")
+    ef = session.get(ExemptionRequestFile, file_id)
+    if ef is None or ef.exemption_request_id != request_id:
+        raise HTTPException(status_code=404, detail="file_not_found")
+    return Response(
+        content=ef.data,
+        media_type=ef.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{ef.file_name}"'},
+    )

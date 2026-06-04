@@ -68,3 +68,30 @@ export async function rejectExemptionRequest(
 ): Promise<ExemptionRequest> {
   return (await api.post<ExemptionRequest>(`/exemption-requests/${id}/reject`, { decision_note: note })).data;
 }
+
+export interface ExemptionFile {
+  id: string;
+  file_name: string;
+  content_type: string;
+  created_at: string;
+}
+
+export async function uploadExemptionFile(requestId: string, file: File): Promise<ExemptionFile> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await api.post<ExemptionFile>(
+    `/me/exemption-requests/${requestId}/files`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return res.data;
+}
+
+export async function listExemptionFiles(requestId: string): Promise<ExemptionFile[]> {
+  const res = await api.get<ExemptionFile[]>(`/exemption-requests/${requestId}/files`);
+  return res.data;
+}
+
+export function exemptionFileDownloadUrl(requestId: string, fileId: string): string {
+  return `/api/exemption-requests/${requestId}/files/${fileId}`;
+}

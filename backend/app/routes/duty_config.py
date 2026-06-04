@@ -197,6 +197,7 @@ class ExemptionTypeOut(BaseModel):
     name: str
     description: str | None
     is_global: bool = False
+    is_medical: bool = False
 
 
 class CreateExemptionTypeRequest(BaseModel):
@@ -216,7 +217,7 @@ class SetDutyTypesRequest(BaseModel):
 
 
 def _et_out(et: ExemptionType) -> ExemptionTypeOut:
-    return ExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_global=et.is_global)
+    return ExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_global=et.is_global, is_medical=et.is_medical)
 
 
 @router.get("/exemption-types", response_model=list[ExemptionTypeOut])

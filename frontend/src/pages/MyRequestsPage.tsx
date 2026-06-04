@@ -15,6 +15,7 @@ import {
   ExemptionRequest,
   listMyExemptionRequests,
   submitExemptionRequest,
+  uploadExemptionFile,
 } from "../api/exemptions";
 
 export default function MyRequestsPage() {
@@ -37,6 +38,9 @@ export default function MyRequestsPage() {
   const [erReason, setErReason] = useState("");
   const [erError, setErError] = useState<string | null>(null);
   const [erSubmitting, setErSubmitting] = useState(false);
+  const [pendingUploadRequestId, setPendingUploadRequestId] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setItems(await listMyConstraints());
@@ -87,14 +91,20 @@ export default function MyRequestsPage() {
     setErError(null);
     setErSubmitting(true);
     try {
-      await submitExemptionRequest({
+      const createdReq = await submitExemptionRequest({
         exemption_type_id: erTypeId,
         start_date: erStart,
         end_date: erEnd || null,
         reason: erReason || null,
       });
-      setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
-      await refresh();
+      const selectedType = exemptionTypes.find(et => et.id === erTypeId);
+      if (selectedType?.is_medical) {
+        setPendingUploadRequestId(createdReq.id);
+        // don't clear the form yet
+      } else {
+        setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
+        await refresh();
+      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -167,6 +177,51 @@ export default function MyRequestsPage() {
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
             </button>
           </form>
+
+          {pendingUploadRequestId && (
+            <div className="mt-3 p-3 border border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800 rounded space-y-2" dir="rtl">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-200">{t("exemption_requests.upload_required")}</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">{t("exemption_requests.upload_hint")}</p>
+              <input
+                type="file"
+                multiple
+                accept=".pdf,image/*"
+                onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
+                className="text-xs"
+              />
+              {uploadError && <p className="text-red-500 text-xs">{uploadError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setUploadError(null);
+                    try {
+                      for (const f of uploadFiles) {
+                        await uploadExemptionFile(pendingUploadRequestId, f);
+                      }
+                      setPendingUploadRequestId(null);
+                      setUploadFiles([]);
+                      setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
+                      await refresh();
+                    } catch {
+                      setUploadError("שגיאה בהעלאת הקובץ");
+                    }
+                  }}
+                  disabled={uploadFiles.length === 0}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded disabled:opacity-50"
+                >
+                  {t("exemption_requests.upload_send")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPendingUploadRequestId(null); setUploadFiles([]); setErTypeId(""); setErStart(""); setErEnd(""); setErReason(""); void refresh(); }}
+                  className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300"
+                >
+                  {t("exemption_requests.upload_skip")}
+                </button>
+              </div>
+            </div>
+          )}
 
           {exemptionRequests.length === 0 && <p className="text-sm text-gray-500 mt-2">{t("exemption_requests.none")}</p>}
           <ul className="text-sm space-y-1 mt-2" data-testid="er-list">

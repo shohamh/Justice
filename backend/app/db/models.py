@@ -174,6 +174,7 @@ class ExemptionType(Base):
     name: Mapped[str] = mapped_column(Text, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     is_global: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    is_medical: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -447,6 +448,26 @@ class ExemptionRequest(Base):
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class ExemptionRequestFile(Base):
+    __tablename__ = "exemption_request_files"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    exemption_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("exemption_requests.id", ondelete="CASCADE")
+    )
+    file_name: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

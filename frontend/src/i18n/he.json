@@ -270,7 +270,12 @@
     "approved": "אושר",
     "rejected": "נדחה",
     "none": "אין בקשות פטור",
-    "my_requests": "הבקשות שלי לפטור"
+    "my_requests": "הבקשות שלי לפטור",
+    "upload_required": "נדרש העלאת מסמך רפואי",
+    "upload_hint": "אנא צרף קובץ PDF או תמונה של האישור הרפואי",
+    "upload_send": "העלה ושלח",
+    "upload_skip": "דלג (העלה מאוחר יותר)",
+    "files": "מסמכים מצורפים"
   },
   "algorithm": {
     "title": "חלון תכנון",

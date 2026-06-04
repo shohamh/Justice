@@ -10,8 +10,11 @@ import {
   rejectConstraint,
 } from "../api/constraints";
 import {
+  ExemptionFile,
   ExemptionRequest,
   approveExemptionRequest,
+  exemptionFileDownloadUrl,
+  listExemptionFiles,
   listPendingExemptionRequests,
   rejectExemptionRequest,
 } from "../api/exemptions";
@@ -62,6 +65,7 @@ export default function ApprovalsPage() {
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
   const [soldierMap, setSoldierMap] = useState<Map<string, SoldierDTO>>(new Map());
   const [nodeMap, setNodeMap] = useState<Map<string, NodeDTO>>(new Map());
+  const [requestFiles, setRequestFiles] = useState<Record<string, ExemptionFile[]>>({});
 
   useEffect(() => {
     void (async () => {
@@ -73,10 +77,17 @@ export default function ApprovalsPage() {
 
   const refresh = useCallback(async () => {
     setItems(await listPendingApprovals());
-    setErItems(await listPendingExemptionRequests());
+    const exemptionReqs = await listPendingExemptionRequests();
+    setErItems(exemptionReqs);
     setFuItems(await listPendingFieldUpdates());
     setSwapItems(await listPendingSwaps());
     setEnrollItems(await listPendingEnrollments());
+    // Load files for all exemption requests
+    for (const req of exemptionReqs) {
+      listExemptionFiles(req.id)
+        .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -257,6 +268,21 @@ export default function ApprovalsPage() {
                   </div>
                   <p className="text-sm" dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
+                  {(requestFiles[er.id] ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(requestFiles[er.id] ?? []).map(f => (
+                        <a
+                          key={f.id}
+                          href={exemptionFileDownloadUrl(er.id, f.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 dark:text-blue-400 text-xs hover:underline flex items-center gap-1"
+                        >
+                          📎 {f.file_name}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApprove(er.id)} data-testid={`er-approve-${er.id}`}>
                       {t("approvals.approve")}
