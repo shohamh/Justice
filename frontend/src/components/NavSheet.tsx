@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 interface NavSheetItem {
   label: string;
   to: string;
+  badge?: number;
 }
 
 interface NavSheetProps {
@@ -14,8 +15,6 @@ interface NavSheetProps {
 
 export default function NavSheet({ open, onClose, items, testId }: NavSheetProps) {
   if (!open) return null;
-
-  const linkClass = "block px-4 py-3 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium" as const;
 
   return (
     <>
@@ -43,8 +42,18 @@ export default function NavSheet({ open, onClose, items, testId }: NavSheetProps
           </button>
         </div>
         {items.map((item) => (
-          <Link key={item.to} to={item.to} onClick={onClose} className={linkClass}>
-            {item.label}
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={onClose}
+            className="flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg"
+          >
+            <span>{item.label}</span>
+            {item.badge != null && item.badge > 0 && (
+              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 leading-4 min-w-[1.25rem] text-center">
+                {item.badge}
+              </span>
+            )}
           </Link>
         ))}
       </div>

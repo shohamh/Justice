@@ -90,7 +90,7 @@ export default function UnifiedNav() {
 
   const commanderItems = [
     { label: t("nav.team_hierarchy"), to: "/team" },
-    { label: t("nav.approvals"), to: "/approvals" },
+    { label: t("nav.approvals"), to: "/approvals", badge: pendingCount },
     { label: t("nav.command_dashboard"), to: "/command-dashboard" },
   ];
 
