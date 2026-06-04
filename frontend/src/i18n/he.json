@@ -68,6 +68,7 @@
   },
   "my_requests": {
     "title": "אילוצים ופטורים",
+    "section_constraints": "אילוצים אישיים",
     "start_date": "מתאריך",
     "end_date": "עד תאריך",
     "reason": "סיבה",
@@ -279,6 +280,7 @@
     "none": "אין בקשות פטור",
     "my_requests": "הבקשות שלי לפטור",
     "upload_required": "נדרש צירוף מסמך רפואי",
+    "upload_optional": "צירוף מסמכים (אופציונלי)",
     "upload_hint": "צרף קובץ PDF או תמונה של האישור הרפואי",
     "upload_required_hint": "יש לצרף מסמך לפני שליחת הבקשה",
     "upload_send": "העלה ושלח",

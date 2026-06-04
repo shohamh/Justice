@@ -132,7 +132,10 @@ export default function MyRequestsPage() {
       <section className="bg-white rounded-lg shadow p-6 space-y-6 dark:bg-gray-800">
         <h2 className="text-xl font-semibold">{t("my_requests.title")}</h2>
 
-        {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
+        <div className="border-b dark:border-gray-600 pb-4 space-y-3">
+          <h3 className="font-medium">{t("my_requests.section_constraints")}</h3>
+          {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
+        </div>
 
         <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
           <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
@@ -196,49 +199,59 @@ export default function MyRequestsPage() {
               </div>
             </div>
 
-            {/* Inline file upload — shown only for medical exemption types */}
-            {isMedical && (
-              <div className="rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🏥</span>
-                  <div>
-                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">{t("exemption_requests.upload_required")}</p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400">{t("exemption_requests.upload_hint")}</p>
-                  </div>
+            {/* File upload — always available, required for medical types */}
+            <div className={`rounded-lg border-2 border-dashed p-4 space-y-2 ${
+              isMedical
+                ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950"
+                : "border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{isMedical ? "🏥" : "📎"}</span>
+                <div>
+                  <p className={`text-sm font-medium ${isMedical ? "text-blue-800 dark:text-blue-200" : "text-gray-700 dark:text-gray-300"}`}>
+                    {isMedical ? t("exemption_requests.upload_required") : t("exemption_requests.upload_optional")}
+                  </p>
+                  <p className={`text-xs ${isMedical ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}`}>
+                    {t("exemption_requests.upload_hint")}
+                  </p>
                 </div>
-                <label className="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 p-3 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors">
-                  <span className="text-2xl">📎</span>
-                  <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-                    {uploadFiles.length > 0
-                      ? `${uploadFiles.length} ${uploadFiles.length === 1 ? "קובץ נבחר" : "קבצים נבחרו"}`
-                      : "בחר קבצים או גרור לכאן"}
-                  </span>
-                  <span className="text-xs text-gray-400">PDF, JPG, PNG, GIF</span>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,image/*"
-                    className="hidden"
-                    onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
-                    data-testid="er-files"
-                  />
-                </label>
-                {uploadFiles.length > 0 && (
-                  <ul className="text-xs space-y-0.5">
-                    {uploadFiles.map((f, i) => (
-                      <li key={i} className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
-                        <span>📄</span> {f.name}
-                        <button
-                          type="button"
-                          className="text-red-400 hover:text-red-600 mr-1"
-                          onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
-                        >✕</button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
-            )}
+              <label className={`flex flex-col items-center justify-center gap-2 cursor-pointer rounded-lg border p-3 transition-colors ${
+                isMedical
+                  ? "border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-gray-700"
+                  : "border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}>
+                <span className="text-2xl">📎</span>
+                <span className={`text-sm font-medium ${isMedical ? "text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-300"}`}>
+                  {uploadFiles.length > 0
+                    ? `${uploadFiles.length} ${uploadFiles.length === 1 ? "קובץ נבחר" : "קבצים נבחרו"}`
+                    : "בחר קבצים"}
+                </span>
+                <span className="text-xs text-gray-400">PDF, JPG, PNG, GIF</span>
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,image/*"
+                  className="hidden"
+                  onChange={e => setUploadFiles(Array.from(e.target.files ?? []))}
+                  data-testid="er-files"
+                />
+              </label>
+              {uploadFiles.length > 0 && (
+                <ul className="text-xs space-y-0.5">
+                  {uploadFiles.map((f, i) => (
+                    <li key={i} className={`flex items-center gap-1 ${isMedical ? "text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-300"}`}>
+                      <span>📄</span> {f.name}
+                      <button
+                        type="button"
+                        className="text-red-400 hover:text-red-600 mr-1"
+                        onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
+                      >✕</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
             <button
               type="submit"
