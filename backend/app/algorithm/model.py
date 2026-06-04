@@ -133,10 +133,7 @@ def build_model(
         K_int = int(settings.K * 1000)
         model.Add(max_norm - min_norm <= K_int)
 
-    # Soft objective: minimise density penalty
-    beta_int = int(settings.beta * 1000)
-    density_terms: list[LinearExpr] = []
-
+    # Density window tracking (variables kept for Task 4 hard constraint)
     existing_by_soldier = {
         s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
     }
@@ -178,8 +175,7 @@ def build_model(
             e3 = model.NewIntVar(0, W, f"e3_s{si}_w{ws}")
             model.Add(e1 + e2 + e3 == excess)
 
-            cost = e1 + 3 * e2 + 5 * e3
-            density_terms.append(beta_int * cost)
+            cost = e1 + 3 * e2 + 5 * e3  # noqa: F841 — kept for Task 4
 
             ws += timedelta(days=1)
 
@@ -192,9 +188,19 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
+    # Soft objective: prefer soldiers with lower pre-assignment normalised score
+    alpha_int = int(settings.alpha * 1000)
+    score_terms: list = []
+    if alpha_int > 0:
+        for (di, si), var in x.items():
+            s = soldier_list[si]
+            if s.active_days > 0:
+                pre_norm = int(s.cumulative_score * 1000) // s.active_days
+                score_terms.append(alpha_int * pre_norm * var)
+
     objective = (
-        -(sum(density_terms) if density_terms else 0)
-        - (sum(reserve_dist_terms) if reserve_dist_terms else 0)
+        -(sum(reserve_dist_terms) if reserve_dist_terms else 0)
+        - (sum(score_terms) if score_terms else 0)
     )
     model.Maximize(objective)
     return model, x

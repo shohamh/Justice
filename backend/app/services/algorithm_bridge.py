@@ -482,7 +482,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     T=int(job.settings_json.get("T", 7)),
                     W=int(job.settings_json.get("W", 14)),
                     alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
-                    beta=Decimal(str(job.settings_json.get("beta", 2.0))),
                     time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
                     reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
                 )

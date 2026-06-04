@@ -46,16 +46,14 @@ class SolverSettings:
     """CP-SAT solver configuration.
 
     K: max normalised-score variance between soldiers
-    T: density soft cap (duty-days per rolling window)
+    T: density hard cap (duty-days per rolling window)
     W: rolling window length in days
-    alpha: min_gap spacing reward weight
-    beta: density penalty weight
+    alpha: score-preference weight (higher = stronger preference for low-score soldiers)
     """
     K: Decimal = Decimal("8")
     T: int = 7
     W: int = 14
     alpha: Decimal = Decimal("1.0")
-    beta: Decimal = Decimal("2.0")
     time_limit_seconds: int = 30
     seed: int | None = None
     reserve_hierarchy_weight: Decimal = Decimal("0.5")
