@@ -286,7 +286,7 @@ def load_existing_assignments(
     rows = (
         session.execute(
             select(DutyAssignment).where(
-                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+                DutyAssignment.status == "published",
                 DutyAssignment.start_date <= boundary_end,
                 DutyAssignment.end_date >= boundary_start,
             )
