@@ -49,6 +49,23 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     duty_scores = scoring_svc.duty_score_by_soldier(session)
     adj_scores = scoring_svc.adjustments_by_soldier(session)
 
+    # Include algorithm_draft scores so repeated runs deprioritise already-assigned soldiers.
+    # Draft assignments are proposals that haven't been published yet; counting them prevents
+    # the solver from piling duties on the same person across consecutive runs.
+    draft_scores: dict[uuid.UUID, Decimal] = {}
+    dt_score_map = {
+        dt.id: dt.score_per_day
+        for dt in session.execute(select(DutyType)).scalars().all()
+    }
+    for da in session.execute(
+        select(DutyAssignment).where(DutyAssignment.status == "algorithm_draft")
+    ).scalars().all():
+        days = (da.end_date - da.start_date).days + 1
+        draft_scores[da.soldier_id] = (
+            draft_scores.get(da.soldier_id, Decimal("0"))
+            + dt_score_map.get(da.duty_type_id, Decimal("0")) * days
+        )
+
     # Build exemption type → duty type ids map (one query)
     etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
     for etid, dtid in session.execute(
@@ -128,7 +145,11 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
 
     result: list[SoldierInput] = []
     for s in soldiers:
-        cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
+        cum = (
+            duty_scores.get(s.id, Decimal("0"))
+            + adj_scores.get(s.id, Decimal("0"))
+            + draft_scores.get(s.id, Decimal("0"))
+        )
 
         # Compute active_days inline (avoids 2N extra queries)
         raw = (as_of - s.enrolled_at).days
@@ -265,7 +286,7 @@ def load_existing_assignments(
     rows = (
         session.execute(
             select(DutyAssignment).where(
-                DutyAssignment.status == "published",
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
                 DutyAssignment.start_date <= boundary_end,
                 DutyAssignment.end_date >= boundary_start,
             )
@@ -382,8 +403,8 @@ def persist_results(
             duty_shift_id=shift_id,
             is_reserve=block.is_reserve,
         )
+        da.id = uuid.uuid4()  # pre-assign so we avoid a per-row flush
         session.add(da)
-        session.flush()  # populate da.id
 
         if not block.is_reserve:
             exp = explanation_map.get(a.duty_id)
@@ -413,6 +434,8 @@ def persist_results(
                 reserve_assignments.append((da.id, a.soldier_id, shift_id))
             else:
                 primary_assignments.append((da.id, a.soldier_id, shift_id))
+
+    session.flush()  # single round-trip for all assignments at once
 
     if primary_assignments and reserve_assignments and soldier_node is not None:
         links = link_reserves(

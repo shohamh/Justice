@@ -46,6 +46,23 @@ def _solve(soldiers, duties, existing=None, **settings_kwargs):
     return assigned
 
 
+def test_fairness_all_zero_scores_distributes():
+    """The core bug: when all soldiers have zero score the algorithm must still distribute
+    duties evenly — not concentrate them on one person arbitrarily."""
+    s1, s2, s3 = _soldier(0.0), _soldier(0.0), _soldier(0.0)
+    # Three non-overlapping single-day duties
+    d1 = _duty(date(2026, 9, 1))
+    d2 = _duty(date(2026, 9, 8))
+    d3 = _duty(date(2026, 9, 15))
+
+    assigned = _solve([s1, s2, s3], [d1, d2, d3], K=Decimal("8"), T=7, W=14, alpha=Decimal("1.0"))
+
+    soldiers_used = set(assigned.values())
+    assert len(soldiers_used) == 3, (
+        f"All 3 soldiers should each get 1 duty, but only {len(soldiers_used)} were used"
+    )
+
+
 def test_alpha_prefers_lower_score_soldier():
     """With alpha > 0 the solver assigns the single duty to the soldier with score 0, not score 8."""
     low = _soldier(score=0.0)

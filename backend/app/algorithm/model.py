@@ -125,13 +125,14 @@ def build_model(
         model.AddDivisionEquality(norm, total, s.active_days)
         norm_exprs.append(norm)
 
+    max_norm_var = None
     if norm_exprs:
         min_norm = model.NewIntVar(0, 10_000_000, "min_norm")
-        max_norm = model.NewIntVar(0, 10_000_000, "max_norm")
+        max_norm_var = model.NewIntVar(0, 10_000_000, "max_norm")
         model.AddMinEquality(min_norm, norm_exprs)
-        model.AddMaxEquality(max_norm, norm_exprs)
+        model.AddMaxEquality(max_norm_var, norm_exprs)
         K_int = int(settings.K * 1000)
-        model.Add(max_norm - min_norm <= K_int)
+        model.Add(max_norm_var - min_norm <= K_int)
 
     # Hard constraint: max T duty-days in any rolling W-day window per soldier
     existing_by_soldier = {
@@ -175,19 +176,22 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
-    # Soft objective: prefer soldiers with lower pre-assignment normalised score
+    # Primary fairness objective: minimise the maximum post-assignment normalised score.
+    # This is strictly better than the previous "minimise sum of pre-assignment scores"
+    # approach, which was blind when all soldiers start at zero and provided no
+    # differentiation between soldiers within a single run.
     alpha_int = int(settings.alpha * 1000)
-    score_terms: list = []
-    if alpha_int > 0:
-        for (di, si), var in x.items():
-            s = soldier_list[si]
-            if s.active_days > 0:
-                pre_norm = int(s.cumulative_score * 1000) // s.active_days
-                score_terms.append(alpha_int * pre_norm * var)
+    dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
 
-    objective = (
-        -(sum(reserve_dist_terms) if reserve_dist_terms else 0)
-        - (sum(score_terms) if score_terms else 0)
-    )
-    model.Maximize(objective)
+    if max_norm_var is not None and alpha_int > 0:
+        # Minimize the maximum post-assignment normalised score (in milli-score/day).
+        # max_norm_var typical range: 0–10 000 for realistic units.
+        # alpha_int typical value: 1000 (alpha = 1.0).
+        # reserve_dist_terms total: up to ~50 000 for large units.
+        # The fairness term dominates (10–100×), making reserve proximity a tiebreaker.
+        # Both are plain LinearExpr — no Python-level division needed.
+        model.Maximize(-alpha_int * max_norm_var - dist_term)
+    else:
+        model.Maximize(-dist_term)
+
     return model, x
