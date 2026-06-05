@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyAssignment, DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -21,37 +21,34 @@ def _setup_dm(session, personal_number: str):
     return dm, node
 
 
-def _duty_type(session, name: str) -> DutyType:
-    dt = DutyType(name=name, score_per_day=Decimal("1.00"))
-    session.add(dt)
-    session.flush()
+def _make_shift(session, name_suffix: str, start: str = "2027-07-01", end: str | None = None) -> tuple[DutyShift, DutyType, DutyLocation]:
+    """Create a DutyType, DutyLocation, and DutyShift for use in algorithm job tests."""
+    dt = DutyType(name=f"שמירה_{name_suffix}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"שער_{name_suffix}")
+    session.add(dt); session.add(loc); session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=start,
+        end_date=end or start,
+        required_count=1,
+    )
+    session.add(shift)
     session.commit()
-    return dt
-
-
-def _location(session, name: str) -> DutyLocation:
-    loc = DutyLocation(name=name)
-    session.add(loc)
-    session.flush()
-    session.commit()
-    return loc
+    return shift, dt, loc
 
 
 def test_create_job_returns_202(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_001")
-    dt = _duty_type(admin_session, "שמירה_route_1")
-    loc = _location(admin_session, "שער_route_1")
+    shift, _dt, _loc = _make_shift(admin_session, "route_1", "2027-07-01")
     create_soldier(admin_session, personal_number="route_soldier_001", role="soldier")
 
     resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-07-01",
-            "planning_end": "2026-07-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 15},
+            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15},
         },
         headers=auth_headers(dm),
     )
@@ -61,41 +58,32 @@ def test_create_job_returns_202(client, admin_session):
     assert data["status"] == "pending"
 
 
-def test_create_job_rejects_bad_date_range(client, admin_session):
+def test_create_job_rejects_unknown_shift(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_002")
-    dt = _duty_type(admin_session, "שמירה_route_2")
-    loc = _location(admin_session, "שער_route_2")
 
     resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-07-10",
-            "planning_end": "2026-07-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": ["00000000-0000-0000-0000-000000000002"],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 5},
+            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm),
     )
     assert resp.status_code == 400
-    assert resp.json()["detail"] == "bad_date_range"
+    assert resp.json()["detail"] == "shift_not_found"
 
 
 def test_soldier_cannot_create_job(client, admin_session):
     soldier = create_soldier(admin_session, personal_number="route_alg_003")
-    dt = _duty_type(admin_session, "שמירה_route_3")
-    loc = _location(admin_session, "שער_route_3")
+    shift, _dt, _loc = _make_shift(admin_session, "route_3", "2027-07-01")
 
     resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-07-01",
-            "planning_end": "2026-07-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 5},
+            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(soldier),
     )
@@ -104,22 +92,19 @@ def test_soldier_cannot_create_job(client, admin_session):
 
 def test_poll_job_eventually_done_or_failed(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_004")
-    dt = _duty_type(admin_session, "שמירה_route_4")
-    loc = _location(admin_session, "שער_route_4")
+    shift, _dt, _loc = _make_shift(admin_session, "route_4", "2027-08-01")
     create_soldier(admin_session, personal_number="route_soldier_004", role="soldier")
 
     create_resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-08-01",
-            "planning_end": "2026-08-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
+    assert create_resp.status_code == 202, create_resp.text
     job_id = create_resp.json()["id"]
 
     for _ in range(15):
@@ -135,22 +120,19 @@ def test_poll_job_eventually_done_or_failed(client, admin_session):
 
 def test_accept_proposal(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_005")
-    dt = _duty_type(admin_session, "שמירה_route_5")
-    loc = _location(admin_session, "שער_route_5")
+    shift, _dt, _loc = _make_shift(admin_session, "route_5", "2027-09-01")
     create_soldier(admin_session, personal_number="route_soldier_005", role="soldier")
 
     create_resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-09-01",
-            "planning_end": "2026-09-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
+    assert create_resp.status_code == 202, create_resp.text
     job_id = create_resp.json()["id"]
 
     poll = None
@@ -182,23 +164,21 @@ def test_accept_proposal(client, admin_session):
 
 def test_reject_proposal(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_006")
-    dt = _duty_type(admin_session, "שמירה_route_6")
-    loc = _location(admin_session, "שער_route_6")
+    shift, _dt, _loc = _make_shift(admin_session, "route_6", "2027-10-01")
     create_soldier(admin_session, personal_number="route_soldier_006", role="soldier")
 
     create_resp = client.post(
         "/api/algorithm/jobs",
         json={
-            "planning_start": "2026-10-01",
-            "planning_end": "2026-10-01",
-            "duty_type_ids": [str(dt.id)],
-            "duty_location_id": str(loc.id),
+            "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
+    assert create_resp.status_code == 202, create_resp.text
     job_id = create_resp.json()["id"]
+
     poll = None
     for _ in range(15):
         poll = client.get(f"/api/algorithm/jobs/{job_id}", headers=auth_headers(dm))
