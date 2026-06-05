@@ -38,7 +38,7 @@ Lower pre-score soldiers are preferred because subtracting a smaller value maxim
    ```python
    model.Add(existing_fixed + sum(var_for_window) <= T)
    ```
-3. Remove `beta` from `SolverSettings` (unused after change) and add `min_gap_days` as an alias for T/W or keep T/W names.
+3. Remove `beta` from `SolverSettings` (field in `backend/app/algorithm/types.py`) since it no longer drives an objective term.
 4. Add two new system settings loaded in `run_algorithm_job`:
    - `algorithm.window_days` (W, default `14`)
    - `algorithm.max_duties_per_window` (T, default `7`)

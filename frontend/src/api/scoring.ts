@@ -3,6 +3,7 @@ import { api } from "./client";
 export interface TransparencyRow {
   soldier_id: string;
   full_name: string;
+  node_id: string | null;
   node_name: string | null;
   enrolled_at: string;
   active_days: number;

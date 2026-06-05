@@ -20,10 +20,12 @@ router = APIRouter(prefix="/scoring", tags=["scoring"])
 class TransparencyRow(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
+    node_id: uuid.UUID | None
     node_name: str | None
     enrolled_at: date
     active_days: int
     cumulative_score: Decimal
+    score_per_day: Decimal
     normalised_score: Decimal
 
 

@@ -255,12 +255,21 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
             {
                 "soldier_id": s.id,
                 "full_name": s.full_name,
+                "node_id": s.hierarchy_node_id,
                 "node_name": node.name if node is not None else None,
                 "enrolled_at": s.enrolled_at,
                 "active_days": ad,
                 "cumulative_score": cum,
-                "normalised_score": cum / Decimal(ad),
+                "score_per_day": cum / Decimal(ad),
             }
+        )
+    if rows:
+        avg_spd = sum(r["score_per_day"] for r in rows) / Decimal(len(rows))
+    else:
+        avg_spd = Decimal("0")
+    for r in rows:
+        r["normalised_score"] = (
+            r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
     rows.sort(key=lambda r: r["normalised_score"], reverse=True)
     return rows
