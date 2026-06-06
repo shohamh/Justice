@@ -20,6 +20,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
+from app.services.eligibility import inferred_service_type
 
 _UNSET: object = object()
 
@@ -160,6 +161,14 @@ def effective_duty_spans(
     return result
 
 
+def shift_count_by_soldier(session: Session) -> dict[uuid.UUID, int]:
+    """Count distinct published assignments per effective soldier (ignoring duration)."""
+    counts: dict[uuid.UUID, set] = defaultdict(set)
+    for sp in effective_duty_spans(session):
+        counts[sp["soldier_id"]].add(sp["assignment_id"])
+    return {s_id: len(asgns) for s_id, asgns in counts.items()}
+
+
 def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
     scores = _duty_type_scores(session)
     out: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
@@ -245,6 +254,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     duty_scores = duty_score_by_soldier(session)
     adj_scores = adjustments_by_soldier(session)
+    shift_counts = shift_count_by_soldier(session)
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     rows: list[dict[str, Any]] = []
     for s in soldiers:
@@ -259,6 +269,10 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
                 "node_name": node.name if node is not None else None,
                 "enrolled_at": s.enrolled_at,
                 "active_days": ad,
+                "shift_count": shift_counts.get(s.id, 0),
+                "rank": s.rank,
+                "is_officer": s.is_officer,
+                "service_type": inferred_service_type(s),
                 "cumulative_score": cum,
                 "score_per_day": cum / Decimal(ad),
             }

@@ -9,6 +9,8 @@ export interface TransparencyRow {
   active_days: number;
   shift_count: number;
   rank: string | null;
+  is_officer: boolean;
+  service_type: "חובה" | "קבע" | null;
   cumulative_score: string;
   score_per_day: string;
   normalised_score: string;
