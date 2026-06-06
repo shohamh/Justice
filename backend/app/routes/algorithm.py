@@ -17,6 +17,7 @@ from app.db.models import (
     DutyAssignment,
     DutyReserveLink,
     DutyShift,
+    DutyType,
     Soldier,
 )
 from app.db.session import get_session
@@ -108,6 +109,19 @@ class JobSummaryOut(BaseModel):
 class JobListOut(BaseModel):
     items: list[JobSummaryOut]
     total: int
+
+
+class DraftPreviewItem(BaseModel):
+    assignment_id: uuid.UUID
+    soldier_name: str
+    duty_type_name: str
+    start_date: date
+    end_date: date
+
+
+class DraftsPreviewOut(BaseModel):
+    count: int
+    items: list[DraftPreviewItem]
 
 
 def _load_job(session: Session, job_id: uuid.UUID) -> AlgorithmJob:
@@ -384,6 +398,36 @@ def cancel_job(
     event = _cancel_events.get(str(job_id))
     if event:
         event.set()
+
+
+@router.get("/drafts-preview", response_model=DraftsPreviewOut)
+def get_drafts_preview(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> DraftsPreviewOut:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    today = date.today()
+    rows = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.status == "algorithm_draft",
+            DutyAssignment.start_date >= today,
+        )
+    ).scalars().all()
+
+    items = []
+    for a in rows:
+        soldier = session.get(Soldier, a.soldier_id)
+        duty_type = session.get(DutyType, a.duty_type_id)
+        items.append(DraftPreviewItem(
+            assignment_id=a.id,
+            soldier_name=soldier.full_name if soldier else str(a.soldier_id),
+            duty_type_name=duty_type.name if duty_type else str(a.duty_type_id),
+            start_date=a.start_date,
+            end_date=a.end_date,
+        ))
+
+    return DraftsPreviewOut(count=len(items), items=items)
 
 
 @router.post("/reset-published", status_code=status.HTTP_200_OK)

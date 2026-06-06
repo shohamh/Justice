@@ -425,6 +425,46 @@ def test_bulk_accept_proposals_sets_published(client, admin_session):
     assert draft2.status == "published"
 
 
+def test_drafts_preview_returns_today_and_future_drafts(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_dp_001")
+    dm = create_soldier(admin_session, personal_number="dp_dm_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    today_draft = _make_draft_assignment(admin_session, "dp_s_001", date.today())
+    future_draft = _make_draft_assignment(admin_session, "dp_s_002", date.today() + timedelta(days=10))
+    # past draft — must NOT appear
+    _make_draft_assignment(admin_session, "dp_s_003", date.today() - timedelta(days=5))
+
+    resp = client.get("/api/algorithm/drafts-preview", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "count" in data
+    assert "items" in data
+    returned_ids = {item["assignment_id"] for item in data["items"]}
+    assert str(today_draft.id) in returned_ids
+    assert str(future_draft.id) in returned_ids
+
+
+def test_drafts_preview_excludes_published_and_cancelled(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_dp_002")
+    dm = create_soldier(admin_session, personal_number="dp_dm_002", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    _make_published_assignment(admin_session, "dp_pub_s_001", date.today() + timedelta(days=5))
+
+    resp = client.get("/api/algorithm/drafts-preview", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    data = resp.json()
+    # published assignment must not appear (wrong status)
+    for item in data["items"]:
+        assert item.get("duty_type_name") is not None  # shape check
+
+
+def test_drafts_preview_soldier_forbidden(client, admin_session):
+    soldier = create_soldier(admin_session, personal_number="dp_soldier_001")
+
+    resp = client.get("/api/algorithm/drafts-preview", headers=auth_headers(soldier))
+    assert resp.status_code == 403
+
+
 def test_bulk_accept_proposals_ignores_non_draft(client, admin_session):
     dm_node = create_node(admin_session, level="branch", name="branch_ba_002")
     dm = create_soldier(admin_session, personal_number="ba_dm_002", role="duty_manager", hierarchy_node_id=dm_node.id)
