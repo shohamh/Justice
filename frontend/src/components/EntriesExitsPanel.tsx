@@ -6,6 +6,7 @@ import SoldierLink from "./SoldierLink";
 import { grantExemption } from "../api/exemptions";
 import { listExemptionTypes, type ExemptionType } from "../api/dutyConfig";
 import { fetchTree, type NodeDTO } from "../api/hierarchy";
+import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
 import { updateSoldier } from "../api/soldiers";
 
 interface Props {
@@ -57,18 +58,6 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
     setMoveTarget(null);
     setTargetNodeId("");
     onRefresh();
-  }
-
-  function flattenNodes(n: NodeDTO[]): { id: string; name: string; depth: number }[] {
-    const result: { id: string; name: string; depth: number }[] = [];
-    function walk(list: NodeDTO[], depth: number) {
-      for (const node of list) {
-        result.push({ id: node.id, name: node.name, depth });
-        if (node.children) walk(node.children, depth + 1);
-      }
-    }
-    walk(n, 0);
-    return result;
   }
 
   return (
@@ -127,10 +116,10 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.move_soldier")} - {moveTarget.full_name}</h3>
             <div className="space-y-3">
               <label className="block text-sm">{t("command_dashboard.target_node")}</label>
-              <select className="w-full border rounded p-2" value={targetNodeId} onChange={(e) => setTargetNodeId(e.target.value)}>
+              <select className="w-full border rounded p-2 text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={targetNodeId} onChange={(e) => setTargetNodeId(e.target.value)}>
                 <option value="">{t("command_dashboard.none")}</option>
-                {flattenNodes(nodes).map((n) => (
-                  <option key={n.id} value={n.id}>{"—".repeat(n.depth)} {n.name}</option>
+                {sortNodesByTree(nodes).map(({ node, depth }) => (
+                  <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>
                 ))}
               </select>
               <div className="flex gap-2 justify-end pt-2">

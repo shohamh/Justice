@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { SettingsMap, getSystemSettings } from "../../api/systemSettings";
+import { formatDate } from "../../utils/formatDate";
 import { listEffectiveDuties, EffectiveDuty } from "../../api/assignments";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -31,7 +32,7 @@ function alertMessage(
   const daysLeft = Math.floor((expiry.getTime() - today.getTime()) / 86_400_000);
   if (daysLeft > warnDays) return null;
   if (daysLeft <= 0) return `${label} פג תוקף`;
-  return `${label} פג תוקף בעוד ${daysLeft} ימים (${expiry.toLocaleDateString("he-IL")})`;
+  return `${label} פג תוקף בעוד ${daysLeft} ימים (${formatDate(expiry)})`;
 }
 
 function daysUntil(dateStr: string): number {

@@ -5,6 +5,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -207,6 +208,21 @@ def set_override(
         raise _err(exc) from exc
     session.commit()
     return {"status": "ok"}
+
+
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def clear_all_assignments(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    """Cancel all non-cancelled assignments (admin / duty-manager operation)."""
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    rows = session.execute(
+        select(DutyAssignment).where(DutyAssignment.status != "cancelled")
+    ).scalars().all()
+    for a in rows:
+        a.status = "cancelled"
+    session.commit()
 
 
 @router.delete("/{assignment_id}/overrides/{day}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

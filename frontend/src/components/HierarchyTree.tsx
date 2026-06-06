@@ -167,7 +167,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
         {isExpanded && nodeSoldiers.length > 0 && (
           <ul className="mr-8 mb-1" data-testid={`tree-soldiers-${node.id}`}>
             {nodeSoldiers.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-600" data-testid={`tree-soldier-${s.personal_number}`}>
+              <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-700 dark:text-gray-200" data-testid={`tree-soldier-${s.personal_number}`}>
                 <span className="w-1 h-1 bg-gray-300 rounded-full inline-block" />
                 <SoldierLink id={s.id} name={s.full_name} />
                 <span className="text-xs text-gray-400">({s.personal_number})</span>
@@ -199,7 +199,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
 
   return (
     <>
-      <ul className="text-sm text-gray-700" data-testid="node-tree">
+      <ul className="text-sm text-gray-900 dark:text-white" data-testid="node-tree">
         {roots.map((node) => renderNode(node, 0))}
       </ul>
 
