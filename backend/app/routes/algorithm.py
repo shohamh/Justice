@@ -415,10 +415,20 @@ def get_drafts_preview(
         )
     ).scalars().all()
 
+    soldier_ids = {a.soldier_id for a in rows}
+    dtype_ids = {a.duty_type_id for a in rows}
+
+    soldiers = {s.id: s for s in session.execute(
+        select(Soldier).where(Soldier.id.in_(soldier_ids))
+    ).scalars().all()}
+    duty_types = {d.id: d for d in session.execute(
+        select(DutyType).where(DutyType.id.in_(dtype_ids))
+    ).scalars().all()}
+
     items = []
     for a in rows:
-        soldier = session.get(Soldier, a.soldier_id)
-        duty_type = session.get(DutyType, a.duty_type_id)
+        soldier = soldiers.get(a.soldier_id)
+        duty_type = duty_types.get(a.duty_type_id)
         items.append(DraftPreviewItem(
             assignment_id=a.id,
             soldier_name=soldier.full_name if soldier else str(a.soldier_id),

@@ -449,14 +449,14 @@ def test_drafts_preview_excludes_published_and_cancelled(client, admin_session):
     dm_node = create_node(admin_session, level="branch", name="branch_dp_002")
     dm = create_soldier(admin_session, personal_number="dp_dm_002", role="duty_manager", hierarchy_node_id=dm_node.id)
 
-    _make_published_assignment(admin_session, "dp_pub_s_001", date.today() + timedelta(days=5))
+    published = _make_published_assignment(admin_session, "dp_pub_s_001", date.today() + timedelta(days=5))
 
     resp = client.get("/api/algorithm/drafts-preview", headers=auth_headers(dm))
     assert resp.status_code == 200
     data = resp.json()
     # published assignment must not appear (wrong status)
-    for item in data["items"]:
-        assert item.get("duty_type_name") is not None  # shape check
+    returned_ids = {item["assignment_id"] for item in data["items"]}
+    assert str(published.id) not in returned_ids
 
 
 def test_drafts_preview_soldier_forbidden(client, admin_session):
