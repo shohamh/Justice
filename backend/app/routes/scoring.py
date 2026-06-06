@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
