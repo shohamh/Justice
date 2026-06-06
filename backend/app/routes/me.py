@@ -58,7 +58,7 @@ def me(
     try:
         telegram_required = bool(get_setting(session, "registration.telegram_required"))
     except Exception:
-        telegram_required = True
+        telegram_required = False  # default: telegram linking is optional
 
     def _date(d) -> str | None:
         return str(d) if d is not None else None
