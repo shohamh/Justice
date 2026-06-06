@@ -7,6 +7,10 @@ export interface TransparencyRow {
   node_name: string | null;
   enrolled_at: string;
   active_days: number;
+  shift_count: number;
+  rank: string | null;
+  is_officer: boolean | null;
+  service_type: "חובה" | "קבע" | null;
   cumulative_score: string;
   score_per_day: string;
   normalised_score: string;
@@ -22,4 +26,13 @@ export async function getTransparency(): Promise<TransparencyRow[]> {
 }
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
+}
+
+export function downloadTransparencyExport(nodeId: string | null): void {
+  const params = nodeId ? `?node_id=${nodeId}` : "";
+  window.location.href = `/api/scoring/transparency/export${params}`;
+}
+
+export function downloadSubUnitsExport(): void {
+  window.location.href = `/api/scoring/transparency/sub-units/export`;
 }
