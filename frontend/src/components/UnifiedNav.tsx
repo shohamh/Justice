@@ -10,6 +10,7 @@ import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount } from "../api/swaps";
+import { listPendingEnrollments } from "../api/enrollment";
 import NavSheet from "./NavSheet";
 
 interface NavTab {
@@ -37,12 +38,13 @@ export default function UnifiedNav() {
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f] = await Promise.all([
+      const [c, e, f, enroll] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
+        listPendingEnrollments().then((r) => r.length).catch(() => 0),
       ]);
-      setPendingCount(c + e + f);
+      setPendingCount(c + e + f + enroll);
     })();
   }, [canApprove, location.pathname]);
 

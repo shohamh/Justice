@@ -1,14 +1,10 @@
 import { EffectiveDuty } from "../../api/assignments";
+import { formatDateRange } from "../../utils/formatDate";
 
 interface Props {
   duties: EffectiveDuty[];
   typeNames: Record<string, string>;
   locationNames: Record<string, string>;
-}
-
-function formatDateRange(start: string, end: string): string {
-  if (start === end) return new Date(start).toLocaleDateString("he-IL");
-  return `${new Date(start).toLocaleDateString("he-IL")} – ${new Date(end).toLocaleDateString("he-IL")}`;
 }
 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames }: Props) {

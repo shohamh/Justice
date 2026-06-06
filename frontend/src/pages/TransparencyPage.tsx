@@ -42,7 +42,7 @@ function TreeNode({
           className={`text-sm px-1.5 py-0.5 rounded text-right w-full ${
             isSelected
               ? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-medium"
-              : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
           }`}
           onClick={() => onSelect(node.id)}
         >

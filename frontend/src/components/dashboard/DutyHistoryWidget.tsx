@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow } from "../../api/scoring";
+import { formatDateRange } from "../../utils/formatDate";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -10,11 +11,6 @@ interface Props {
   locationNames: Record<string, string>;
   myRow: TransparencyRow | null;
   allRows: TransparencyRow[];
-}
-
-function formatDateRange(start: string, end: string): string {
-  if (start === end) return new Date(start).toLocaleDateString("he-IL");
-  return `${new Date(start).toLocaleDateString("he-IL")} – ${new Date(end).toLocaleDateString("he-IL")}`;
 }
 
 function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {

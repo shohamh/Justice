@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { SwapRequest } from "../../api/swaps";
+import { formatDate } from "../../utils/formatDate";
 
 interface Props {
   swaps: SwapRequest[];
@@ -32,7 +33,7 @@ export default function SwapStatusWidget({ swaps }: Props) {
         {active.map((s) => (
           <li key={s.id} className="flex items-center justify-between text-sm border-b dark:border-gray-600 last:border-0 pb-2 last:pb-0">
             <span className="text-gray-700">
-              {new Date(s.duty_date).toLocaleDateString("he-IL")}
+              {formatDate(s.duty_date)}
               {s.reason ? ` — ${s.reason}` : ""}
             </span>
             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIPS[s.status] ?? "bg-gray-100 text-gray-600"}`}>

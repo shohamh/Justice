@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO } from "../api/hierarchy";
+import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import ExemptionsPanel from "./ExemptionsPanel";
@@ -194,9 +195,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("team.title")}</span>
-                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
+                <select className="border rounded p-1 w-full text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
                   <option value="">—</option>
-                  {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+                  {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
                 </select>
               </label>
               <div className="flex justify-end gap-2">

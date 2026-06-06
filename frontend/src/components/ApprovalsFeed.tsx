@@ -4,6 +4,7 @@ import type { ApprovalItem } from "../api/commanderDashboard";
 import { approveFieldUpdate, rejectFieldUpdate } from "../api/soldiers";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
 import SoldierLink from "./SoldierLink";
+import { formatDate } from "../utils/formatDate";
 
 interface Props {
   data: ApprovalItem[] | null;
@@ -53,7 +54,7 @@ export default function ApprovalsFeed({ data, onRefresh }: Props) {
               <span className="mx-1 text-gray-400">·</span>
               <span className="text-gray-500">{item.summary}</span>
             </div>
-            <span className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString("he-IL")}</span>
+            <span className="text-xs text-gray-400">{formatDate(item.created_at)}</span>
           </div>
           <div className="flex items-center gap-2 mt-1">
             <input

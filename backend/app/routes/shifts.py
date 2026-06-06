@@ -211,3 +211,23 @@ def list_shift_assignments(
         )
         for a in rows
     ]
+
+
+@router.delete("/{shift_id}/assignments", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def clear_shift_assignments(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    """Remove all non-cancelled assignments linked to this shift."""
+    _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+    rows = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.duty_shift_id == shift_id,
+            DutyAssignment.status != "cancelled",
+        )
+    ).scalars().all()
+    for a in rows:
+        a.status = "cancelled"
+    session.commit()
