@@ -17,6 +17,7 @@ dependencies = [
   "slowapi>=0.1.9",
   "python-multipart>=0.0.9",
   "python-telegram-bot>=21.0",
+  "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -36,3 +37,6 @@ dev = [
 testpaths = ["tests"]
 addopts = "-ra -q"
 asyncio_mode = "auto"
+markers = [
+  "slow: large-scale tests (n≈100, m≈200); run with: pytest -m slow",
+]
