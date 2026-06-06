@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
+import openpyxl
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -24,6 +28,10 @@ class TransparencyRow(BaseModel):
     node_name: str | None
     enrolled_at: date
     active_days: int
+    shift_count: int
+    rank: str | None
+    is_officer: bool | None
+    service_type: str | None
     cumulative_score: Decimal
     score_per_day: Decimal
     normalised_score: Decimal
@@ -52,12 +60,120 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
+def _xlsx_response(wb: openpyxl.Workbook, filename: str) -> StreamingResponse:
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/transparency", response_model=list[TransparencyRow])
 def transparency(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[TransparencyRow]:
     return [TransparencyRow(**row) for row in svc.transparency_rows(session)]
+
+
+@router.get("/transparency/export")
+def transparency_export(
+    node_id: uuid.UUID | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> StreamingResponse:
+    rows = svc.transparency_rows(session)
+
+    if node_id is not None:
+        all_nodes = session.execute(select(HierarchyNode)).scalars().all()
+        node_ids_in_db = {n.id for n in all_nodes}
+        if node_id not in node_ids_in_db:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+        subtree_node_ids = {n.id for n in all_nodes if node_id in n.path_ids}
+        rows = [r for r in rows if r["node_id"] in subtree_node_ids]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "חיילים"
+    ws.append([
+        "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
+        "כמות משמרות", "ניקוד מצטבר", "ניקוד ליום", "ניקוד מנורמל",
+    ])
+    for r in rows:
+        ws.append([
+            r["full_name"],
+            r["node_name"],
+            str(r["enrolled_at"]),
+            r["active_days"],
+            r["rank"],
+            r["shift_count"],
+            float(r["cumulative_score"]),
+            float(r["score_per_day"]),
+            float(r["normalised_score"]),
+        ])
+
+    return _xlsx_response(wb, "transparency.xlsx")
+
+
+@router.get("/transparency/sub-units/export")
+def transparency_sub_units_export(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> StreamingResponse:
+    rows = svc.transparency_rows(session)
+    all_nodes = session.execute(select(HierarchyNode)).scalars().all()
+
+    # Map each node id to its path_ids for quick lookup
+    node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {n.id: n.path_ids for n in all_nodes}
+
+    # Sort nodes: shallowest first, then alphabetically
+    sorted_nodes = sorted(all_nodes, key=lambda n: (len(n.path_ids), n.name))
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "תתי יחידות"
+    ws.append([
+        "יחידה", "כמות חיילים", "חיילים פעילים (%)",
+        "ממוצע ימים פעילים", "ממוצע ניקוד לחייל",
+        "ממוצע ניקוד לחייל פעיל", "ניקוד ליום (מסגרת)", "ניקוד מנורמל ממוצע",
+    ])
+
+    for node in sorted_nodes:
+        node_rows = [
+            r for r in rows
+            if r["node_id"] is not None and node.id in node_path_map.get(r["node_id"], [])
+        ]
+        if not node_rows:
+            continue
+
+        count = len(node_rows)
+        active_rows = [r for r in node_rows if r["cumulative_score"] > Decimal("0")]
+        active_count = len(active_rows)
+        active_pct = round(active_count / count * 100)
+        avg_cumulative = float(sum(r["cumulative_score"] for r in node_rows) / count)
+        avg_cumulative_active = (
+            float(sum(r["cumulative_score"] for r in active_rows) / len(active_rows))
+            if active_rows else 0.0
+        )
+        total_score_per_day = float(sum(r["score_per_day"] for r in node_rows))
+        avg_active_days = round(sum(r["active_days"] for r in node_rows) / count)
+        avg_normalised = float(sum(r["normalised_score"] for r in node_rows) / count)
+
+        ws.append([
+            node.name,
+            count,
+            active_pct,
+            avg_active_days,
+            avg_cumulative,
+            avg_cumulative_active,
+            total_score_per_day,
+            avg_normalised,
+        ])
+
+    return _xlsx_response(wb, "sub-units.xlsx")
 
 
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)

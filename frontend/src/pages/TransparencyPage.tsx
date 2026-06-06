@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { Breakdown, TransparencyRow, getBreakdown, getTransparency } from "../api/scoring";
+import { Breakdown, TransparencyRow, getBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -197,6 +197,19 @@ export default function TransparencyPage() {
     },
     { id: "enrolled_at", header: t("transparency.enrolled_at"), cell: (r) => r.enrolled_at, sortValue: (r) => r.enrolled_at },
     { id: "active_days", header: t("transparency.active_days"), cell: (r) => r.active_days, sortValue: (r) => r.active_days },
+    {
+      id: "rank", header: t("transparency.rank"),
+      cell: (r) => r.rank ?? "—",
+      sortValue: (r) => r.rank ?? "",
+      filterValue: (r) => r.rank ?? "",
+      columnFilter: true,
+    },
+    {
+      id: "shift_count", header: t("transparency.shift_count"),
+      headerTooltip: t("transparency.shift_count_tooltip"),
+      cell: (r) => r.shift_count,
+      sortValue: (r) => r.shift_count,
+    },
     { id: "cumulative", header: t("transparency.cumulative"), cell: (r) => r.cumulative_score, sortValue: (r) => Number(r.cumulative_score) },
     {
       id: "score_per_day", header: t("transparency.score_per_day"),
@@ -296,6 +309,23 @@ export default function TransparencyPage() {
               </div>
             )}
           </div>
+
+          {tab === 0 && (
+            <button
+              className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
+              onClick={() => void downloadTransparencyExport(selectedNodeId)}
+            >
+              📥 ייצוא לאקסל
+            </button>
+          )}
+          {tab === 1 && (
+            <button
+              className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
+              onClick={() => void downloadSubUnitsExport()}
+            >
+              📥 ייצוא לאקסל
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -361,3 +391,4 @@ export default function TransparencyPage() {
     </Layout>
   );
 }
+ 
