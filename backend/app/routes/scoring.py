@@ -30,8 +30,6 @@ class TransparencyRow(BaseModel):
     active_days: int
     shift_count: int
     rank: str | None
-    is_officer: bool | None
-    service_type: str | None
     cumulative_score: Decimal
     score_per_day: Decimal
     normalised_score: Decimal
