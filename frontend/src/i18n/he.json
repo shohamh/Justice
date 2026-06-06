@@ -198,7 +198,22 @@
     "delta": "שינוי ניקוד",
     "reason": "סיבה",
     "apply": "החל",
-    "none": "אין תורנויות"
+    "none": "אין תורנויות",
+    "bulk_cancel_section_title": "ביטול שיבוצים",
+    "drafts_from_today_label": "טיוטות שיבוץ מהיום ואילך",
+    "drafts_badge": "{{count}} שיבוצים",
+    "drafts_badge_none": "אין טיוטות",
+    "drafts_toggle_show": "הצג פירוט",
+    "drafts_toggle_hide": "הסתר פירוט",
+    "cancel_drafts_btn": "מחק טיוטות",
+    "cancel_drafts_confirm": "למחוק {{count}} טיוטות שיבוץ מהיום ואילך?",
+    "cancel_drafts_result": "בוטלו {{count}} טיוטות",
+    "cancel_drafts_none": "לא נמצאו טיוטות לביטול",
+    "published_from_today_label": "שיבוצים פורסמים מהיום ואילך",
+    "cancel_published_btn": "מחק שיבוצים פורסמים",
+    "cancel_published_confirm": "לבטל את כל השיבוצים הפורסמים מהיום ואילך?",
+    "cancel_published_result": "בוטלו {{count}} שיבוצים פורסמים",
+    "cancel_published_none": "לא נמצאו שיבוצים פורסמים לביטול"
   },
   "transparency": {
     "title": "שקיפות",
@@ -206,6 +221,9 @@
     "unit": "יחידה",
     "enrolled_at": "תאריך הצטרפות",
     "active_days": "ימים פעילים",
+    "rank": "דרגה",
+    "shift_count": "כמות משמרות",
+    "shift_count_tooltip": "כמות המשמרות שהחייל ביצע — ללא קשר לאורכן.\n\nמשמרת אחת = שיבוץ אחד, בין אם הוא יום אחד (כמו ליווי) ובין אם שבעה ימים (כמו הגנ\"ש).\n\nהניקוד המצטבר מביא בחשבון את אורך המשמרת; עמודה זו מראה רק כמה שיבוצים בוצעו.",
     "cumulative": "ניקוד מצטבר",
     "score_per_day": "ניקוד ליום",
     "score_per_day_modal_title": "מה זה ניקוד ליום?",
@@ -751,3 +769,4 @@
     }
   }
 }
+ 
