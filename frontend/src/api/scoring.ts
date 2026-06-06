@@ -9,8 +9,6 @@ export interface TransparencyRow {
   active_days: number;
   shift_count: number;
   rank: string | null;
-  is_officer: boolean | null;
-  service_type: "חובה" | "קבע" | null;
   cumulative_score: string;
   score_per_day: string;
   normalised_score: string;
@@ -28,11 +26,27 @@ export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
 }
 
-export function downloadTransparencyExport(nodeId: string | null): void {
+export async function downloadTransparencyExport(nodeId: string | null): Promise<void> {
   const params = nodeId ? `?node_id=${nodeId}` : "";
-  window.location.href = `/api/scoring/transparency/export${params}`;
+  const res = await api.get<Blob>(`/scoring/transparency/export${params}`, { responseType: "blob" });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "transparency.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-export function downloadSubUnitsExport(): void {
-  window.location.href = `/api/scoring/transparency/sub-units/export`;
+export async function downloadSubUnitsExport(): Promise<void> {
+  const res = await api.get<Blob>(`/scoring/transparency/sub-units/export`, { responseType: "blob" });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "sub-units.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

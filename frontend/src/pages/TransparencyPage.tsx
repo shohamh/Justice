@@ -9,36 +9,6 @@ import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 
-// ─── FilterPills ──────────────────────────────────────────────────────────────
-
-function FilterPills({
-  label, options, value, onChange,
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1" dir="rtl">
-      <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">{label}:</span>
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-            value === opt.value
-              ? "bg-indigo-600 dark:bg-indigo-500 text-white border-indigo-600 dark:border-indigo-500"
-              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500"
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
 function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
@@ -113,8 +83,6 @@ export default function TransparencyPage() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
-  const [officerFilter, setOfficerFilter] = useState<"all" | "officers" | "enlisted">("all");
-  const [serviceFilter, setServiceFilter] = useState<"all" | "חובה" | "קבע">("all");
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
@@ -145,14 +113,9 @@ export default function TransparencyPage() {
   }, [selectedNodeId, flatNodes]);
 
   const visibleRows = useMemo(() => {
-    let filtered = subtreeIds
-      ? rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id))
-      : rows;
-    if (officerFilter === "officers") filtered = filtered.filter((r) => r.is_officer === true);
-    if (officerFilter === "enlisted") filtered = filtered.filter((r) => r.is_officer === false);
-    if (serviceFilter !== "all") filtered = filtered.filter((r) => r.service_type === serviceFilter);
-    return filtered;
-  }, [rows, subtreeIds, officerFilter, serviceFilter]);
+    if (!subtreeIds) return rows;
+    return rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id));
+  }, [rows, subtreeIds]);
 
   // ── sub-hierarchy tab: build children map from parent_id (API returns flat list) ──
   const subRows = useMemo((): SubRow[] => {
@@ -350,7 +313,7 @@ export default function TransparencyPage() {
           {tab === 0 && (
             <button
               className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={() => downloadTransparencyExport(selectedNodeId)}
+              onClick={() => void downloadTransparencyExport(selectedNodeId)}
             >
               📥 ייצוא לאקסל
             </button>
@@ -358,7 +321,7 @@ export default function TransparencyPage() {
           {tab === 1 && (
             <button
               className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={() => downloadSubUnitsExport()}
+              onClick={() => void downloadSubUnitsExport()}
             >
               📥 ייצוא לאקסל
             </button>
@@ -367,40 +330,6 @@ export default function TransparencyPage() {
 
         {/* Tabs */}
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
-
-        {/* Quick filters (soldiers tab only) */}
-        {tab === 0 && (
-          <div className="flex flex-wrap gap-3 items-center" dir="rtl">
-            <FilterPills
-              label="סוג"
-              options={[
-                { value: "all",      label: "שניהם" },
-                { value: "officers", label: "קצינים" },
-                { value: "enlisted", label: "חוגרים" },
-              ]}
-              value={officerFilter}
-              onChange={(v) => setOfficerFilter(v as typeof officerFilter)}
-            />
-            <FilterPills
-              label="שירות"
-              options={[
-                { value: "all",   label: "הכל" },
-                { value: "חובה",  label: "חובה" },
-                { value: "קבע",   label: "קבע" },
-              ]}
-              value={serviceFilter}
-              onChange={(v) => setServiceFilter(v as typeof serviceFilter)}
-            />
-            {(officerFilter !== "all" || serviceFilter !== "all") && (
-              <button
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-                onClick={() => { setOfficerFilter("all"); setServiceFilter("all"); }}
-              >
-                ✕ נקה פילטרים
-              </button>
-            )}
-          </div>
-        )}
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
