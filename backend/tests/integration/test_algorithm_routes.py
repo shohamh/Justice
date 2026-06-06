@@ -48,7 +48,7 @@ def test_create_job_returns_202(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15},
         },
         headers=auth_headers(dm),
     )
@@ -66,7 +66,7 @@ def test_create_job_rejects_unknown_shift(client, admin_session):
         json={
             "shift_ids": ["00000000-0000-0000-0000-000000000002"],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm),
     )
@@ -83,7 +83,7 @@ def test_soldier_cannot_create_job(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(soldier),
     )
@@ -100,7 +100,7 @@ def test_poll_job_eventually_done_or_failed(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
@@ -128,7 +128,7 @@ def test_accept_proposal(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
@@ -172,7 +172,7 @@ def test_reject_proposal(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
@@ -263,7 +263,7 @@ def test_reset_published_returns_zero_when_no_matches(client, admin_session):
     assert resp.json()["cancelled"] >= 0
 
 
-def test_reset_published_rejects_days_ahead_zero(client, admin_session):
+def test_reset_published_allows_days_ahead_zero(client, admin_session):
     dm_node = create_node(admin_session, level="branch", name="branch_rp_dm_003")
     dm = create_soldier(admin_session, personal_number="rp_dm_003", role="duty_manager", hierarchy_node_id=dm_node.id)
 
@@ -272,7 +272,8 @@ def test_reset_published_rejects_days_ahead_zero(client, admin_session):
         params={"days_ahead": 0},
         headers=auth_headers(dm),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    assert "cancelled" in resp.json()
 
 
 def _make_draft_assignment(session, personal_number: str, start_date: date) -> DutyAssignment:
@@ -338,7 +339,7 @@ def test_reset_drafts_returns_zero_when_no_matches(client, admin_session):
     assert resp.json()["rejected"] >= 0
 
 
-def test_reset_drafts_rejects_days_ahead_zero(client, admin_session):
+def test_reset_drafts_allows_days_ahead_zero(client, admin_session):
     dm_node = create_node(admin_session, level="branch", name="branch_rd_dm_003")
     dm = create_soldier(admin_session, personal_number="rd_dm_003", role="duty_manager", hierarchy_node_id=dm_node.id)
 
@@ -347,4 +348,43 @@ def test_reset_drafts_rejects_days_ahead_zero(client, admin_session):
         params={"days_ahead": 0},
         headers=auth_headers(dm),
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    assert "rejected" in resp.json()
+
+
+def test_reset_published_days_ahead_zero_includes_today(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_rp_today_001")
+    dm = create_soldier(admin_session, personal_number="rp_today_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    today_assignment = _make_published_assignment(admin_session, "rp_today_s_001", date.today())
+
+    resp = client.post(
+        "/api/algorithm/reset-published",
+        params={"days_ahead": 0},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["cancelled"] >= 1
+
+    admin_session.expire(today_assignment)
+    admin_session.refresh(today_assignment)
+    assert today_assignment.status == "cancelled"
+
+
+def test_reset_drafts_days_ahead_zero_includes_today(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_rd_today_001")
+    dm = create_soldier(admin_session, personal_number="rd_today_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    today_draft = _make_draft_assignment(admin_session, "rd_today_s_001", date.today())
+
+    resp = client.post(
+        "/api/algorithm/reset-drafts",
+        params={"days_ahead": 0},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["rejected"] >= 1
+
+    admin_session.expire(today_draft)
+    admin_session.refresh(today_draft)
+    assert today_draft.status == "algorithm_rejected"

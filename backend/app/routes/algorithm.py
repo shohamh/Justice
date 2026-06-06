@@ -259,20 +259,26 @@ def create_job(
 
     from app.services.shifts import get_shift_fill
 
-    all_full = True
+    shifts_by_id = {
+        s.id: s
+        for s in session.execute(
+            select(DutyShift).where(DutyShift.id.in_(body.shift_ids))
+        ).scalars().all()
+    }
     for sid in body.shift_ids:
-        shift = session.get(DutyShift, sid)
-        if shift is None:
+        if sid not in shifts_by_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_not_found")
-        fill = get_shift_fill(session, shift_id=sid)
-        if fill and fill.fill_status != "full":
-            all_full = False
+
+    all_full = all(
+        (fill := get_shift_fill(session, shift_id=sid)) is None or fill.fill_status == "full"
+        for sid in body.shift_ids
+    )
     if all_full:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="all_shifts_full")
 
-    shifts = [session.get(DutyShift, sid) for sid in body.shift_ids]
-    planning_start = min(s.start_date for s in shifts if s)
-    planning_end = max(s.end_date for s in shifts if s)
+    shifts = list(shifts_by_id.values())
+    planning_start = min(s.start_date for s in shifts)
+    planning_end = max(s.end_date for s in shifts)
 
     job = AlgorithmJob(
         planning_start=planning_start,
@@ -382,7 +388,7 @@ def cancel_job(
 
 @router.post("/reset-published", status_code=status.HTTP_200_OK)
 def reset_published_assignments(
-    days_ahead: int = Query(ge=1),
+    days_ahead: int = Query(ge=0),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, int]:
@@ -392,7 +398,7 @@ def reset_published_assignments(
     assignments = session.execute(
         select(DutyAssignment).where(
             DutyAssignment.status == "published",
-            DutyAssignment.start_date > cutoff,
+            DutyAssignment.start_date >= cutoff,
         )
     ).scalars().all()
 
@@ -416,7 +422,7 @@ def reset_published_assignments(
 
 @router.post("/reset-drafts", status_code=status.HTTP_200_OK)
 def reset_draft_assignments(
-    days_ahead: int = Query(ge=1),
+    days_ahead: int = Query(ge=0),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, int]:
@@ -426,7 +432,7 @@ def reset_draft_assignments(
     assignments = session.execute(
         select(DutyAssignment).where(
             DutyAssignment.status == "algorithm_draft",
-            DutyAssignment.start_date > cutoff,
+            DutyAssignment.start_date >= cutoff,
         )
     ).scalars().all()
 
@@ -496,6 +502,41 @@ def accept_proposal(
     )
     session.commit()
     return {"status": "published"}
+
+
+class BulkAcceptRequest(BaseModel):
+    assignment_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+@router.post("/jobs/{job_id}/proposals/bulk-accept", status_code=status.HTTP_200_OK)
+def bulk_accept_proposals(
+    job_id: uuid.UUID,
+    body: BulkAcceptRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    _load_job(session, job_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    assignments = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.status == "algorithm_draft",
+        )
+    ).scalars().all()
+    for a in assignments:
+        a.status = "published"
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="algorithm.proposal.accept",
+            entity_type="duty_assignment",
+            entity_id=a.id,
+            before={"status": "algorithm_draft"},
+            after={"status": "published"},
+            context={"job_id": str(job_id)},
+        )
+    session.commit()
+    return {"accepted": len(assignments)}
 
 
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/reject", status_code=status.HTTP_200_OK)
