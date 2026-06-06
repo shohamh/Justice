@@ -18,6 +18,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "python-telegram-bot>=21.0",
   "openpyxl>=3.1",
+  "holidays>=0.46",
 ]
 
 [project.optional-dependencies]
