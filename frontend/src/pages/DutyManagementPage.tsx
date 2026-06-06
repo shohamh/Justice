@@ -114,8 +114,10 @@ export function DutyManagementContent() {
       setCancelDraftsMsg(msg);
       draftsTimerRef.current = setTimeout(() => setCancelDraftsMsg(null), 5000);
       await refreshDraftPreview();
+      setDraftsExpanded(false);
     } catch {
       setCancelDraftsMsg(t("errors.generic"));
+      draftsTimerRef.current = setTimeout(() => setCancelDraftsMsg(null), 5000);
     } finally {
       setCancelDraftsLoading(false);
     }
@@ -136,6 +138,7 @@ export function DutyManagementContent() {
       await refreshDraftPreview();
     } catch {
       setCancelPublishedMsg(t("errors.generic"));
+      publishedTimerRef.current = setTimeout(() => setCancelPublishedMsg(null), 5000);
     } finally {
       setCancelPublishedLoading(false);
     }
