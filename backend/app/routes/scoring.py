@@ -58,6 +58,17 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
+def _xlsx_response(wb: openpyxl.Workbook, filename: str) -> StreamingResponse:
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/transparency", response_model=list[TransparencyRow])
 def transparency(
     session: Session = Depends(get_session),
@@ -102,14 +113,7 @@ def transparency_export(
             float(r["normalised_score"]),
         ])
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="transparency.xlsx"'},
-    )
+    return _xlsx_response(wb, "transparency.xlsx")
 
 
 @router.get("/transparency/sub-units/export")
@@ -167,14 +171,7 @@ def transparency_sub_units_export(
             avg_normalised,
         ])
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="sub-units.xlsx"'},
-    )
+    return _xlsx_response(wb, "sub-units.xlsx")
 
 
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)
