@@ -112,6 +112,71 @@ def transparency_export(
     )
 
 
+@router.get("/transparency/sub-units/export")
+def transparency_sub_units_export(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> StreamingResponse:
+    rows = svc.transparency_rows(session)
+    all_nodes = session.execute(select(HierarchyNode)).scalars().all()
+
+    # Map each node id to its path_ids for quick lookup
+    node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {n.id: n.path_ids for n in all_nodes}
+
+    # Sort nodes: shallowest first, then alphabetically
+    sorted_nodes = sorted(all_nodes, key=lambda n: (len(n.path_ids), n.name))
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "תתי יחידות"
+    ws.append([
+        "יחידה", "כמות חיילים", "חיילים פעילים (%)",
+        "ממוצע ימים פעילים", "ממוצע ניקוד לחייל",
+        "ממוצע ניקוד לחייל פעיל", "ניקוד ליום (מסגרת)", "ניקוד מנורמל ממוצע",
+    ])
+
+    for node in sorted_nodes:
+        node_rows = [
+            r for r in rows
+            if r["node_id"] is not None and node.id in node_path_map.get(r["node_id"], [])
+        ]
+        if not node_rows:
+            continue
+
+        count = len(node_rows)
+        active_rows = [r for r in node_rows if r["cumulative_score"] > Decimal("0")]
+        active_count = len(active_rows)
+        active_pct = round(active_count / count * 100)
+        avg_cumulative = float(sum(r["cumulative_score"] for r in node_rows) / count)
+        avg_cumulative_active = (
+            float(sum(r["cumulative_score"] for r in active_rows) / len(active_rows))
+            if active_rows else 0.0
+        )
+        total_score_per_day = float(sum(r["score_per_day"] for r in node_rows))
+        avg_active_days = round(sum(r["active_days"] for r in node_rows) / count)
+        avg_normalised = float(sum(r["normalised_score"] for r in node_rows) / count)
+
+        ws.append([
+            node.name,
+            count,
+            active_pct,
+            avg_active_days,
+            avg_cumulative,
+            avg_cumulative_active,
+            total_score_per_day,
+            avg_normalised,
+        ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="sub-units.xlsx"'},
+    )
+
+
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)
 def breakdown(
     soldier_id: uuid.UUID,
