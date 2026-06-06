@@ -432,7 +432,7 @@ def test_drafts_preview_returns_today_and_future_drafts(client, admin_session):
     today_draft = _make_draft_assignment(admin_session, "dp_s_001", date.today())
     future_draft = _make_draft_assignment(admin_session, "dp_s_002", date.today() + timedelta(days=10))
     # past draft — must NOT appear
-    _make_draft_assignment(admin_session, "dp_s_003", date.today() - timedelta(days=5))
+    past_draft = _make_draft_assignment(admin_session, "dp_s_003", date.today() - timedelta(days=5))
 
     resp = client.get("/api/algorithm/drafts-preview", headers=auth_headers(dm))
     assert resp.status_code == 200
@@ -442,6 +442,7 @@ def test_drafts_preview_returns_today_and_future_drafts(client, admin_session):
     returned_ids = {item["assignment_id"] for item in data["items"]}
     assert str(today_draft.id) in returned_ids
     assert str(future_draft.id) in returned_ids
+    assert str(past_draft.id) not in returned_ids
 
 
 def test_drafts_preview_excludes_published_and_cancelled(client, admin_session):
