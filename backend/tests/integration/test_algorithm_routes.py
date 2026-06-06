@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType
+from app.db.models import AlgorithmJob, DutyAssignment, DutyLocation, DutyShift, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -388,3 +388,67 @@ def test_reset_drafts_days_ahead_zero_includes_today(client, admin_session):
     admin_session.expire(today_draft)
     admin_session.refresh(today_draft)
     assert today_draft.status == "algorithm_rejected"
+
+
+def test_bulk_accept_proposals_sets_published(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_ba_001")
+    dm = create_soldier(admin_session, personal_number="ba_dm_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    draft1 = _make_draft_assignment(admin_session, "ba_s_001", date.today() + timedelta(days=10))
+    draft2 = _make_draft_assignment(admin_session, "ba_s_002", date.today() + timedelta(days=11))
+
+    job = AlgorithmJob(
+        planning_start=date.today() + timedelta(days=10),
+        planning_end=date.today() + timedelta(days=11),
+        shift_ids=[],
+        settings_json={"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 30},
+        mode="shadow",
+        created_by=dm.id,
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    resp = client.post(
+        f"/api/algorithm/jobs/{job.id}/proposals/bulk-accept",
+        json={"assignment_ids": [str(draft1.id), str(draft2.id)]},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["accepted"] == 2
+
+    admin_session.expire(draft1)
+    admin_session.refresh(draft1)
+    admin_session.expire(draft2)
+    admin_session.refresh(draft2)
+    assert draft1.status == "published"
+    assert draft2.status == "published"
+
+
+def test_bulk_accept_proposals_ignores_non_draft(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="branch_ba_002")
+    dm = create_soldier(admin_session, personal_number="ba_dm_002", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    published = _make_published_assignment(admin_session, "ba_s_003", date.today() + timedelta(days=5))
+    draft = _make_draft_assignment(admin_session, "ba_s_004", date.today() + timedelta(days=6))
+
+    job = AlgorithmJob(
+        planning_start=date.today() + timedelta(days=5),
+        planning_end=date.today() + timedelta(days=6),
+        shift_ids=[],
+        settings_json={"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 30},
+        mode="shadow",
+        created_by=dm.id,
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    resp = client.post(
+        f"/api/algorithm/jobs/{job.id}/proposals/bulk-accept",
+        json={"assignment_ids": [str(published.id), str(draft.id)]},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200
+    # Only the draft should be accepted; the already-published one is skipped
+    assert resp.json()["accepted"] == 1
