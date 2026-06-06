@@ -439,6 +439,7 @@ def test_drafts_preview_returns_today_and_future_drafts(client, admin_session):
     data = resp.json()
     assert "count" in data
     assert "items" in data
+    assert data["count"] == len(data["items"])
     returned_ids = {item["assignment_id"] for item in data["items"]}
     assert str(today_draft.id) in returned_ids
     assert str(future_draft.id) in returned_ids
@@ -493,3 +494,28 @@ def test_bulk_accept_proposals_ignores_non_draft(client, admin_session):
     assert resp.status_code == 200
     # Only the draft should be accepted; the already-published one is skipped
     assert resp.json()["accepted"] == 1
+
+
+def test_bulk_accept_proposals_soldier_forbidden(client, admin_session):
+    soldier = create_soldier(admin_session, personal_number="ba_soldier_001")
+
+    dm_node = create_node(admin_session, level="branch", name="branch_ba_auth_001")
+    dm = create_soldier(admin_session, personal_number="ba_auth_dm_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+    job = AlgorithmJob(
+        planning_start=date.today() + timedelta(days=1),
+        planning_end=date.today() + timedelta(days=1),
+        shift_ids=[],
+        settings_json={"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 30},
+        mode="shadow",
+        created_by=dm.id,
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    resp = client.post(
+        f"/api/algorithm/jobs/{job.id}/proposals/bulk-accept",
+        json={"assignment_ids": ["00000000-0000-0000-0000-000000000001"]},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 403
