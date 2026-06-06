@@ -128,6 +128,10 @@ export async function acceptProposal(jobId: string, assignmentId: string): Promi
   await api.post(`/algorithm/jobs/${jobId}/proposals/${assignmentId}/accept`);
 }
 
+export async function bulkAcceptProposals(jobId: string, assignmentIds: string[]): Promise<{ accepted: number }> {
+  return (await api.post<{ accepted: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-accept`, { assignment_ids: assignmentIds })).data;
+}
+
 export async function rejectProposal(jobId: string, assignmentId: string): Promise<void> {
   await api.post(`/algorithm/jobs/${jobId}/proposals/${assignmentId}/reject`);
 }
@@ -146,4 +150,21 @@ export async function resetDrafts(daysAhead: number): Promise<{ rejected: number
 
 export async function cancelJob(id: string): Promise<void> {
   await api.delete(`/algorithm/jobs/${id}`);
+}
+
+export interface DraftPreviewItem {
+  assignment_id: string;
+  soldier_name: string;
+  duty_type_name: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface DraftsPreviewOut {
+  count: number;
+  items: DraftPreviewItem[];
+}
+
+export async function getDraftsPreview(): Promise<DraftsPreviewOut> {
+  return (await api.get<DraftsPreviewOut>("/algorithm/drafts-preview")).data;
 }
