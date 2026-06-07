@@ -97,6 +97,22 @@ export function AlgorithmContent() {
     } catch { /* 409 = already done, ignore */ }
   }
 
+  const STATUS_BADGE: Record<string, string> = {
+    pending: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
+    running: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
+    done: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+    failed: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
+    published: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
+  };
+
+  const STATUS_LABEL: Record<string, string> = {
+    pending: "ממתין",
+    running: "רץ...",
+    done: "טיוטה",
+    failed: "נכשל",
+    published: "פורסם",
+  };
+
   const statusIcon = (status: string) => {
     if (status === "done") return "✓";
     if (status === "failed") return "✗";
@@ -136,6 +152,9 @@ export function AlgorithmContent() {
                 </span>
                 <span className="font-medium truncate text-xs">
                   {job.planning_start} — {job.planning_end}
+                </span>
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[job.status] ?? STATUS_BADGE.pending}`}>
+                  {STATUS_LABEL[job.status] ?? job.status}
                 </span>
               </div>
               <div className="text-xs text-gray-500 mt-0.5">{job.shift_count} משמרות · {job.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}</div>
@@ -235,6 +254,7 @@ export function AlgorithmContent() {
                 soldiers={soldiers}
                 dutyTypes={dutyTypes}
                 onProposalUpdate={setSelectedJob}
+                isDraft={selectedJob.proposals.some(p => p.status === "algorithm_draft")}
               />
             )}
           </div>

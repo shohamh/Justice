@@ -13,9 +13,10 @@ interface Props {
   soldiers: SoldierDTO[];
   dutyTypes: DutyType[];
   onProposalUpdate: (updated: AlgorithmJob) => void;
+  isDraft: boolean;
 }
 
-export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes, onProposalUpdate }: Props) {
+export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes, onProposalUpdate, isDraft }: Props) {
   const { t } = useTranslation();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explanationTarget, setExplanationTarget] = useState<{ jobId: string; assignmentId: string } | null>(null);
@@ -182,6 +183,15 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
 
   return (
     <div className="space-y-3" dir="rtl">
+      {isDraft ? (
+        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-700 dark:text-amber-300 font-medium">
+          ⚠️ טיוטה — תוצאות לא פורסמו. לחץ "אשר ופרסם (הפוך לרשמי)" להחלת השיבוצים.
+        </div>
+      ) : (
+        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-700 rounded p-3 text-sm text-green-700 dark:text-green-300 font-medium">
+          ✓ פורסם — שיבוצים פעילים.
+        </div>
+      )}
       {job.proposals.length === 0 ? (
         <p className="text-gray-500 text-sm">{t("algorithm.no_proposals")}</p>
       ) : (
@@ -196,7 +206,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
               disabled={selectedIds.size === 0}
               className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40"
             >
-              {`אשר נבחרים (${selectedIds.size})`}
+              {`אשר ופרסם (הפוך לרשמי) (${selectedIds.size})`}
             </button>
           </div>
           <DataTable
