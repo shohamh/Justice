@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json as _json
 import uuid
 from datetime import date, timedelta
 from typing import Any
@@ -91,6 +92,7 @@ class JobOut(BaseModel):
     proposals: list[ProposalOut]
     solver_metrics: dict[str, Any]
     relaxed: list[str]
+    reasons: list[str]
 
 
 class JobSummaryOut(BaseModel):
@@ -122,6 +124,17 @@ class DraftPreviewItem(BaseModel):
 class DraftsPreviewOut(BaseModel):
     count: int
     items: list[DraftPreviewItem]
+
+
+def _parse_failure(error_message: str | None) -> tuple[list[str], list[str]]:
+    """Parse the JSON stored in error_message for failed jobs."""
+    if not error_message:
+        return [], []
+    try:
+        data = _json.loads(error_message)
+        return data.get("relaxed", []), data.get("reasons", [])
+    except (ValueError, TypeError):
+        return [], []
 
 
 def _load_job(session: Session, job_id: uuid.UUID) -> AlgorithmJob:
@@ -363,6 +376,7 @@ def get_job(
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
     proposals = _proposals_for_job(session, job)
+    relaxed, reasons = _parse_failure(job.error_message)
     return JobOut(
         id=job.id,
         status=job.status,
@@ -374,7 +388,8 @@ def get_job(
         error_message=job.error_message,
         proposals=proposals,
         solver_metrics={},
-        relaxed=[],
+        relaxed=relaxed,
+        reasons=reasons,
     )
 
 

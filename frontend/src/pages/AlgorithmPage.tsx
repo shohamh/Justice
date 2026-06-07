@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import Layout from "../components/Layout";
 import AlgorithmRunForm from "../components/AlgorithmRunForm";
 import AlgorithmProposalTable from "../components/AlgorithmProposalTable";
+import FailurePanel from "../components/FailurePanel";
 import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
@@ -217,27 +218,14 @@ export function AlgorithmContent() {
             </div>
 
             {/* Failed state */}
-            {selectedJob.status === "failed" && (() => {
-              if (selectedJob.error_message === "cancelled_by_user") {
-                return <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>;
-              }
-              let parsed: { reasons?: string[] } | null = null;
-              try { parsed = JSON.parse(selectedJob.error_message ?? "{}"); } catch { /* plain string */ }
-              const reasons = parsed?.reasons ?? [];
-              return (
-                <div className="text-red-600 text-sm space-y-1">
-                  <p className="font-medium">{t("algorithm.failed")}</p>
-                  {reasons.length > 0 && (
-                    <ul className="list-disc pr-5 space-y-0.5 text-xs">
-                      {reasons.map((r, i) => <li key={i}>{r}</li>)}
-                    </ul>
-                  )}
-                  {reasons.length === 0 && selectedJob.error_message && (
-                    <p className="text-xs">{selectedJob.error_message}</p>
-                  )}
-                </div>
-              );
-            })()}
+            {selectedJob.status === "failed" && (
+              selectedJob.error_message === "cancelled_by_user"
+                ? <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>
+                : <FailurePanel
+                    relaxed={selectedJob.relaxed}
+                    reasons={selectedJob.reasons}
+                  />
+            )}
 
             {/* Proposals table */}
             {selectedJob.status === "done" && (
