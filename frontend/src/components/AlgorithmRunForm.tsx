@@ -4,6 +4,7 @@ import { SolverSettings, submitJob } from "../api/algorithm";
 import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
+import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -14,6 +15,16 @@ const DEFAULT_SETTINGS: SolverSettings = {
   K: 8, T: 7, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
 };
 
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function thirtyDaysStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split("T")[0];
+}
+
 const FILL_COLORS: Record<string, string> = {
   empty: "text-red-600 dark:text-red-400",
   partial: "text-amber-600 dark:text-amber-400",
@@ -22,11 +33,12 @@ const FILL_COLORS: Record<string, string> = {
 
 export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
   const { t } = useTranslation();
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(todayStr);
+  const [dateTo, setDateTo] = useState(thirtyDaysStr);
   const [availableShifts, setAvailableShifts] = useState<DutyShift[]>([]);
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
-  const [mode, setMode] = useState<"shadow" | "dm_reviewed">("shadow");
+  const [mode, setMode] = useState<"draft" | "direct_publish">("draft");
+  const [showModeHelp, setShowModeHelp] = useState(false);
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
@@ -35,7 +47,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
 
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
   const shiftLabel = (shift: DutyShift) =>
-    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (${shift.assigned_count}/${shift.required_count})`;
+    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (ראשי: ${shift.assigned_count}/${shift.required_count}, רזרבה: ${shift.reserve_assigned_count ?? 0})`;
 
   const loadShifts = useCallback(async () => {
     const ss = await listShifts({
@@ -46,9 +58,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
   }, [dateFrom, dateTo]);
 
   useEffect(() => {
-    if (dateFrom || dateTo) void loadShifts();
-    else setAvailableShifts([]);
-  }, [loadShifts, dateFrom, dateTo]);
+    void loadShifts();
+  }, [loadShifts]);
 
   function toggleShift(id: string) {
     setSelectedShiftIds(prev =>
@@ -64,7 +75,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
     }
     setSubmitting(true);
     try {
-      const resp = await submitJob({ shift_ids: selectedShiftIds, mode, settings });
+      const apiMode = mode === "draft" ? "shadow" : "dm_reviewed";
+      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings });
       onJobSubmitted(resp.id);
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -109,18 +121,39 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         </div>
       )}
       {availableShifts.length === 0 && (
-        <p className="text-gray-400">
-          {dateFrom || dateTo ? "אין משמרות פתוחות בטווח הנבחר" : "הזן טווח תאריכים לצפייה במשמרות"}
+        <p className="text-sm text-gray-500 text-right" dir="rtl">
+          לא נמצאו משמרות ללא שיבוץ בטווח התאריכים שנבחר.
         </p>
       )}
 
-      <label className="block">
-        {t("algorithm.mode_label")}
-        <select value={mode} onChange={e => setMode(e.target.value as "shadow" | "dm_reviewed")} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-          <option value="shadow">{t("algorithm.shadow_mode")}</option>
-          <option value="dm_reviewed">{t("algorithm.dm_reviewed_mode")}</option>
-        </select>
-      </label>
+      <div className="flex items-center gap-2" dir="rtl">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">מצב הרצה:</span>
+        <div className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+          <button
+            type="button"
+            className={`px-3 py-1 ${mode === "draft" ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setMode("draft")}
+          >
+            מצב טיוטה
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 ${mode === "direct_publish" ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setMode("direct_publish")}
+          >
+            מצב פרסום ישיר
+          </button>
+        </div>
+        <button
+          type="button"
+          className="text-gray-400 hover:text-indigo-600 text-xs font-bold border rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0"
+          onClick={() => setShowModeHelp(true)}
+          title="מה ההבדל?"
+        >
+          ?
+        </button>
+        {showModeHelp && <AlgorithmModeHelpModal onClose={() => setShowModeHelp(false)} />}
+      </div>
 
       <button type="button" className="text-xs text-blue-600 dark:text-blue-400 underline" onClick={() => setShowSettings(s => !s)}>
         {t("algorithm.settings")}

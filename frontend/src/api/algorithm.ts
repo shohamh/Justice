@@ -43,6 +43,7 @@ export interface AlgorithmJob {
   proposals: ProposalRow[];
   solver_metrics: Record<string, number>;
   relaxed: string[];
+  reasons: string[];
 }
 
 export interface JobSummaryOut {

@@ -59,6 +59,7 @@ def _get_assigned_counts(session: Session, shift_id: uuid.UUID) -> tuple[int, in
 
 def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
     total, reserve = _get_assigned_counts(session, shift.id)
+    primary = total - reserve
     return ShiftWithFill(
         id=shift.id,
         duty_type_id=shift.duty_type_id,
@@ -68,9 +69,9 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         required_count=shift.required_count,
         notes=shift.notes,
         created_by=shift.created_by,
-        assigned_count=total,
+        assigned_count=primary,
         reserve_assigned_count=reserve,
-        fill_status=_fill_status(total, shift.required_count),
+        fill_status=_fill_status(primary, shift.required_count),
         reserve_count_override=shift.reserve_count_override,
     )
 
@@ -236,8 +237,9 @@ def list_shifts(
 
     result = []
     for shift in shifts:
-        assigned = count_map.get(shift.id, 0)
+        total_assigned = count_map.get(shift.id, 0)
         reserve_assigned = reserve_map.get(shift.id, 0)
+        primary_assigned = total_assigned - reserve_assigned
         result.append(ShiftWithFill(
             id=shift.id,
             duty_type_id=shift.duty_type_id,
@@ -247,9 +249,9 @@ def list_shifts(
             required_count=shift.required_count,
             notes=shift.notes,
             created_by=shift.created_by,
-            assigned_count=assigned,
+            assigned_count=primary_assigned,
             reserve_assigned_count=reserve_assigned,
-            fill_status=_fill_status(assigned, shift.required_count),
+            fill_status=_fill_status(primary_assigned, shift.required_count),
             reserve_count_override=shift.reserve_count_override,
         ))
     return result
