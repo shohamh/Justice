@@ -10,13 +10,17 @@ test.describe("Commander Dashboard", () => {
   });
 
   test("shows commander dashboard with summary cards", async ({ page }) => {
-    await page.goto("/command-dashboard");
+    await page.getByTestId("nav-commander").click();
+    await page.getByTestId("nav-command-dashboard").click();
+    await expect(page).toHaveURL(/\/command-dashboard$/);
     await expect(page.locator('[data-testid="command-dashboard-page"]')).toBeVisible();
     await expect(page.locator('[data-testid="summary-cards"]')).toBeVisible();
   });
 
   test("calendar panel loads", async ({ page }) => {
-    await page.goto("/command-dashboard");
+    await page.getByTestId("nav-commander").click();
+    await page.getByTestId("nav-command-dashboard").click();
+    await expect(page).toHaveURL(/\/command-dashboard$/);
     const calendar = page.locator('[data-testid="panel-calendar"]');
     await expect(calendar).toBeVisible();
   });

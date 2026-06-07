@@ -23,8 +23,9 @@ async function loginAsAdmin(page: Page) {
 test("admin configures a duty type, location, and exemption type with mapping", async ({ page }) => {
   await loginAsAdmin(page);
 
+  await page.getByTestId("nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
-  await expect(page).toHaveURL(/\/duty-config$/);
+  await expect(page).toHaveURL(/\/planning\/config/);
 
   const suffix = `${Date.now() % 100000}`;
   const dtName = `שמירה-${suffix}`;

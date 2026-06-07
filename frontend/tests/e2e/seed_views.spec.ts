@@ -20,6 +20,7 @@ async function loginAsAdmin(page: Page) {
 test("seeded data renders correctly across pages", async ({ page }) => {
   await loginAsAdmin(page);
 
+  await page.getByTestId("nav-commander").click();
   await page.getByTestId("nav-team").click();
   await expect(page.getByTestId("node-tree")).toBeVisible();
 

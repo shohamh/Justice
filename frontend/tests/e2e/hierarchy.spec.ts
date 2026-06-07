@@ -20,6 +20,7 @@ async function loginAsAdmin(page: Page) {
 test.describe("Hierarchy tree", () => {
   test("admin sees tree, adds child node, assigns commander, renames node", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -49,6 +50,7 @@ test.describe("Hierarchy tree", () => {
 
   test("admin can add soldier to node via quick-add button", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
     await expect(page.getByTestId("node-tree")).toBeVisible();
@@ -60,6 +62,7 @@ test.describe("Hierarchy tree", () => {
 
   test("soldiers appear under tree node with edit button", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -89,6 +92,7 @@ test.describe("Hierarchy tree", () => {
 
   test("soldier appears only under their assigned hierarchy node", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 
@@ -126,6 +130,7 @@ test.describe("Hierarchy tree", () => {
 
   test("adding existing soldier via quick-add moves them to the new node", async ({ page }) => {
     await loginAsAdmin(page);
+    await page.getByTestId("nav-commander").click();
     await page.getByTestId("nav-team").click();
     await expect(page).toHaveURL(/\/team$/);
 

@@ -23,8 +23,9 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
   const suffix = `${Date.now() % 100000}`;
   const etName = `פטור-בדיקה-${suffix}`;
 
+  await page.getByTestId("nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
-  await expect(page).toHaveURL(/\/duty-config$/);
+  await expect(page).toHaveURL(/\/planning\/config/);
   await page.getByTestId("et-name").fill(etName);
   await page.getByTestId("et-submit").click();
   await expect(page.getByTestId(`et-row-${etName}`)).toBeVisible();
@@ -45,6 +46,7 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
 
   await expect(page.getByTestId("er-list")).toBeVisible();
 
+  await page.getByTestId("nav-commander").click();
   await page.getByTestId("nav-approvals").click();
   await expect(page).toHaveURL(/\/approvals$/);
   await page.getByTestId("approvals-tab-exemptions").click();

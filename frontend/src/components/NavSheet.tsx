@@ -4,6 +4,7 @@ interface NavSheetItem {
   label: string;
   to: string;
   badge?: number;
+  testId?: string;
 }
 
 interface NavSheetProps {
@@ -47,6 +48,7 @@ export default function NavSheet({ open, onClose, items, testId }: NavSheetProps
             to={item.to}
             onClick={onClose}
             className="flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg"
+            data-testid={item.testId}
           >
             <span>{item.label}</span>
             {item.badge != null && item.badge > 0 && (

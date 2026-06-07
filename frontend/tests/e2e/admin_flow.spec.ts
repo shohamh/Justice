@@ -16,11 +16,12 @@ test("admin first login: forced password change, then onboard a soldier", async 
   await page.getByTestId("new-password").fill("AdminNewPassw0rd");
   await page.getByTestId("change-password-submit").click();
 
-  // Now on home, admin sees the team-management nav entry.
+  // Now on home, admin sees the commander nav entry (which contains Team).
   await expect(page).toHaveURL("/");
-  await expect(page.getByTestId("nav-team")).toBeVisible();
+  await expect(page.getByTestId("nav-commander")).toBeVisible();
 
-  // Onboard a soldier.
+  // Onboard a soldier via the commander sheet → Team Hierarchy.
+  await page.getByTestId("nav-commander").click();
   await page.getByTestId("nav-team").click();
   await expect(page).toHaveURL(/\/team$/);
   const pn = `91${Date.now() % 100000}`;

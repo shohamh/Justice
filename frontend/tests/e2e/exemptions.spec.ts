@@ -27,13 +27,15 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
   const etName = `פטור-${suffix}`;
 
   // Create an exemption type to grant.
+  await page.getByTestId("nav-planning").click();
   await page.getByTestId("nav-duty-config").click();
-  await expect(page).toHaveURL(/\/duty-config$/);
+  await expect(page).toHaveURL(/\/planning\/config/);
   await page.getByTestId("et-name").fill(etName);
   await page.getByTestId("et-submit").click();
   await expect(page.getByTestId(`et-row-${etName}`)).toBeVisible();
 
   // Onboard a soldier.
+  await page.getByTestId("nav-commander").click();
   await page.getByTestId("nav-team").click();
   await expect(page).toHaveURL(/\/team$/);
   const pn = `92${Date.now() % 100000}`;

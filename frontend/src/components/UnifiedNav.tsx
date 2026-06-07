@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   House, FileText, ArrowLeftRight, Users, Wrench,
-  Calendar, BarChart2,
+  Calendar, BarChart2, ClipboardList,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getPendingCount } from "../api/constraints";
@@ -74,6 +74,7 @@ export default function UnifiedNav() {
 
   const baseTabs: NavTab[] = [
     { label: t("nav.home"), icon: <House size={20} />, to: "/", testId: "nav-home" },
+    { label: t("nav.my_duties"), icon: <ClipboardList size={20} />, to: "/my-duties", testId: "nav-my-duties" },
     { label: t("nav.my_requests"), icon: <FileText size={20} />, to: "/my-requests", testId: "nav-my-requests" },
     { label: t("nav.swaps"), icon: <ArrowLeftRight size={20} />, to: "/swaps", badge: swapIncomingCount, testId: "nav-swaps" },
     { label: t("nav.unit_calendar"), icon: <Calendar size={20} />, to: "/unit-calendar", testId: "nav-unit-calendar" },
@@ -102,16 +103,16 @@ export default function UnifiedNav() {
   ];
 
   const commanderItems = [
-    { label: t("nav.team_hierarchy"), to: "/team" },
-    { label: t("nav.approvals"), to: "/approvals", badge: pendingCount },
-    { label: t("nav.command_dashboard"), to: "/command-dashboard" },
-    { label: "הקפצה פיקודית", to: "/commander/hakpaza" },
+    { label: t("nav.team_hierarchy"), to: "/team", testId: "nav-team" },
+    { label: t("nav.approvals"), to: "/approvals", badge: pendingCount, testId: "nav-approvals" },
+    { label: t("nav.command_dashboard"), to: "/command-dashboard", testId: "nav-command-dashboard" },
+    { label: "הקפצה פיקודית", to: "/commander/hakpaza", testId: "nav-hakpaza" },
   ];
 
   const planningItems = [
-    { label: t("nav.planning_assignment"), to: "/planning/assignment" },
-    { label: t("nav.planning_config"), to: "/planning/config" },
-    { label: "ייבוא מ-Excel", to: "/import" },
+    { label: t("nav.planning_assignment"), to: "/planning/assignment", testId: "nav-duty-management" },
+    { label: t("nav.planning_config"), to: "/planning/config", testId: "nav-duty-config" },
+    { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
   ];
 
   const isActive = (to?: string) => {
