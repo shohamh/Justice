@@ -22,9 +22,9 @@ def test_soldiers_export_contains_header_row(client: TestClient, admin_session: 
     r = client.get("/api/scoring/transparency/export", headers=auth_headers(s))
     wb = openpyxl.load_workbook(io.BytesIO(r.content))
     ws = wb["חיילים"]
-    headers = [ws.cell(1, col).value for col in range(1, 10)]
+    headers = [ws.cell(1, col).value for col in range(1, 11)]
     assert headers == [
-        "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
+        "יחידה / תת-יחידה", "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
         "כמות משמרות", "ניקוד מצטבר", "ניקוד ליום", "ניקוד מנורמל",
     ]
 
@@ -49,7 +49,7 @@ def test_soldiers_export_node_filter(client: TestClient, admin_session: Session)
     assert r.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(r.content))
     ws = wb["חיילים"]
-    names = [ws.cell(row, 1).value for row in range(2, ws.max_row + 1)]
+    names = [ws.cell(row, 2).value for row in range(2, ws.max_row + 1)]
     assert s_in.full_name in names
     assert s_out.full_name not in names
 
