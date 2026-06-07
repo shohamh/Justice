@@ -90,7 +90,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return out;
   }, [filteredShifts]);
 
-  function handleDateClick(_arg: { dateStr: string }) {
+  function handleDateClick() {
     setSelectedShift(null);
   }
 

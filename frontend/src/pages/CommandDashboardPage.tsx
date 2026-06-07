@@ -39,8 +39,6 @@ export default function CommandDashboardPage() {
   const [upcomingData, setUpcomingData] = useState<UpcomingDay[] | null>(null);
   const [alertsData, setAlertsData] = useState<Alert[] | null>(null);
   const [approvalsData, setApprovalsData] = useState<ApprovalItem[] | null>(null);
-  const [activePanel, setActivePanel] = useState<string>("summary");
-
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([
       getSummary(), getDashboardSoldiers(), getFairnessInternal(),
@@ -61,7 +59,8 @@ export default function CommandDashboardPage() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const handleCardClick = (panel: string) => setActivePanel(panel);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleCardClick = (_panel: string) => {};
 
   const panels: { id: string; title: string; content: React.ReactNode }[] = [
     {

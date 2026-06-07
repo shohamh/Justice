@@ -165,7 +165,7 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
         {mutation.isError && (
           <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
             <p className="text-red-600 text-sm">
-              {(mutation.error as any)?.response?.data?.detail ?? t("dismiss_modal.error")}
+              {(mutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("dismiss_modal.error")}
             </p>
           </div>
         )}

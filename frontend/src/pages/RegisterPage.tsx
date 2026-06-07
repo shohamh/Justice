@@ -139,7 +139,7 @@ export default function RegisterPage() {
               <label key={key as string} className="block text-sm">{label}
                 <input type={type} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string}
-                  onChange={e => set(key, e.target.value as any)} />
+                  onChange={e => set(key, e.target.value as never)} />
               </label>
             ))}
             <label className="block text-sm">מגדר
@@ -157,7 +157,7 @@ export default function RegisterPage() {
               <input type="checkbox" checked={form.is_officer} onChange={e => set("is_officer", e.target.checked)} /> קצין
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.bahad1_graduate} onChange={e => set("bahad1_graduate", e.target.checked)} /> בוגר בה"ד 1
+              <input type="checkbox" checked={form.bahad1_graduate} onChange={e => set("bahad1_graduate", e.target.checked)} />{' בוגר בה"ד 1'}
             </label>
             <label className="block text-sm">סיסמה
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
