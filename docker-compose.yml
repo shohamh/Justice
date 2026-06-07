@@ -23,28 +23,34 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Run migrations (as db_admin via DB_ADMIN_URL) then start the app server.
-    # Migration 0001 creates the 'app' role idempotently, so a fresh DB is fine.
+    volumes:
+      - ./backend:/app
+      - /app/.venv  # preserve the venv built into the image
     command: >
       sh -c "uv run alembic upgrade head &&
-             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
       context: ./frontend
-      args:
-        # VITE_API_BASE is baked into the static build. The browser connects to
-        # the host's port 8000, so localhost:8000 is correct here.
-        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000/api}
+      target: dev
     ports:
       - "5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # preserve node_modules built into the image
     depends_on:
       - backend
 
   telegram-bot:
     build: ./backend
-    command: uv run python -m bot.main
+    command: uv run watchfiles --filter python 'python -m bot.main' app/ bot/
     env_file: .env
+    volumes:
+      - ./backend:/app
+      - /app/.venv  # preserve the venv built into the image
     depends_on:
       db:
         condition: service_healthy

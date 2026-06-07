@@ -55,6 +55,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.query(DutyReserveLink).delete()
             session.query(DutyAssignment).delete()
             session.query(DutyShift).delete()
+            session.query(SoldierEnrollmentRequest).delete()
+            session.query(SoldierFieldUpdate).delete()
             session.query(HierarchyNode).delete()
             session.query(Soldier).delete()
             session.query(DutyType).delete()
@@ -143,10 +145,11 @@ def seed(*, force: bool = False, with_assignments: bool = False):
 
         from datetime import timedelta
 
-        _MANDATORY_MONTHS = 32  # 2 years 8 months
+        # Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
+        _MANDATORY_MONTHS = {"male": 32, "female": 24}
 
-        def _mandatory_end(enlist: date) -> date:
-            m = enlist.month + _MANDATORY_MONTHS
+        def _mandatory_end(enlist: date, gender: str = "male") -> date:
+            m = enlist.month + _MANDATORY_MONTHS[gender]
             y = enlist.year + (m - 1) // 12
             mo = ((m - 1) % 12) + 1
             d = min(enlist.day, 28)
@@ -195,18 +198,19 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         all_soldiers.append(s_admin)
         psips.commander_id = s_admin.id
 
-        # Branch commanders (קבע, officers, 10+ years)
+        # Branch commanders (קבע, officers)
+        # פוקוס — סא"ל (~15 yr career), אלומות — רס"ן (~11 yr career)
         s_focus = make_soldier(
             "2000001",
             "רען פוקוס",
             "commander",
             branches[0].id,
             is_officer=True,
-            rank='רס"ן',
+            rank='סא"ל',
             bahad1_graduate=True,
-            enlistment_date=date(2015, 1, 1),
-            mandatory_end_date=_mandatory_end(date(2015, 1, 1)),
-            discharge_date=date(2030, 1, 1),
+            enlistment_date=date(2011, 1, 1),
+            mandatory_end_date=_mandatory_end(date(2011, 1, 1)),
+            discharge_date=date(2032, 1, 1),
             gender="male",
         )
         all_soldiers.append(s_focus)
@@ -228,48 +232,31 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         all_soldiers.append(s_alom)
         branches[1].commander_id = s_alom.id
 
-        # Mador commanders — 3 senior (early career קבע) + 3 junior (late חובה)
-        mador_commanders = {
-            "מחקר": ("3000001", "commander"),
-            "שבירה": ("3000002", "commander"),
-            "גוליבר": ("3000003", "commander"),
-            "אינפרה": ("3000004", "commander"),
-            "פלאש": ("3000005", "commander"),
-            "ספקטרה": ("3000006", "commander"),
+        # Mador commanders — all קבע officers, distributed סרן / רס"ן
+        # (name → (personal_number, rank, enlistment, discharge))
+        _mador_leader_defs = {
+            "מחקר":   ("3000001", "סרן",   date(2021, 1,  1), date(2029, 1,  1)),  # ~5 yr
+            "שבירה":  ("3000002", 'רס"ן',  date(2016, 6,  1), date(2030, 6,  1)),  # ~10 yr
+            "גוליבר": ("3000003", "סרן",   date(2022, 3,  1), date(2030, 3,  1)),  # ~4 yr
+            "אינפרה": ("3000004", "סרן",   date(2020, 8,  1), date(2029, 8,  1)),  # ~6 yr
+            "פלאש":   ("3000005", "סרן",   date(2019, 11, 1), date(2028, 11, 1)),  # ~7 yr
+            "ספקטרה": ("3000006", 'רס"ן',  date(2014, 4,  1), date(2030, 4,  1)),  # ~12 yr
         }
-        for idx, node in enumerate(focus_groups + alom_groups):
-            pn_str, role = mador_commanders[node.name]
-            if idx < 3:
-                # Senior mador commanders — recently became קבע
-                enl = date(2021, 1, 1)
-                s = make_soldier(
-                    pn_str,
-                    f"רמד {node.name}",
-                    role,
-                    node.id,
-                    is_officer=True,
-                    rank="סרן",
-                    bahad1_graduate=True,
-                    enlistment_date=enl,
-                    mandatory_end_date=_mandatory_end(enl),
-                    discharge_date=date(2028, 1, 1),
-                    gender="male",
-                )
-            else:
-                # Junior mador commanders — late חובה, nearing end
-                enl = date(2023, 10, 1)
-                s = make_soldier(
-                    pn_str,
-                    f"רמד {node.name}",
-                    role,
-                    node.id,
-                    is_officer=True,
-                    rank="סרן",
-                    bahad1_graduate=True,
-                    enlistment_date=enl,
-                    mandatory_end_date=_mandatory_end(enl),
-                    gender="male",
-                )
+        for node in focus_groups + alom_groups:
+            pn_str, rank, enl, disc = _mador_leader_defs[node.name]
+            s = make_soldier(
+                pn_str,
+                f"רמד {node.name}",
+                "commander",
+                node.id,
+                is_officer=True,
+                rank=rank,
+                bahad1_graduate=True,
+                enlistment_date=enl,
+                mandatory_end_date=_mandatory_end(enl, "male"),
+                discharge_date=disc,
+                gender="male",
+            )
             all_soldiers.append(s)
             node.commander_id = s.id
 
@@ -287,23 +274,39 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "צוות אקסודוס": "אקסודוס",
             "צוות נילוס": "נילוס",
         }
+        # Team leader profiles: 3×רסל (NCO קבע), 3×סגם (officer), 3×סגן (officer), 1×סרן (officer)
+        # רסל needs 5-8 yr career; סגם/סגן 2-5 yr; סרן 5-7 yr
+        # Entries match all_teams order: מארס, טוקסיק, רוקט, ורטיגו, פלאש, ריי, ספארק, ארק, אקסודוס, נילוס
+        # (rank, is_officer, enl_year, enl_month, disc_year, disc_month)  disc=None → חובה
+        _team_leader_profiles = [
+            ("רסל",  False, 2018, 3,  2030, 6),  # מארס    - NCO קבע ~8 yr
+            ("רסל",  False, 2019, 7,  2031, 6),  # טוקסיק  - NCO קבע ~7 yr
+            ("רסל",  False, 2020, 1,  2031, 6),  # רוקט    - NCO קבע ~6 yr
+            ("סגם",  True,  2022, 8,  2029, 8),  # ורטיגו  - officer קבע ~4 yr
+            ("סגם",  True,  2021, 5,  2028, 5),  # פלאש    - officer קבע ~5 yr
+            ("סגם",  True,  2024, 1,  None, None),# ריי    - officer חובה, end Sep 2026
+            ("סגן",  True,  2024, 2,  None, None),# ספארק  - officer חובה, end Oct 2026
+            ("סגן",  True,  2021, 9,  2029, 9),  # ארק     - officer קבע ~5 yr
+            ("סגן",  True,  2022, 3,  2029, 3),  # אקסודוס - officer קבע ~4 yr
+            ("סרן",  True,  2020, 3,  2028, 3),  # נילוס   - captain officer קבע ~6 yr
+        ]
         for team_idx, team in enumerate(all_teams):
             short = team_names_he[team.name]
-            # Team leader (רשצ, NCO) — vary by team index: some mid-service, some late
-            if team_idx < 5:
-                enl = date(2023, 3, 1)
-            else:
-                enl = date(2024, 7, 1)
+            lrank, l_is_off, ley, lem, ldy, ldm = _team_leader_profiles[team_idx]
+            l_enl = date(ley, lem, 1)
+            l_disc = date(ldy, ldm, 1) if ldy else None
             pn = next_pn()
             s = make_soldier(
                 pn,
                 f"רשצ {short}",
                 "commander",
                 team.id,
-                is_officer=False,
-                rank="רסמ",
-                enlistment_date=enl,
-                mandatory_end_date=_mandatory_end(enl),
+                is_officer=l_is_off,
+                rank=lrank,
+                bahad1_graduate=l_is_off,
+                enlistment_date=l_enl,
+                mandatory_end_date=_mandatory_end(l_enl, "male"),
+                discharge_date=l_disc,
                 gender="male",
             )
             team_soldiers.append(s)
@@ -311,11 +314,12 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             # 5 members per team: 3 enlisted חובה, 1 enlisted קבע, 1 officer חובה
             _team_profiles = [
                 # (enl_year, enl_month, rank, is_officer, discharge_year, gender)
-                (2024, 1, "סמל", False, None, "female"),  # enlisted חובה late-service
-                (2025, 3, 'רב"ט', False, None, "male"),  # enlisted חובה mid-service
-                (2026, 1, "טוראי", False, None, "male"),  # enlisted חובה fresh
-                (2019, 6, "רסר", False, 2035, "male"),  # enlisted קבע experienced
-                (2024, 3, "סגן", True, None, "male"),  # officer חובה junior
+                # Female: mandatory service = 24 months; enlist Aug 2024 → end Aug 2026 (still active)
+                (2024, 8, "סמל", False, None, "female"),  # enlisted חובה late-service, ~22 months
+                (2025, 3, 'רב"ט', False, None, "male"),   # enlisted חובה mid-service, ~15 months
+                (2026, 1, "טוראי", False, None, "male"),   # enlisted חובה fresh, ~5 months
+                (2019, 6, "רסר", False, 2035, "male"),     # enlisted קבע, ~7 yrs → רסר
+                (2024, 3, "סגן", True, None, "male"),      # officer חובה: enlisted → bahad1 → סגן ~month 12, now ~27 months service
             ]
             for i, (ey, em, rank, is_off, dy, g) in enumerate(_team_profiles):
                 pn = next_pn()
@@ -329,7 +333,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     is_officer=is_off,
                     rank=rank,
                     enlistment_date=enl,
-                    mandatory_end_date=_mandatory_end(enl),
+                    mandatory_end_date=_mandatory_end(enl, g),
                     discharge_date=disc,
                     bahad1_graduate=is_off,
                     gender=g,
@@ -342,21 +346,21 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         # Mix: 8 enlisted חובה, 3 enlisted קבע, 2 officer חובה, 1 officer קבע, 1 enlisted חובה fresh
         _mador_profiles = [
             # (enl_year, enl_month, rank, is_officer, discharge_year, gender)
-            (2023, 8, "סמל", False, None, "male"),  # 0 enlisted חובה senior
-            (2024, 1, "סמל", False, None, "female"),  # 1 enlisted חובה
-            (2024, 6, 'רב"ט', False, None, "male"),  # 2 enlisted חובה
-            (2024, 11, 'רב"ט', False, None, "male"),  # 3 enlisted חובה
-            (2025, 3, 'רב"ט', False, None, "female"),  # 4 enlisted חובה
-            (2025, 7, "טוראי", False, None, "male"),  # 5 enlisted חובה
-            (2025, 11, "טוראי", False, None, "male"),  # 6 enlisted חובה
-            (2026, 2, "טוראי", False, None, "female"),  # 7 enlisted חובה fresh
-            (2018, 4, "רסב", False, 2035, "male"),  # 8 enlisted קבע
-            (2019, 8, "רסר", False, 2034, "male"),  # 9 enlisted קבע
-            (2020, 2, "רסר", False, 2033, "female"),  # 10 enlisted קבע
-            (2023, 10, "סגן", True, None, "male"),  # 11 officer חובה
-            (2024, 4, "סגן", True, None, "female"),  # 12 officer חובה
-            (2017, 1, "סרן", True, 2032, "male"),  # 13 officer קבע
-            (2026, 3, "טוראי", False, None, "male"),  # 14 enlisted חובה very fresh
+            (2023, 8,  "סמל",   False, None, "male"),    #  0 חובה senior, ~34 months → סמל ✓
+            (2024, 8,  "סמל",   False, None, "female"),  #  1 חובה, ~22 months → סמל; end Aug 2026 ✓
+            (2024, 6,  'רב"ט',  False, None, "male"),    #  2 חובה, ~24 months → סמל/רב"ט border, רב"ט ok
+            (2024, 11, 'רב"ט',  False, None, "male"),    #  3 חובה, ~19 months → רב"ט ✓
+            (2025, 3,  'רב"ט',  False, None, "female"),  #  4 חובה, ~15 months; end Mar 2027 → רב"ט ✓
+            (2025, 7,  "טוראי", False, None, "male"),    #  5 חובה, ~11 months → טוראי/רב"ט border
+            (2025, 11, "טוראי", False, None, "male"),    #  6 חובה, ~7 months → טוראי ✓
+            (2026, 2,  "טוראי", False, None, "female"),  #  7 חובה fresh, ~4 months; end Feb 2028 → טוראי ✓
+            (2018, 4,  "רסב",   False, 2035, "male"),    #  8 קבע, ~8 yrs → רסב ✓
+            (2019, 8,  "רסר",   False, 2034, "male"),    #  9 קבע, ~7 yrs → רסר ✓
+            (2020, 2,  "רסר",   False, 2033, "female"),  # 10 קבע female, ~6 yrs → רסר ✓
+            (2023, 10, "סגן",   True,  None, "male"),    # 11 חובה officer: enlisted Oct 2023 → bahad1 Sep 2024 → סגן; end Jun 2026 ✓
+            (2025, 3,  "סגן",   True,  None, "female"),  # 12 חובה officer female: bahad1 Feb 2026 → סגן; end Mar 2027 ✓
+            (2017, 1,  "סרן",   True,  2032, "male"),    # 13 קבע officer, ~9 yrs → סרן ✓
+            (2026, 3,  "טוראי", False, None, "male"),    # 14 חובה very fresh, ~3 months → טוראי ✓
         ]
         mador_soldiers = []
         for gnode, gshort in [("אינפרה", "אינפרה"), ("פלאש", "פלאש"), ("ספקטרה", "ספקטרה")]:
@@ -373,7 +377,7 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     is_officer=is_off,
                     rank=rank,
                     enlistment_date=enl,
-                    mandatory_end_date=_mandatory_end(enl),
+                    mandatory_end_date=_mandatory_end(enl, g),
                     discharge_date=disc,
                     bahad1_graduate=is_off,
                     gender=g,
@@ -767,9 +771,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         shifts_created = []
         shift_assignments = 0
 
-        # 1. שמירות — Mon-to-Mon, 4 weeks, 10 primaries
+        # 1. שמירות — Mon-to-Mon, 8 weeks, 10 primaries
         dt = dt_by_name["שמירות"]
-        for w in range(4):
+        for w in range(8):
             start = next_mon + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -784,9 +788,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 2. אבט"ש — Mon-to-Mon, 4 weeks
+        # 2. אבט"ש — Mon-to-Mon, 8 weeks
         dt = dt_by_name['אבט"ש']
-        for w in range(4):
+        for w in range(8):
             start = next_mon + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -801,9 +805,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 3. הגנ"ש — Thu-to-Thu, 4 weeks
+        # 3. הגנ"ש — Thu-to-Thu, 8 weeks
         dt = dt_by_name['הגנ"ש']
-        for w in range(4):
+        for w in range(8):
             start = next_thu + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -818,9 +822,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 4. ליווים — Sun-Thu single days, 4 weeks
+        # 4. ליווים — Sun-Thu single days, 8 weeks
         dt = dt_by_name["ליווים"]
-        for w in range(4):
+        for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
                 s = DutyShift(
@@ -836,9 +840,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 session.flush()
                 shifts_created.append(s)
 
-        # 5. עבודות רס"ר — Sun-Thu single days, 4 weeks
+        # 5. עבודות רס"ר — Sun-Thu single days, 8 weeks
         dt = dt_by_name['עבודות רס"ר']
-        for w in range(4):
+        for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
                 s = DutyShift(
@@ -854,9 +858,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 session.flush()
                 shifts_created.append(s)
 
-        # 6. קצין תורן — Mon-to-Mon, 4 weeks
+        # 6. קצין תורן — Mon-to-Mon, 8 weeks
         dt = dt_by_name["קצין תורן"]
-        for w in range(4):
+        for w in range(8):
             start = next_mon + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -871,9 +875,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 7. מפקד תורן — Mon-to-Mon, 4 weeks
+        # 7. מפקד תורן — Mon-to-Mon, 8 weeks
         dt = dt_by_name["מפקד תורן"]
-        for w in range(4):
+        for w in range(8):
             start = next_mon + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -888,9 +892,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 8. קצין מלווה אבט"ש — Mon-to-Mon, 4 weeks
+        # 8. קצין מלווה אבט"ש — Mon-to-Mon, 8 weeks
         dt = dt_by_name['קצין מלווה אבט"ש']
-        for w in range(4):
+        for w in range(8):
             start = next_mon + timedelta(weeks=w)
             s = DutyShift(
                 duty_type_id=dt.id,
@@ -905,9 +909,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.flush()
             shifts_created.append(s)
 
-        # 9. אבות בית — Sun-Thu single days, 4 weeks
+        # 9. אבות בית — Sun-Thu single days, 8 weeks
         dt = dt_by_name["אבות בית"]
-        for w in range(4):
+        for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
                 s = DutyShift(
@@ -923,9 +927,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 session.flush()
                 shifts_created.append(s)
 
-        # 10. עבודות רס"ר בינוי — Sun-Thu single days, 4 weeks
+        # 10. עבודות רס"ר בינוי — Sun-Thu single days, 8 weeks
         dt = dt_by_name['עבודות רס"ר בינוי']
-        for w in range(4):
+        for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
                 s = DutyShift(
@@ -946,64 +950,23 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         if with_assignments:
             enlisted = [s for s in all_soldiers if not s.is_officer]
             officer_soldiers = [s for s in all_soldiers if s.is_officer]
-            # indices: 0-3 שמירות, 4-11 other weekly, 12-91 daily (80), 92-103 new weekly (12)
+            dt_by_id_map = {dt.id: dt for dt in duty_types}
+
             for i, shift in enumerate(shifts_created):
-                if i < 4:
-                    # שמירות — assign all required_count (10)
-                    for k in range(shift.required_count):
-                        soldier = enlisted[(i * 3 + k) % len(enlisted)]
-                        da = DutyAssignment(
-                            soldier_id=soldier.id,
-                            duty_type_id=shift.duty_type_id,
-                            duty_location_id=shift.duty_location_id,
-                            start_date=shift.start_date,
-                            end_date=shift.end_date,
-                            duty_shift_id=shift.id,
-                            status="published",
-                            created_by=s_admin.id,
-                        )
-                        session.add(da)
-                        session.flush()
-                        created_assignments.append(da)
-                        shift_assignments += 1
-                elif i < 12:
-                    # other weekly shifts (req=2) — assign 2 soldiers each
-                    for k in range(min(2, shift.required_count)):
-                        soldier = enlisted[(i * 3 + k) % len(enlisted)]
-                        da = DutyAssignment(
-                            soldier_id=soldier.id,
-                            duty_type_id=shift.duty_type_id,
-                            duty_location_id=shift.duty_location_id,
-                            start_date=shift.start_date,
-                            end_date=shift.end_date,
-                            duty_shift_id=shift.id,
-                            status="published",
-                            created_by=s_admin.id,
-                        )
-                        session.add(da)
-                        session.flush()
-                        created_assignments.append(da)
-                        shift_assignments += 1
-                elif 12 <= i < 92:
-                    # daily shifts (req=2) — assign 1 soldier to each
-                    soldier = enlisted[i % len(enlisted)]
-                    da = DutyAssignment(
-                        soldier_id=soldier.id,
-                        duty_type_id=shift.duty_type_id,
-                        duty_location_id=shift.duty_location_id,
-                        start_date=shift.start_date,
-                        end_date=shift.end_date,
-                        duty_shift_id=shift.id,
-                        status="published",
-                        created_by=s_admin.id,
-                    )
-                    session.add(da)
-                    session.flush()
-                    created_assignments.append(da)
-                    shift_assignments += 1
+                dt_obj = dt_by_id_map[shift.duty_type_id]
+                reqs = dt_obj.requirements or {}
+                if reqs.get("enlisted_allowed") is False:
+                    pool = officer_soldiers
+                elif reqs.get("officers_allowed") is False:
+                    pool = enlisted
                 else:
-                    # new weekly officer shifts (req=1) — assign 1 each
-                    soldier = officer_soldiers[(i - 92) % len(officer_soldiers)]
+                    pool = enlisted  # mixed: use enlisted for variety
+
+                # Fill large headcount shifts fully; others assign up to 2
+                assign_count = shift.required_count if shift.required_count >= 5 else min(shift.required_count, 2)
+
+                for k in range(assign_count):
+                    soldier = pool[(i * 3 + k) % len(pool)]
                     da = DutyAssignment(
                         soldier_id=soldier.id,
                         duty_type_id=shift.duty_type_id,
@@ -1037,7 +1000,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 rcount = min(rcount, primary_count)
                 if rcount == 0:
                     continue
-                pool = officer_soldiers if i >= 92 else enlisted
+                r_reqs = dt_by_id[shift.duty_type_id].requirements or {}
+                pool = officer_soldiers if r_reqs.get("enlisted_allowed") is False else enlisted
                 for k in range(rcount):
                     idx = (i * 7 + k * 13 + 5) % len(pool)
                     soldier = pool[idx]
@@ -1100,31 +1064,34 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             future_assignments = [
                 a for a in created_assignments if a.start_date >= today - timedelta(days=1)
             ]
-            if len(future_assignments) >= 13:
-                def _other(exclude_id):
-                    return session.query(Soldier).filter(Soldier.id != exclude_id).first()
 
+            def _other(exclude_id):
+                return session.query(Soldier).filter(Soldier.id != exclude_id).first()
+
+            if len(future_assignments) >= 20:
+
+                swap_reasons = [
+                    "בקשת החלפה לצורכי בדיקה",
+                    "אירוע משפחתי",
+                    "מבחן באוניברסיטה",
+                    "טיפול רפואי",
+                    "חתונה",
+                    "נסיעה מחוץ לבסיס",
+                    "אירוע חברתי",
+                    "ימי חופש מאושרים",
+                ]
                 swap_defs = [
+                    # ── Open requests (no covering soldier yet) ──────────────
                     (0, "open", {}),
                     (1, "open", {"target_soldier_id": _other(future_assignments[1].soldier_id).id}),
                     (2, "open", {}),
                     (3, "open", {}),
+                    (13, "open", {}),
+                    (14, "open", {"target_soldier_id": _other(future_assignments[14].soldier_id).id}),
+                    (15, "open", {}),
+                    # ── Pending approval ─────────────────────────────────────
                     (4, "pending_approval", {"covering_soldier_id": _other(future_assignments[4].soldier_id).id}),
                     (5, "pending_approval", {"covering_soldier_id": _other(future_assignments[5].soldier_id).id}),
-                    (6, "applied", {
-                        "covering_soldier_id": _other(future_assignments[6].soldier_id).id,
-                        "requester_side_approved": True,
-                        "covering_side_approved": True,
-                    }),
-                    (7, "applied", {
-                        "covering_soldier_id": _other(future_assignments[7].soldier_id).id,
-                        "requester_side_approved": True,
-                        "covering_side_approved": True,
-                    }),
-                    (8, "rejected", {}),
-                    (9, "cancelled", {}),
-                    # new entries — indices 10 and 12 intentionally cross-reference each other's
-                    # assignments (10 offers 11's duty; 12 offers 10's duty) to simulate a real trade.
                     # Trade offer: covering soldier offered one of their own duties
                     (10, "pending_approval", {
                         "covering_soldier_id": _other(future_assignments[10].soldier_id).id,
@@ -1136,6 +1103,23 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                         "requester_side_approved": True,
                         "covering_side_approved": None,
                     }),
+                    (16, "pending_approval", {"covering_soldier_id": _other(future_assignments[16].soldier_id).id}),
+                    (17, "pending_approval", {
+                        "covering_soldier_id": _other(future_assignments[17].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": None,
+                    }),
+                    # ── Applied (both sides approved) ────────────────────────
+                    (6, "applied", {
+                        "covering_soldier_id": _other(future_assignments[6].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
+                    (7, "applied", {
+                        "covering_soldier_id": _other(future_assignments[7].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
                     # Applied trade: both approved a trade
                     (12, "applied", {
                         "covering_soldier_id": _other(future_assignments[12].soldier_id).id,
@@ -1143,17 +1127,62 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                         "requester_side_approved": True,
                         "covering_side_approved": True,
                     }),
+                    (18, "applied", {
+                        "covering_soldier_id": _other(future_assignments[18].soldier_id).id,
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
+                    (19, "applied", {
+                        "covering_soldier_id": _other(future_assignments[19].soldier_id).id,
+                        "offered_assignment_ids": [str(future_assignments[18].id)],
+                        "requester_side_approved": True,
+                        "covering_side_approved": True,
+                    }),
+                    # ── Rejected / cancelled ─────────────────────────────────
+                    (8, "rejected", {}),
+                    (9, "cancelled", {}),
                 ]
-                for idx, status, extra in swap_defs:
+                for swap_i, (idx, status, extra) in enumerate(swap_defs):
                     a = future_assignments[idx]
                     session.add(SwapRequest(
                         duty_assignment_id=a.id,
                         duty_date=a.start_date,
                         requesting_soldier_id=a.soldier_id,
                         status=status,
-                        reason="בקשת החלפה לצורכי בדיקה",
+                        reason=swap_reasons[swap_i % len(swap_reasons)],
                         **extra,
                     ))
+
+            # ── Swap requests for מפמר פסיפס (admin) ───────────────────
+            admin_future = [
+                a for a in created_assignments
+                if a.soldier_id == s_admin.id and a.start_date >= today - timedelta(days=1)
+            ]
+            admin_swap_defs = [
+                ("open", {}, "ישיבת מפקדים דחופה"),
+                ("open", {"target_soldier_id": _other(s_admin.id).id}, "כנס בכירים"),
+                ("pending_approval", {"covering_soldier_id": _other(s_admin.id).id}, "ביקור רפואי"),
+                ("pending_approval", {
+                    "covering_soldier_id": _other(s_admin.id).id,
+                    "requester_side_approved": True,
+                    "covering_side_approved": None,
+                }, "אירוע משפחתי דחוף"),
+                ("applied", {
+                    "covering_soldier_id": _other(s_admin.id).id,
+                    "requester_side_approved": True,
+                    "covering_side_approved": True,
+                }, "טיול שנתי"),
+                ("rejected", {}, "בקשה שלא אושרה"),
+            ]
+            for a, (status, extra, reason) in zip(admin_future, admin_swap_defs):
+                session.add(SwapRequest(
+                    duty_assignment_id=a.id,
+                    duty_date=a.start_date,
+                    requesting_soldier_id=s_admin.id,
+                    status=status,
+                    reason=reason,
+                    **extra,
+                ))
 
         session.commit()
         import sys
@@ -1168,13 +1197,15 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             f"  {len(exemption_types)} exemption types with {sum(len(dts) for _, dts in mappings)} mappings"
         )
         _safe_print(
-            f'  {len(shifts_created)} duty shifts (4 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 4 \u05d0\u05d1\u05d8"\u05e9, 4 \u05d4\u05d2\u05e0"\u05e9, 20 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8, 4 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 4 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 4 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8"\u05e9, 20 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 20 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9)'
+            f'  {len(shifts_created)} duty shifts '
+            f'(8 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 8 \u05d0\u05d1\u05d8"\u05e9, 8 \u05d4\u05d2\u05e0"\u05e9, 40 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8, '
+            f'8 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 8 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 8 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8"\u05e9, 40 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9)'
         )
         if with_assignments:
             _safe_print(f"  {shift_assignments} primary duty assignments")
             _safe_print(f"  {reserve_count_total} reserve assignments")
             _safe_print(f"  {links_created} reserve-to-primary links")
-            _safe_print("  13 swap requests (4 open, 4 pending approval, 3 applied, 1 rejected, 1 cancelled)")
+            _safe_print("  21+ swap requests incl. 6 for מפמר פסיפס (2 open, 2 pending, 1 applied, 1 rejected)")
         else:
             _safe_print("  0 shift assignments (pass --with-assignments to include)")
         _safe_print(f"  1 invite code")

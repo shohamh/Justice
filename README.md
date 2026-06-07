@@ -129,36 +129,28 @@ so migrations are always applied on container start.
 > at build time. If you change that value in `.env`, run
 > `docker-compose up --build frontend` to rebuild.
 
-### Option B — On-host dev (hot reload)
+### Option B — Native dev with hot reload (recommended for Windows)
 
 Prerequisites: **Docker**, **Python 3.12 + [uv](https://docs.astral.sh/uv/)**,
-**Node 20 + [pnpm](https://pnpm.io/) 9**. Windows-specific gotchas are in
-[developers.md](docs/onboarding/developers.md).
+**Node 20 + [pnpm](https://pnpm.io/) 9**.
 
-Update `.env` so the DB URLs point to `localhost` instead of `db`:
-```
-DATABASE_URL=postgresql+psycopg://app:app_pw@localhost:5432/cod2
-DB_ADMIN_URL=postgresql+psycopg://db_admin:db_admin_pw@localhost:5432/cod2
+```powershell
+.\dev.ps1        # backend + frontend + Telegram bot
+.\dev.ps1 -NoBot # skip the bot
 ```
 
-```bash
-# 1. Database only
-docker-compose up -d db
-
-# 2. Backend: install, migrate, bootstrap, run with hot reload
-cd backend
-uv sync --extra dev
-uv run alembic upgrade head
-uv run python -m app.scripts.bootstrap
-uv run uvicorn app.main:app --reload --port 8000
-
-# 3. Frontend (in a second terminal)
-cd frontend
-pnpm install
-pnpm dev
-```
+That's it. The script handles everything in one terminal window:
+- Keeps Postgres in Docker, runs backend/frontend/bot natively
+- Stops any running Docker app containers (frees ports 8000 / 5173)
+- Waits for DB health, runs Alembic migrations automatically
+- Streams all logs with colored `[backend]` / `[frontend]` / `[bot]` prefixes
+- **Ctrl+C** stops all services cleanly
 
 Open <http://localhost:5173>.
+
+> **Why not `docker compose up`?** Docker Desktop on Windows doesn't reliably
+> forward filesystem events into containers, so Vite HMR and uvicorn `--reload`
+> miss file saves. Running natively fixes this entirely.
 
 ### Seed demo data (optional)
 
@@ -182,10 +174,16 @@ account list. **Seed data is for development only.**
 
 ## Common commands
 
+```powershell
+# Dev stack (recommended — runs natively for reliable hot reload)
+.\dev.ps1        # backend + frontend + bot, all in one terminal
+.\dev.ps1 -NoBot # skip the bot
+```
+
 ```bash
-# Docker Compose
-docker-compose up --build            # start everything (db + backend + frontend)
-docker-compose up -d db              # start db only (for on-host dev)
+# Docker Compose (DB only, or full-Docker option)
+docker-compose up --build            # start everything in Docker
+docker-compose up -d db              # start db only (used by dev.ps1)
 docker-compose exec backend <cmd>    # run a command inside the backend container
 docker-compose down                  # stop all services
 

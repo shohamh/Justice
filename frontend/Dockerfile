@@ -1,3 +1,13 @@
+# --- Dev stage: Vite HMR dev server (used by docker-compose)
+FROM node:20-alpine AS dev
+RUN npm install -g pnpm@9
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+EXPOSE 5173
+CMD ["pnpm", "dev"]
+
+# --- Production build stage
 FROM node:20-alpine AS build
 
 ARG VITE_API_BASE=http://localhost:8000/api
