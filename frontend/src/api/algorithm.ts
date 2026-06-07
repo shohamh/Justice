@@ -71,6 +71,17 @@ export interface SoldierExplanation {
   tiebreaker_note: string | null;
   global_before: { min_gap: number; norm_variance: number };
   global_after: { min_gap: number; norm_variance: number };
+  // Enriched fields for redesigned explanation modal
+  score_at_assignment?: number | null;
+  eligible_count?: number;
+  soldier_rank?: number;
+  constraint_count?: number;
+  ranked_candidates?: Array<{
+    soldier_id: string;
+    full_name: string;
+    score: number | null;
+    reason_excluded: string | null;
+  }>;
 }
 
 export interface CandidateInfo {
