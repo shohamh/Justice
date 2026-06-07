@@ -809,3 +809,29 @@ class PasswordResetToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+
+class ForcedCallup(Base):
+    __tablename__ = "forced_callups"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    initiator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    pulled_soldier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    original_assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    pull_date: Mapped[date] = mapped_column(Date)
+    replacement_soldier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    replacement_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, default=None
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "approved", "rejected", name="forced_callup_status"),
+        default="pending",
+    )
+    approver_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, default=None)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    callup_multiplier: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("2.0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
