@@ -35,6 +35,7 @@ class TransparencyRow(BaseModel):
     cumulative_score: Decimal
     score_per_day: Decimal
     normalised_score: Decimal
+    is_globally_exempted: bool = False
 
 
 class PerTypeRow(BaseModel):
@@ -79,6 +80,26 @@ def transparency(
     return [TransparencyRow(**row) for row in svc.transparency_rows(session)]
 
 
+def _dfs_order(nodes_by_parent: dict[uuid.UUID | None, list[HierarchyNode]], parent_id: uuid.UUID | None = None) -> list[uuid.UUID]:
+    result: list[uuid.UUID] = []
+    for node in nodes_by_parent.get(parent_id, []):
+        result.append(node.id)
+        result.extend(_dfs_order(nodes_by_parent, node.id))
+    return result
+
+
+def _node_path(node_id: uuid.UUID | None, nodes_by_id: dict[uuid.UUID, HierarchyNode], sep: str = " / ") -> str:
+    parts: list[str] = []
+    nid = node_id
+    while nid:
+        node = nodes_by_id.get(nid)
+        if not node:
+            break
+        parts.append(node.name)
+        nid = node.parent_id
+    return sep.join(reversed(parts))
+
+
 @router.get("/transparency/export")
 def transparency_export(
     node_id: uuid.UUID | None = None,
@@ -86,24 +107,42 @@ def transparency_export(
     user: Soldier = Depends(require_password_changed),
 ) -> StreamingResponse:
     rows = svc.transparency_rows(session)
+    all_nodes = session.execute(select(HierarchyNode)).scalars().all()
 
     if node_id is not None:
-        all_nodes = session.execute(select(HierarchyNode)).scalars().all()
         node_ids_in_db = {n.id for n in all_nodes}
         if node_id not in node_ids_in_db:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
         subtree_node_ids = {n.id for n in all_nodes if node_id in n.path_ids}
         rows = [r for r in rows if r["node_id"] in subtree_node_ids]
 
+    # Build DFS-ordered node list
+    nodes_by_parent: dict[uuid.UUID | None, list[HierarchyNode]] = {}
+    for n in all_nodes:
+        nodes_by_parent.setdefault(n.parent_id, []).append(n)
+    # Sort children alphabetically for deterministic output
+    for children in nodes_by_parent.values():
+        children.sort(key=lambda n: n.name)
+
+    ordered_node_ids = _dfs_order(nodes_by_parent)
+    node_order = {nid: i for i, nid in enumerate(ordered_node_ids)}
+
+    # Sort rows by node DFS order, then by soldier name within each node
+    rows.sort(key=lambda r: (node_order.get(r["node_id"], 9999), r["full_name"]))
+
+    # Build nodes_by_id for path lookup
+    nodes_by_id: dict[uuid.UUID, HierarchyNode] = {n.id: n for n in all_nodes}
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "חיילים"
     ws.append([
-        "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
+        "יחידה / תת-יחידה", "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
         "כמות משמרות", "ניקוד מצטבר", "ניקוד ליום", "ניקוד מנורמל",
     ])
     for r in rows:
         ws.append([
+            _node_path(r["node_id"], nodes_by_id),
             r["full_name"],
             r["node_name"],
             str(r["enrolled_at"]),

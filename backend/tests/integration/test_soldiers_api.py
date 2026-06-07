@@ -96,6 +96,20 @@ def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
 
 
 from app.db.models import TelegramLink
+from datetime import date
+
+
+def test_patch_enrolled_at(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="6000001", role="admin")
+    target = create_soldier(admin_session, personal_number="6100001")
+    admin_session.commit()
+    resp = client.patch(
+        f"/api/soldiers/{target.id}",
+        json={"enrolled_at": "2024-01-15"},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["enrolled_at"] == "2024-01-15"
 
 
 def test_list_soldiers_telegram_linked_false_by_default(client: TestClient, admin_session: Session):

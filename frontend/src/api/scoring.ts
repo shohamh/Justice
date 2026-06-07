@@ -14,6 +14,7 @@ export interface TransparencyRow {
   cumulative_score: string;
   score_per_day: string;
   normalised_score: string;
+  is_globally_exempted: boolean;
 }
 
 export interface Breakdown {

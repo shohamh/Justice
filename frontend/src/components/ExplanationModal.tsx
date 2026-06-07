@@ -9,6 +9,21 @@ import {
 } from "../api/algorithm";
 import { DataTable, type ColDef } from "./DataTable";
 
+interface RankedCandidate {
+  soldier_id: string;
+  full_name: string;
+  score: number | null;
+  reason_excluded: string | null;
+}
+
+interface EnrichedSoldierExplanation extends SoldierExplanation {
+  score_at_assignment: number | null;
+  eligible_count: number;
+  soldier_rank: number;
+  constraint_count: number;
+  ranked_candidates: RankedCandidate[];
+}
+
 interface Props {
   jobId?: string;          // optional — if omitted, uses direct lookup
   assignmentId: string;
@@ -17,6 +32,10 @@ interface Props {
 
 function isDmExplanation(e: SoldierExplanation | DmExplanation): e is DmExplanation {
   return "candidates" in e;
+}
+
+function isEnriched(e: SoldierExplanation): e is EnrichedSoldierExplanation {
+  return "eligible_count" in e;
 }
 
 export default function ExplanationModal({ jobId, assignmentId, onClose }: Props) {
@@ -46,46 +65,19 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 max-w-lg w-full mx-4 space-y-4 text-sm max-h-[90vh] overflow-y-auto"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">{t("algorithm.why_button")}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl">
-            ✕
-          </button>
+        <div className="flex justify-between items-center">
+          <h3 className="text-base font-semibold">{t("algorithm.why_button")}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         {loading && <p className="text-gray-500">{t("app.loading")}</p>}
         {error && <p className="text-red-500">{error}</p>}
 
-        {data && !isDmExplanation(data) && (
-          <div className="space-y-3 text-sm">
-            <p>{t("algorithm.blocked_count", { count: data.blocked_count })}</p>
-            {data.norm_score_before !== null && (
-              <p>
-                {t("algorithm.norm_before")}:{" "}
-                <strong>{data.norm_score_before?.toFixed(3)}</strong>
-              </p>
-            )}
-            {data.norm_score_after !== null && (
-              <p>
-                {t("algorithm.norm_after")}:{" "}
-                <strong>{data.norm_score_after?.toFixed(3)}</strong>
-              </p>
-            )}
-            <p>
-              {t("algorithm.min_gap_before")}:{" "}
-              <strong>{data.global_before?.min_gap}</strong>
-            </p>
-            <p>
-              {t("algorithm.min_gap_after")}:{" "}
-              <strong>{data.global_after?.min_gap}</strong>
-            </p>
-          </div>
-        )}
-
+        {/* DM view — full candidate table (unchanged) */}
         {data && isDmExplanation(data) && (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
@@ -144,6 +136,73 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
             )}
           </div>
         )}
+
+        {/* Soldier view — redesigned */}
+        {data && !isDmExplanation(data) && (() => {
+          const enriched = isEnriched(data) ? data : null;
+
+          if (!enriched || enriched.eligible_count === 0) {
+            return (
+              <p className="text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-3">
+                תורנות זו שובצה ידנית — אין הסבר אלגוריתמי.
+              </p>
+            );
+          }
+
+          return (
+            <>
+              {/* Summary banner */}
+              <div className="bg-indigo-50 dark:bg-indigo-950 rounded p-3 font-medium text-indigo-700 dark:text-indigo-300">
+                קיבלת תורנות זו כי היה לך הניקוד הנמוך ביותר מבין {enriched.eligible_count} חיילים כשירים בתאריך זה.
+              </div>
+
+              {/* Standing table */}
+              <div>
+                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">המצב שלך בעת השיבוץ:</p>
+                <table className="w-full text-xs border-collapse">
+                  <tbody>
+                    <tr className="border-b dark:border-gray-700">
+                      <td className="py-1 text-gray-500 w-40">ניקוד מצטבר</td>
+                      <td className="py-1 font-medium">
+                        {enriched.score_at_assignment != null ? enriched.score_at_assignment.toFixed(3) : "—"}
+                      </td>
+                    </tr>
+                    <tr className="border-b dark:border-gray-700">
+                      <td className="py-1 text-gray-500">דירוג בין כשירים</td>
+                      <td className="py-1 font-medium">{enriched.soldier_rank} / {enriched.eligible_count}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1 text-gray-500">אילוצים פעילים</td>
+                      <td className="py-1 font-medium">{enriched.constraint_count === 0 ? "אין" : enriched.constraint_count}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Rejected candidates */}
+              {enriched.ranked_candidates.length > 0 && (
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">מדוע אחרים לא נבחרו:</p>
+                  <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                    {enriched.ranked_candidates.map((c) => (
+                      <li key={c.soldier_id} className="flex gap-2">
+                        <span className="text-gray-400">•</span>
+                        <span>
+                          <span className="font-medium">{c.full_name}</span>
+                          {c.reason_excluded
+                            ? ` — ${c.reason_excluded}`
+                            : c.score != null
+                              ? ` — ניקוד גבוה יותר (${c.score.toFixed(3)})`
+                              : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

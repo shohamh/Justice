@@ -38,6 +38,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
+  const [enrolledAt, setEnrolledAt] = useState(soldier.enrolled_at ?? "");
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -69,10 +70,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null } = {};
+    const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null } = {};
     if (fullName !== soldier.full_name) data.full_name = fullName;
     if (phone !== (soldier.phone ?? "")) data.phone = phone || null;
     if (hierarchyNodeId !== (soldier.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
+    if (enrolledAt !== (soldier.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
     if (Object.keys(data).length > 0) {
       await updateSoldier(soldier.id, data);
     }
@@ -200,6 +202,20 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
                 </select>
               </label>
+              {canManage && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {t("transparency.enrolled_at")}
+                  </label>
+                  <input
+                    type="date"
+                    className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={enrolledAt}
+                    onChange={(e) => setEnrolledAt(e.target.value)}
+                    data-testid="enrolled-at-input"
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
                 <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={saving} data-testid="edit-soldier-submit">{t("duty_config.save")}</button>

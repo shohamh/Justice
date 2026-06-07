@@ -255,11 +255,41 @@ def _explanation_response(
         return payload
 
     # Soldier-redacted view
-    blocked_count = sum(1 for c in payload.get("candidates", []) if c.get("blocked"))
+    candidates = payload.get("candidates", [])
+    blocked_count = sum(1 for c in candidates if c.get("blocked"))
     my_candidate = next(
-        (c for c in payload.get("candidates", []) if c["soldier_id"] == str(user.id)),
+        (c for c in candidates if c["soldier_id"] == str(user.id)),
         None,
     )
+
+    # Build enriched soldier view for the redesigned explanation modal
+    eligible = [c for c in candidates if not c.get("blocked")]
+    eligible_sorted = sorted(eligible, key=lambda c: (c.get("pre_norm_score") or 0))
+    eligible_count = len(eligible)
+    my_id = str(user.id)
+    soldier_rank = next(
+        (i + 1 for i, c in enumerate(eligible_sorted) if c["soldier_id"] == my_id),
+        1,
+    )
+    ranked_candidates = [
+        {
+            "soldier_id": c["soldier_id"],
+            "full_name": c.get("soldier_name") or c["soldier_id"][:8],
+            "score": c.get("pre_norm_score"),
+            "reason_excluded": None,
+        }
+        for c in eligible_sorted
+        if c["soldier_id"] != my_id
+    ][:5]
+    for c in candidates:
+        if c.get("blocked") and len(ranked_candidates) < 5:
+            ranked_candidates.append({
+                "soldier_id": c["soldier_id"],
+                "full_name": c.get("soldier_name") or c["soldier_id"][:8],
+                "score": c.get("pre_norm_score"),
+                "reason_excluded": ", ".join(c.get("blocking_constraints", [])) or "חסום",
+            })
+
     return {
         "assigned": True,
         "norm_score_before": my_candidate.get("pre_norm_score") if my_candidate else None,
@@ -268,6 +298,12 @@ def _explanation_response(
         "tiebreaker_note": payload.get("tiebreaker_note"),
         "global_before": payload.get("global_before", {}),
         "global_after": payload.get("global_after", {}),
+        # Enriched fields for the redesigned explanation modal
+        "score_at_assignment": my_candidate.get("pre_norm_score") if my_candidate else None,
+        "eligible_count": eligible_count,
+        "soldier_rank": soldier_rank,
+        "constraint_count": len(my_candidate.get("blocking_constraints", [])) if my_candidate else 0,
+        "ranked_candidates": ranked_candidates,
     }
 
 

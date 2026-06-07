@@ -15,6 +15,7 @@ from app.db.models import (
     DutyDismissal,
     DutyType,
     ExemptionDutyTypeMap,
+    ExemptionType,
     HierarchyNode,
     ScoreAdjustment,
     Soldier,
@@ -250,12 +251,37 @@ def normalised_score(session: Session, *, soldier: Soldier) -> Decimal:
     )
 
 
+def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
+    """Return the set of soldier IDs who have an active global exemption today."""
+    import sqlalchemy as sa
+
+    today = date.today()
+    exemptions = (
+        session.execute(
+            select(SoldierExemption)
+            .join(ExemptionType, SoldierExemption.exemption_type_id == ExemptionType.id)
+            .where(
+                ExemptionType.is_global.is_(True),
+                SoldierExemption.start_date <= today,
+                sa.or_(
+                    SoldierExemption.end_date.is_(None),
+                    SoldierExemption.end_date >= today,
+                ),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {ex.soldier_id for ex in exemptions}
+
+
 def transparency_rows(session: Session) -> list[dict[str, Any]]:
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     duty_scores = duty_score_by_soldier(session)
     adj_scores = adjustments_by_soldier(session)
     shift_counts = shift_count_by_soldier(session)
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
+    exempted_ids = globally_exempted_soldier_ids(session)
     rows: list[dict[str, Any]] = []
     for s in soldiers:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
@@ -275,6 +301,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
                 "service_type": inferred_service_type(s),
                 "cumulative_score": cum,
                 "score_per_day": cum / Decimal(ad),
+                "is_globally_exempted": s.id in exempted_ids,
             }
         )
     if rows:
