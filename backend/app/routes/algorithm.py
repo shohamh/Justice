@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -15,6 +15,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
+    AuditLog,
     DutyAssignment,
     DutyReserveLink,
     DutyShift,
@@ -622,26 +623,38 @@ def bulk_accept_proposals(
 ) -> dict[str, int]:
     _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    assignments = session.execute(
-        select(DutyAssignment).where(
+
+    # Bulk UPDATE — one statement regardless of count
+    result = session.execute(
+        update(DutyAssignment)
+        .where(
             DutyAssignment.id.in_(body.assignment_ids),
             DutyAssignment.status == "algorithm_draft",
         )
-    ).scalars().all()
-    for a in assignments:
-        a.status = "published"
-        write_audit(
-            session,
-            actor_id=user.id,
-            action="algorithm.proposal.accept",
-            entity_type="duty_assignment",
-            entity_id=a.id,
-            before={"status": "algorithm_draft"},
-            after={"status": "published"},
-            context={"job_id": str(job_id)},
+        .values(status="published")
+        .returning(DutyAssignment.id)
+    )
+    accepted_ids = [row[0] for row in result]
+
+    if accepted_ids:
+        # Bulk INSERT into audit_log — one statement regardless of count
+        session.execute(
+            insert(AuditLog).values([
+                {
+                    "actor_id": user.id,
+                    "action": "algorithm.proposal.accept",
+                    "entity_type": "duty_assignment",
+                    "entity_id": aid,
+                    "before": {"status": "algorithm_draft"},
+                    "after": {"status": "published"},
+                    "context": {"job_id": str(job_id)},
+                }
+                for aid in accepted_ids
+            ])
         )
+
     session.commit()
-    return {"accepted": len(assignments)}
+    return {"accepted": len(accepted_ids)}
 
 
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/reject", status_code=status.HTTP_200_OK)

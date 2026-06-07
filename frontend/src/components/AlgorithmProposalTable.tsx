@@ -26,6 +26,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [resetDraftsMsg, setResetDraftsMsg] = useState<string | null>(null);
   const [resetPublishedLoading, setResetPublishedLoading] = useState(false);
   const [resetDraftsLoading, setResetDraftsLoading] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
   const soldierLink = (id: string): React.ReactNode => {
@@ -70,14 +71,19 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   async function handleApproveSelected() {
     const toApprove = job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p));
     if (toApprove.length === 0) return;
-    await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
-    onProposalUpdate({
-      ...job,
-      proposals: job.proposals.map(p =>
-        selectedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "published" } : p
-      ),
-    });
-    setSelectedIds(new Set());
+    setApproving(true);
+    try {
+      await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
+      onProposalUpdate({
+        ...job,
+        proposals: job.proposals.map(p =>
+          selectedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "published" } : p
+        ),
+      });
+      setSelectedIds(new Set());
+    } finally {
+      setApproving(false);
+    }
   }
 
   async function handleResetPublished() {
@@ -210,10 +216,18 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
             <button
               type="button"
               onClick={handleApproveSelected}
-              disabled={selectedIds.size === 0}
-              className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40"
+              disabled={selectedIds.size === 0 || approving}
+              className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40 flex items-center gap-1.5"
             >
-              {`אשר ופרסם (הפוך לרשמי) (${selectedIds.size})`}
+              {approving && (
+                <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              )}
+              {approving
+                ? `מפרסם... (${selectedIds.size})`
+                : `אשר ופרסם (הפוך לרשמי) (${selectedIds.size})`}
             </button>
           </div>
           <DataTable
