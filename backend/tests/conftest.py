@@ -84,14 +84,33 @@ def _apply_schema(db_admin_url: str) -> None:
     command.upgrade(cfg, "head")
 
 
+_SYSTEM_SETTINGS_DEFAULTS = [
+    ("auth.session_minutes", "15"),
+    ("auth.refresh_days", "30"),
+    ("auth.login_rate_limit_per_5m", "5"),
+    ("eligibility.mitvahim_months", "6"),
+    ("eligibility.alal_months", "3"),
+]
+
+
 @pytest.fixture(autouse=True)
 def _truncate_tables(db_admin_url: str) -> Iterator[None]:
     """Wipe all data rows before each test so personal_number and other unique constraints
-    never collide across test functions, even when they use the same hardcoded values."""
+    never collide across test functions, even when they use the same hardcoded values.
+    Re-seeds system_settings defaults (set by migrations) after truncation."""
     engine = create_engine(db_admin_url, future=True)
     table_list = ", ".join(_ALL_DATA_TABLES)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
+        # Re-apply migration-seeded defaults for system_settings
+        for key, value in _SYSTEM_SETTINGS_DEFAULTS:
+            conn.execute(
+                text(
+                    "INSERT INTO system_settings (key, value) VALUES (:key, :value::jsonb)"
+                    " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+                ),
+                {"key": key, "value": value},
+            )
     engine.dispose()
     yield
 
