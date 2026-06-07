@@ -39,7 +39,7 @@ export default function CommandDashboardPage() {
   const [upcomingData, setUpcomingData] = useState<UpcomingDay[] | null>(null);
   const [alertsData, setAlertsData] = useState<Alert[] | null>(null);
   const [approvalsData, setApprovalsData] = useState<ApprovalItem[] | null>(null);
-  const [activePanel, setActivePanel] = useState<string>("summary");
+  const [_activePanel, setActivePanel] = useState<string>("summary");
 
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([

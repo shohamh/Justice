@@ -192,7 +192,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     <div className="space-y-3" dir="rtl">
       {isDraft ? (
         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-700 dark:text-amber-300 font-medium">
-          ⚠️ טיוטה — תוצאות לא פורסמו. לחץ "אשר ופרסם (הפוך לרשמי)" להחלת השיבוצים.
+          {"⚠️ טיוטה — תוצאות לא פורסמו. לחץ \"אשר ופרסם (הפוך לרשמי)\" להחלת השיבוצים."}
         </div>
       ) : (
         <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-700 rounded p-3 text-sm text-green-700 dark:text-green-300 font-medium">

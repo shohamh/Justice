@@ -79,7 +79,7 @@ export function DutyManagementContent() {
       await refresh(soldierId);
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setError(detail ? (t(`errors.${detail}` as any) || detail) : t("errors.generic"));
+      setError(detail ? (t(`errors.${detail}` as Parameters<typeof t>[0]) || detail) : t("errors.generic"));
     }
   }
 

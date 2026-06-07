@@ -82,7 +82,7 @@ export default function MyRequestsPage() {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
         const code = axiosErr.response?.data?.detail;
-        setError(t(`errors.${code}` as any) || t("errors.generic"));
+        setError(t(`errors.${code}` as Parameters<typeof t>[0]) || t("errors.generic"));
       } else {
         setError(t("errors.generic"));
       }
@@ -119,7 +119,7 @@ export default function MyRequestsPage() {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
         const code = axiosErr.response?.data?.detail;
-        setErError(t(`errors.${code}` as any) || t("errors.generic"));
+        setErError(t(`errors.${code}` as Parameters<typeof t>[0]) || t("errors.generic"));
       } else {
         setErError(t("errors.generic"));
       }
