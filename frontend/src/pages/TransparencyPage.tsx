@@ -482,6 +482,7 @@ export default function TransparencyPage() {
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
+              testId="transparency-table"
             />
             {breakdownOpen && breakdown && (
               <div data-testid="own-breakdown" className="border-t pt-3 text-sm">

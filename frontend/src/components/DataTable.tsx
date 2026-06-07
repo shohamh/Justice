@@ -27,6 +27,8 @@ interface DataTableProps<T> {
   className?: string;
   rowClassName?: (row: T) => string;
   emptyMessage?: string;
+  testId?: string;
+  rowTestId?: (row: T) => string;
 }
 
 // ─── Column filter dropdown ───────────────────────────────────────────────────
@@ -150,6 +152,8 @@ export function DataTable<T>({
   className,
   rowClassName,
   emptyMessage = "—",
+  testId,
+  rowTestId,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -219,7 +223,7 @@ export function DataTable<T>({
   });
 
   return (
-    <div className={className}>
+    <div className={className} data-testid={testId}>
       <input
         value={globalFilter}
         onChange={(e) => setGlobalFilter(e.target.value)}
@@ -281,6 +285,7 @@ export function DataTable<T>({
               <tr
                 key={row.id}
                 className={rowClassName ? rowClassName(row.original) : undefined}
+                data-testid={rowTestId ? rowTestId(row.original) : undefined}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="border dark:border-gray-600 px-2 py-1">
