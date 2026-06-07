@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import AlertBanners from "../components/dashboard/AlertBanners";
 import DutyCalendarWidget from "../components/dashboard/DutyCalendarWidget";
+import DutyDetailModal from "../components/dashboard/DutyDetailModal";
 import UpcomingDutiesWidget from "../components/dashboard/UpcomingDutiesWidget";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
@@ -30,6 +31,7 @@ export default function HomePage() {
   const [duties, setDuties] = useState<EffectiveDuty[]>([]);
   const [typeNames, setTypeNames] = useState<Record<string, string>>({});
   const [locationNames, setLocationNames] = useState<Record<string, string>>({});
+  const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
   const [mySwaps, setMySwaps] = useState<SwapRequest[]>([]);
   const [pendingEnrollments, setPendingEnrollments] = useState<EnrollmentRequestDTO[]>([]);
   const [pendingSwaps, setPendingSwaps] = useState<SwapRequest[]>([]);
@@ -37,6 +39,16 @@ export default function HomePage() {
   const [transparencyRows, setTransparencyRows] = useState<TransparencyRow[]>([]);
 
   const canApprove = user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin";
+
+  function handleOpenDuty(duty: EffectiveDuty) {
+    setSelectedDuty(duty);
+  }
+
+  function handleRequestSwap(duty: EffectiveDuty) {
+    setSelectedDuty(null);
+    // navigate to swap creation — link to swaps page with assignment id
+    window.location.href = `/swaps?new=${duty.assignment_id}`;
+  }
   const myRow = useMemo(() => transparencyRows.find((r) => r.soldier_id === user?.id) ?? null, [transparencyRows, user]);
 
   useEffect(() => {
@@ -86,12 +98,13 @@ export default function HomePage() {
           settings={settings}
         />
 
-        <DutyCalendarWidget duties={duties} typeNames={typeNames} />
+        <DutyCalendarWidget duties={duties} typeNames={typeNames} onOpenDuty={handleOpenDuty} />
 
         <UpcomingDutiesWidget
           duties={duties}
           typeNames={typeNames}
           locationNames={locationNames}
+          onOpenDuty={handleOpenDuty}
         />
 
         <SwapStatusWidget swaps={mySwaps} />
@@ -111,6 +124,14 @@ export default function HomePage() {
           allRows={transparencyRows}
         />
       </div>
+
+      <DutyDetailModal
+        duty={selectedDuty}
+        typeNames={typeNames}
+        locationNames={locationNames}
+        onClose={() => setSelectedDuty(null)}
+        onRequestSwap={handleRequestSwap}
+      />
     </Layout>
   );
 }
