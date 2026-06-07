@@ -321,6 +321,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         {tab === "duty_history" && (
           <DutyHistoryPanel
             soldierId={soldier.id}
+            soldierName={soldier.full_name}
             canManage={canManage}
             isActive={tab === "duty_history"}
           />

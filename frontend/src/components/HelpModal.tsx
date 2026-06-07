@@ -105,20 +105,18 @@ function AlgorithmTab() {
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך האלגוריתם מחלק תורנויות?</h3>
       <p className="text-gray-700 dark:text-gray-300">
-        האלגוריתם מחלק תורנויות באופן אוטומטי ועובר על כל משמרת לפי הסדר:
+        האלגוריתם פותר את <strong>כל המשמרות בבת אחת</strong> — לא אחת אחרי השנייה — ומחפש שיבוץ שמכסה את כולן תוך שמירה על כל הכללים:
       </p>
 
       {/* Flow diagram */}
       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
-        <FlowStep icon="📋" text="משמרת ממתינה לשיבוץ" color="gray" />
+        <FlowStep icon="📋" text="כל המשמרות הפתוחות נאספות יחד" color="gray" />
         <Arrow />
-        <FlowStep icon="🔍" text="מוצאים את כל החיילים הכשירים" color="indigo" />
+        <FlowStep icon="🚫" text="לכל משמרת: מסננים חיילים לא כשירים (פטורים, אילוצים, יחידה)" color="amber" />
         <Arrow />
-        <FlowStep icon="🚫" text="מסננים: פטורים, אילוצים, דרישות המשמרת" color="amber" />
+        <FlowStep icon="⚖️" text="מחפשים שיבוץ שמכסה את הכל ועומד בכל המגבלות" color="blue" />
         <Arrow />
-        <FlowStep icon="📊" text="ממיינים לפי ניקוד מנורמל — הנמוך ביותר קודם" color="blue" />
-        <Arrow />
-        <FlowStep icon="🎲" text="מגרילים מתוך קבוצת המועמדים העליונים" color="indigo" />
+        <FlowStep icon="📊" text="בין פתרונות תקינים — מעדיפים חיילים עם ניקוד מנורמל נמוך" color="indigo" />
         <Arrow />
         <FlowStep icon="✅" text="שיבוץ בוצע!" color="green" />
       </div>
@@ -129,8 +127,9 @@ function AlgorithmTab() {
           { icon: "📊", title: "ניקוד מנורמל", desc: "מי שעשה פחות תורנויות ביחס לאחרים מקבל עדיפות. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
-          { icon: "🔢", title: "מכסת עתודאים", desc: "האלגוריתם שובץ גם עתודאים שיוקפצו לכשהזכאי לא יוכל להגיע." },
-          { icon: "🎲", title: "אקראיות מבוקרת", desc: "כשיש כמה מועמדים בעלי ניקוד דומה — מגרילים ביניהם לשוויון טוב יותר לאורך זמן." },
+          { icon: "🔒", title: "מגבלת הוגנות (K)", desc: "ההפרש בין הניקוד המנורמל הגבוה לנמוך לא יכול לחרוג מ-K. אם אין פתרון — K מוגדל אוטומטית עד שמוצאים שיבוץ." },
+          { icon: "⏱️", title: "מגבלת עומס (T/W)", desc: "חייל לא יכול לקבל יותר מ-T ימי תורנות בכל חלון W ימים ברצף. זה מונע עומס יתר על חייל אחד." },
+          { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
             <span className="text-xl flex-shrink-0">{icon}</span>
@@ -146,9 +145,9 @@ function AlgorithmTab() {
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
         <p className="text-indigo-700 dark:text-indigo-300 text-xs leading-relaxed">
           נניח שיש 3 חיילים: דן (ניקוד מנורמל 0.8), יעל (1.0), ורוני (1.4).
-          משמרת חדשה צריכה מישהו עם תג "חוגרים". דן ורוני מתאימים — יעל פטורה.
-          האלגוריתם ממיין לפי ניקוד: דן (0.8) ← קודם.
-          אם K=3 (עומק הגרלה), הוא מגריל מתוך שני המועמדים: סיכוי גבוה יותר לדן.
+          משמרת חדשה צריכה מישהו — יעל פטורה ממנה.
+          האלגוריתם בוחר מדן ורוני; מכיוון שדן בעל ניקוד נמוך יותר הוא יקבל עדיפות.
+          כעת ההפרש בין רוני (1.4) לדן לאחר השיבוץ ייבדק מול K — אם הוא חורג, האלגוריתם ינסה פתרון אחר.
         </p>
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">

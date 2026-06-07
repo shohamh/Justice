@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,6 +16,8 @@ export interface ColDef<T> {
   cell: (row: T) => React.ReactNode;
   sortValue?: (row: T) => string | number | null | undefined;
   filterValue?: (row: T) => string;
+  /** When true, shows an Excel-style dropdown with checkboxes for unique values in this column. */
+  columnFilter?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -26,6 +28,120 @@ interface DataTableProps<T> {
   rowClassName?: (row: T) => string;
   emptyMessage?: string;
 }
+
+// ─── Column filter dropdown ───────────────────────────────────────────────────
+
+function ColumnFilterDropdown<T>({
+  col,
+  data,
+  selected,
+  onChange,
+}: {
+  col: ColDef<T>;
+  data: T[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const uniqueValues = useMemo(() => {
+    const vals = new Set<string>();
+    for (const row of data) {
+      const v = col.filterValue ? col.filterValue(row) : col.sortValue ? String(col.sortValue(row) ?? "") : "";
+      if (v) vals.add(v);
+    }
+    return [...vals].sort((a, b) => a.localeCompare(b, "he"));
+  }, [data, col]);
+
+  const isFiltered = selected.size > 0 && selected.size < uniqueValues.length;
+  const allSelected = selected.size === 0 || selected.size === uniqueValues.length;
+
+  function toggleAll() {
+    onChange(new Set()); // empty = all
+  }
+
+  function toggle(val: string) {
+    const next = new Set(selected.size === 0 ? uniqueValues : [...selected]);
+    if (next.has(val)) {
+      next.delete(val);
+      if (next.size === uniqueValues.length) onChange(new Set()); // back to "all"
+      else onChange(next);
+    } else {
+      next.add(val);
+      if (next.size === uniqueValues.length) onChange(new Set());
+      else onChange(next);
+    }
+  }
+
+  function isChecked(val: string) {
+    return selected.size === 0 || selected.has(val);
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        title="סנן עמודה"
+        onClick={() => setOpen((o) => !o)}
+        className={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
+          isFiltered
+            ? "border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900"
+            : "border-gray-300 text-gray-400 hover:text-gray-600 dark:border-gray-500 dark:text-gray-500 dark:hover:text-gray-300"
+        }`}
+      >
+        {isFiltered ? "▼●" : "▼"}
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl min-w-32 max-h-56 flex flex-col"
+          style={{ right: 0 }}
+          dir="rtl"
+        >
+          {/* Select all */}
+          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700 text-xs font-medium text-gray-700 dark:text-gray-200">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="accent-indigo-600"
+            />
+            הכל
+          </label>
+          {/* Values list */}
+          <div className="overflow-y-auto">
+            {uniqueValues.map((val) => (
+              <label
+                key={val}
+                className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-xs text-gray-700 dark:text-gray-300"
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked(val)}
+                  onChange={() => toggle(val)}
+                  className="accent-indigo-600"
+                />
+                {val}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main DataTable ───────────────────────────────────────────────────────────
 
 export function DataTable<T>({
   columns,
@@ -38,6 +154,22 @@ export function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [tooltipModal, setTooltipModal] = useState<string | null>(null);
+  // colId → selected values (empty Set = all / no filter)
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+
+  // Apply column-level filters on top of global filter
+  const filteredData = useMemo(() => {
+    return data.filter((row) => {
+      for (const col of columns) {
+        if (!col.columnFilter) continue;
+        const selected = colFilters[col.id];
+        if (!selected || selected.size === 0) continue;
+        const val = col.filterValue ? col.filterValue(row) : col.sortValue ? String(col.sortValue(row) ?? "") : "";
+        if (!selected.has(val)) return false;
+      }
+      return true;
+    });
+  }, [data, columns, colFilters]);
 
   const tanCols: TanColumnDef<T>[] = useMemo(
     () =>
@@ -48,7 +180,6 @@ export function DataTable<T>({
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
-        // accessorFn is required for TanStack to treat column as a data column (enables sorting/filtering)
         accessorFn: col.filterValue
           ? (row: T) => col.filterValue!(row)
           : col.sortValue
@@ -71,7 +202,7 @@ export function DataTable<T>({
   );
 
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns: tanCols,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
@@ -100,17 +231,41 @@ export function DataTable<T>({
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="bg-gray-100 dark:bg-gray-700 text-right">
-              {hg.headers.map((header) => (
-                <th
-                  key={header.id}
-                  className={`border dark:border-gray-600 px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
-                  onClick={header.column.getToggleSortingHandler()}
-                >
-                  <span className="inline-flex items-center gap-1">{flexRender(header.column.columnDef.header, header.getContext())}{(header.column.columnDef.meta as { tooltip?: string })?.tooltip && <button type="button" onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: string }).tooltip!)} className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer">?</button>}</span>
-                  {header.column.getIsSorted() === "asc" && <span aria-hidden> ▲</span>}
-                  {header.column.getIsSorted() === "desc" && <span aria-hidden> ▼</span>}
-                </th>
-              ))}
+              {hg.headers.map((header) => {
+                const colDef = columns.find((c) => c.id === header.id);
+                return (
+                  <th
+                    key={header.id}
+                    className={`border dark:border-gray-600 px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {(header.column.columnDef.meta as { tooltip?: string })?.tooltip && (
+                        <button
+                          type="button"
+                          onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: string }).tooltip!)}
+                          className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
+                        >
+                          ?
+                        </button>
+                      )}
+                      {colDef?.columnFilter && (
+                        <ColumnFilterDropdown
+                          col={colDef}
+                          data={data}
+                          selected={colFilters[colDef.id] ?? new Set()}
+                          onChange={(next) =>
+                            setColFilters((prev) => ({ ...prev, [colDef.id]: next }))
+                          }
+                        />
+                      )}
+                    </span>
+                    {header.column.getIsSorted() === "asc" && <span aria-hidden> ▲</span>}
+                    {header.column.getIsSorted() === "desc" && <span aria-hidden> ▼</span>}
+                  </th>
+                );
+              })}
             </tr>
           ))}
         </thead>

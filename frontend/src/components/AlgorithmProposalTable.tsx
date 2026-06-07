@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlgorithmJob, ProposalRow, acceptProposal, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
+import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import { DataTable, type ColDef } from "./DataTable";
@@ -68,7 +68,14 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
 
   async function handleApproveSelected() {
     const toApprove = job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p));
-    await Promise.all(toApprove.map(p => handleAccept(p)));
+    if (toApprove.length === 0) return;
+    await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
+    onProposalUpdate({
+      ...job,
+      proposals: job.proposals.map(p =>
+        selectedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "published" } : p
+      ),
+    });
     setSelectedIds(new Set());
   }
 

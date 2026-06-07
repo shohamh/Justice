@@ -56,6 +56,64 @@ function TreeNode({
   );
 }
 
+// ─── rank ordering ───────────────────────────────────────────────────────────
+
+const RANK_ORDER: Record<string, number> = {
+  // Enlisted (with and without geresh)
+  "טוראי": 1,
+  'רב"ט': 2, "רבט": 2,
+  "סמל": 3,
+  'סמ"ר': 4, "סמר": 4,
+  'רס"ל': 5, "רסל": 5,
+  'רס"ר': 6, "רסר": 6,
+  'רס"מ': 7, "רסמ": 7,
+  'רס"ב': 8, "רסב": 8,
+  "רנג": 9,
+  // Officers
+  "קמא": 10,
+  "סגמ": 11,
+  "סגן": 12,
+  "קאב": 13,
+  "סרן": 14,
+  'רס"ן': 15, "רסן": 15,
+  'סא"ל': 16, "סאל": 16,
+  'אל"מ': 17, "אלמ": 17,
+  'תא"ל': 18, "תאל": 18,
+  "אלוף": 19,
+  "רב אלוף": 20,
+};
+
+// ─── filter pills ─────────────────────────────────────────────────────────────
+
+type OfficerFilter = "all" | "officer" | "enlisted";
+type ServiceFilter = "all" | "חובה" | "קבע";
+
+function FilterPills<T extends string>({
+  value, onChange, options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  return (
+    <div className="flex gap-1 flex-wrap" dir="rtl">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+            value === o.value
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-indigo-400"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── sub-hierarchy row type ───────────────────────────────────────────────────
 
 interface SubRow {
@@ -83,6 +141,8 @@ export default function TransparencyPage() {
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
+  const [officerFilter, setOfficerFilter] = useState<OfficerFilter>("all");
+  const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
@@ -113,9 +173,19 @@ export default function TransparencyPage() {
   }, [selectedNodeId, flatNodes]);
 
   const visibleRows = useMemo(() => {
-    if (!subtreeIds) return rows;
-    return rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id));
-  }, [rows, subtreeIds]);
+    let filtered = subtreeIds
+      ? rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id))
+      : rows;
+    if (officerFilter === "officer") filtered = filtered.filter((r) => r.is_officer);
+    if (officerFilter === "enlisted") filtered = filtered.filter((r) => !r.is_officer);
+    if (serviceFilter !== "all") filtered = filtered.filter((r) => r.service_type === serviceFilter);
+    // Stamp stable row numbers + pre-computed rank order so sortValue is a plain property lookup
+    return filtered.map((r, i) => ({
+      ...r,
+      _row_num: i + 1,
+      _rank_order: r.rank ? (RANK_ORDER[r.rank] ?? 999) : 999,
+    }));
+  }, [rows, subtreeIds, officerFilter, serviceFilter]);
 
   // ── sub-hierarchy tab: build children map from parent_id (API returns flat list) ──
   const subRows = useMemo((): SubRow[] => {
@@ -182,7 +252,13 @@ export default function TransparencyPage() {
   }
 
   // ── soldiers columns ──
-  const soldierCols: ColDef<TransparencyRow>[] = [
+  type NumberedRow = TransparencyRow & { _row_num: number; _rank_order: number };
+  const soldierCols: ColDef<NumberedRow>[] = [
+    {
+      id: "num", header: "#",
+      cell: (r) => r._row_num,
+      sortValue: (r) => r._row_num,
+    },
     {
       id: "name", header: t("transparency.name"),
       cell: (r) => r.soldier_id === user?.id
@@ -200,7 +276,7 @@ export default function TransparencyPage() {
     {
       id: "rank", header: t("transparency.rank"),
       cell: (r) => r.rank ?? "—",
-      sortValue: (r) => r.rank ?? "",
+      sortValue: (r) => r._rank_order,
       filterValue: (r) => r.rank ?? "",
       columnFilter: true,
     },
@@ -351,6 +427,31 @@ export default function TransparencyPage() {
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
         </div>
+
+        {/* Filter pills (soldiers tab only) */}
+        {tab === 0 && (
+          <div className="flex flex-wrap gap-3 items-center" dir="rtl">
+            <FilterPills<OfficerFilter>
+              value={officerFilter}
+              onChange={setOfficerFilter}
+              options={[
+                { value: "all", label: "קצינים וחוגרים" },
+                { value: "officer", label: "קצינים" },
+                { value: "enlisted", label: "חוגרים" },
+              ]}
+            />
+            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 hidden sm:block" />
+            <FilterPills<ServiceFilter>
+              value={serviceFilter}
+              onChange={setServiceFilter}
+              options={[
+                { value: "all", label: "חובה וקבע" },
+                { value: "חובה", label: "חובה" },
+                { value: "קבע", label: "קבע" },
+              ]}
+            />
+          </div>
+        )}
 
         {/* Tab content */}
         {tab === 0 && (
