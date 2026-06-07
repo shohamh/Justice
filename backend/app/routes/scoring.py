@@ -189,7 +189,7 @@ def transparency_sub_units_export(
             continue
 
         count = len(node_rows)
-        active_rows = [r for r in node_rows if r["cumulative_score"] > Decimal("0")]
+        active_rows = [r for r in node_rows if not r.get("is_globally_exempted")]
         active_count = len(active_rows)
         active_pct = round(active_count / count * 100)
         avg_cumulative = float(sum(r["cumulative_score"] for r in node_rows) / count)

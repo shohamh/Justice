@@ -1,6 +1,9 @@
+from datetime import date
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.db.models import TelegramLink
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -93,10 +96,6 @@ def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
     assert r.status_code == 204
     admin_session.expire_all()
     assert admin_session.get(type(target), target.id).left_at is not None
-
-
-from app.db.models import TelegramLink
-from datetime import date
 
 
 def test_patch_enrolled_at(client: TestClient, admin_session: Session):

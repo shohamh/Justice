@@ -14,6 +14,7 @@ from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed, require_roles
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
+from app.audit.writer import write_audit
 from app.services import soldiers as svc
 from app.services import scoring as scoring_svc
 from app.services.soldiers import (
@@ -399,7 +400,17 @@ def update(
         hierarchy_node_id=body.hierarchy_node_id, actor_id=user.id
     )
     if body.enrolled_at is not None:
+        old_enrolled_at = s.enrolled_at
         s.enrolled_at = body.enrolled_at
+        write_audit(
+            session,
+            actor_id=user.id,
+            action="soldier.enrolled_at_update",
+            entity_type="soldier",
+            entity_id=s.id,
+            before={"enrolled_at": old_enrolled_at.isoformat() if old_enrolled_at else None},
+            after={"enrolled_at": body.enrolled_at.isoformat()},
+        )
     session.commit()
     session.refresh(s)
     return _out(s)

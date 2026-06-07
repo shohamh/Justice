@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -253,8 +253,6 @@ def normalised_score(session: Session, *, soldier: Soldier) -> Decimal:
 
 def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
     """Return the set of soldier IDs who have an active global exemption today."""
-    import sqlalchemy as sa
-
     today = date.today()
     exemptions = (
         session.execute(
@@ -263,7 +261,7 @@ def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
             .where(
                 ExemptionType.is_global.is_(True),
                 SoldierExemption.start_date <= today,
-                sa.or_(
+                or_(
                     SoldierExemption.end_date.is_(None),
                     SoldierExemption.end_date >= today,
                 ),
