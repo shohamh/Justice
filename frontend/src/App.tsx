@@ -25,6 +25,7 @@ import TelegramSetupPage from "./pages/TelegramSetupPage";
 import AssignmentPage from "./pages/planning/AssignmentPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
+import HakpazaPage from "./pages/HakpazaPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -71,6 +72,7 @@ export default function App() {
             <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
             {/* New admin settings page */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
+            <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
             {/* Redirects from old routes */}
             <Route path="/duty-management" element={<Navigate to="/planning/assignment?tab=0" replace />} />
             <Route path="/algorithm" element={<Navigate to="/planning/assignment?tab=1" replace />} />

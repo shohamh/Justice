@@ -11,6 +11,7 @@ import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
+import { getPendingHakpazaCount } from "../api/hakpaza";
 import NavSheet from "./NavSheet";
 
 interface NavTab {
@@ -38,13 +39,14 @@ export default function UnifiedNav() {
   useEffect(() => {
     if (!canApprove) return;
     void (async () => {
-      const [c, e, f, enroll] = await Promise.all([
+      const [c, e, f, enroll, hk] = await Promise.all([
         getPendingCount().catch(() => 0),
         getPendingExemptionCount().catch(() => 0),
         getPendingFieldUpdateCount().catch(() => 0),
         listPendingEnrollments().then((r) => r.length).catch(() => 0),
+        getPendingHakpazaCount().catch(() => 0),
       ]);
-      setPendingCount(c + e + f + enroll);
+      setPendingCount(c + e + f + enroll + hk);
     })();
   }, [canApprove, location.pathname]);
 
@@ -103,6 +105,7 @@ export default function UnifiedNav() {
     { label: t("nav.team_hierarchy"), to: "/team" },
     { label: t("nav.approvals"), to: "/approvals", badge: pendingCount },
     { label: t("nav.command_dashboard"), to: "/command-dashboard" },
+    { label: "הקפצה פיקודית", to: "/commander/hakpaza" },
   ];
 
   const planningItems = [
