@@ -33,8 +33,17 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
             {upcoming.map((d) => (
               <tr
                 key={d.assignment_id}
+                role="button"
+                tabIndex={0}
                 className="border-b dark:border-gray-600 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={() => onOpenDuty(d)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenDuty(d);
+                  }
+                }}
+                title="פתח פרטים"
               >
                 <td className="py-2">{formatDateRange(d.start_date, d.end_date)}</td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
