@@ -23,12 +23,14 @@ from app.routes import commander_dashboard as commander_dashboard_routes
 from app.routes import shifts as shift_routes
 from app.routes import shift_templates as shift_template_routes
 from app.routes import swaps as swap_routes
+from app.routes import swaps_eligibility as swaps_eligibility_routes
 from app.routes import reserves as reserve_routes
 from app.routes import notifications as notification_routes
 from app.routes import dm_scope as dm_scope_routes
 from app.routes import enrollment as enrollment_routes
 from app.routes import invite_codes as invite_code_routes
 from app.routes import system_settings as system_settings_routes
+from app.routes import hakpaza as hakpaza_routes
 from app.settings import get_settings
 
 
@@ -64,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(shift_routes.router, prefix="/api")
     app.include_router(shift_template_routes.router, prefix="/api")
     app.include_router(swap_routes.router, prefix="/api")
+    app.include_router(swaps_eligibility_routes.router, prefix="/api")
     app.include_router(reserve_routes.router, prefix="/api")
     app.include_router(commander_dashboard_routes.router, prefix="/api")
     app.include_router(notification_routes.router, prefix="/api")
@@ -71,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(enrollment_routes.router, prefix="/api")
     app.include_router(invite_code_routes.router, prefix="/api")
     app.include_router(system_settings_routes.router, prefix="/api")
+    app.include_router(hakpaza_routes.router, prefix="/api")
     return app
 
 

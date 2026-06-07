@@ -85,6 +85,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       },
     ],
   },
+  {
+    label: "הקפצה פיקודית",
+    settings: [
+      {
+        key: "hakpaza.callup_multiplier",
+        label: "מכפיל הקפצה פיקודית",
+        description: "מכפיל ניקוד שיחויב על חייל שהוקפץ פיקודית (ברירת מחדל: 2.0)",
+        type: "decimal" as const,
+        defaultValue: 2.0,
+      },
+    ],
+  },
 ];
 
 function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {
