@@ -102,15 +102,17 @@ def _truncate_tables(db_admin_url: str) -> Iterator[None]:
     table_list = ", ".join(_ALL_DATA_TABLES)
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
-        # Re-apply migration-seeded defaults for system_settings
-        for key, value in _SYSTEM_SETTINGS_DEFAULTS:
-            conn.execute(
-                text(
-                    "INSERT INTO system_settings (key, value) VALUES (:key, :value::jsonb)"
-                    " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
-                ),
-                {"key": key, "value": value},
+        # Re-apply migration-seeded defaults for system_settings.
+        # Use string formatting (not bind params) to avoid :param vs ::cast ambiguity.
+        rows = ", ".join(
+            f"('{k}', '{v}'::jsonb)" for k, v in _SYSTEM_SETTINGS_DEFAULTS
+        )
+        conn.execute(
+            text(
+                f"INSERT INTO system_settings (key, value) VALUES {rows}"
+                " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
             )
+        )
     engine.dispose()
     yield
 
