@@ -14,11 +14,16 @@ export interface SwapRequest {
   decision_note: string | null;
   offered_assignment_ids: string[];
   created_at: string;
+  duty_type_name: string | null;
+  duty_location_name: string | null;
+  duty_type_id: string | null;
+  duty_location_id: string | null;
+  duty_start_date: string | null;
+  duty_end_date: string | null;
 }
 
 export interface CreateSwapInput {
   duty_assignment_id: string;
-  duty_date: string;
   target_soldier_id?: string | null;
   reason?: string | null;
 }
@@ -68,6 +73,29 @@ export async function listIncomingSwaps(): Promise<SwapRequest[]> {
 export async function listSwapsForAssignment(assignmentId: string): Promise<SwapRequest[]> {
   const res = await api.get<SwapRequest[]>(`/swaps/for-assignment/${assignmentId}`);
   return res.data;
+}
+
+export async function takeDutyFree(dutyAssignmentId: string): Promise<SwapRequest> {
+  const res = await api.post<SwapRequest>("/swaps/take-free", {
+    duty_assignment_id: dutyAssignmentId,
+  });
+  return res.data;
+}
+
+export async function getSwapConfig(): Promise<{ require_manager_approval: boolean }> {
+  return (await api.get<{ require_manager_approval: boolean }>("/swaps/config")).data;
+}
+
+export interface EligibilityResult {
+  assignment_id: string;
+  eligible: boolean;
+  reason: string | null;
+}
+
+export async function getEligibleDuties(targetSoldierId: string): Promise<EligibilityResult[]> {
+  return (await api.get<EligibilityResult[]>("/swaps/eligible-duties", {
+    params: { target_soldier_id: targetSoldierId },
+  })).data;
 }
 
 export async function submitCoverOffer(
