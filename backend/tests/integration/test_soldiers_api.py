@@ -99,8 +99,8 @@ def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
 
 
 def test_patch_enrolled_at(client: TestClient, admin_session: Session):
-    admin = create_soldier(admin_session, personal_number="6000001", role="admin")
-    target = create_soldier(admin_session, personal_number="6100001")
+    admin = create_soldier(admin_session, personal_number="6200001", role="admin")
+    target = create_soldier(admin_session, personal_number="6200002")
     admin_session.commit()
     resp = client.patch(
         f"/api/soldiers/{target.id}",
