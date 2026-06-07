@@ -34,6 +34,7 @@ def test_available_channels_telegram_only(admin_session: Session):
 def test_available_channels_email_only(admin_session: Session):
     s = create_soldier(admin_session, personal_number="PR002")
     s.email = "test@example.com"
+    s.email_verified = True
     admin_session.flush()
 
     channels = svc.available_channels(admin_session, personal_number="PR002")

@@ -3,10 +3,45 @@ import os
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+
+# All data tables in dependency order (referenced-by-FK tables first so CASCADE handles the rest)
+_ALL_DATA_TABLES = [
+    "audit_log",
+    "duty_day_overrides",
+    "duty_dismissals",
+    "score_adjustments",
+    "duty_assignments",
+    "swap_requests",
+    "personal_constraints",
+    "exemption_request_files",
+    "exemption_requests",
+    "soldier_exemptions",
+    "exemption_duty_type_map",
+    "forced_callups",
+    "algorithm_jobs",
+    "duty_shifts",
+    "shift_templates",
+    "commander_notification_scopes",
+    "commander_notification_depth",
+    "duty_manager_scope",
+    "telegram_outbox",
+    "telegram_action_tokens",
+    "telegram_links",
+    "password_reset_tokens",
+    "email_verification_tokens",
+    "registration_invite_codes",
+    "soldier_enrollment_requests",
+    "exemption_types",
+    "duty_types",
+    "duty_locations",
+    "system_settings",
+    "soldiers",
+    "hierarchy_nodes",
+]
 
 
 @pytest.fixture(scope="session")
@@ -47,6 +82,18 @@ def _apply_schema(db_admin_url: str) -> None:
     cfg = Config("alembic.ini")
     cfg.set_main_option("script_location", "alembic")
     command.upgrade(cfg, "head")
+
+
+@pytest.fixture(autouse=True)
+def _truncate_tables(db_admin_url: str) -> Iterator[None]:
+    """Wipe all data rows before each test so personal_number and other unique constraints
+    never collide across test functions, even when they use the same hardcoded values."""
+    engine = create_engine(db_admin_url, future=True)
+    table_list = ", ".join(_ALL_DATA_TABLES)
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
+    engine.dispose()
+    yield
 
 
 @pytest.fixture()
