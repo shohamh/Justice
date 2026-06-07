@@ -64,6 +64,7 @@ interface SubRow {
   depth: number;
   count: number;
   active_count: number;
+  exempted_count: number;
   avg_cumulative: number;
   avg_cumulative_active: number;
   total_score_per_day: number;
@@ -133,12 +134,14 @@ export default function TransparencyPage() {
           (r) => r.node_id != null && nodePathsMap.get(r.node_id)?.includes(node.id),
         );
         if (nodeRows.length > 0) {
+          const exemptedCount = nodeRows.filter((r) => r.is_globally_exempted).length;
           result.push({
             node_id: node.id,
             node_name: node.name,
             depth: node.path_ids.length - 1,
             count: nodeRows.length,
-            active_count: nodeRows.filter((r) => Number(r.cumulative_score) > 0).length,
+            active_count: nodeRows.length - exemptedCount,
+            exempted_count: exemptedCount,
             avg_cumulative: avg(nodeRows.map((r) => Number(r.cumulative_score))),
             avg_cumulative_active: (() => {
               const active = nodeRows.filter((r) => Number(r.cumulative_score) > 0);
@@ -243,7 +246,25 @@ export default function TransparencyPage() {
       sortValue: (r) => r.node_name, filterValue: (r) => r.node_name,
     },
     { id: "count", header: "כמות חיילים", cell: (r) => r.count, sortValue: (r) => r.count },
-    { id: "active_count", header: "חיילים פעילים", cell: (r) => `${r.active_count} (${Math.round(r.active_count / r.count * 100)}%)`, sortValue: (r) => r.active_count },
+    {
+      id: "exempted_count",
+      header: t("transparency.exempted_count"),
+      cell: (r) => (
+        <span
+          className="text-gray-500"
+          title={`${r.exempted_count} חיילים פטורים`}
+        >
+          {r.exempted_count}
+        </span>
+      ),
+      sortValue: (r) => r.exempted_count,
+    },
+    {
+      id: "active_count",
+      header: "חיילים פעילים",
+      cell: (r) => `${r.active_count} (${Math.round(r.active_count / r.count * 100)}%)`,
+      sortValue: (r) => r.active_count,
+    },
     { id: "avg_active_days", header: t("transparency.avg_active_days"), cell: (r) => r.avg_active_days, sortValue: (r) => r.avg_active_days },
     { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(2), sortValue: (r) => r.avg_cumulative },
     { id: "avg_cumulative_active", header: "ממוצע ניקוד לחייל פעיל", cell: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—", sortValue: (r) => r.avg_cumulative_active },

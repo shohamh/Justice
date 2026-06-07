@@ -235,7 +235,9 @@
     "avg_normalised": "ממוצע ניקוד מנורמל",
     "my_breakdown": "הפירוט שלי",
     "days": "ימים",
-    "adjustments": "תיקוני ניקוד"
+    "adjustments": "תיקוני ניקוד",
+    "exempted_count": "פטורים",
+    "exempted_count_tooltip": "{{count}} חיילים פטורים (פטור גלובלי)"
   },
   "my_duties": {
     "title": "היומן שלי",

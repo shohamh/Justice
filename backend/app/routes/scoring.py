@@ -35,6 +35,7 @@ class TransparencyRow(BaseModel):
     cumulative_score: Decimal
     score_per_day: Decimal
     normalised_score: Decimal
+    is_globally_exempted: bool = False
 
 
 class PerTypeRow(BaseModel):
