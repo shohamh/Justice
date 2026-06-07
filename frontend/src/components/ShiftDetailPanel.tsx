@@ -7,6 +7,7 @@ import { listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
 import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
+import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 
 interface Props {
@@ -23,6 +24,11 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
   const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
+  const [offerSwapTarget, setOfferSwapTarget] = useState<{
+    soldierId: string;
+    soldierName: string;
+    assignmentId: string;
+  } | null>(null);
 
   useEffect(() => {
     const primaryIds = shift.assignees
@@ -116,12 +122,22 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                       )}
                     </div>
                     {!isCalledUp && (
-                      <button
-                        className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
-                        onClick={() => setDismissTarget(a)}
-                      >
-                        {t("dismiss_action")}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {a.soldier_id !== user?.id && (
+                          <button
+                            className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
+                            onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}
+                          >
+                            {t("swaps.offer_replace")}
+                          </button>
+                        )}
+                        <button
+                          className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                          onClick={() => setDismissTarget(a)}
+                        >
+                          {t("dismiss_action")}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs">
@@ -204,22 +220,32 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                 className="border rounded p-2 text-sm border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-950 flex flex-col gap-1"
               >
                 <div className="flex justify-between items-center">
-                  <div>
+                  <div className="flex items-center gap-2">
                     <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                    <span className="text-xs text-purple-500 mr-2">({t("reserve_label")})</span>
+                    <span className="text-xs text-purple-500">({t("reserve_label")})</span>
                     {a.hierarchy_label && (
-                      <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>
+                      <span className="text-xs text-gray-400">({a.hierarchy_label})</span>
                     )}
                   </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      a.called_up_from ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {a.called_up_from
-                      ? `${t("reserve_called_up")} ${a.called_up_from}–${a.called_up_to}`
-                      : t("reserve_standby")}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    {a.soldier_id !== user?.id && (
+                      <button
+                        className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
+                        onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}
+                      >
+                        {t("swaps.offer_replace")}
+                      </button>
+                    )}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        a.called_up_from ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {a.called_up_from
+                        ? `${t("reserve_called_up")} ${a.called_up_from}–${a.called_up_to}`
+                        : t("reserve_standby")}
+                    </span>
+                  </div>
                 </div>
                 {a.primary_assignment_ids.length > 0 && (
                   <div className="text-xs text-gray-600">
@@ -250,6 +276,19 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             dutyTypes={dutyTypeNames}
             onClose={() => setCoverSwap(null)}
             onDone={() => { setCoverSwap(null); onRefreshNeeded(); }}
+          />
+        )}
+
+        {offerSwapTarget && (
+          <OfferSwapModal
+            targetSoldierId={offerSwapTarget.soldierId}
+            targetSoldierName={offerSwapTarget.soldierName}
+            targetAssignmentId={offerSwapTarget.assignmentId}
+            targetDutyStart={shift.start_date}
+            targetDutyEnd={shift.end_date}
+            targetDutyTypeId={shift.duty_type_id}
+            onClose={() => setOfferSwapTarget(null)}
+            onDone={() => { setOfferSwapTarget(null); onRefreshNeeded(); }}
           />
         )}
       </div>

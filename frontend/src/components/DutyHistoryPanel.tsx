@@ -4,6 +4,12 @@ import { useTranslation } from "react-i18next";
 import { TimelineEvent, getSoldierDutyHistory } from "../api/dutyHistory";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
 import { approveConstraint, rejectConstraint } from "../api/constraints";
+import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
+import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
+import { listDutyTypes } from "../api/dutyConfig";
+import CoverOfferModal from "./CoverOfferModal";
+import OfferSwapModal from "./OfferSwapModal";
+import { useAuth } from "../auth/AuthContext";
 
 type FilterType =
   | "all"
@@ -53,6 +59,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 interface Props {
   soldierId: string;
+  soldierName?: string;
   canManage: boolean;
   isActive: boolean;
 }
@@ -66,6 +73,9 @@ function EventCard({
   onRejectExemption,
   onApproveConstraint,
   onRejectConstraint,
+  openSwaps,
+  onCover,
+  onOfferSwap,
   t,
 }: {
   e: TimelineEvent;
@@ -76,6 +86,9 @@ function EventCard({
   onRejectExemption: (id: string) => void;
   onApproveConstraint: (id: string) => void;
   onRejectConstraint: (id: string) => void;
+  openSwaps?: SwapRequest[];
+  onCover?: (swap: SwapRequest) => void;
+  onOfferSwap?: (e: TimelineEvent) => void;
   t: (key: string) => string;
 }) {
   const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
@@ -118,6 +131,33 @@ function EventCard({
             </span>
           )}
         </div>
+
+        {e.event_type === "assignment" && onOfferSwap && (
+          <div className="mt-1.5" onClick={(ev) => ev.stopPropagation()}>
+            <button
+              onClick={(ev) => { ev.stopPropagation(); onOfferSwap(e); }}
+              className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-2 py-0.5 rounded hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            >
+              {t("swaps.offer_replace")}
+            </button>
+          </div>
+        )}
+
+        {e.event_type === "assignment" && openSwaps && openSwaps.filter((s) => s.status === "open").map((swap) => (
+          <div
+            key={swap.id}
+            className="flex items-center gap-2 mt-1 bg-orange-50 border border-orange-200 rounded px-2 py-1 text-xs"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <span className="text-orange-700 flex-1">{t("unit_calendar.swap_requests_has")}</span>
+            <button
+              onClick={(ev) => { ev.stopPropagation(); onCover?.(swap); }}
+              className="bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600"
+            >
+              {t("swaps.cover")}
+            </button>
+          </div>
+        ))}
 
         {isExpanded && (
           <div className="mt-2 space-y-1">
@@ -183,6 +223,9 @@ function Timeline({
   onRejectExemption,
   onApproveConstraint,
   onRejectConstraint,
+  swapsByAssignment,
+  onCover,
+  onOfferSwap,
   t,
 }: {
   events: TimelineEvent[];
@@ -193,6 +236,9 @@ function Timeline({
   onRejectExemption: (id: string) => void;
   onApproveConstraint: (id: string) => void;
   onRejectConstraint: (id: string) => void;
+  swapsByAssignment?: Record<string, SwapRequest[]>;
+  onCover?: (swap: SwapRequest) => void;
+  onOfferSwap?: (e: TimelineEvent) => void;
   t: (key: string) => string;
 }) {
   return (
@@ -210,6 +256,9 @@ function Timeline({
             onRejectExemption={onRejectExemption}
             onApproveConstraint={onApproveConstraint}
             onRejectConstraint={onRejectConstraint}
+            openSwaps={swapsByAssignment?.[e.id]}
+            onCover={onCover}
+            onOfferSwap={onOfferSwap}
             t={t}
           />
         ))}
@@ -218,13 +267,19 @@ function Timeline({
   );
 }
 
-export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Props) {
+export default function DutyHistoryPanel({ soldierId, soldierName, canManage, isActive }: Props) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
+  const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
+  const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
+  const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
+  const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -248,10 +303,45 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
   useEffect(() => {
     if (!isActive) return;
     setExpanded(new Set());
+    setSwapsByAssignment({});
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
   }, [isActive, soldierId, load]);
+
+  useEffect(() => {
+    if (!isActive || soldierId === user?.id) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const upcomingAssignments = events.filter(
+      (e) => e.event_type === "assignment" && e.date >= today
+    );
+    if (upcomingAssignments.length === 0) return;
+    Promise.all(
+      upcomingAssignments.map((e) =>
+        listSwapsForAssignment(e.id)
+          .then((swaps) => ({ id: e.id, swaps }))
+          .catch(() => ({ id: e.id, swaps: [] as SwapRequest[] }))
+      )
+    ).then((results) => {
+      const map: Record<string, SwapRequest[]> = {};
+      for (const { id, swaps } of results) {
+        if (swaps.length > 0) map[id] = swaps;
+      }
+      setSwapsByAssignment(map);
+    });
+  }, [events, isActive, soldierId, user?.id]);
+
+  async function handleOpenCoverModal(swap: SwapRequest) {
+    setCoverSwap(swap);
+    if (user) {
+      const [duties, dts] = await Promise.all([
+        listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
+        listDutyTypes().catch(() => []),
+      ]);
+      setMyDuties(duties);
+      setDutyTypeNames(Object.fromEntries(dts.map((d) => [d.id, d.name])));
+    }
+  }
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -323,6 +413,8 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
     .filter((e) => e.date < today)
     .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
 
+  const isOtherSoldier = soldierId !== user?.id;
+
   const cardProps = {
     expanded,
     onToggle: toggleExpand,
@@ -331,10 +423,14 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
     onRejectExemption: handleRejectExemption,
     onApproveConstraint: handleApproveConstraint,
     onRejectConstraint: handleRejectConstraint,
+    swapsByAssignment,
+    onCover: handleOpenCoverModal,
+    onOfferSwap: isOtherSoldier ? setOfferSwapEvent : undefined,
     t,
   };
 
   return (
+    <>
     <div>
       {/* Filter chips */}
       <div className="flex flex-wrap gap-1 mb-4">
@@ -391,5 +487,27 @@ export default function DutyHistoryPanel({ soldierId, canManage, isActive }: Pro
         </div>
       )}
     </div>
+    {coverSwap && (
+      <CoverOfferModal
+        swap={coverSwap}
+        myDuties={myDuties}
+        dutyTypes={dutyTypeNames}
+        onClose={() => setCoverSwap(null)}
+        onDone={() => setCoverSwap(null)}
+      />
+    )}
+    {offerSwapEvent && (
+      <OfferSwapModal
+        targetSoldierId={soldierId}
+        targetSoldierName={soldierName ?? soldierId}
+        targetAssignmentId={offerSwapEvent.id}
+        targetDutyStart={offerSwapEvent.date}
+        targetDutyEnd={offerSwapEvent.end_date ?? offerSwapEvent.date}
+        targetDutyTypeId={offerSwapEvent.metadata.duty_type_id ?? undefined}
+        onClose={() => setOfferSwapEvent(null)}
+        onDone={() => setOfferSwapEvent(null)}
+      />
+    )}
+    </>
   );
 }
