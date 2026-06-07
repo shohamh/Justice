@@ -118,6 +118,49 @@ def test_delete_fails_with_published_assignments(admin_session):
         delete_shift(admin_session, shift=shift)
 
 
+def test_fill_status_excludes_reserve(admin_session):
+    """fill_status and assigned_count must be based on primary assignments only, not reserve."""
+    dt = _dt(admin_session)
+    loc = _loc(admin_session)
+    soldier_primary = create_soldier(admin_session, personal_number=f"sh_{uuid.uuid4().hex[:6]}")
+    soldier_reserve = create_soldier(admin_session, personal_number=f"sh_{uuid.uuid4().hex[:6]}")
+    shift = create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 7, 10), end_date=date(2026, 7, 10), required_count=2,
+    )
+    admin_session.flush()
+    # Add 1 primary + 1 reserve assignment
+    da_primary = DutyAssignment(
+        soldier_id=soldier_primary.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        status="published",
+        duty_shift_id=shift.id,
+        is_reserve=False,
+    )
+    da_reserve = DutyAssignment(
+        soldier_id=soldier_reserve.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 10),
+        status="published",
+        duty_shift_id=shift.id,
+        is_reserve=True,
+    )
+    admin_session.add(da_primary)
+    admin_session.add(da_reserve)
+    admin_session.commit()
+    from app.services.shifts import get_shift_fill
+    result = get_shift_fill(admin_session, shift_id=shift.id)
+    # With 2 required, 1 primary → partial (reserve should not count)
+    assert result.fill_status == "partial", f"expected 'partial', got '{result.fill_status}'"
+    assert result.assigned_count == 1, f"expected 1 primary, got {result.assigned_count}"
+    assert result.reserve_assigned_count == 1
+
+
 def test_list_shifts_date_filter(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)

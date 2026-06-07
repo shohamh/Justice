@@ -47,7 +47,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
 
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
   const shiftLabel = (shift: DutyShift) =>
-    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (${shift.assigned_count}/${shift.required_count})`;
+    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (ראשי: ${shift.assigned_count}/${shift.required_count}, רזרבה: ${shift.reserve_assigned_count ?? 0})`;
 
   const loadShifts = useCallback(async () => {
     const ss = await listShifts({
