@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -30,6 +31,7 @@ function offsetDate(days: number): string {
 export default function HomePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [duties, setDuties] = useState<EffectiveDuty[]>([]);
   const [typeNames, setTypeNames] = useState<Record<string, string>>({});
@@ -53,7 +55,7 @@ export default function HomePage() {
   function handleRequestSwap(duty: EffectiveDuty) {
     setSelectedDuty(null);
     // navigate to swap creation — link to swaps page with assignment id
-    window.location.href = `/swaps?new=${duty.assignment_id}`;
+    navigate(`/swaps?new=${duty.assignment_id}`);
   }
   const myRow = useMemo(() => transparencyRows.find((r) => r.soldier_id === user?.id) ?? null, [transparencyRows, user]);
 

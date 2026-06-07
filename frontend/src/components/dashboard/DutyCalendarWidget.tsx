@@ -17,7 +17,12 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
 
   useEffect(() => {
     const year = new Date().getFullYear();
-    void listHolidays(year).then(setHolidays).catch(() => {});
+    void Promise.all([
+      listHolidays(year),
+      listHolidays(year + 1),
+    ])
+      .then(([current, next]) => setHolidays([...current, ...next]))
+      .catch(() => {});
   }, []);
 
   const dutyEvents = useMemo(() =>
