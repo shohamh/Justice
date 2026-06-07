@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import heLocale from "@fullcalendar/core/locales/he";
@@ -14,7 +14,6 @@ interface Props {
 
 export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const hoveredIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const year = new Date().getFullYear();
@@ -49,20 +48,13 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
     })),
   [holidays]);
 
-  function handleEventMouseEnter(info: { event: { id: string } }) {
-    hoveredIdRef.current = info.event.id;
-    document.querySelectorAll(`[data-event-id="${info.event.id}"]`).forEach((el) => {
-      (el as HTMLElement).style.filter = "brightness(0.85)";
-    });
+  function handleEventMouseEnter(info: { event: { extendedProps: { isHoliday?: boolean } }; el: HTMLElement }) {
+    if (info.event.extendedProps.isHoliday) return;
+    info.el.style.filter = "brightness(0.85)";
   }
 
-  function handleEventMouseLeave() {
-    if (hoveredIdRef.current) {
-      document.querySelectorAll(`[data-event-id="${hoveredIdRef.current}"]`).forEach((el) => {
-        (el as HTMLElement).style.filter = "";
-      });
-      hoveredIdRef.current = null;
-    }
+  function handleEventMouseLeave(info: { event: { extendedProps: { isHoliday?: boolean } }; el: HTMLElement }) {
+    info.el.style.filter = "";
   }
 
   return (
