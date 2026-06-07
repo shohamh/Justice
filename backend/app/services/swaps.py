@@ -61,7 +61,7 @@ def create_request(
         entity_id=req.id,
         after={
             "duty_assignment_id": str(duty_assignment_id),
-            "duty_date": duty_date.isoformat(),
+            "duty_date": req.duty_date.isoformat(),
             "target_soldier_id": str(target_soldier_id) if target_soldier_id else None,
             "status": "open",
         },
@@ -336,7 +336,7 @@ def take_free(
         entity_type="swap_request", entity_id=req.id,
         after={
             "duty_assignment_id": str(assignment_id),
-            "duty_date": duty_date.isoformat(),
+            "duty_date": req.duty_date.isoformat(),
             "covering_soldier_id": str(covering_soldier_id),
             "status": "applied",
         },
