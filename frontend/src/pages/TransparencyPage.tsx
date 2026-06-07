@@ -239,7 +239,7 @@ export default function TransparencyPage() {
     : subRows.length === 0 ? 0 : Math.round(subRows.reduce((s, r) => s + r.avg_active_days, 0) / subRows.length);
   const avgScorePerDay = statsRows
     ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.score_per_day), 0) / statsRows.length
-    : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_score_per_day, 0) / subRows.length;
+    : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.total_score_per_day, 0) / subRows.length;
   const avgNormalised = statsRows
     ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.normalised_score), 0) / statsRows.length
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_normalised, 0) / subRows.length;

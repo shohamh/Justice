@@ -40,6 +40,7 @@ export interface AlgorithmJob {
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
+  progress_message: string | null;
   proposals: ProposalRow[];
   solver_metrics: Record<string, number>;
   relaxed: string[];
