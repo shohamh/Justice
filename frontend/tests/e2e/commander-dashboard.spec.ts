@@ -3,8 +3,8 @@ import { test, expect } from "@playwright/test";
 test.describe("Commander Dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.fill('[data-testid="personal-number-input"]', "4000002");
-    await page.fill('[data-testid="password-input"]', "password123");
+    await page.fill('[data-testid="personal-number-input"]', "2000001");
+    await page.fill('[data-testid="password-input"]', "1234567890");
     await page.click('[data-testid="login-submit"]');
     await page.waitForURL(/\/$/);
   });

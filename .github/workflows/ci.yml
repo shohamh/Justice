@@ -105,6 +105,7 @@ jobs:
       DB_ADMIN_URL: postgresql+psycopg://db_admin:db_admin_pw@localhost:5432/cod2
       JWT_SECRET: ci-secret-at-least-32-chars-long!!
       ALLOWED_ORIGINS: http://localhost:5173
+      LOGIN_RATE_LIMIT: "10000/minute"
 
     steps:
       - uses: actions/checkout@v4
@@ -171,6 +172,8 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: pnpm build
+        env:
+          VITE_API_BASE: http://localhost:8000/api
 
       - name: Start frontend preview server
         working-directory: frontend
