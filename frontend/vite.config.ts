@@ -15,7 +15,10 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: [".trycloudflare.com", ".ts.net"],
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: true },
+      "/api": {
+        target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
+        changeOrigin: true,
+      },
     },
   },
   test: {
