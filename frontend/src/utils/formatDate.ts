@@ -5,10 +5,13 @@
  */
 
 export function formatDate(d: string | Date): string {
-  const date = typeof d === "string" ? new Date(d) : d;
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
+  if (typeof d === "string") {
+    const [yyyy, mm, dd] = d.split("-");
+    return `${dd}.${mm}.${yyyy}`;
+  }
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
   return `${dd}.${mm}.${yyyy}`;
 }
 
