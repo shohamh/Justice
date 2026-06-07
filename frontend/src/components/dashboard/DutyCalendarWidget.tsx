@@ -1,19 +1,29 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import heLocale from "@fullcalendar/core/locales/he";
 import { EffectiveDuty } from "../../api/assignments";
+import { Holiday, listHolidays } from "../../api/calendarHolidays";
 import { dutyTypeColor } from "../../utils/dutyTypeColor";
 
 interface Props {
   duties: EffectiveDuty[];
   typeNames: Record<string, string>;
+  onOpenDuty: (duty: EffectiveDuty) => void;
 }
 
-export default function DutyCalendarWidget({ duties, typeNames }: Props) {
-  const events = useMemo(() =>
+export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Props) {
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const hoveredIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const year = new Date().getFullYear();
+    void listHolidays(year).then(setHolidays).catch(() => {});
+  }, []);
+
+  const dutyEvents = useMemo(() =>
     duties.map((d) => {
-      const endDate = new Date(d.end_date);
+      const endDate = new Date(d.end_date + "T00:00:00");
       endDate.setDate(endDate.getDate() + 1);
       const color = dutyTypeColor(d.duty_type_id);
       return {
@@ -23,9 +33,37 @@ export default function DutyCalendarWidget({ duties, typeNames }: Props) {
         end: endDate.toISOString().split("T")[0],
         backgroundColor: color,
         borderColor: color,
+        extendedProps: { duty: d },
       };
     }),
   [duties, typeNames]);
+
+  const holidayEvents = useMemo(() =>
+    holidays.map((h) => ({
+      id: `holiday-${h.date}`,
+      title: h.name,
+      start: h.date,
+      display: "background",
+      backgroundColor: "#fef9c3",
+      extendedProps: { isHoliday: true },
+    })),
+  [holidays]);
+
+  function handleEventMouseEnter(info: { event: { id: string } }) {
+    hoveredIdRef.current = info.event.id;
+    document.querySelectorAll(`[data-event-id="${info.event.id}"]`).forEach((el) => {
+      (el as HTMLElement).style.filter = "brightness(0.85)";
+    });
+  }
+
+  function handleEventMouseLeave() {
+    if (hoveredIdRef.current) {
+      document.querySelectorAll(`[data-event-id="${hoveredIdRef.current}"]`).forEach((el) => {
+        (el as HTMLElement).style.filter = "";
+      });
+      hoveredIdRef.current = null;
+    }
+  }
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
@@ -34,12 +72,18 @@ export default function DutyCalendarWidget({ duties, typeNames }: Props) {
         plugins={[dayGridPlugin]}
         initialView="dayGridMonth"
         locale={heLocale}
-        events={events}
+        events={[...dutyEvents, ...holidayEvents]}
         headerToolbar={{ start: "prev,next", center: "title", end: "" }}
         height="auto"
         editable={false}
         selectable={false}
-        eventClick={() => {}}
+        eventClick={(info) => {
+          if (info.event.extendedProps.isHoliday) return;
+          const duty = info.event.extendedProps.duty as EffectiveDuty;
+          onOpenDuty(duty);
+        }}
+        eventMouseEnter={handleEventMouseEnter}
+        eventMouseLeave={handleEventMouseLeave}
       />
     </section>
   );
