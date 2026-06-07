@@ -388,6 +388,9 @@ def persist_results(
     primary_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
     reserve_assignments: list[tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
 
+    # Pass 1: insert all DutyAssignment rows and flush so their PKs exist in the DB
+    # before we insert AssignmentExplanation rows that FK-reference them.
+    created: list[tuple[DutyAssignment, uuid.UUID]] = []  # (da, duty_id)
     for a in result.assignments:
         block: DutyBlock = duty_map[a.duty_id]
         shift_id = block_to_shift_map.get(a.duty_id) if block_to_shift_map else None
@@ -403,21 +406,9 @@ def persist_results(
             duty_shift_id=shift_id,
             is_reserve=block.is_reserve,
         )
-        da.id = uuid.uuid4()  # pre-assign so we avoid a per-row flush
+        da.id = uuid.uuid4()
         session.add(da)
-
-        if not block.is_reserve:
-            exp = explanation_map.get(a.duty_id)
-            if exp is not None:
-                payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
-                payload["global_before"] = explanation_data.global_metrics_before
-                payload["global_after"] = explanation_data.global_metrics_after
-                session.add(AssignmentExplanation(
-                    duty_assignment_id=da.id,
-                    payload=payload,
-                    algorithm_version=explanation_data.algorithm_version,
-                    solver_seed=str(explanation_data.solver_seed),
-                ))
+        created.append((da, a.duty_id))
 
         write_audit(
             session,
@@ -435,7 +426,24 @@ def persist_results(
             else:
                 primary_assignments.append((da.id, a.soldier_id, shift_id))
 
-    session.flush()  # single round-trip for all assignments at once
+    # Flush DutyAssignment rows so PKs are committed before FK-child rows
+    session.flush()
+
+    # Pass 2: insert AssignmentExplanation rows (FK to duty_assignments now safe)
+    for da, duty_id in created:
+        block: DutyBlock = duty_map[duty_id]
+        if not block.is_reserve:
+            exp = explanation_map.get(duty_id)
+            if exp is not None:
+                payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
+                payload["global_before"] = explanation_data.global_metrics_before
+                payload["global_after"] = explanation_data.global_metrics_after
+                session.add(AssignmentExplanation(
+                    duty_assignment_id=da.id,
+                    payload=payload,
+                    algorithm_version=explanation_data.algorithm_version,
+                    solver_seed=str(explanation_data.solver_seed),
+                ))
 
     if primary_assignments and reserve_assignments and soldier_node is not None:
         links = link_reserves(
@@ -504,7 +512,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         return default
 
                 settings = SolverSettings(
-                    K=Decimal(str(job.settings_json.get("K", 8))),
                     T=int(job.settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
                     W=int(job.settings_json.get("W", _setting_int("algorithm.window_days", 14))),
                     alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),

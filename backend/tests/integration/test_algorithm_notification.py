@@ -35,7 +35,7 @@ def test_notification_created_when_job_completes(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )

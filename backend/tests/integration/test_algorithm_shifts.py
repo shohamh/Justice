@@ -35,7 +35,7 @@ def test_create_job_with_shift_ids(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )
@@ -52,7 +52,7 @@ def test_rejects_missing_shift_id(client, admin_session):
         json={
             "shift_ids": [fake_id],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 5},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm),
     )
@@ -70,7 +70,7 @@ def test_algorithm_runs_and_proposals_have_shift_id(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )

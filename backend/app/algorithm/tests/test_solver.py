@@ -114,23 +114,26 @@ def test_solve_no_eligible_soldiers() -> None:
 
 def test_infeasibility_relaxation() -> None:
     soldier_a = uuid4()
-    soldier_b = uuid4()
     duty_type = uuid4()
     soldiers = [
         SoldierInput(id=soldier_a, enrolled_at=date(2026, 1, 1),
-                     cumulative_score=Decimal("0"), active_days=1),
-        SoldierInput(id=soldier_b, enrolled_at=date(2026, 1, 1),
-                     cumulative_score=Decimal("1"), active_days=1),
+                     cumulative_score=Decimal("0"), active_days=100),
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
                   start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
-                  score_per_day=Decimal("1.00"))
-        for _ in range(2)
+                  score_per_day=Decimal("1.00")),
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
+                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 2),
+                  score_per_day=Decimal("1.00")),
     ]
-    result = solve(soldiers, duties, [], SolverSettings(K=Decimal("0"), time_limit_seconds=5))
+    # Force infeasibility: 1 soldier must cover both duties (coverage constraint),
+    # but T=1, W=2 allows at most 1 duty-day in any 2-day window.
+    # The window [June 1, June 2] contains both → violates T=1.
+    # The relaxation chain should raise T→2 and find a feasible solution.
+    result = solve(soldiers, duties, [], SolverSettings(T=1, W=2, time_limit_seconds=5))
     assert result.status in ("OPTIMAL", "FEASIBLE")
-    assert len(result.relaxed) > 0  # relaxation was needed
+    assert len(result.relaxed) > 0  # T was relaxed
 
 
 # ── Golden fixture tests ──────────────────────────────────────────────
@@ -147,11 +150,9 @@ def test_golden_fixture(fixture_name: str) -> None:
     existing = [_dict_to_existing(ed) for ed in data.get("existing", [])]
     settings_dict = data["settings"]
     settings = SolverSettings(
-        K=__import__("decimal").Decimal(settings_dict["K"]),
         T=settings_dict["T"],
         W=settings_dict["W"],
         alpha=__import__("decimal").Decimal(settings_dict.get("alpha", "1.0")),
-        beta=__import__("decimal").Decimal(settings_dict.get("beta", "2.0")),
         time_limit_seconds=settings_dict.get("time_limit_seconds", 30),
     )
 

@@ -55,7 +55,7 @@ def test_fairness_all_zero_scores_distributes():
     d2 = _duty(date(2026, 9, 8))
     d3 = _duty(date(2026, 9, 15))
 
-    assigned = _solve([s1, s2, s3], [d1, d2, d3], K=Decimal("8"), T=7, W=14, alpha=Decimal("1.0"))
+    assigned = _solve([s1, s2, s3], [d1, d2, d3], T=7, W=14, alpha=Decimal("1.0"))
 
     soldiers_used = set(assigned.values())
     assert len(soldiers_used) == 3, (
@@ -69,7 +69,7 @@ def test_alpha_prefers_lower_score_soldier():
     high = _soldier(score=8.0)
     duty = _duty(date(2026, 7, 1))
 
-    assigned = _solve([low, high], [duty], K=Decimal("20"), T=7, W=14, alpha=Decimal("1.0"))
+    assigned = _solve([low, high], [duty], T=7, W=14, alpha=Decimal("1.0"))
 
     assert assigned[duty.id] == low.id, "Expected low-score soldier to be assigned"
 
@@ -81,7 +81,7 @@ def test_alpha_zero_no_score_preference():
     duty = _duty(date(2026, 7, 1))
 
     # Just assert it's feasible; don't care which soldier is chosen
-    assigned = _solve([low, high], [duty], K=Decimal("20"), T=7, W=14, alpha=Decimal("0"))
+    assigned = _solve([low, high], [duty], T=7, W=14, alpha=Decimal("0"))
     assert duty.id in assigned
 
 
@@ -91,7 +91,7 @@ def test_density_hard_constraint_infeasible_when_violated():
     d1 = _duty(date(2026, 8, 1))
     d2 = _duty(date(2026, 8, 2))
 
-    settings = SolverSettings(K=Decimal("20"), T=1, W=2, alpha=Decimal("0"))
+    settings = SolverSettings(T=1, W=2, alpha=Decimal("0"))
     model, x = build_model([solo], [d1, d2], [], settings)
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = 5
@@ -106,6 +106,39 @@ def test_density_hard_constraint_distributes_across_soldiers():
     d1 = _duty(date(2026, 8, 1))
     d2 = _duty(date(2026, 8, 2))
 
-    assigned = _solve([s1, s2], [d1, d2], K=Decimal("20"), T=1, W=2, alpha=Decimal("0"))
+    assigned = _solve([s1, s2], [d1, d2], T=1, W=2, alpha=Decimal("0"))
 
     assert assigned[d1.id] != assigned[d2.id], "Consecutive duties must go to different soldiers"
+
+
+def test_high_historical_score_does_not_monopolize_run():
+    """Regression: a soldier with a large published (historical) score used to 'pin'
+    the max-norm ceiling, making the algorithm indifferent to how it distributes new
+    assignments among zero-score soldiers.  The fix uses incremental (this-run) norm
+    as the primary objective so the high-history soldier no longer dominates.
+
+    Setup: 1 high-score soldier + 3 zero-score soldiers, 3 non-overlapping duties.
+    Expected: each zero-score soldier gets exactly one duty; the high-score soldier
+    gets nothing (because every assignment to them raises the incremental max more
+    than spreading to zero-score soldiers does)."""
+    high = _soldier(score=30.0)
+    low1 = _soldier(score=0.0)
+    low2 = _soldier(score=0.0)
+    low3 = _soldier(score=0.0)
+
+    d1 = _duty(date(2026, 10, 1))
+    d2 = _duty(date(2026, 10, 8))
+    d3 = _duty(date(2026, 10, 15))
+
+    assigned = _solve(
+        [high, low1, low2, low3], [d1, d2, d3],
+        T=7, W=14, alpha=Decimal("1.0"),
+    )
+
+    assert high.id not in assigned.values(), (
+        "High-score soldier should receive no new duties when zero-score soldiers are available"
+    )
+    soldiers_used = set(assigned.values())
+    assert soldiers_used == {low1.id, low2.id, low3.id}, (
+        f"Each zero-score soldier should get exactly one duty; got {soldiers_used}"
+    )

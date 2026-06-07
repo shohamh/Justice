@@ -33,7 +33,7 @@ def _insert_pending_job(session, dm, shift_id: str) -> AlgorithmJob:
         planning_start=date(2028, 6, 1),
         planning_end=date(2028, 6, 1),
         shift_ids=[shift_id],
-        settings_json={"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 60},
+        settings_json={"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 60},
         mode="shadow",
         created_by=dm.id,
     )
@@ -74,7 +74,7 @@ def test_cancel_returns_409_for_done_job(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 20, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 10},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
         },
         headers=auth_headers(dm),
     )

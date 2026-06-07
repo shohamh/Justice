@@ -63,8 +63,8 @@ def _infeasibility_relaxation_chain(
     cancel_event: threading.Event | None = None,
 ) -> SolverResult:
     current = SolverSettings(
-        K=settings.K, T=settings.T, W=settings.W,
-        alpha=settings.alpha, beta=settings.beta,
+        T=settings.T, W=settings.W,
+        alpha=settings.alpha,
         time_limit_seconds=settings.time_limit_seconds,
         seed=settings.seed,
         reserve_hierarchy_weight=settings.reserve_hierarchy_weight,
@@ -80,11 +80,7 @@ def _infeasibility_relaxation_chain(
             return SolverResult(assignments=[], status="CANCELLED", seed=current.seed or 0, relaxed=relaxed)
 
         if status_name == "INFEASIBLE":
-            if attempt < 3:
-                current.K = current.K + 1
-                relaxed.append(f"K\u2192{current.K}")
-                continue
-            elif attempt < 4:
+            if attempt < 4:
                 current.T = current.T + 1
                 relaxed.append(f"T\u2192{current.T}")
                 continue

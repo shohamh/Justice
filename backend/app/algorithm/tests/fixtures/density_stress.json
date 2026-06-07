@@ -25,5 +25,5 @@
     {"id": "00000002-0000-0000-0000-00000000001f", "duty_type_id": "00000002-0000-0000-0000-0000000000a1", "duty_location_id": "00000002-0000-0000-0000-0000000000b1", "start_date": "2026-06-07", "end_date": "2026-06-07", "score_per_day": "1.00"}
   ],
   "existing": [],
-  "settings": {"K": "8", "T": 7, "W": 14, "alpha": "1.0", "beta": "2.0", "time_limit_seconds": 30}
+  "settings": {"T": 7, "W": 14, "alpha": "1.0", "time_limit_seconds": 30}
 }

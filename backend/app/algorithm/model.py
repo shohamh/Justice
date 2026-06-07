@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
@@ -110,61 +111,118 @@ def build_model(
             else:
                 model.Add(sum(day_vars) <= 1)
 
-    # Hard constraint 3: K normalised-score variance
-    norm_exprs: list[LinearExpr] = []
+    # ── Normalised-score expressions ─────────────────────────────────────────
+    #
+    # norm_s = (cumulative_score * 1000 + new_assignment_score) / active_days
+    #
+    # This represents the soldier's post-run score_per_day in milli-units.
+    # It's the single fairness metric: we want all soldiers to converge toward
+    # the same value over time.  Using cumulative (not incremental-only) ensures
+    # the algorithm accounts for history: a soldier already at spd=0.5 gets no
+    # new duties while one at spd=0 gets many, even if their incremental load
+    # would be equal.
+
+    # Eligible-only norms for the "raise the floor" secondary objective.
+    # Soldiers with no eligible duties always have norm = historical base and
+    # cannot be improved; including them would pin the floor unnecessarily.
+    all_norm_exprs: list[LinearExpr] = []
+    eligible_norm_exprs: list[LinearExpr] = []
+    # Historical tiebreaker: cost of assigning to a soldier with high spd.
+    # Uses score_per_day (not raw cumulative_score) so a soldier with 10 pts
+    # over 200 days (spd=0.05) is correctly preferred over one with 10 pts
+    # over 100 days (spd=0.10).
+    hist_penalty_terms: list = []
+
     for si, s in enumerate(soldier_list):
         if s.active_days == 0:
             continue
+
+        duties_for_s = soldier_duties.get(si, [])
         block_sum = sum(
             _block_score(duty_list[di]) * x[(di, si)]
-            for di in soldier_duties.get(si, [])
+            for di in duties_for_s
         )
+
         base = int(s.cumulative_score * 1000)
-        total = base + block_sum
+        cum_total = base + block_sum
         norm = model.NewIntVar(0, 10_000_000, f"norm_s{si}")
-        model.AddDivisionEquality(norm, total, s.active_days)
-        norm_exprs.append(norm)
+        model.AddDivisionEquality(norm, cum_total, s.active_days)
+        all_norm_exprs.append(norm)
+
+        if duties_for_s:
+            eligible_norm_exprs.append(norm)
+
+        # hist_milli = score_per_day in milli-units (an integer constant, not a variable)
+        hist_milli = int(s.cumulative_score * 1000) // s.active_days
+        for di in duties_for_s:
+            hist_penalty_terms.append(hist_milli * x[(di, si)])
 
     max_norm_var = None
-    if norm_exprs:
-        min_norm = model.NewIntVar(0, 10_000_000, "min_norm")
+    if all_norm_exprs:
         max_norm_var = model.NewIntVar(0, 10_000_000, "max_norm")
-        model.AddMinEquality(min_norm, norm_exprs)
-        model.AddMaxEquality(max_norm_var, norm_exprs)
-        K_int = int(settings.K * 1000)
-        model.Add(max_norm_var - min_norm <= K_int)
+        model.AddMaxEquality(max_norm_var, all_norm_exprs)
 
     # Hard constraint: max T duty-days in any rolling W-day window per soldier
+    #
+    # Inner loop uses binary search (bisect) so per-window duty lookup is
+    # O(log m + matches) instead of O(m).  Overall complexity drops from
+    # O(n × date_range × m) to O(n × date_range × log m), which makes
+    # large instances (n≈100, m≈200) feasible.
     existing_by_soldier = {
         s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
     }
 
     for si, s in enumerate(soldier_list):
-        soldier_dates_set = set(existing_by_soldier.get(s.id, set()))
-        for di in soldier_duties.get(si, []):
-            soldier_dates_set.update(_duty_dates(duty_list[di]))
-        if not soldier_dates_set:
+        si_duties = soldier_duties.get(si, [])
+        existing_dates = existing_by_soldier.get(s.id, set())
+
+        if not si_duties and not existing_dates:
             continue
 
-        min_d = min(soldier_dates_set)
-        max_d = max(soldier_dates_set)
-        existing_dates = existing_by_soldier.get(s.id, set())
+        # Sort eligible duties by start_date for binary-search window lookup.
+        # A duty overlaps window [ws, we] iff start_date ≤ we AND end_date ≥ ws.
+        si_duties_sorted = sorted(si_duties, key=lambda di: duty_list[di].start_date)
+        starts_sorted: list[date] = [duty_list[di].start_date for di in si_duties_sorted]
+        ends_sorted: list[date] = [duty_list[di].end_date for di in si_duties_sorted]
+
+        # Date range: span of all eligible duty dates plus any existing dates
+        all_relevant: set[date] = set(existing_dates)
+        for di in si_duties:
+            all_relevant.add(duty_list[di].start_date)
+            all_relevant.add(duty_list[di].end_date)
+        if not all_relevant:
+            continue
+
+        min_d = min(all_relevant)
+        max_d = max(all_relevant)
+        sorted_existing = sorted(existing_dates)
+
         ws = min_d
         while ws <= max_d:
             we = ws + timedelta(days=W - 1)
-            existing_fixed = sum(1 for dt_iter in existing_dates if ws <= dt_iter <= we)
-            var_for_window: list[IntVar] = []
-            for di in soldier_duties.get(si, []):
-                d = duty_list[di]
-                if any(ws <= dt <= we for dt in _duty_dates(d)):
-                    var_for_window.append(x[(di, si)])
+
+            # Count pre-fixed existing duty-days in this window
+            existing_fixed = (
+                bisect.bisect_right(sorted_existing, we)
+                - bisect.bisect_left(sorted_existing, ws)
+            )
+
+            # Find variable duties overlapping [ws, we] via binary search:
+            #   start_date ≤ we  →  right = bisect_right(starts, we)
+            #   end_date ≥ ws   →  linear scan only the filtered prefix
+            # For short-duration duties the filtered list is tiny.
+            right = bisect.bisect_right(starts_sorted, we)
+            var_for_window: list[IntVar] = [
+                x[(si_duties_sorted[i], si)]
+                for i in range(right)
+                if ends_sorted[i] >= ws
+            ]
 
             if not var_for_window:
                 ws += timedelta(days=1)
                 continue
 
-            total_density = existing_fixed + (sum(var_for_window) if var_for_window else 0)
-            model.Add(total_density <= T)
+            model.Add(existing_fixed + sum(var_for_window) <= T)
             ws += timedelta(days=1)
 
     # Soft objective: hierarchy proximity for reserve blocks
@@ -176,21 +234,43 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
-    # Primary fairness objective: minimise the maximum post-assignment normalised score.
-    # This is strictly better than the previous "minimise sum of pre-assignment scores"
-    # approach, which was blind when all soldiers start at zero and provided no
-    # differentiation between soldiers within a single run.
+    # ── Fairness objective ──────────────────────────────────────────────────
+    #
+    # Fairness goal: all soldiers converge toward the same score_per_day
+    # (norm = cumulative_score / active_days).
+    #
+    # PRIMARY  (weight alpha_int ≈ 1000):
+    #   Minimise max(norm).  Assigning a duty to an already-high-norm soldier
+    #   raises max; assigning to a low-norm soldier leaves max unchanged.
+    #   This naturally steers duties toward lower-norm soldiers.
+    #
+    # SECONDARY  (weight 1, ≈1000× weaker than primary):
+    #   Maximise min(norm) among eligible soldiers.  When the primary is tied
+    #   (e.g. the max is already pinned by a high-history soldier), this lifts
+    #   the floor — giving extra duties to the lowest-norm soldiers first rather
+    #   than concentrating them arbitrarily.
+    #
+    # TIEBREAKER  (weight 1, proportional to hist_milli per assignment):
+    #   When both primary and secondary are tied, prefer assigning to the soldier
+    #   with the lower historical score_per_day.  Uses score/day not raw score
+    #   so active_days is correctly accounted for.
+    #
+    # RESERVE PROXIMITY  (weight gamma_int):
+    #   Minor bonus for pairing reserves with geographically close primaries.
+    # ────────────────────────────────────────────────────────────────────────
+
     alpha_int = int(settings.alpha * 1000)
     dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
+    hist_penalty = sum(hist_penalty_terms) if hist_penalty_terms else 0
 
     if max_norm_var is not None and alpha_int > 0:
-        # Minimize the maximum post-assignment normalised score (in milli-score/day).
-        # max_norm_var typical range: 0–10 000 for realistic units.
-        # alpha_int typical value: 1000 (alpha = 1.0).
-        # reserve_dist_terms total: up to ~50 000 for large units.
-        # The fairness term dominates (10–100×), making reserve proximity a tiebreaker.
-        # Both are plain LinearExpr — no Python-level division needed.
-        model.Maximize(-alpha_int * max_norm_var - dist_term)
+        min_term = 0
+        if len(eligible_norm_exprs) > 1:
+            min_norm_var = model.NewIntVar(0, 10_000_000, "min_norm_eligible")
+            model.AddMinEquality(min_norm_var, eligible_norm_exprs)
+            min_term = min_norm_var
+
+        model.Maximize(-alpha_int * max_norm_var + min_term - hist_penalty - dist_term)
     else:
         model.Maximize(-dist_term)
 

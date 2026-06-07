@@ -43,7 +43,7 @@ def test_list_jobs_returns_own_job(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 5},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm),
     )
@@ -73,7 +73,7 @@ def test_list_jobs_does_not_return_other_users_jobs(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"K": 8, "T": 7, "W": 14, "alpha": 1.0, "beta": 2.0, "time_limit_seconds": 5},
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm1),
     )

@@ -45,12 +45,10 @@ class ExistingAssignment:
 class SolverSettings:
     """CP-SAT solver configuration.
 
-    K: max normalised-score variance between soldiers
     T: density hard cap (duty-days per rolling window)
     W: rolling window length in days
     alpha: score-preference weight (higher = stronger preference for low-score soldiers)
     """
-    K: Decimal = Decimal("8")
     T: int = 7
     W: int = 14
     alpha: Decimal = Decimal("1.0")
