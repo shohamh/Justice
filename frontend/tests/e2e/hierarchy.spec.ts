@@ -129,14 +129,14 @@ test.describe("Hierarchy tree", () => {
 
     // Pick the first soldier with a non-empty node in the table
     let targetPn = "";
-    let _targetName = "";
+    let targetName = "";
     for (let i = 0; i < rowCount; i++) {
       const cells = await soldierRows.nth(i).locator("td").all();
       if (cells.length >= 4) {
         const nodeText = await cells[3].textContent();
         if (nodeText && nodeText.trim() !== "—") {
           targetPn = (await cells[0].textContent()) || "";
-          _targetName = (await cells[1].textContent()) || "";
+          targetName = (await cells[1].textContent()) || "";
           break;
         }
       }
@@ -157,7 +157,7 @@ test.describe("Hierarchy tree", () => {
 
     // Note whether the soldier is currently visible in the tree
     const soldierInTree = page.getByTestId(`tree-soldier-${targetPn}`);
-    const _wasVisible = await soldierInTree.isVisible().catch(() => false);
+    const wasVisible = await soldierInTree.isVisible().catch(() => false);
 
     // Pick a different node to move the soldier to
     const addSoldierBtns = page.getByTestId(/^tree-add-soldier-/);
