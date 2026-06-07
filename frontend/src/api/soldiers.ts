@@ -9,6 +9,7 @@ export interface SoldierDTO {
   phone: string | null;
   must_change_password: boolean;
   left_at: string | null;
+  enrolled_at: string | null;
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
@@ -67,7 +68,7 @@ export async function assignRole(id: string, role: string): Promise<SoldierDTO> 
 
 export async function updateSoldier(
   id: string,
-  input: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null }
+  input: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null }
 ): Promise<SoldierDTO> {
   return (await api.patch<SoldierDTO>(`/soldiers/${id}`, input)).data;
 }

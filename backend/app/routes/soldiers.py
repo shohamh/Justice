@@ -37,6 +37,7 @@ class SoldierOut(BaseModel):
     phone: str | None
     must_change_password: bool
     left_at: str | None
+    enrolled_at: date_type | None = None
     # Profile fields
     gender: str | None = None
     is_officer: bool | None = None
@@ -67,6 +68,7 @@ class UpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=200)
     phone: str | None = Field(default=None, max_length=40)
     hierarchy_node_id: uuid.UUID | None = None
+    enrolled_at: date_type | None = None
 
 
 class RoleRequest(BaseModel):
@@ -151,6 +153,7 @@ def _out(s: Soldier, *, include_private: bool = False, telegram_linked: bool = F
         phone=s.phone,
         must_change_password=s.must_change_password,
         left_at=s.left_at.isoformat() if s.left_at else None,
+        enrolled_at=s.enrolled_at,
         gender=s.gender if include_private else None,
         is_officer=s.is_officer,
         rank=s.rank,
@@ -395,6 +398,8 @@ def update(
         session, soldier=s, full_name=body.full_name, phone=body.phone,
         hierarchy_node_id=body.hierarchy_node_id, actor_id=user.id
     )
+    if body.enrolled_at is not None:
+        s.enrolled_at = body.enrolled_at
     session.commit()
     session.refresh(s)
     return _out(s)
