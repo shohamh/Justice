@@ -6,7 +6,7 @@ import CoverOfferModal from "../components/CoverOfferModal";
 import { useAuth } from "../auth/AuthContext";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
-  listMySwaps, listIncomingSwaps, CreateSwapInput,
+  listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
@@ -14,7 +14,7 @@ import type { DutyType } from "../api/dutyConfig";
 const STATUS_COLORS: Record<string, string> = {
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
   pending_approval: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
-  open: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
+  open: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
   rejected: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
   cancelled: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
 };
@@ -30,6 +30,41 @@ function statusKey(status: string) {
   return map[status] ?? status;
 }
 
+function ApprovalDot({ value }: { value: boolean | null }) {
+  if (value === true) return <span className="text-green-600 font-bold">✓</span>;
+  if (value === false) return <span className="text-red-500 font-bold">✗</span>;
+  return <span className="text-gray-400">—</span>;
+}
+
+function SwapDutyHeader({ swap }: { swap: SwapRequest }) {
+  return (
+    <div className="text-sm">
+      {swap.duty_type_name && (
+        <span className="font-semibold dark:text-gray-100">{swap.duty_type_name}</span>
+      )}
+      {swap.duty_location_name && (
+        <span className="text-gray-500 dark:text-gray-400 mr-1"> — {swap.duty_location_name}</span>
+      )}
+      <span className="text-xs text-gray-400 dark:text-gray-500 mr-2" dir="ltr">
+        {swap.duty_start_date && swap.duty_end_date && swap.duty_start_date !== swap.duty_end_date
+          ? `${swap.duty_start_date} → ${swap.duty_end_date}`
+          : (swap.duty_start_date ?? swap.duty_date)}
+      </span>
+    </div>
+  );
+}
+
+function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; requireManagerApproval: boolean }) {
+  const { t } = useTranslation();
+  if (!requireManagerApproval || swap.status !== "pending_approval") return null;
+  return (
+    <div className="text-xs text-gray-500 dark:text-gray-400 flex gap-3 mt-1">
+      <span>{t("swaps.requester_approval")}: <ApprovalDot value={swap.requester_side_approved} /></span>
+      <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
+    </div>
+  );
+}
+
 function AskSwapModal({
   duty, dutyTypeName, onClose, onCreated,
 }: {
@@ -39,7 +74,6 @@ function AskSwapModal({
   const [mode, setMode] = useState<"open" | "soldier">("open");
   const [targetSoldierId, setTargetSoldierId] = useState("");
   const [reason, setReason] = useState("");
-  const [dutyDate, setDutyDate] = useState(duty.start_date);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -48,7 +82,6 @@ function AskSwapModal({
     try {
       const input: CreateSwapInput = {
         duty_assignment_id: duty.assignment_id,
-        duty_date: dutyDate,
         reason: reason || null,
         target_soldier_id: mode === "soldier" && targetSoldierId ? targetSoldierId : null,
       };
@@ -67,13 +100,10 @@ function AskSwapModal({
           <h3 className="text-lg font-semibold dark:text-gray-100">{t("swaps.ask_swap")}: {dutyTypeName}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3" dir="ltr">
+          {duty.start_date === duty.end_date ? duty.start_date : `${duty.start_date} → ${duty.end_date}`}
+        </p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="text-sm text-gray-600 dark:text-gray-300">
-            {t("swaps.duty_date")}:
-            <input type="date" value={dutyDate} onChange={e => setDutyDate(e.target.value)}
-              min={duty.start_date} max={duty.end_date}
-              className="border rounded px-1 py-0.5 text-xs mr-2 dark:bg-gray-700 dark:border-gray-600" required />
-          </div>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
               <input type="radio" name="mode" checked={mode === "open"} onChange={() => setMode("open")} />
@@ -114,16 +144,17 @@ export default function SwapsPage() {
   const [incomingSwaps, setIncomingSwaps] = useState<SwapRequest[]>([]);
   const [askSwapDuty, setAskSwapDuty] = useState<EffectiveDuty | null>(null);
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
+  const [requireManagerApproval, setRequireManagerApproval] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    const [mine, board, incoming, duties] = await Promise.all([
+    const [mine, board, incoming, duties, config] = await Promise.all([
       listMySwaps(),
       listBoard(),
       listIncomingSwaps(),
       listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
+      getSwapConfig().catch(() => ({ require_manager_approval: false })),
     ]);
-    // fetch duty types lazily
     const { listDutyTypes } = await import("../api/dutyConfig");
     const dts = await listDutyTypes().catch(() => [] as DutyType[]);
     setMySwaps(mine);
@@ -131,6 +162,7 @@ export default function SwapsPage() {
     setIncomingSwaps(incoming);
     setMyDuties(duties);
     setDutyTypes(Object.fromEntries(dts.map(d => [d.id, d.name])));
+    setRequireManagerApproval(config.require_manager_approval);
   }, [user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -144,26 +176,63 @@ export default function SwapsPage() {
 
   const tabs = [t("swaps.tab_mine"), t("swaps.tab_board"), t("swaps.tab_incoming")];
 
-  const renderSwapCard = (swap: SwapRequest, showCover = false) => (
-    <li key={swap.id} className="border rounded p-3 text-sm space-y-1 dark:border-gray-600">
-      <div className="flex items-center justify-between">
-        <span dir="ltr" className="font-medium">{swap.duty_date}</span>
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[swap.status] ?? ""}`}>
+  const renderMySwapCard = (swap: SwapRequest) => (
+    <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
+      <div className="flex items-start justify-between gap-2">
+        <SwapDutyHeader swap={swap} />
+        <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
           {t(statusKey(swap.status))}
         </span>
       </div>
+      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+      {swap.covering_soldier_id && swap.status === "pending_approval" && (
+        <p className="text-xs text-indigo-600 dark:text-indigo-400">{t("swaps.has_cover_candidate")}</p>
+      )}
       {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
-      {(swap.status === "open" || swap.status === "pending_approval") && !showCover && (
+      {swap.decision_note && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
+      )}
+      {(swap.status === "open" || swap.status === "pending_approval") && (
         <button type="button" onClick={() => handleCancel(swap.id)} className="text-red-600 text-xs hover:underline">
           {t("swaps.cancel")}
         </button>
       )}
-      {showCover && swap.status === "open" && (
+    </li>
+  );
+
+  const renderBoardCard = (swap: SwapRequest) => (
+    <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
+      <div className="flex items-start justify-between gap-2">
+        <SwapDutyHeader swap={swap} />
+        <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
+          {t(statusKey(swap.status))}
+        </span>
+      </div>
+      {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
+      {swap.status === "open" && (
         <button type="button" onClick={() => setCoverSwap(swap)}
           className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">
           {t("swaps.cover")}
         </button>
       )}
+    </li>
+  );
+
+  const renderIncomingCard = (swap: SwapRequest) => (
+    <li key={swap.id}
+      className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <SwapDutyHeader swap={swap} />
+        <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
+          {t(statusKey(swap.status))}
+        </span>
+      </div>
+      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+      {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
+      <button type="button" onClick={() => setCoverSwap(swap)}
+        className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">
+        {t("swaps.accept_cover")}
+      </button>
     </li>
   );
 
@@ -196,7 +265,7 @@ export default function SwapsPage() {
             {mySwaps.length > 0 && (
               <div className="border-t pt-4 space-y-2 dark:border-gray-600">
                 <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400">{t("swaps.mine")}</h3>
-                <ul className="space-y-2">{mySwaps.map(s => renderSwapCard(s))}</ul>
+                <ul className="space-y-2">{mySwaps.map(renderMySwapCard)}</ul>
               </div>
             )}
           </div>
@@ -205,30 +274,14 @@ export default function SwapsPage() {
         {tab === 1 && (
           <div className="space-y-2">
             {boardSwaps.length === 0 && <p className="text-sm text-gray-500">{t("swaps.none_board")}</p>}
-            <ul className="space-y-2">{boardSwaps.map(s => renderSwapCard(s, true))}</ul>
+            <ul className="space-y-2">{boardSwaps.map(renderBoardCard)}</ul>
           </div>
         )}
 
         {tab === 2 && (
           <div className="space-y-2">
             {incomingSwaps.length === 0 && <p className="text-sm text-gray-500">{t("swaps.none_incoming")}</p>}
-            <ul className="space-y-2">
-              {incomingSwaps.map(swap => (
-                <li key={swap.id} className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span dir="ltr" className="font-medium">{swap.duty_date}</span>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[swap.status] ?? ""}`}>
-                      {t(statusKey(swap.status))}
-                    </span>
-                  </div>
-                  {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
-                  <button type="button" onClick={() => setCoverSwap(swap)}
-                    className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">
-                    {t("swaps.accept_cover")}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <ul className="space-y-2">{incomingSwaps.map(renderIncomingCard)}</ul>
           </div>
         )}
       </section>

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -22,7 +22,6 @@ def create_request(
     *,
     requesting_soldier_id: uuid.UUID,
     duty_assignment_id: uuid.UUID,
-    duty_date: date,
     target_soldier_id: uuid.UUID | None,
     reason: str | None,
     actor_id: uuid.UUID | None = None,
@@ -32,8 +31,6 @@ def create_request(
         raise SwapError("assignment_not_found")
     if assignment.soldier_id != requesting_soldier_id:
         raise SwapError("not_your_duty")
-    if not (assignment.start_date <= duty_date <= assignment.end_date):
-        raise SwapError("date_out_of_range")
     if assignment.status != "published":
         raise SwapError("not_published")
     if target_soldier_id is not None and target_soldier_id == requesting_soldier_id:
@@ -41,7 +38,6 @@ def create_request(
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,
-            SwapRequest.duty_date == duty_date,
             SwapRequest.status.in_(["open", "pending_approval"]),
         )
     ).scalar_one_or_none()
@@ -49,7 +45,7 @@ def create_request(
         raise SwapError("already_pending")
     req = SwapRequest(
         duty_assignment_id=duty_assignment_id,
-        duty_date=duty_date,
+        duty_date=assignment.start_date,
         requesting_soldier_id=requesting_soldier_id,
         target_soldier_id=target_soldier_id,
         reason=reason,
@@ -127,22 +123,28 @@ def _require_approval(session: Session) -> bool:
 def _apply_cover(
     session: Session, *, req: SwapRequest, actor_id: uuid.UUID | None
 ) -> None:
-    """Translate an agreed swap into a duty_day_override crediting the covering soldier."""
+    """Translate an agreed swap into duty_day_overrides for every day of the assignment."""
     assignment = session.get(DutyAssignment, req.duty_assignment_id)
     if assignment is None:
         raise SwapError("assignment_not_found")
-    try:
-        ov = assignments_svc.set_day_override(
-            session,
-            assignment=assignment,
-            date=req.duty_date,
-            effective_soldier_id=req.covering_soldier_id,
-            reason="replacement",
-            actor_id=actor_id,
-        )
-    except assignments_svc.AssignmentError as exc:
-        raise SwapError(f"cover_blocked:{exc}") from exc
-    req.resulting_override_id = ov.id
+    first_ov = None
+    current = assignment.start_date
+    while current <= assignment.end_date:
+        try:
+            ov = assignments_svc.set_day_override(
+                session,
+                assignment=assignment,
+                date=current,
+                effective_soldier_id=req.covering_soldier_id,
+                reason="replacement",
+                actor_id=actor_id,
+            )
+        except assignments_svc.AssignmentError as exc:
+            raise SwapError(f"cover_blocked:{exc}") from exc
+        if first_ov is None:
+            first_ov = ov
+        current += timedelta(days=1)
+    req.resulting_override_id = first_ov.id if first_ov else None
     req.status = "applied"
 
 
@@ -278,6 +280,117 @@ def cancel_request(
     write_audit(
         session, actor_id=actor_id, action="swap.cancel", entity_type="swap_request",
         entity_id=req.id, before=before, after={"status": "cancelled"},
+    )
+    session.flush()
+    return req
+
+
+def take_free(
+    session: Session,
+    *,
+    assignment_id: uuid.UUID,
+    covering_soldier_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> SwapRequest:
+    """Proactively take another soldier's entire shift without requiring a prior swap request."""
+    assignment = session.get(DutyAssignment, assignment_id)
+    if assignment is None:
+        raise SwapError("assignment_not_found")
+    if assignment.soldier_id == covering_soldier_id:
+        raise SwapError("cannot_take_own_duty")
+    if assignment.status != "published":
+        raise SwapError("not_published")
+    existing = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.duty_assignment_id == assignment_id,
+            SwapRequest.status.in_(["open", "pending_approval"]),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise SwapError("already_pending")
+
+    req = SwapRequest(
+        duty_assignment_id=assignment_id,
+        duty_date=assignment.start_date,
+        requesting_soldier_id=assignment.soldier_id,
+        covering_soldier_id=covering_soldier_id,
+        offered_assignment_ids=[],
+        status="open",
+    )
+    session.add(req)
+    session.flush()
+
+    create_notification(
+        session,
+        soldier_id=assignment.soldier_id,
+        type=NotificationType.swap_offer,
+        title="חייל אחר לקח את התורנות שלך",
+        reference_type="swap_request",
+        reference_id=req.id,
+        actor_id=actor_id,
+    )
+
+    _apply_cover(session, req=req, actor_id=actor_id)
+    write_audit(
+        session, actor_id=actor_id, action="swap.take_free",
+        entity_type="swap_request", entity_id=req.id,
+        after={
+            "duty_assignment_id": str(assignment_id),
+            "duty_date": duty_date.isoformat(),
+            "covering_soldier_id": str(covering_soldier_id),
+            "status": "applied",
+        },
+    )
+    session.flush()
+    return req
+
+
+def cover_offer(
+    session: Session,
+    *,
+    swap_id: uuid.UUID,
+    covering_soldier_id: uuid.UUID,
+    offered_assignment_ids: list[uuid.UUID],
+    actor_id: uuid.UUID | None = None,
+) -> SwapRequest:
+    """Covering soldier responds to an open swap request (from board or incoming)."""
+    req = session.get(SwapRequest, swap_id)
+    if req is None:
+        raise SwapError("swap_not_found")
+    if req.status != "open":
+        raise SwapError("swap_not_open")
+    if req.requesting_soldier_id == covering_soldier_id:
+        raise SwapError("cannot_cover_own_swap")
+
+    req.covering_soldier_id = covering_soldier_id
+    req.offered_assignment_ids = [str(aid) for aid in offered_assignment_ids]
+
+    if _require_approval(session):
+        req.status = "pending_approval"
+        req.requester_side_approved = None
+        req.covering_side_approved = None
+        create_notification(
+            session,
+            soldier_id=req.requesting_soldier_id,
+            type=NotificationType.swap_offer,
+            title="הגיעה הצעה לכיסוי הבקשה שלך",
+            reference_type="swap_request",
+            reference_id=req.id,
+            actor_id=actor_id,
+        )
+    else:
+        _apply_cover(session, req=req, actor_id=actor_id)
+
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="swap.cover_offer",
+        entity_type="swap_request",
+        entity_id=req.id,
+        after={
+            "covering_soldier_id": str(covering_soldier_id),
+            "status": req.status,
+        },
     )
     session.flush()
     return req
