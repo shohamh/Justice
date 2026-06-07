@@ -11,6 +11,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   const [typeId, setTypeId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [indefinite, setIndefinite] = useState(false);
   const [reason, setReason] = useState("");
 
   const refresh = useCallback(async () => {
@@ -31,7 +32,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
       end_date: end || null,
       reason: reason || null,
     });
-    setTypeId(""); setStart(""); setEnd(""); setReason("");
+    setTypeId(""); setStart(""); setEnd(""); setIndefinite(false); setReason("");
     await refresh();
   }
 
@@ -67,7 +68,28 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
             {types.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
           </select>
           <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
-          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="grant-end" />
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
+              value={indefinite ? "" : end}
+              onChange={(e) => setEnd(e.target.value)}
+              disabled={indefinite}
+              data-testid="grant-end"
+            />
+            <label className="flex items-center gap-1 text-sm whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={indefinite}
+                onChange={(e) => {
+                  setIndefinite(e.target.checked);
+                  if (e.target.checked) setEnd("");
+                }}
+                data-testid="grant-indefinite"
+              />
+              ללא הגבלת זמן
+            </label>
+          </div>
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="grant-submit">{t("exemptions.grant")}</button>
         </form>
