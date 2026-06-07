@@ -31,7 +31,7 @@ jobs:
           restore-keys: uv-${{ runner.os }}-
 
       - name: Install Python dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run tests
         run: uv run pytest -q --ignore=app/routes/tests/test_candidate_rank.py
@@ -122,7 +122,7 @@ jobs:
 
       - name: Install Python dependencies
         working-directory: backend
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Run Alembic migrations
         working-directory: backend
