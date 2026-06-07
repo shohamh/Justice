@@ -14,6 +14,16 @@ const DEFAULT_SETTINGS: SolverSettings = {
   K: 8, T: 7, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
 };
 
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function thirtyDaysStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split("T")[0];
+}
+
 const FILL_COLORS: Record<string, string> = {
   empty: "text-red-600 dark:text-red-400",
   partial: "text-amber-600 dark:text-amber-400",
@@ -22,8 +32,8 @@ const FILL_COLORS: Record<string, string> = {
 
 export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
   const { t } = useTranslation();
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(todayStr);
+  const [dateTo, setDateTo] = useState(thirtyDaysStr);
   const [availableShifts, setAvailableShifts] = useState<DutyShift[]>([]);
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"shadow" | "dm_reviewed">("shadow");
@@ -46,9 +56,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
   }, [dateFrom, dateTo]);
 
   useEffect(() => {
-    if (dateFrom || dateTo) void loadShifts();
-    else setAvailableShifts([]);
-  }, [loadShifts, dateFrom, dateTo]);
+    void loadShifts();
+  }, [loadShifts]);
 
   function toggleShift(id: string) {
     setSelectedShiftIds(prev =>
@@ -109,8 +118,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
         </div>
       )}
       {availableShifts.length === 0 && (
-        <p className="text-gray-400">
-          {dateFrom || dateTo ? "אין משמרות פתוחות בטווח הנבחר" : "הזן טווח תאריכים לצפייה במשמרות"}
+        <p className="text-sm text-gray-500 text-right" dir="rtl">
+          לא נמצאו משמרות ללא שיבוץ בטווח התאריכים שנבחר.
         </p>
       )}
 
