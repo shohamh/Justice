@@ -27,6 +27,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [resetPublishedLoading, setResetPublishedLoading] = useState(false);
   const [resetDraftsLoading, setResetDraftsLoading] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
   const soldierLink = (id: string): React.ReactNode => {
@@ -49,13 +50,17 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   }
 
   async function handleAccept(proposal: ProposalRow) {
-    await acceptProposal(jobId, proposal.assignment_id);
-    onProposalUpdate({
-      ...job,
-      proposals: job.proposals.map(p =>
-        p.assignment_id === proposal.assignment_id ? { ...p, status: "published" } : p
-      ),
-    });
+    try {
+      await acceptProposal(jobId, proposal.assignment_id);
+      onProposalUpdate({
+        ...job,
+        proposals: job.proposals.map(p =>
+          p.assignment_id === proposal.assignment_id ? { ...p, status: "published" } : p
+        ),
+      });
+    } catch {
+      setApproveError(t("errors.generic"));
+    }
   }
 
   async function handleReject(proposal: ProposalRow) {
@@ -69,18 +74,25 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   }
 
   async function handleApproveSelected() {
-    const toApprove = job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p));
+    // If nothing explicitly selected, publish all pending proposals
+    const toApprove = selectedIds.size > 0
+      ? job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p))
+      : pendingProposals;
     if (toApprove.length === 0) return;
     setApproving(true);
+    setApproveError(null);
     try {
       await bulkAcceptProposals(jobId, toApprove.map(p => p.assignment_id));
+      const approvedIds = new Set(toApprove.map(p => p.assignment_id));
       onProposalUpdate({
         ...job,
         proposals: job.proposals.map(p =>
-          selectedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "published" } : p
+          approvedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "published" } : p
         ),
       });
       setSelectedIds(new Set());
+    } catch {
+      setApproveError(t("errors.generic"));
     } finally {
       setApproving(false);
     }
@@ -209,14 +221,14 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
         <p className="text-gray-500 text-sm">{t("algorithm.no_proposals")}</p>
       ) : (
         <>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-3 text-sm flex-wrap">
             <button type="button" onClick={toggleSelectAll} className="text-blue-600 dark:text-blue-400 hover:underline">
               {allPendingSelected ? "בטל בחירה הכל" : "בחר הכל"}
             </button>
             <button
               type="button"
               onClick={handleApproveSelected}
-              disabled={selectedIds.size === 0 || approving}
+              disabled={pendingProposals.length === 0 || approving}
               className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 disabled:opacity-40 flex items-center gap-1.5"
             >
               {approving && (
@@ -225,10 +237,14 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
               )}
-              {approving
-                ? `מפרסם... (${selectedIds.size})`
-                : `אשר ופרסם (הפוך לרשמי) (${selectedIds.size})`}
+              {(() => {
+                const count = selectedIds.size > 0 ? selectedIds.size : pendingProposals.length;
+                return approving ? `מפרסם... (${count})` : `אשר ופרסם (הפוך לרשמי) (${count})`;
+              })()}
             </button>
+            {approveError && (
+              <span className="text-xs text-red-600 dark:text-red-400">{approveError}</span>
+            )}
           </div>
           <DataTable
             columns={cols}
