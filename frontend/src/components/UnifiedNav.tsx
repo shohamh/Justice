@@ -111,6 +111,7 @@ export default function UnifiedNav() {
   const planningItems = [
     { label: t("nav.planning_assignment"), to: "/planning/assignment" },
     { label: t("nav.planning_config"), to: "/planning/config" },
+    { label: "ייבוא מ-Excel", to: "/import" },
   ];
 
   const isActive = (to?: string) => {

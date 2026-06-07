@@ -26,6 +26,7 @@ import AssignmentPage from "./pages/planning/AssignmentPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import HakpazaPage from "./pages/HakpazaPage";
+import ImportPage from "./pages/ImportPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -73,6 +74,7 @@ export default function App() {
             {/* New admin settings page */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+            <Route path="/import" element={<AppGate><ImportPage /></AppGate>} />
             {/* Redirects from old routes */}
             <Route path="/duty-management" element={<Navigate to="/planning/assignment?tab=0" replace />} />
             <Route path="/algorithm" element={<Navigate to="/planning/assignment?tab=1" replace />} />
