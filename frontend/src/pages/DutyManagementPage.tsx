@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import ExplanationModal from "../components/ExplanationModal";
 import { Assignment, cancelAssignment, createAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
 import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -22,6 +23,8 @@ export function DutyManagementContent() {
   const [error, setError] = useState("");
   const [adjDelta, setAdjDelta] = useState("");
   const [adjReason, setAdjReason] = useState("");
+
+  const [explanationId, setExplanationId] = useState<string | null>(null);
 
   // Bulk cancel state
   const [draftCount, setDraftCount] = useState<number>(0);
@@ -174,6 +177,13 @@ export function DutyManagementContent() {
             <span dir="ltr">{a.start_date} → {a.end_date}</span>
             <button className="text-xs text-indigo-600 dark:text-indigo-400" onClick={() => doOverride(a.id)} data-testid={`override-${a.id}`}>{t("duty_management.override")}</button>
             <button className="text-xs text-red-600" onClick={() => doCancel(a.id)} data-testid={`cancel-${a.id}`}>{t("duty_management.cancel")}</button>
+            <button
+              className="text-gray-400 hover:text-indigo-600 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-full w-5 h-5 inline-flex items-center justify-center"
+              onClick={() => setExplanationId(a.id)}
+              title="למה קיבל חייל זה תורנות זו?"
+            >
+              ?
+            </button>
           </li>
         ))}
       </ul>
@@ -251,6 +261,9 @@ export function DutyManagementContent() {
           )}
         </div>
       </div>
+      {explanationId && (
+        <ExplanationModal assignmentId={explanationId} onClose={() => setExplanationId(null)} />
+      )}
     </section>
   );
 }

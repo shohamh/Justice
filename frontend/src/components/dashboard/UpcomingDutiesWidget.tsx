@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { EffectiveDuty } from "../../api/assignments";
 import { formatDateRange } from "../../utils/formatDate";
+import ExplanationModal from "../ExplanationModal";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -8,6 +10,7 @@ interface Props {
 }
 
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames }: Props) {
+  const [explanationId, setExplanationId] = useState<string | null>(null);
   const today = new Date().toISOString().split("T")[0];
   const upcoming = duties
     .filter((d) => d.end_date >= today)
@@ -25,6 +28,7 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames 
               <th className="text-right pb-2 font-medium">תאריך</th>
               <th className="text-right pb-2 font-medium">סוג</th>
               <th className="text-right pb-2 font-medium">מיקום</th>
+              <th className="pb-2 w-8" />
             </tr>
           </thead>
           <tbody>
@@ -33,10 +37,25 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames 
                 <td className="py-2">{formatDateRange(d.start_date, d.end_date)}</td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
                 <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>
+                <td className="py-2 w-8 text-center">
+                  <button
+                    className="text-gray-400 hover:text-indigo-600 text-xs font-bold border border-gray-300 dark:border-gray-600 rounded-full w-5 h-5 inline-flex items-center justify-center"
+                    onClick={(e) => { e.stopPropagation(); setExplanationId(d.assignment_id); }}
+                    title="למה קיבלתי תורנות זו?"
+                  >
+                    ?
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {explanationId && (
+        <ExplanationModal
+          assignmentId={explanationId}
+          onClose={() => setExplanationId(null)}
+        />
       )}
     </section>
   );
