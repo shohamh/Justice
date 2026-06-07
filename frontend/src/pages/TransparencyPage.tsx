@@ -252,7 +252,7 @@ export default function TransparencyPage() {
       cell: (r) => (
         <span
           className="text-gray-500"
-          title={`${r.exempted_count} חיילים פטורים`}
+          title={t("transparency.exempted_count_tooltip", { count: r.exempted_count })}
         >
           {r.exempted_count}
         </span>
