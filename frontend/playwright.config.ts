@@ -11,5 +11,8 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
+    // The app uses a mobile-first bottom tab bar (md:hidden). Use a phone
+    // viewport so the nav elements the tests target are visible.
+    viewport: { width: 390, height: 844 },
   },
 });
