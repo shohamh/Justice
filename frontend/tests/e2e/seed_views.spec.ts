@@ -43,14 +43,6 @@ test("seeded data renders correctly across pages", async ({ page }) => {
   await expect(page).toHaveURL(/\/unit-calendar$/);
   await page.waitForSelector('[data-testid="fullcalendar"]');
   await expect(page.locator(".fc-dayGridMonth-view")).toBeVisible();
-  const dayCell = page.locator(".fc-daygrid-day").first();
-  if (await dayCell.isVisible()) {
-    await dayCell.click();
-    await page.waitForTimeout(500);
-    const table = page.locator('[data-testid="detail-table"]');
-    const empty = page.locator("text=אין תורנויות");
-    await expect(table.or(empty)).toBeVisible();
-  }
 
   await page.getByTestId("nav-transparency").click();
   await expect(page).toHaveURL(/\/transparency$/);

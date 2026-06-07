@@ -50,7 +50,9 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
 
   // Grant an exemption.
   await page.getByTestId("grant-type").selectOption({ label: etName });
-  await page.getByTestId("grant-start").fill("2026-06-01");
+  const futureStart = new Date();
+  futureStart.setDate(futureStart.getDate() + 30);
+  await page.getByTestId("grant-start").fill(futureStart.toISOString().slice(0, 10));
   await page.getByTestId("grant-reason").fill("בדיקה");
   await page.getByTestId("grant-submit").click();
 

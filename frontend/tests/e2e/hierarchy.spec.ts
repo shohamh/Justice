@@ -146,8 +146,8 @@ test.describe("Hierarchy tree", () => {
     let targetName = "";
     for (let i = 0; i < rowCount; i++) {
       const cells = await soldierRows.nth(i).locator("td").all();
-      if (cells.length >= 4) {
-        const nodeText = await cells[3].textContent();
+      if (cells.length >= 5) {
+        const nodeText = await cells[4].textContent();
         if (nodeText && nodeText.trim() !== "—") {
           targetPn = (await cells[0].textContent()) || "";
           targetName = (await cells[1].textContent()) || "";
