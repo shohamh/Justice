@@ -5,10 +5,24 @@ import { SwapRequest } from "../../api/swaps";
 interface Props {
   pendingEnrollments: EnrollmentRequestDTO[];
   pendingSwaps: SwapRequest[];
+  pendingConstraints: number;
+  pendingExemptions: number;
+  pendingFieldUpdates: number;
 }
 
-export default function PendingApprovalsWidget({ pendingEnrollments, pendingSwaps }: Props) {
-  if (pendingEnrollments.length === 0 && pendingSwaps.length === 0) return null;
+function CountChip({ n }: { n: number }) {
+  return (
+    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium text-xs">
+      {n}
+    </span>
+  );
+}
+
+export default function PendingApprovalsWidget({
+  pendingEnrollments, pendingSwaps, pendingConstraints, pendingExemptions, pendingFieldUpdates,
+}: Props) {
+  const total = pendingEnrollments.length + pendingSwaps.length + pendingConstraints + pendingExemptions + pendingFieldUpdates;
+  if (total === 0) return null;
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
@@ -16,21 +30,41 @@ export default function PendingApprovalsWidget({ pendingEnrollments, pendingSwap
       <ul className="space-y-2 text-sm">
         {pendingEnrollments.length > 0 && (
           <li>
-            <Link to="/approvals" className="flex items-center justify-between hover:text-indigo-600">
-              <span>בקשות הצטרפות ממתינות</span>
-              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                {pendingEnrollments.length}
-              </span>
+            <Link to="/approvals?tab=enrollments" className="flex items-center justify-between hover:text-indigo-600">
+              <span>בקשות הצטרפות</span>
+              <CountChip n={pendingEnrollments.length} />
             </Link>
           </li>
         )}
         {pendingSwaps.length > 0 && (
           <li>
             <Link to="/swaps" className="flex items-center justify-between hover:text-indigo-600">
-              <span>החלפות הממתינות לאישור</span>
-              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                {pendingSwaps.length}
-              </span>
+              <span>בקשות החלפה</span>
+              <CountChip n={pendingSwaps.length} />
+            </Link>
+          </li>
+        )}
+        {pendingConstraints > 0 && (
+          <li>
+            <Link to="/approvals?tab=constraints" className="flex items-center justify-between hover:text-indigo-600">
+              <span>בקשות אישי</span>
+              <CountChip n={pendingConstraints} />
+            </Link>
+          </li>
+        )}
+        {pendingExemptions > 0 && (
+          <li>
+            <Link to="/approvals?tab=exemptions" className="flex items-center justify-between hover:text-indigo-600">
+              <span>בקשות פטור</span>
+              <CountChip n={pendingExemptions} />
+            </Link>
+          </li>
+        )}
+        {pendingFieldUpdates > 0 && (
+          <li>
+            <Link to="/approvals?tab=field-updates" className="flex items-center justify-between hover:text-indigo-600">
+              <span>עדכוני פרופיל</span>
+              <CountChip n={pendingFieldUpdates} />
             </Link>
           </li>
         )}

@@ -17,6 +17,9 @@ import { SwapRequest, listMySwaps, listPendingSwaps } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
 import { TransparencyRow, getTransparency } from "../api/scoring";
+import { getPendingCount } from "../api/constraints";
+import { getPendingExemptionCount } from "../api/exemptions";
+import { getPendingFieldUpdateCount } from "../api/soldiers";
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -37,6 +40,9 @@ export default function HomePage() {
   const [pendingSwaps, setPendingSwaps] = useState<SwapRequest[]>([]);
   const [settings, setSettings] = useState<SettingsMap>({});
   const [transparencyRows, setTransparencyRows] = useState<TransparencyRow[]>([]);
+  const [pendingConstraints, setPendingConstraints] = useState(0);
+  const [pendingExemptions, setPendingExemptions] = useState(0);
+  const [pendingFieldUpdates, setPendingFieldUpdates] = useState(0);
 
   const canApprove = user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin";
 
@@ -73,8 +79,18 @@ export default function HomePage() {
       ? listPendingSwaps().catch(() => [] as SwapRequest[])
       : Promise.resolve([] as SwapRequest[]);
 
-    void Promise.all([dutyFetch, typesFetch, locsFetch, swapsFetch, settingsFetch, enrollFetch, pendingSwapsFetch, transparencyFetch]).then(
-      ([d, dts, locs, sw, sett, enr, psw, tr]) => {
+    const constraintsFetch = canApprove
+      ? getPendingCount().catch(() => 0)
+      : Promise.resolve(0);
+    const exemptionsFetch = canApprove
+      ? getPendingExemptionCount().catch(() => 0)
+      : Promise.resolve(0);
+    const fieldUpdatesFetch = canApprove
+      ? getPendingFieldUpdateCount().catch(() => 0)
+      : Promise.resolve(0);
+
+    void Promise.all([dutyFetch, typesFetch, locsFetch, swapsFetch, settingsFetch, enrollFetch, pendingSwapsFetch, transparencyFetch, constraintsFetch, exemptionsFetch, fieldUpdatesFetch]).then(
+      ([d, dts, locs, sw, sett, enr, psw, tr, constraints, exemptions, fieldUpdates]) => {
         setDuties(d);
         setTypeNames(Object.fromEntries((dts as DutyType[]).map((t) => [t.id, t.name])));
         setLocationNames(Object.fromEntries((locs as DutyLocation[]).map((l) => [l.id, l.name])));
@@ -83,6 +99,9 @@ export default function HomePage() {
         setPendingEnrollments(enr as EnrollmentRequestDTO[]);
         setPendingSwaps(psw as SwapRequest[]);
         setTransparencyRows(tr as TransparencyRow[]);
+        setPendingConstraints(constraints as number);
+        setPendingExemptions(exemptions as number);
+        setPendingFieldUpdates(fieldUpdates as number);
       }
     );
   }, [user, canApprove]);
@@ -113,6 +132,9 @@ export default function HomePage() {
           <PendingApprovalsWidget
             pendingEnrollments={pendingEnrollments}
             pendingSwaps={pendingSwaps}
+            pendingConstraints={pendingConstraints}
+            pendingExemptions={pendingExemptions}
+            pendingFieldUpdates={pendingFieldUpdates}
           />
         )}
 
