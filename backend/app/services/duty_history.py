@@ -201,7 +201,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 event_type="personal_constraint",
                 date=c.start_date.isoformat(),
                 end_date=_isodate(c.end_date),
-                title="בקשה אישית",
+                title="אילוצים אישיים",
                 description=c.reason,
                 status=c.status,
                 metadata={
