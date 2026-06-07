@@ -70,6 +70,9 @@ export async function deleteExemptionType(id: string): Promise<void> {
 export async function getExemptionDutyTypes(id: string): Promise<string[]> {
   return (await api.get<string[]>(`/duty-config/exemption-types/${id}/duty-types`)).data;
 }
+export async function getAllExemptionDutyTypeMaps(): Promise<Record<string, string[]>> {
+  return (await api.get<Record<string, string[]>>("/duty-config/exemption-types/duty-type-map")).data;
+}
 export async function setExemptionDutyTypes(id: string, duty_type_ids: string[]): Promise<string[]> {
   return (await api.put<string[]>(`/duty-config/exemption-types/${id}/duty-types`, { duty_type_ids })).data;
 }

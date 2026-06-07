@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import DutyLocation, DutyType, ExemptionType, Soldier
+from app.db.models import DutyLocation, DutyType, ExemptionDutyTypeMap, ExemptionType, Soldier
 from app.db.session import get_session
 from app.services import duty_config as svc
 
@@ -291,6 +291,21 @@ def delete_exemption_type(
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     session.commit()
+
+
+@router.get("/exemption-types/duty-type-map", response_model=dict[str, list[str]])
+def get_all_exemption_duty_type_maps(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, list[str]]:
+    """Return {exemption_type_id: [duty_type_id, ...]} for all exemption types in one query."""
+    rows = session.execute(
+        select(ExemptionDutyTypeMap.exemption_type_id, ExemptionDutyTypeMap.duty_type_id)
+    ).all()
+    result: dict[str, list[str]] = {}
+    for etid, dtid in rows:
+        result.setdefault(str(etid), []).append(str(dtid))
+    return result
 
 
 @router.get("/exemption-types/{exemption_type_id}/duty-types", response_model=list[uuid.UUID])

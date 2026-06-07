@@ -10,7 +10,7 @@ import {
   createDutyType,
   createExemptionType,
   createLocation,
-  getExemptionDutyTypes,
+  getAllExemptionDutyTypeMaps,
   listDutyTypes,
   listExemptionTypes,
   listLocations,
@@ -36,12 +36,15 @@ export function DutyConfigContent() {
   const [expandedDtId, setExpandedDtId] = useState<string | null>(null);
 
   async function refresh() {
-    const [dts, locs, ets] = await Promise.all([listDutyTypes(), listLocations(), listExemptionTypes()]);
+    const [dts, locs, ets, sel] = await Promise.all([
+      listDutyTypes(),
+      listLocations(),
+      listExemptionTypes(),
+      getAllExemptionDutyTypeMaps(),
+    ]);
     setDutyTypes(dts);
     setLocations(locs);
     setExTypes(ets);
-    const sel: Record<string, string[]> = {};
-    for (const et of ets) sel[et.id] = await getExemptionDutyTypes(et.id);
     setMapSel(sel);
   }
   useEffect(() => { void refresh(); }, []);
