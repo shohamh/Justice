@@ -7,7 +7,7 @@ interface SettingDef {
   key: string;
   label: string;
   description?: string;
-  type: "boolean" | "number" | "decimal" | "select";
+  type: "boolean" | "number" | "decimal" | "select" | "date";
   defaultValue: string | number | boolean;
   options?: { value: string; label: string }[];
 }
@@ -51,6 +51,13 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "הוגנות אלגוריתם",
     settings: [
       { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
+      {
+        key: "fairness.reset_date",
+        label: "תאריך איפוס נתוני הוגנות",
+        description: "רק תורנויות מתאריך זה ואילך נלקחות בחשבון לחישוב עומס ההוגנות. מומלץ לבחור תחילת רבעון (1 בינואר, אפריל, יולי, אוקטובר). שינוי תאריך זה ישפיע על כל הרצות אלגוריתם עתידיות.",
+        type: "date" as const,
+        defaultValue: "",
+      },
     ],
   },
   {
@@ -225,6 +232,14 @@ export function SystemSettingsContent() {
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
+                  ) : def.type === "date" ? (
+                    <input
+                      type="date"
+                      value={String(value ?? "")}
+                      onChange={e => setValue(def.key, e.target.value)}
+                      className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
+                      dir="ltr"
+                    />
                   ) : (
                     <input
                       type="number"
