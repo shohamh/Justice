@@ -274,17 +274,39 @@ def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
 
 
 def transparency_rows(session: Session) -> list[dict[str, Any]]:
+    from app.services.effort_score import compute_effort_data, quarter_start
+    from app.services.settings_loader import SettingNotFound, get_setting
+
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     duty_scores = duty_score_by_soldier(session)
     adj_scores = adjustments_by_soldier(session)
     shift_counts = shift_count_by_soldier(session)
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
+
+    # Compute effort scores for all active soldiers
+    today = date.today()
+    try:
+        reset_raw = get_setting(session, "fairness.reset_date")
+        reset_date = date.fromisoformat(str(reset_raw))
+    except (SettingNotFound, ValueError, Exception):
+        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+
+    effort_map = compute_effort_data(
+        session,
+        soldiers=list(soldiers),
+        planning_start=today,
+        planning_end=today,
+        reset_date=reset_date,
+    )
+
     rows: list[dict[str, Any]] = []
     for s in soldiers:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days(session, soldier=s)
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        effort_data = effort_map.get(s.id)
+        effort_score = float(effort_data.effort_score) if effort_data else 0.0
         rows.append(
             {
                 "soldier_id": s.id,
@@ -300,6 +322,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
                 "cumulative_score": cum,
                 "score_per_day": cum / Decimal(ad),
                 "is_globally_exempted": s.id in exempted_ids,
+                "effort_score": effort_score,
             }
         )
     if rows:
@@ -310,7 +333,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
         r["normalised_score"] = (
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
-    rows.sort(key=lambda r: r["normalised_score"], reverse=True)
+    rows.sort(key=lambda r: r["effort_score"], reverse=True)
     return rows
 
 

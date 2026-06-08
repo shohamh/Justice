@@ -214,3 +214,11 @@ def test_inject_effort_scores():
     # effort_per_milli = int(0.5 / 3500 × EFFORT_SCALE) = int(142857) = 142857
     expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
     assert s.effort_per_milli == expected
+
+
+def test_transparency_rows_has_effort_score_key():
+    """transparency_rows() output dicts must contain an 'effort_score' key."""
+    import inspect
+    from app.services import scoring as sc
+    src = inspect.getsource(sc.transparency_rows)
+    assert "effort_score" in src, "transparency_rows must include effort_score in output"
