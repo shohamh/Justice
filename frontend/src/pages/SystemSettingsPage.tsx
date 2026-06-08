@@ -7,8 +7,9 @@ interface SettingDef {
   key: string;
   label: string;
   description?: string;
-  type: "boolean" | "number" | "decimal";
+  type: "boolean" | "number" | "decimal" | "select";
   defaultValue: string | number | boolean;
+  options?: { value: string; label: string }[];
 }
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
@@ -94,6 +95,36 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         description: "מכפיל ניקוד שיחויב על חייל שהוקפץ פיקודית (ברירת מחדל: 2.0)",
         type: "decimal" as const,
         defaultValue: 2.0,
+      },
+    ],
+  },
+  {
+    label: "גימלים",
+    settings: [
+      {
+        key: "gimalim.enabled",
+        label: "גלגול תורנויות בגימלים",
+        description: "כשמופעל, שחרור גימלים מגלגל את החייל לתורנות העתידית הבאה המתאימה — מרתיע ניצול לרעה של גימלים",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
+      {
+        key: "gimalim.default_rest_days",
+        label: "ימי מנוחה ברירת מחדל",
+        description: "מספר ימים מינימלי מסוף התורנות הנוכחית לתחילת השיבוץ מחדש (ניתן לשינוי בכל פעולת גימלים)",
+        type: "number" as const,
+        defaultValue: 7,
+      },
+      {
+        key: "gimalim.reserve_fate",
+        label: "גורל רזרבת הגימלים",
+        description: "מה קורה לרזרבה שהוקפצה לכיסוי לאחר שסיימה את תפקידה",
+        type: "select" as const,
+        defaultValue: "keep",
+        options: [
+          { value: "keep", label: "שמור כרזרבה כללית" },
+          { value: "release", label: "שחרר מהתורנות" },
+        ],
       },
     ],
   },
@@ -183,6 +214,17 @@ export function SystemSettingsContent() {
                     >
                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${value ? "translate-x-6" : "translate-x-1"}`} />
                     </button>
+                  ) : def.type === "select" ? (
+                    <select
+                      value={String(value ?? def.defaultValue)}
+                      onChange={(e) => setValue(def.key, e.target.value)}
+                      className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
+                      dir="rtl"
+                    >
+                      {(def.options ?? []).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       type="number"
