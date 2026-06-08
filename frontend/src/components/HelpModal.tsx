@@ -2,13 +2,20 @@ import { useState } from "react";
 
 interface Props {
   onClose: () => void;
+  gimelimEnabled?: boolean;
 }
 
-const TABS = [
-  { id: "swaps", label: "🔄 החלפות" },
-  { id: "algorithm", label: "⚙️ האלגוריתם" },
-  { id: "fairness", label: "⚖️ הוגנות ושקיפות" },
-];
+function buildTabs(gimelimEnabled: boolean) {
+  const tabs = [
+    { id: "swaps", label: "🔄 החלפות" },
+    { id: "algorithm", label: "⚙️ האלגוריתם" },
+    { id: "fairness", label: "⚖️ הוגנות ושקיפות" },
+  ];
+  if (gimelimEnabled) {
+    tabs.push({ id: "gimelim", label: "🏥 גימלים" });
+  }
+  return tabs;
+}
 
 function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string; color?: string }) {
   const colors: Record<string, string> = {
@@ -310,8 +317,38 @@ function FairnessTab() {
   );
 }
 
-export default function HelpModal({ onClose }: Props) {
+function GimelimTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-red-700 dark:text-red-400">🏥 מה זה גימלים?</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        גימלים הוא שחרור רפואי זמני מתורנות. כדי למנוע ניצול לרעה, המערכת מגלגלת את החייל שוחרר לתורנות העתידית הקרובה המתאימה — ומחליפה חייל ראשוני קרוב היררכית.
+      </p>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
+        <FlowStep icon="🏥" text="חייל מדווח גימלים — מפקד מפעיל שחרור גימלים" color="red" />
+        <Arrow />
+        <FlowStep icon="📋" text="המערכת מציגה הצעה: מי מוקפץ, לאיזו תורנות ישובץ החייל" color="blue" />
+        <Arrow />
+        <FlowStep icon="✅" text="המפקד מאשר" color="indigo" />
+        <Arrow />
+        <FlowStep icon="⬆️" text="הרזרבה מוקפצת לכיסוי התורנות הנוכחית" color="amber" />
+        <Arrow />
+        <FlowStep icon="🔄" text="חייל קרוב היררכית ממומר לרזרבה בתורנות העתידית, החייל שוחרר נכנס כראשוני" color="amber" />
+        <Arrow />
+        <FlowStep icon="📲" text="כל הצדדים מקבלים הודעה" color="green" />
+      </div>
+      <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-300">
+        <li>הסיבה הרפואית נשמרת לצפייה של מנהלי תורניות בלבד — לא מועברת לחיילים אחרים.</li>
+        <li>אם לא נמצאת תורנות עתידית מתאימה, הגימלים מבוצע בלי שיבוץ מחדש.</li>
+        <li>החייל שמומר לרזרבה שומר את הרזרבה המקורית שלו כרזרבה כללית.</li>
+      </ul>
+    </div>
+  );
+}
+
+export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
   const [activeTab, setActiveTab] = useState("swaps");
+  const TABS = buildTabs(gimelimEnabled);
 
   return (
     <div
@@ -356,6 +393,7 @@ export default function HelpModal({ onClose }: Props) {
           {activeTab === "swaps" && <SwapsTab />}
           {activeTab === "algorithm" && <AlgorithmTab />}
           {activeTab === "fairness" && <FairnessTab />}
+          {activeTab === "gimelim" && <GimelimTab />}
         </div>
       </div>
     </div>
