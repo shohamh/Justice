@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   previewGimelim,
   commitGimelim,
+  uploadGimelimAttachment,
   GimelimPreview,
 } from "../api/gimelim";
 import { CalendarShiftAssignee } from "../api/calendar";
@@ -18,6 +19,9 @@ interface Props {
 
 type Step = "form" | "preview";
 
+const ALLOWED_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"]);
+const MAX_BYTES = 20 * 1024 * 1024;
+
 export default function GimelimModal({
   shiftId,
   primary,
@@ -26,17 +30,44 @@ export default function GimelimModal({
   onDone,
 }: Props) {
   const qc = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [step, setStep] = useState<Step>("form");
   const [restDays, setRestDays] = useState(defaultRestDays);
   const [reason, setReason] = useState("");
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [preview, setPreview] = useState<GimelimPreview | null>(null);
+
+  const reasonEmpty = reason.trim() === "";
+  const showReasonError = reasonTouched && reasonEmpty;
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFileError(null);
+    if (!f) { setSelectedFile(null); return; }
+    if (!ALLOWED_TYPES.has(f.type)) {
+      setFileError("סוג קובץ לא נתמך — יש להעלות PDF, JPG, PNG, GIF או WEBP");
+      setSelectedFile(null);
+      e.target.value = "";
+      return;
+    }
+    if (f.size > MAX_BYTES) {
+      setFileError("הקובץ גדול מדי — מקסימום 20 MB");
+      setSelectedFile(null);
+      e.target.value = "";
+      return;
+    }
+    setSelectedFile(f);
+  }
 
   const previewMutation = useMutation({
     mutationFn: () =>
       previewGimelim(shiftId, {
         primary_assignment_id: primary.assignment_id ?? "",
         rest_days: restDays,
-        reason: reason || undefined,
+        reason: reason.trim(),
       }),
     onSuccess: (data) => {
       setPreview(data);
@@ -46,9 +77,15 @@ export default function GimelimModal({
 
   const commitMutation = useMutation({
     mutationFn: () => commitGimelim(shiftId, preview!.preview_token),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["calendarShifts"] });
       onDone();
+      // Upload attachment silently after closing (fire-and-forget)
+      if (selectedFile && result.dismissal_id) {
+        uploadGimelimAttachment(result.dismissal_id, selectedFile).catch(() => {
+          // Silent — attachment upload failure doesn't block the gimelim action
+        });
+      }
     },
     onError: (err: { response?: { data?: { detail?: string } } }) => {
       const detail = err?.response?.data?.detail ?? "";
@@ -59,9 +96,13 @@ export default function GimelimModal({
     },
   });
 
-  const tokenExpiresAt = preview
-    ? new Date(preview.preview_token_expires_at)
-    : null;
+  const tokenExpiresAt = preview ? new Date(preview.preview_token_expires_at) : null;
+
+  function handlePreviewClick() {
+    setReasonTouched(true);
+    if (reasonEmpty) return;
+    previewMutation.mutate();
+  }
 
   return (
     <div
@@ -81,16 +122,14 @@ export default function GimelimModal({
             </h3>
             <p className="text-sm text-gray-500 mt-0.5">{primary.soldier_name}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">
             ✕
           </button>
         </div>
 
         {step === "form" && (
           <>
+            {/* Rest days */}
             <div className="mb-4">
               <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">
                 ימי מנוחה לפני שיבוץ מחדש
@@ -112,17 +151,62 @@ export default function GimelimModal({
               </p>
             </div>
 
-            <div className="mb-5">
+            {/* Reason — mandatory */}
+            <div className="mb-4">
               <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">
-                סיבה (אופציונלי — גלויה למנהלים בלבד)
+                סיבה <span className="text-red-500">*</span>
+                <span className="font-normal text-gray-400 mr-1">(גלויה למנהלים בלבד)</span>
               </label>
               <textarea
-                className="border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-red-300 outline-none resize-none"
+                className={`border rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 outline-none resize-none transition-colors ${
+                  showReasonError
+                    ? "border-red-400 focus:ring-red-300"
+                    : "border-gray-300 dark:border-gray-600 focus:ring-red-300"
+                }`}
                 rows={2}
                 value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                onChange={(e) => { setReason(e.target.value); setReasonTouched(true); }}
+                onBlur={() => setReasonTouched(true)}
                 placeholder="פרטים רפואיים (לא מועברים לחיילים אחרים)"
               />
+              {showReasonError && (
+                <p className="text-xs text-red-500 mt-1">חובה למלא סיבה לפני הגשת הבקשה</p>
+              )}
+            </div>
+
+            {/* File upload — optional */}
+            <div className="mb-5">
+              <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">
+                צירוף מסמך <span className="text-gray-400 font-normal">(אופציונלי — לזיכרון ארגוני)</span>
+              </label>
+              <div
+                className="flex items-center gap-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 cursor-pointer hover:border-red-300 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="text-gray-400 text-sm">{selectedFile ? `📎 ${selectedFile.name}` : "לחץ לבחירת קובץ..."}</span>
+                {selectedFile && (
+                  <button
+                    type="button"
+                    className="mr-auto text-gray-400 hover:text-red-500 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              {fileError && <p className="text-xs text-red-500 mt-1">{fileError}</p>}
+              <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG, GIF, WEBP — עד 20 MB</p>
             </div>
 
             {previewMutation.isError && (
@@ -140,7 +224,7 @@ export default function GimelimModal({
                 ביטול
               </button>
               <button
-                onClick={() => previewMutation.mutate()}
+                onClick={handlePreviewClick}
                 disabled={previewMutation.isPending}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors shadow-sm"
               >
@@ -207,6 +291,11 @@ export default function GimelimModal({
             {preview.warnings.filter(w => w !== "no_future_slot_found").map((w) => (
               <div key={w} className="text-xs text-amber-600 mb-2">⚠️ {w}</div>
             ))}
+
+            {/* Attachment summary */}
+            {selectedFile && (
+              <p className="text-xs text-gray-500 mb-2">📎 {selectedFile.name} יצורף לאחר האישור</p>
+            )}
 
             {/* Token expiry hint */}
             {tokenExpiresAt && (
