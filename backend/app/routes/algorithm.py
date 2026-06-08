@@ -611,7 +611,7 @@ def accept_proposal(
 
 
 class BulkAcceptRequest(BaseModel):
-    assignment_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    assignment_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 @router.post("/jobs/{job_id}/proposals/bulk-accept", status_code=status.HTTP_200_OK)
