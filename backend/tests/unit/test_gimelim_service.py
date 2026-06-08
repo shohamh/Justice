@@ -145,7 +145,7 @@ def test_preview_raises_if_no_reserve_linked(admin_session):
             shift_id=shift.id,
             primary_assignment_id=primary.id,
             rest_days=7,
-            reason=None,
+            reason="medical leave",
             actor_id=actor.id,
         )
 
@@ -167,7 +167,7 @@ def test_preview_no_future_slot_gives_warning(admin_session):
         shift_id=shift.id,
         primary_assignment_id=primary.id,
         rest_days=7,
-        reason=None,
+        reason="medical leave",
         actor_id=actor.id,
     )
 
@@ -203,7 +203,7 @@ def test_preview_finds_future_slot(admin_session):
         shift_id=shift.id,
         primary_assignment_id=primary.id,
         rest_days=7,
-        reason=None,
+        reason="medical leave",
         actor_id=actor.id,
     )
 

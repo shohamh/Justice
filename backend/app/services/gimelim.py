@@ -302,6 +302,9 @@ def preview_gimelim(
     if primary_a.is_reserve:
         raise GimelimError("not_a_primary")
 
+    if not reason or not reason.strip():
+        raise GimelimError("reason_required")
+
     # Load shift
     shift = session.get(DutyShift, shift_id)
     if shift is None:

@@ -123,7 +123,7 @@ def test_preview_returns_400_no_reserve_linked(client: TestClient, admin_session
 
     resp = client.post(
         f"/api/shifts/{shift.id}/gimelim/preview",
-        json={"primary_assignment_id": str(primary_a.id)},
+        json={"primary_assignment_id": str(primary_a.id), "reason": "medical leave"},
         headers=auth_headers(admin),
     )
     assert resp.status_code == 400
@@ -147,7 +147,7 @@ def test_preview_no_future_slot(client: TestClient, admin_session: Session):
 
     resp = client.post(
         f"/api/shifts/{shift.id}/gimelim/preview",
-        json={"primary_assignment_id": str(primary_a.id)},
+        json={"primary_assignment_id": str(primary_a.id), "reason": "medical leave"},
         headers=auth_headers(admin),
     )
     assert resp.status_code == 200
@@ -185,7 +185,7 @@ def test_preview_then_commit(client: TestClient, admin_session: Session):
     # Preview
     preview_resp = client.post(
         f"/api/shifts/{current_shift.id}/gimelim/preview",
-        json={"primary_assignment_id": str(primary_a.id), "rest_days": 7},
+        json={"primary_assignment_id": str(primary_a.id), "rest_days": 7, "reason": "medical leave"},
         headers=auth_headers(admin),
     )
     assert preview_resp.status_code == 200, preview_resp.text
