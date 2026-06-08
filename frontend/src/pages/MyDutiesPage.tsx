@@ -1,124 +1,246 @@
 import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin from "@fullcalendar/interaction";
-import heLocale from "@fullcalendar/core/locales/he";
-import type { EventClickArg } from "@fullcalendar/core";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
 import Layout from "../components/Layout";
-import ExplanationModal from "../components/ExplanationModal";
 import { useAuth } from "../auth/AuthContext";
-import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
-import { dutyTypeColor } from "../utils/dutyTypeColor";
-import { downloadDutyICS } from "../utils/icsCalendar";
+import { listEffectiveDuties, EffectiveDuty } from "../api/assignments";
+import { getTransparency, getBreakdown, TransparencyRow, Breakdown } from "../api/scoring";
+
+function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
+  if (rows.length === 0) return 0;
+  const vals = rows.map((r) => Number(r[key])).filter((v) => !isNaN(v));
+  return vals.length === 0 ? 0 : vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  sub?: string;
+}
+
+function StatCard({ label, value, sub }: StatCardProps) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 text-center">
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
+      <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">{value}</div>
+      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    </div>
+  );
+}
 
 export default function MyDutiesPage() {
-  const { t } = useTranslation();
   const { user } = useAuth();
-  const [rows, setRows] = useState<EffectiveDuty[]>([]);
-  const [types, setTypes] = useState<Record<string, string>>({});
-  const [locs, setLocs] = useState<Record<string, string>>({});
-  const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
-  const [whyTarget, setWhyTarget] = useState<{ assignmentId: string } | null>(null);
+  const [allRows, setAllRows] = useState<TransparencyRow[]>([]);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  const [pastCount, setPastCount] = useState(0);
+  const [pastDays, setPastDays] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    void (async () => {
-      const [as, dts, ls]: [EffectiveDuty[], DutyType[], DutyLocation[]] = await Promise.all([
-        listEffectiveDuties(user.id),
-        listDutyTypes().catch(() => [] as DutyType[]),
-        listLocations().catch(() => [] as DutyLocation[]),
-      ]);
-      setRows(as);
-      setTypes(Object.fromEntries(dts.map((d) => [d.id, d.name])));
-      setLocs(Object.fromEntries(ls.map((l) => [l.id, l.name])));
-    })();
+    const today = new Date().toISOString().split("T")[0];
+    void Promise.all([
+      getTransparency().catch(() => [] as TransparencyRow[]),
+      getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] }) as Breakdown),
+      listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
+    ]).then(([rows, bd, duties]) => {
+      setAllRows(rows as TransparencyRow[]);
+      setBreakdown(bd as Breakdown);
+      const past = (duties as EffectiveDuty[]).filter((d) => d.end_date < today);
+      setPastCount(past.length);
+      setPastDays(
+        past.reduce((s, d) => {
+          const ms = new Date(d.end_date).getTime() - new Date(d.start_date).getTime();
+          return s + Math.round(ms / 86400000) + 1;
+        }, 0)
+      );
+      setLoading(false);
+    });
   }, [user]);
 
-  const events = useMemo(() =>
-    rows.map((r) => {
-      const endDate = new Date(r.end_date);
-      endDate.setDate(endDate.getDate() + 1);
-      const color = dutyTypeColor(r.duty_type_id);
-      return {
-        id: r.assignment_id,
-        title: types[r.duty_type_id] ?? r.duty_type_id,
-        start: r.start_date,
-        end: endDate.toISOString().slice(0, 10),
-        backgroundColor: color,
-        borderColor: color,
-      };
-    }),
-  [rows, types]);
+  const myRow = useMemo(
+    () => allRows.find((r) => r.soldier_id === user?.id) ?? null,
+    [allRows, user]
+  );
 
-  function handleEventClick(arg: EventClickArg) {
-    const duty = rows.find((r) => r.assignment_id === arg.event.id);
-    if (duty) setSelectedDuty(duty);
+  const unitAvgNormRaw = useMemo(() => avg(allRows, "normalised_score"), [allRows]);
+  const unitAvgDays = useMemo(() => Math.round(avg(allRows, "active_days")), [allRows]);
+  const unitAvgShifts = useMemo(() => Math.round(avg(allRows, "shift_count")), [allRows]);
+
+  const rank = useMemo(() => {
+    if (!myRow || allRows.length === 0) return null;
+    const sorted = [...allRows].sort(
+      (a, b) => Number(b.normalised_score) - Number(a.normalised_score)
+    );
+    const pos = sorted.findIndex((r) => r.soldier_id === myRow.soldier_id) + 1;
+    return { pos, total: allRows.length };
+  }, [myRow, allRows]);
+
+  const typeChartData = useMemo(() => {
+    if (!breakdown) return [];
+    return breakdown.per_type
+      .filter((p) => p.days > 0)
+      .sort((a, b) => b.days - a.days)
+      .map((p) => ({
+        name: p.duty_type_name ?? p.duty_type_id.slice(0, 8),
+        days: p.days,
+        score: Number(p.score).toFixed(2),
+      }));
+  }, [breakdown]);
+
+  const comparisonData = useMemo(
+    () => [
+      { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
+      { name: "ממוצע יחידה", value: unitAvgNormRaw },
+    ],
+    [myRow, unitAvgNormRaw]
+  );
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="text-sm text-gray-500 animate-pulse text-center mt-16" dir="rtl">
+          טוען...
+        </div>
+      </Layout>
+    );
   }
 
   return (
     <Layout>
-      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" data-testid="my-duties-page" dir="rtl">
-        <h2 className="text-xl font-semibold">{t("my_duties.title")}</h2>
+      <div
+        className="space-y-6 max-w-3xl mx-auto"
+        dir="rtl"
+        data-testid="my-diary-page"
+      >
+        <h2 className="text-xl font-semibold">היומן שלי</h2>
 
-        <div className="text-sm" data-testid="duty-calendar">
-          <FullCalendar
-            plugins={[dayGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
-            events={events}
-            eventClick={handleEventClick}
-            locales={[heLocale]}
-            locale="he"
-            height="auto"
-            headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
-            buttonText={{ today: t("unit_calendar.today") || "היום" }}
-            noEventsText={t("my_duties.none")}
-            displayEventTime={false}
+        {/* Section 1: Stat cards */}
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+          data-testid="my-diary-stat-cards"
+        >
+          <StatCard
+            label="תורנויות שירתתי"
+            value={pastCount}
+            sub={`ממוצע יחידה: ${unitAvgShifts}`}
+          />
+          <StatCard
+            label="ימי תורנות"
+            value={pastDays}
+            sub={`ממוצע יחידה: ${unitAvgDays}`}
+          />
+          <StatCard
+            label="ניקוד מנורמל"
+            value={Number(myRow?.normalised_score ?? 0).toFixed(3)}
+            sub={`ממוצע יחידה: ${unitAvgNormRaw.toFixed(3)}`}
+          />
+          <StatCard
+            label="דירוג ביחידה"
+            value={rank ? `${rank.pos} מתוך ${rank.total}` : "—"}
           />
         </div>
 
-        {rows.length === 0 && (
-          <p data-testid="my-duties-empty" className="text-gray-500 text-sm">{t("my_duties.none")}</p>
-        )}
+        {/* Section 2: Breakdown by duty type */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+          <h3 className="font-medium text-sm">פירוט לפי סוג תורנות</h3>
+          {typeChartData.length === 0 ? (
+            <p className="text-sm text-gray-500">אין נתוני פירוט</p>
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(typeChartData.length * 44, 100)}
+            >
+              <BarChart
+                data={typeChartData}
+                layout="vertical"
+                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={110}
+                  tick={{ fontSize: 11 }}
+                />
+                <Tooltip
+                  formatter={(value, _name, props) => [
+                    `${value ?? 0} ימים (ניקוד: ${(props.payload as { score?: string } | undefined)?.score ?? "?"})`,
+                    "",
+                  ]}
+                />
+                <Bar dataKey="days" fill="#6366f1" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
 
-        {selectedDuty && (
-          <div className="border dark:border-gray-600 rounded-lg p-4 text-sm space-y-2 bg-gray-50 dark:bg-gray-700">
-            <div className="flex justify-between items-start">
-              <h3 className="font-medium">{types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id}</h3>
-              <button onClick={() => setSelectedDuty(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
-            </div>
-            <p className="text-gray-600 dark:text-gray-300">{locs[selectedDuty.duty_location_id] ?? selectedDuty.duty_location_id}</p>
-            <p>{selectedDuty.start_date} ← {selectedDuty.end_date}</p>
-            <button
-              type="button"
-              onClick={() => setWhyTarget({ assignmentId: selectedDuty.assignment_id })}
-              className="text-blue-600 dark:text-blue-400 underline text-xs"
-            >
-              {t("algorithm.why_button")}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadDutyICS(
-                selectedDuty,
-                types[selectedDuty.duty_type_id] ?? selectedDuty.duty_type_id,
-                locs[selectedDuty.duty_location_id] ?? ""
-              )}
-              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mt-2"
-            >
-              📅 {t("my_duties.add_to_calendar")}
-            </button>
+        {/* Section 3: Score vs unit average */}
+        {allRows.length > 1 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 className="font-medium text-sm">ניקוד מנורמל — אני מול הממוצע</h3>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart
+                data={comparisonData}
+                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip
+                  formatter={(v) => [Number(v ?? 0).toFixed(3), "ניקוד מנורמל"]}
+                />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  <Cell fill="#6366f1" />
+                  <Cell fill="#9ca3af" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )}
-      </section>
 
-      {whyTarget && (
-        <ExplanationModal
-          assignmentId={whyTarget.assignmentId}
-          onClose={() => setWhyTarget(null)}
-        />
-      )}
+        {/* Section 4: Manual score adjustments */}
+        {breakdown && breakdown.adjustments.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 className="font-medium text-sm">התאמות ניקוד ידניות</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
+                  <th className="text-right pb-2 font-medium">תאריך</th>
+                  <th className="text-right pb-2 font-medium">שינוי</th>
+                  <th className="text-right pb-2 font-medium">סיבה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {breakdown.adjustments.map((a) => (
+                  <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
+                    <td className="py-2">{a.created_at.slice(0, 10)}</td>
+                    <td
+                      className={`py-2 font-medium ${
+                        Number(a.delta) >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {Number(a.delta) >= 0 ? "+" : ""}
+                      {Number(a.delta).toFixed(2)}
+                    </td>
+                    <td className="py-2">{a.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Layout>
   );
 }
