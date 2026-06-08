@@ -70,8 +70,10 @@ def test_new_soldier_no_history():
     data = result[sid]
     assert data.effort_score == Decimal("0")
     # C_i = full planning window / planning_window_length = 1.0
-    # D_i = W_i + C_i = 1 + 1 = 2  (one quarter fully active + planning window)
+    # W_i = 1.0 (soldier enrolled on quarter start, so active_frac=1.0 for Q2 2026)
+    # D_i = W_i + C_i = 1 + 1 = 2
     # C_over_D = 1/2 = 0.5
+    # NOTE: Plan draft incorrectly asserted C_over_D=1 (had W_i=0); corrected to 0.5.
     assert abs(data.C_over_D - Decimal("0.5")) < Decimal("0.001")
 
 

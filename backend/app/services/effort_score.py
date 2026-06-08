@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -143,13 +143,17 @@ def compute_effort_data(
             planning_end=planning_end,
         )
 
-    # Build list of complete quarters between reset_date and planning_start
+    # Build list of complete quarters between reset_date and planning_start.
+    # Clip the first quarter's start to reset_date so active_frac is only
+    # counted from when we have actual duty data (avoids inflating W_i for
+    # soldiers enrolled before reset_date when reset falls mid-quarter).
     quarters = []
     q_s = quarter_start(reset_date)
     while q_s < planning_start:
         q_e = quarter_end(q_s)
+        actual_start = max(q_s, reset_date)
         actual_end = min(q_e, history_end)
-        quarters.append((q_s, actual_end))
+        quarters.append((actual_start, actual_end))
         # Advance to next quarter
         next_month = q_e + timedelta(days=1)
         q_s = next_month
