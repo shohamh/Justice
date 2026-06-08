@@ -14,6 +14,7 @@ from app.audit.writer import write_audit
 from app.db.models import (
     DutyAssignment,
     DutyDismissal,
+    DutyLocation,
     DutyReserveLink,
     DutyShift,
     DutyType,
@@ -24,6 +25,7 @@ from app.services.algorithm_bridge import build_hierarchy_maps
 from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.notifications import create_notification
 from app.services.reserves import ReserveError, call_up_reserve, dismiss_primary
+from app.services.scoring import duty_score_by_soldier
 from app.services.settings_loader import SettingNotFound, get_setting
 
 
@@ -88,13 +90,6 @@ class GimelimCommitResult:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_setting_bool(session: Session, key: str, default: bool) -> bool:
-    try:
-        return bool(get_setting(session, key))
-    except SettingNotFound:
-        return default
-
-
 def _get_setting_int(session: Session, key: str, default: int) -> int:
     try:
         return int(get_setting(session, key))
@@ -119,7 +114,6 @@ def _soldier_ref(session: Session, soldier_id: uuid.UUID) -> SoldierRef:
 
 def _shift_ref(session: Session, shift: DutyShift) -> ShiftRef:
     dt = session.get(DutyType, shift.duty_type_id)
-    from app.db.models import DutyLocation
     loc = session.get(DutyLocation, shift.duty_location_id)
     return ShiftRef(
         shift_id=shift.id,
@@ -233,6 +227,9 @@ def _find_future_slot(
         ).order_by(DutyShift.start_date)
     ).scalars().all()
 
+    # Score lookup for tiebreaker — fetch once outside the loop
+    scores = duty_score_by_soldier(session)
+
     for shift in future_shifts:
         # Density check for A on this shift
         if not _passes_density(existing_dates_a, shift.start_date, shift.end_date, T, W):
@@ -249,10 +246,6 @@ def _find_future_slot(
 
         if not primaries:
             continue
-
-        # Score lookup for tiebreaker
-        from app.services.scoring import duty_score_by_soldier
-        scores = duty_score_by_soldier(session)
 
         best_c: DutyAssignment | None = None
         best_dist = 999
@@ -449,9 +442,17 @@ def commit_gimelim(
     primary_a = session.get(DutyAssignment, primary_assignment_id)
     reserve_b = session.get(DutyAssignment, reserve_assignment_id)
 
-    if primary_a is None or primary_a.status != payload["primary_status_snapshot"]:
+    if (
+        primary_a is None
+        or primary_a.status != payload["primary_status_snapshot"]
+        or str(primary_a.soldier_id) != payload["primary_soldier_id"]
+    ):
         raise GimelimError("stale_primary_changed")
-    if reserve_b is None or reserve_b.status != payload["reserve_status_snapshot"]:
+    if (
+        reserve_b is None
+        or reserve_b.status != payload["reserve_status_snapshot"]
+        or str(reserve_b.soldier_id) != payload["reserve_soldier_id"]
+    ):
         raise GimelimError("stale_reserve_changed")
 
     rest_days: int = payload["rest_days"]
@@ -534,54 +535,77 @@ def commit_gimelim(
             )
         else:
             future_shift = session.get(DutyShift, future_shift_id)
+            if future_shift is None:
+                # Shift was deleted between preview and commit — skip reassignment
+                write_audit(
+                    session,
+                    actor_id=actor_id,
+                    action="gimelim.reassign_skipped",
+                    entity_type="duty_assignment",
+                    entity_id=c_assignment_id,
+                    after={"reason": "future_shift_deleted_since_preview"},
+                )
+            else:
 
-            # Demote C to reserve
-            c_assignment.is_reserve = True
-            session.flush()
+                # Demote C to reserve
+                c_assignment.is_reserve = True
+                session.flush()
 
-            write_audit(
-                session,
-                actor_id=actor_id,
-                action="gimelim.demote_to_reserve",
-                entity_type="duty_assignment",
-                entity_id=c_assignment.id,
-                before={"is_reserve": False},
-                after={"is_reserve": True, "reason": "gimelim_rollover"},
-            )
-            future_demoted_assignment_id = c_assignment.id
+                write_audit(
+                    session,
+                    actor_id=actor_id,
+                    action="gimelim.demote_to_reserve",
+                    entity_type="duty_assignment",
+                    entity_id=c_assignment.id,
+                    before={"is_reserve": False},
+                    after={"is_reserve": True, "reason": "gimelim_rollover"},
+                )
+                future_demoted_assignment_id = c_assignment.id
 
-            # Promote A — create new primary assignment on future shift
-            a_new = DutyAssignment(
-                soldier_id=primary_a.soldier_id,
-                duty_type_id=primary_a.duty_type_id,
-                duty_location_id=primary_a.duty_location_id,
-                start_date=future_shift.start_date,
-                end_date=future_shift.end_date,
-                status="published",
-                is_reserve=False,
-                duty_shift_id=future_shift_id,
-                created_by=actor_id,
-                notes=f"גלגול גימלים מתורנות {primary_a.start_date.isoformat()}",
-            )
-            session.add(a_new)
-            session.flush()
+                # Promote A — create new primary assignment on future shift
+                a_new = DutyAssignment(
+                    soldier_id=primary_a.soldier_id,
+                    duty_type_id=primary_a.duty_type_id,
+                    duty_location_id=primary_a.duty_location_id,
+                    start_date=future_shift.start_date,
+                    end_date=future_shift.end_date,
+                    status="published",
+                    is_reserve=False,
+                    duty_shift_id=future_shift_id,
+                    created_by=actor_id,
+                    notes=f"גלגול גימלים מתורנות {primary_a.start_date.isoformat()}",
+                )
+                session.add(a_new)
+                session.flush()
 
-            write_audit(
-                session,
-                actor_id=actor_id,
-                action="gimelim.reassign",
-                entity_type="duty_assignment",
-                entity_id=a_new.id,
-                after={
-                    "soldier_id": str(primary_a.soldier_id),
-                    "shift_id": str(future_shift_id),
-                    "source": "gimelim_rollover",
-                },
-            )
-            future_primary_assignment_id = a_new.id
+                # Link C (now reserve) as reserve backing A's new primary slot
+                new_reserve_link = DutyReserveLink(
+                    primary_assignment_id=a_new.id,
+                    reserve_assignment_id=c_assignment.id,
+                    hierarchy_distance=0,  # direct demote — not from hierarchy walk
+                )
+                session.add(new_reserve_link)
+                session.flush()
+
+                write_audit(
+                    session,
+                    actor_id=actor_id,
+                    action="gimelim.reassign",
+                    entity_type="duty_assignment",
+                    entity_id=a_new.id,
+                    after={
+                        "soldier_id": str(primary_a.soldier_id),
+                        "shift_id": str(future_shift_id),
+                        "source": "gimelim_rollover",
+                    },
+                )
+                future_primary_assignment_id = a_new.id
+
+                # D (C's old reserve) stays as general reserve — no change needed;
+                # the DutyReserveLink pointing to C's old (now reserve) assignment remains,
+                # making D a floating general reserve on that shift.
 
     # ── Step 5: Notifications ──────────────────────────────────────────────
-    shift = session.get(DutyShift, shift_id)
     duty_type = session.get(DutyType, primary_a.duty_type_id)
     duty_type_name = duty_type.name if duty_type else "תורנות"
 
