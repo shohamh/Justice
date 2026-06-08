@@ -9,6 +9,8 @@ import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
+import { getSystemSettings } from "../api/systemSettings";
+import GimelimModal from "./GimelimModal";
 
 interface Props {
   shift: CalendarShift;
@@ -29,6 +31,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     soldierName: string;
     assignmentId: string;
   } | null>(null);
+  const [gimelimTarget, setGimelimTarget] = useState<CalendarShiftAssignee | null>(null);
+  const [gimelimEnabled, setGimelimEnabled] = useState(true);
+  const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
+
+  useEffect(() => {
+    getSystemSettings().then((settings) => {
+      const enabled = settings["gimalim.enabled"];
+      setGimelimEnabled(enabled === true || enabled === undefined);
+      const restDays = settings["gimalim.default_rest_days"];
+      if (typeof restDays === "number") setGimelimDefaultRestDays(restDays);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const primaryIds = shift.assignees
@@ -137,6 +151,14 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         >
                           {t("dismiss_action")}
                         </button>
+                        {gimelimEnabled && !a.is_reserve && (
+                          <button
+                            className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
+                            onClick={() => setGimelimTarget(a)}
+                          >
+                            גימלים 🏥
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -266,6 +288,19 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             primary={dismissTarget}
             onClose={() => setDismissTarget(null)}
             onDone={() => { setDismissTarget(null); onRefreshNeeded(); }}
+          />
+        )}
+
+        {gimelimTarget && (
+          <GimelimModal
+            shiftId={shift.id}
+            primary={gimelimTarget}
+            defaultRestDays={gimelimDefaultRestDays}
+            onClose={() => setGimelimTarget(null)}
+            onDone={() => {
+              setGimelimTarget(null);
+              onRefreshNeeded();
+            }}
           />
         )}
 
