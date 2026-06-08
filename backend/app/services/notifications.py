@@ -49,6 +49,10 @@ _FRONTEND_PATHS: dict[str, str] = {
     "enrollment_request_received": "/approvals",
     "enrollment_approved": "/profile",
     "enrollment_rejected": "/profile",
+    "gimelim_dismissed": "/schedule",
+    "gimelim_reserve_called_up": "/schedule",
+    "gimelim_demoted_to_reserve": "/schedule",
+    "gimelim_reassigned": "/schedule",
 }
 
 

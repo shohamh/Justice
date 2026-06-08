@@ -541,6 +541,9 @@ class DutyDismissal(Base):
     dismissed_from: Mapped[date] = mapped_column(Date)
     dismissed_to: Mapped[date] = mapped_column(Date)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    is_gimelim: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -626,6 +629,10 @@ class NotificationType(str, _enum.Enum):
     constraint_pending = "constraint_pending"
     exemption_request_pending = "exemption_request_pending"
     swap_offer_incoming = "swap_offer_incoming"
+    gimelim_dismissed = "gimelim_dismissed"
+    gimelim_reserve_called_up = "gimelim_reserve_called_up"
+    gimelim_demoted_to_reserve = "gimelim_demoted_to_reserve"
+    gimelim_reassigned = "gimelim_reassigned"
 
 
 class Notification(Base):
