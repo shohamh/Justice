@@ -1,0 +1,380 @@
+# היומן שלי — Stats Dashboard Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the duplicate FullCalendar in MyDutiesPage with a personal statistics dashboard showing duty counts, breakdown by type (bar chart), score vs unit average (bar chart), and manual score adjustments.
+
+**Architecture:** Pure frontend rewrite — no backend changes. Three existing API calls (`getTransparency`, `getBreakdown`, `listEffectiveDuties`) provide all the data. Two recharts `BarChart` components handle the visuals. The e2e test for the old calendar is updated to match the new page.
+
+**Tech Stack:** React 18, TypeScript, recharts (new), Tailwind CSS, Vite/pnpm
+
+---
+
+### Task 1: Install recharts
+
+**Files:**
+- Modify: `frontend/package.json` (via pnpm)
+
+- [ ] **Step 1: Install the package**
+
+```bash
+cd frontend
+pnpm add recharts
+```
+
+- [ ] **Step 2: Verify the install**
+
+```bash
+pnpm list recharts
+```
+
+Expected output includes a line like `recharts 2.x.x`.
+
+- [ ] **Step 3: Run existing tests to confirm nothing broke**
+
+```bash
+pnpm test --run
+```
+
+Expected: all tests pass (or same count as before).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/package.json frontend/pnpm-lock.yaml
+git commit -m "chore: add recharts for stats dashboard"
+```
+
+---
+
+### Task 2: Rewrite MyDutiesPage.tsx
+
+**Files:**
+- Modify: `frontend/src/pages/MyDutiesPage.tsx` — full rewrite
+- Modify: `frontend/tests/e2e/duty_calendar.spec.ts` — update testids to match new page
+
+- [ ] **Step 1: Update the e2e test to expect the new page structure**
+
+Replace the entire contents of `frontend/tests/e2e/duty_calendar.spec.ts` with:
+
+```typescript
+import { test, expect, type Page } from "@playwright/test";
+
+async function loginAsAdmin(page: Page) {
+  await page.goto("/login");
+  await page.getByTestId("personal-number-input").fill("1000001");
+  await page.getByTestId("password-input").fill("ChangeMeOnFirstLogin!");
+  await page.getByTestId("login-submit").click();
+  try {
+    await page.waitForURL(/\/change-password$/, { timeout: 4000 });
+    await page.getByTestId("current-password").fill("ChangeMeOnFirstLogin!");
+    await page.getByTestId("new-password").fill("AdminNewPassw0rd");
+    await page.getByTestId("change-password-submit").click();
+  } catch {
+    await page.getByTestId("password-input").fill("AdminNewPassw0rd");
+    await page.getByTestId("login-submit").click();
+  }
+  await expect(page).toHaveURL("/");
+}
+
+test("my diary page shows stats dashboard", async ({ page }) => {
+  await loginAsAdmin(page);
+
+  await page.getByTestId("nav-my-duties").click();
+  await expect(page).toHaveURL(/\/my-duties$/);
+
+  await expect(page.getByTestId("my-diary-page")).toBeVisible();
+  await expect(page.getByTestId("my-diary-stat-cards")).toBeVisible();
+});
+```
+
+- [ ] **Step 2: Rewrite MyDutiesPage.tsx**
+
+Replace the entire contents of `frontend/src/pages/MyDutiesPage.tsx` with:
+
+```tsx
+import { useEffect, useMemo, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+import Layout from "../components/Layout";
+import { useAuth } from "../auth/AuthContext";
+import { listEffectiveDuties, EffectiveDuty } from "../api/assignments";
+import { getTransparency, getBreakdown, TransparencyRow, Breakdown } from "../api/scoring";
+
+function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
+  if (rows.length === 0) return 0;
+  const vals = rows.map((r) => Number(r[key])).filter((v) => !isNaN(v));
+  return vals.length === 0 ? 0 : vals.reduce((s, v) => s + v, 0) / vals.length;
+}
+
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  sub?: string;
+}
+
+function StatCard({ label, value, sub }: StatCardProps) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 text-center">
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
+      <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">{value}</div>
+      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+export default function MyDutiesPage() {
+  const { user } = useAuth();
+  const [allRows, setAllRows] = useState<TransparencyRow[]>([]);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  const [pastCount, setPastCount] = useState(0);
+  const [pastDays, setPastDays] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
+    void Promise.all([
+      getTransparency().catch(() => [] as TransparencyRow[]),
+      getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] }) as Breakdown),
+      listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
+    ]).then(([rows, bd, duties]) => {
+      setAllRows(rows as TransparencyRow[]);
+      setBreakdown(bd as Breakdown);
+      const past = (duties as EffectiveDuty[]).filter((d) => d.end_date < today);
+      setPastCount(past.length);
+      setPastDays(
+        past.reduce((s, d) => {
+          const ms = new Date(d.end_date).getTime() - new Date(d.start_date).getTime();
+          return s + Math.round(ms / 86400000) + 1;
+        }, 0)
+      );
+      setLoading(false);
+    });
+  }, [user]);
+
+  const myRow = useMemo(
+    () => allRows.find((r) => r.soldier_id === user?.id) ?? null,
+    [allRows, user]
+  );
+
+  const unitAvgNormRaw = useMemo(() => avg(allRows, "normalised_score"), [allRows]);
+  const unitAvgDays = useMemo(() => Math.round(avg(allRows, "active_days")), [allRows]);
+  const unitAvgShifts = useMemo(() => Math.round(avg(allRows, "shift_count")), [allRows]);
+
+  const rank = useMemo(() => {
+    if (!myRow || allRows.length === 0) return null;
+    const sorted = [...allRows].sort(
+      (a, b) => Number(b.normalised_score) - Number(a.normalised_score)
+    );
+    const pos = sorted.findIndex((r) => r.soldier_id === myRow.soldier_id) + 1;
+    return { pos, total: allRows.length };
+  }, [myRow, allRows]);
+
+  const typeChartData = useMemo(() => {
+    if (!breakdown) return [];
+    return breakdown.per_type
+      .filter((p) => p.days > 0)
+      .sort((a, b) => b.days - a.days)
+      .map((p) => ({
+        name: p.duty_type_name ?? p.duty_type_id.slice(0, 8),
+        days: p.days,
+        score: Number(p.score).toFixed(2),
+      }));
+  }, [breakdown]);
+
+  const comparisonData = useMemo(
+    () => [
+      { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
+      { name: "ממוצע יחידה", value: unitAvgNormRaw },
+    ],
+    [myRow, unitAvgNormRaw]
+  );
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="text-sm text-gray-500 animate-pulse text-center mt-16" dir="rtl">
+          טוען...
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div
+        className="space-y-6 max-w-3xl mx-auto"
+        dir="rtl"
+        data-testid="my-diary-page"
+      >
+        <h2 className="text-xl font-semibold">היומן שלי</h2>
+
+        {/* Section 1: Stat cards */}
+        <div
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+          data-testid="my-diary-stat-cards"
+        >
+          <StatCard
+            label="תורנויות שירתתי"
+            value={pastCount}
+            sub={`ממוצע יחידה: ${unitAvgShifts}`}
+          />
+          <StatCard
+            label="ימי תורנות"
+            value={pastDays}
+            sub={`ממוצע יחידה: ${unitAvgDays}`}
+          />
+          <StatCard
+            label="ניקוד מנורמל"
+            value={Number(myRow?.normalised_score ?? 0).toFixed(3)}
+            sub={`ממוצע יחידה: ${unitAvgNormRaw.toFixed(3)}`}
+          />
+          <StatCard
+            label="דירוג ביחידה"
+            value={rank ? `${rank.pos} מתוך ${rank.total}` : "—"}
+          />
+        </div>
+
+        {/* Section 2: Breakdown by duty type */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+          <h3 className="font-medium text-sm">פירוט לפי סוג תורנות</h3>
+          {typeChartData.length === 0 ? (
+            <p className="text-sm text-gray-500">אין נתוני פירוט</p>
+          ) : (
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(typeChartData.length * 44, 100)}
+            >
+              <BarChart
+                data={typeChartData}
+                layout="vertical"
+                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={110}
+                  tick={{ fontSize: 11 }}
+                />
+                <Tooltip
+                  formatter={(value: number, _name: string, props: { payload?: { score?: string } }) => [
+                    `${value} ימים (ניקוד: ${props.payload?.score ?? "?"})`,
+                    "",
+                  ]}
+                />
+                <Bar dataKey="days" fill="#6366f1" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Section 3: Score vs unit average */}
+        {allRows.length > 1 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 className="font-medium text-sm">ניקוד מנורמל — אני מול הממוצע</h3>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart
+                data={comparisonData}
+                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip
+                  formatter={(v: number) => [v.toFixed(3), "ניקוד מנורמל"]}
+                />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  <Cell fill="#6366f1" />
+                  <Cell fill="#9ca3af" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Section 4: Manual score adjustments */}
+        {breakdown && breakdown.adjustments.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 className="font-medium text-sm">התאמות ניקוד ידניות</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-gray-600">
+                  <th className="text-right pb-2 font-medium">תאריך</th>
+                  <th className="text-right pb-2 font-medium">שינוי</th>
+                  <th className="text-right pb-2 font-medium">סיבה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {breakdown.adjustments.map((a) => (
+                  <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
+                    <td className="py-2">{a.created_at.slice(0, 10)}</td>
+                    <td
+                      className={`py-2 font-medium ${
+                        Number(a.delta) >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {Number(a.delta) >= 0 ? "+" : ""}
+                      {Number(a.delta).toFixed(2)}
+                    </td>
+                    <td className="py-2">{a.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Layout>
+  );
+}
+```
+
+- [ ] **Step 3: Run lint**
+
+```bash
+cd frontend
+pnpm lint
+```
+
+Expected: no errors, no warnings.
+
+- [ ] **Step 4: Run unit tests**
+
+```bash
+pnpm test --run
+```
+
+Expected: all existing tests pass.
+
+- [ ] **Step 5: Verify the page builds**
+
+```bash
+pnpm build 2>&1 | tail -10
+```
+
+Expected: build succeeds with no TypeScript errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend/src/pages/MyDutiesPage.tsx frontend/tests/e2e/duty_calendar.spec.ts
+git commit -m "feat: replace MyDutiesPage calendar with stats dashboard (recharts)"
+```
+
+- [ ] **Step 7: Push to master**
+
+```bash
+git push origin master
+```
