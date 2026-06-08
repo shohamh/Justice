@@ -15,7 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties, EffectiveDuty } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow, Breakdown } from "../api/scoring";
 
-function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
+function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
   const vals = rows.map((r) => Number(r[key])).filter((v) => !isNaN(v));
   return vals.length === 0 ? 0 : vals.reduce((s, v) => s + v, 0) / vals.length;
@@ -37,6 +37,12 @@ function StatCard({ label, value, sub }: StatCardProps) {
   );
 }
 
+const dayCount = (d: { start_date: string; end_date: string }) => {
+  const [sy, sm, sd] = d.start_date.split("-").map(Number);
+  const [ey, em, ed] = d.end_date.split("-").map(Number);
+  return (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+};
+
 export default function MyDutiesPage() {
   const { user } = useAuth();
   const [allRows, setAllRows] = useState<TransparencyRow[]>([]);
@@ -57,12 +63,7 @@ export default function MyDutiesPage() {
       setBreakdown(bd as Breakdown);
       const past = (duties as EffectiveDuty[]).filter((d) => d.end_date < today);
       setPastCount(past.length);
-      setPastDays(
-        past.reduce((s, d) => {
-          const ms = new Date(d.end_date).getTime() - new Date(d.start_date).getTime();
-          return s + Math.round(ms / 86400000) + 1;
-        }, 0)
-      );
+      setPastDays(past.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0));
       setLoading(false);
     });
   }, [user]);
@@ -174,10 +175,15 @@ export default function MyDutiesPage() {
                   tick={{ fontSize: 11 }}
                 />
                 <Tooltip
-                  formatter={(value, _name, props) => [
-                    `${value ?? 0} ימים (ניקוד: ${(props.payload as { score?: string } | undefined)?.score ?? "?"})`,
-                    "",
-                  ]}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const item = payload[0].payload as { days: number; score: string };
+                    return (
+                      <div className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-xs shadow">
+                        {item.days} ימים (ניקוד: {item.score})
+                      </div>
+                    );
+                  }}
                 />
                 <Bar dataKey="days" fill="#6366f1" radius={[0, 4, 4, 0]} />
               </BarChart>
