@@ -39,6 +39,7 @@ from app.db.models import (
     SoldierExemption,
 )
 from app.services import scoring as scoring_svc
+from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_data, quarter_start
 
 
 def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
@@ -271,6 +272,31 @@ def load_duty_blocks_from_shifts(
             block_to_shift[block_id] = shift.id
 
     return blocks, block_to_shift
+
+
+def inject_effort_scores(
+    soldiers: list[SoldierInput],
+    duty_blocks: list[DutyBlock],
+    effort_map: dict[uuid.UUID, EffortData],
+) -> None:
+    """Set effort_offset and effort_per_milli on each SoldierInput in-place.
+
+    effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
+    where unit_score_milli = sum of block_score(b) for all blocks in the planning window.
+    """
+    unit_score_milli = sum(
+        int(float(b.score_per_day) * ((b.end_date - b.start_date).days + 1) * 1000)
+        for b in duty_blocks
+    )
+    for s in soldiers:
+        data = effort_map.get(s.id)
+        if data is None:
+            continue
+        s.effort_offset = data.effort_offset
+        if unit_score_milli > 0:
+            s.effort_per_milli = int(float(data.C_over_D) / unit_score_milli * EFFORT_SCALE)
+        else:
+            s.effort_per_milli = 0
 
 
 def load_existing_assignments(
@@ -536,6 +562,21 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 planning_end = max(d.end_date for d in duties)
 
                 soldiers = load_soldier_inputs(session, as_of=planning_start)
+                # Compute and inject quarterly effort scores
+                try:
+                    _reset_raw = get_setting(session, "fairness.reset_date")
+                    _reset_date = date.fromisoformat(str(_reset_raw))
+                except Exception:
+                    # Default: 2 years ago aligned to nearest quarter start
+                    _reset_date = quarter_start(date(planning_start.year - 2, planning_start.month, 1))
+                effort_map = compute_effort_data(
+                    session,
+                    soldiers=soldiers,
+                    planning_start=planning_start,
+                    planning_end=planning_end,
+                    reset_date=_reset_date,
+                )
+                inject_effort_scores(soldiers, duties, effort_map)
                 existing = load_existing_assignments(
                     session,
                     planning_start=planning_start,

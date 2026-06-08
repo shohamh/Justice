@@ -179,3 +179,38 @@ def test_soldier_input_has_effort_fields():
     assert hasattr(s, "effort_per_milli")
     assert s.effort_offset == 0
     assert s.effort_per_milli == 0
+
+
+def test_inject_effort_scores():
+    """After injection, SoldierInput has nonzero effort_per_milli when unit_score > 0."""
+    from app.services.effort_score import EFFORT_SCALE, EffortData
+    from app.algorithm.types import SoldierInput, DutyBlock
+    from app.services.algorithm_bridge import inject_effort_scores
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    sid = uuid.uuid4()
+    s = SoldierInput(
+        id=sid, enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"), active_days=90,
+    )
+    block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(),
+        duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 7),
+        score_per_day=Decimal("0.5"),
+    )
+    # unit_score_milli = int(0.5 * 7 * 1000) = 3500
+    # effort data: effort_score=0.1, C_over_D=0.5
+    effort_map = {
+        sid: EffortData(
+            effort_score=Decimal("0.1"), C_over_D=Decimal("0.5"),
+            effort_offset=int(Decimal("0.1") * EFFORT_SCALE),
+        )
+    }
+    inject_effort_scores([s], [block], effort_map)
+    assert s.effort_offset == int(Decimal("0.1") * EFFORT_SCALE)
+    # effort_per_milli = int(0.5 / 3500 × EFFORT_SCALE) = int(142857) = 142857
+    expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
+    assert s.effort_per_milli == expected
