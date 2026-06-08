@@ -44,7 +44,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
         session.execute(
             select(DutyAssignment).where(
                 DutyAssignment.soldier_id == soldier_id,
-                DutyAssignment.status != "algorithm_draft",
+                DutyAssignment.status.not_in(["algorithm_draft", "algorithm_rejected"]),
             )
         ).scalars().all()
     )
