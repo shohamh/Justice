@@ -3,25 +3,9 @@
 @font-face {
   font-family: 'Cinzel';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 400 700;
   font-display: swap;
-  src: url('/fonts/Cinzel-400.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'Cinzel';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/Cinzel-600.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'Cinzel';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/Cinzel-700.woff2') format('woff2');
+  src: url('/fonts/Cinzel-VF.woff2') format('woff2');
 }
 
 @tailwind base;
