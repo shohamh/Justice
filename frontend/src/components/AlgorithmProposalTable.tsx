@@ -34,6 +34,13 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     if (axios.isAxiosError(e)) {
       const detail = e.response?.data?.detail;
       const status = e.response?.status;
+      if (Array.isArray(detail)) {
+        // Pydantic v2 validation errors — list of {loc, msg, type}
+        const msgs = (detail as { loc?: string[]; msg?: string }[])
+          .map(d => `${d.loc?.slice(1).join(".") ?? "?"}: ${d.msg ?? "?"}`)
+          .join(" | ");
+        return `שגיאה ${status}: ${msgs}`;
+      }
       if (detail) return `שגיאה ${status ?? ""}: ${detail}`;
       return `שגיאה HTTP ${status ?? ""}`;
     }
