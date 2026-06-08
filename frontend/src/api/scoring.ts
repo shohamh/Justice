@@ -15,6 +15,7 @@ export interface TransparencyRow {
   score_per_day: string;
   normalised_score: string;
   is_globally_exempted: boolean;
+  effort_score: number;
 }
 
 export interface Breakdown {

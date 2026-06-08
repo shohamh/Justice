@@ -302,6 +302,16 @@ export default function TransparencyPage() {
       cell: (r) => { const n = Number(r.normalised_score); return isNaN(n) ? r.normalised_score : n.toFixed(3); },
       sortValue: (r) => Number(r.normalised_score),
     },
+    {
+      id: "effort_score", header: "עומס רבעוני",
+      headerTooltip: "ממוצע משוקלל של חלק התורנויות של החייל מסך תורנויות היחידה לרבעון, מאז תאריך האיפוס. 0 = לא עשה תורנויות. ערך גבוה = עשה יותר מחלקו.",
+      cell: (r) => {
+        const n = r.effort_score;
+        if (isNaN(n) || n === undefined) return "—";
+        return (n * 100).toFixed(2) + "%";
+      },
+      sortValue: (r) => r.effort_score,
+    },
   ];
 
   // ── sub-hierarchy columns ──
