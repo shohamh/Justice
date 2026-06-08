@@ -123,7 +123,7 @@ function AlgorithmTab() {
         <Arrow />
         <FlowStep icon="⚖️" text="מחפשים שיבוץ שמכסה את הכל ועומד בכל המגבלות" color="blue" />
         <Arrow />
-        <FlowStep icon="📊" text="בין פתרונות תקינים — מעדיפים חיילים עם ניקוד מנורמל נמוך" color="indigo" />
+        <FlowStep icon="📊" text="בין פתרונות תקינים — מעדיפים חיילים עם עומס רבעוני נמוך" color="indigo" />
         <Arrow />
         <FlowStep icon="✅" text="שיבוץ בוצע!" color="green" />
       </div>
@@ -131,10 +131,10 @@ function AlgorithmTab() {
       <div className="space-y-2">
         <p className="font-medium text-gray-800 dark:text-gray-200">🔎 מה האלגוריתם לוקח בחשבון?</p>
         {[
-          { icon: "📊", title: "ניקוד מנורמל", desc: "מי שעשה פחות תורנויות ביחס לאחרים מקבל עדיפות. ראו הסבר מלא בטאב הוגנות." },
+          { icon: "📊", title: "עומס רבעוני", desc: "מי שחלקו בתורנויות ברבעונים האחרונים נמוך מחבריו מקבל עדיפות. חייל חדש בעל עומס אפס יזכה בתורנויות עד שישתווה לשאר. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
-          { icon: "🔒", title: "מגבלת הוגנות (K)", desc: "ההפרש בין הניקוד המנורמל הגבוה לנמוך לא יכול לחרוג מ-K. אם אין פתרון — K מוגדל אוטומטית עד שמוצאים שיבוץ." },
+          { icon: "🔒", title: "איזון עומסים", desc: "האלגוריתם ממזער את הפער בין החייל עם העומס הגבוה ביותר לנמוך ביותר. אם אין מספיק חיילים כשירים, הפער עלול להישאר — האלגוריתם עושה את מיטבו בתוך האילוצים." },
           { icon: "⏱️", title: "מגבלת עומס (T/W)", desc: "חייל לא יכול לקבל יותר מ-T ימי תורנות בכל חלון W ימים ברצף. זה מונע עומס יתר על חייל אחד." },
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
         ].map(({ icon, title, desc }) => (
@@ -151,25 +151,25 @@ function AlgorithmTab() {
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
         <p className="text-indigo-700 dark:text-indigo-300 text-xs leading-relaxed">
-          נניח שיש 3 חיילים: דן (ניקוד מנורמל 0.8), יעל (1.0), ורוני (1.4).
+          נניח שיש 3 חיילים: דן (עומס 3%), יעל (5%), ורוני (8%).
           משמרת חדשה צריכה מישהו — יעל פטורה ממנה.
-          האלגוריתם בוחר מדן ורוני; מכיוון שדן בעל ניקוד נמוך יותר הוא יקבל עדיפות.
-          כעת ההפרש בין רוני (1.4) לדן לאחר השיבוץ ייבדק מול K — אם הוא חורג, האלגוריתם ינסה פתרון אחר.
+          האלגוריתם בוחר מדן ורוני; מכיוון שדן בעל עומס נמוך יותר הוא יקבל עדיפות.
+          כך ברמה העולמית, ההפרש בין רוני (8%) לדן ייצטמצם עם הזמן.
         </p>
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-indigo-700 dark:text-indigo-300">דן</p>
-            <p>ניקוד: 0.8</p>
+            <p>עומס: 3%</p>
             <p className="text-green-600">⬆ עדיפות גבוהה</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-purple-700 dark:text-purple-300">יעל</p>
-            <p>ניקוד: 1.0</p>
+            <p>עומס: 5%</p>
             <p className="text-gray-500">✗ פטור חל</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded p-2 border border-indigo-200 dark:border-indigo-700">
             <p className="font-bold text-orange-700 dark:text-orange-300">רוני</p>
-            <p>ניקוד: 1.4</p>
+            <p>עומס: 8%</p>
             <p className="text-orange-600">⬇ עדיפות נמוכה</p>
           </div>
         </div>
@@ -183,135 +183,72 @@ function FairnessTab() {
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">הוגנות ושקיפות</h3>
       <p className="text-gray-700 dark:text-gray-300">
-        המערכת מספקת שקיפות מלאה — כל חייל יכול לראות את הניקוד שלו ושל שאר חברי היחידה בדף השקיפות.
+        המערכת מודדת הוגנות על פי <strong>עומס רבעוני</strong> — כמה מסך תורנויות היחידה ברבעון נשא כל חייל, בממוצע על פני הרבעונים שבהם שירת.
       </p>
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
-        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📊 מהו ניקוד מנורמל?</p>
-        <p className="text-indigo-700 dark:text-indigo-300">
-          הניקוד המנורמל משווה את העומס שנשאת ביחס לממוצע היחידה, תוך התחשבות בכמה זמן כל חייל משרת.
-        </p>
+        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📊 איך מחשבים את העומס הרבעוני?</p>
 
-        {/* Formula */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-2">
-          <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
-            <div className="bg-indigo-100 dark:bg-indigo-900 rounded px-2 py-1 text-indigo-800 dark:text-indigo-200 font-medium">ניקוד ליום שלך</div>
-            <div className="text-gray-500 font-bold">÷</div>
-            <div className="bg-purple-100 dark:bg-purple-900 rounded px-2 py-1 text-purple-800 dark:text-purple-200 font-medium">ממוצע ניקוד ליום ביחידה</div>
+        <div className="space-y-2 text-indigo-700 dark:text-indigo-300">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1">
+            <p className="font-medium text-sm">שלב 1 — חלק רבעוני</p>
+            <div className="flex items-center justify-center gap-2 text-xs flex-wrap">
+              <div className="bg-indigo-100 dark:bg-indigo-900 rounded px-2 py-1 font-medium">ניקוד החייל ברבעון</div>
+              <div className="text-gray-500 font-bold">÷</div>
+              <div className="bg-purple-100 dark:bg-purple-900 rounded px-2 py-1 font-medium">ניקוד כלל היחידה ברבעון</div>
+              <div className="text-gray-500 font-bold">=</div>
+              <div className="bg-green-100 dark:bg-green-900 rounded px-2 py-1 font-medium">חלק%</div>
+            </div>
           </div>
-          <p className="text-xs text-center text-gray-400">כאשר: ניקוד ליום = ניקוד מצטבר ÷ ימים פעילים</p>
-        </div>
 
-        {/* Score scale cards with person indicators */}
-        <div className="grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="bg-orange-100 border border-orange-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-orange-700 flex items-end justify-center gap-1">
-              <span className="flex flex-col items-center leading-none">
-                <span>👤</span>
-                <span className="text-[8px] text-orange-400 font-normal mt-0.5">את/ה כאן</span>
-              </span>
-              <span>{"< 1"}</span>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1">
+            <p className="font-medium text-sm">שלב 2 — ממוצע משוקלל לפי נוכחות</p>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              רבעונים בהם שירתת פחות ימים (הצטרפת באמצע, חופשה ממושכת) מקבלים משקל פחות בממוצע. רבעון שלם = משקל מלא.
             </p>
-            <p className="text-orange-700 font-medium">עשית פחות מהממוצע</p>
-            <p className="text-orange-600">תשובץ יותר בעתיד</p>
-          </div>
-          <div className="bg-blue-100 border border-blue-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-blue-700 dark:text-blue-300">= 1</p>
-            <div className="h-4" />
-            <p className="text-blue-700 dark:text-blue-300 font-medium">בדיוק כמו הממוצע</p>
-            <p className="text-blue-600 dark:text-blue-400">מצב אידיאלי</p>
-          </div>
-          <div className="bg-green-100 border border-green-300 rounded-lg p-2 space-y-0.5">
-            <p className="text-lg font-bold text-green-700 dark:text-green-300 flex items-end justify-center gap-1">
-              <span className="flex flex-col items-center leading-none">
-                <span>👤</span>
-                <span className="text-[8px] text-green-400 font-normal mt-0.5">את/ה כאן</span>
-              </span>
-              <span>{"> 1"}</span>
-            </p>
-            <p className="text-green-700 dark:text-green-300 font-medium">עשית יותר מהממוצע</p>
-            <p className="text-green-600">תשובץ פחות בעתיד</p>
           </div>
         </div>
 
-        {/* Gradient bar */}
-        <div className="space-y-1">
-          <div className="h-3 rounded-full bg-gradient-to-l from-orange-300 via-blue-300 to-green-300" />
-          <div className="grid grid-cols-3 text-center text-xs text-gray-400">
-            <span>ניקוד נמוך</span>
-            <span className="text-blue-600 dark:text-blue-400 font-medium">= 1</span>
-            <span>ניקוד גבוה</span>
-          </div>
+        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+          <p className="font-medium mb-1">🔑 למה זה פותר את בעיית הוותיקות?</p>
+          <p>אם ביחידה היו מעט תורנויות לפני 5 שנים — כולם קיבלו חלק קטן. זה לא פוגע בחייל ותיק, כי היחס (חלק/כלל) נשאר הוגן בכל רבעון. חייל חדש מושווה <em>רק לתקופה שהוא שירת בה</em>.</p>
         </div>
       </div>
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
-        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה: חישוב ניקוד מנורמל</p>
-        <div className="text-xs space-y-2 text-indigo-700 dark:text-indigo-300">
-          <p>נניח יחידה עם 3 חיילים לאחר 60 יום:</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-center border-collapse text-xs">
-              <thead>
-                <tr className="bg-indigo-100 dark:bg-indigo-900">
-                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">חייל</th>
-                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד מצטבר</th>
-                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ימים פעילים</th>
-                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד ליום</th>
-                  <th className="p-1 border border-indigo-200 dark:border-indigo-700">ניקוד מנורמל</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">דן</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">30</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.50</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-orange-600">0.75</td>
-                </tr>
-                <tr className="bg-white dark:bg-gray-800">
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">יעל</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">40</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.67</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-blue-600 dark:text-blue-400">1.00</td>
-                </tr>
-                <tr>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">רוני</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">50</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">60</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700">0.83</td>
-                  <td className="p-1 border border-indigo-200 dark:border-indigo-700 font-bold text-green-600">1.25</td>
-                </tr>
-              </tbody>
-            </table>
+        <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-2 border border-indigo-200 dark:border-indigo-700 space-y-1">
+            <p className="font-bold text-indigo-700 dark:text-indigo-300">דן — 3 שנים בשירות</p>
+            <p>ניקוד ממוצע ברבעון: 4</p>
+            <p>ניקוד יחידה ממוצע: 100</p>
+            <p className="text-green-700 dark:text-green-400 font-medium">עומס: 4% לרבעון</p>
           </div>
-          <p>ממוצע ניקוד ליום: (0.50+0.67+0.83)÷3 = 0.67. ניקוד מנורמל יעל: 0.67÷0.67 = <strong>1.00</strong>.</p>
-          <p>דן עשה פחות (0.75) → <strong>יקבל תורנות הבאה</strong>. רוני עשה יותר (1.25) → <strong>יחכה</strong>.</p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-2 border border-indigo-200 dark:border-indigo-700 space-y-1">
+            <p className="font-bold text-purple-700 dark:text-purple-300">יעל — חדשה, רבעון ראשון</p>
+            <p>ניקוד ברבעון עד כה: 0</p>
+            <p>ניקוד יחידה: 100</p>
+            <p className="text-red-600 dark:text-red-400 font-medium">עומס: 0% — תקבל עדיפות!</p>
+          </div>
         </div>
+        <p className="text-xs text-indigo-700 dark:text-indigo-300">האלגוריתם יעדיף את יעל כי יש לה עומס אפסי — היא תצבור תורנויות עד שהיא מגיעה לרמת דן.</p>
       </div>
 
-      <div className="bg-amber-50 dark:bg-amber-950 rounded-xl p-4 border border-amber-200 dark:border-amber-800 space-y-2">
-        <p className="font-semibold text-amber-800 dark:text-amber-200">🚩 מתי לפנות למפקד?</p>
-        <p className="text-amber-700 dark:text-amber-300">בדקו בדף השקיפות. אם אתם רואים אחד מאלה — כדאי לפנות:</p>
-        <div className="space-y-2">
-          {[
-            { n: "❶", text: "הניקוד שלכם גבוה משמעותית (מעל 1.3) ואתם עדיין מקבלים הרבה תורנויות — ייתכן שגיאה באלגוריתם." },
-            { n: "❷", text: "חייל ספציפי תמיד בעל ניקוד נמוך מאוד (מתחת ל-0.7) — ייתכן שיש פטור/אילוץ קבוע שאינו מוצדק." },
-            { n: "❸", text: "הניקוד שלכם לא השתנה למרות ביצוע תורנויות — ייתכן שגיאה בשיבוץ." },
-          ].map(({ n, text }) => (
-            <div key={n} className="flex gap-2 text-amber-700 dark:text-amber-300">
-              <span className="font-bold flex-shrink-0">{n}</span>
-              <span>{text}</span>
+      <div className="space-y-2">
+        <p className="font-medium text-gray-800 dark:text-gray-200">🔎 שקיפות</p>
+        {[
+          { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את העומס הרבעוני שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי עומס." },
+          { icon: "📅", title: "תאריך איפוס", desc: "מנהל המערכת יכול לקבוע מאיזה תאריך מחשבים היסטוריה. מומלץ: תחילת רבעון. תורנויות לפני תאריך זה לא נלקחות בחשבון." },
+          { icon: "⚖️", title: "הגינות לחדשים", desc: "חייל שהצטרף לאחרונה מושווה רק לתקופה שבה שירת — הוא לא נפגע מכך שהיחידה הייתה פחות עסוקה לפני שהצטרף." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
-        <p className="font-medium text-gray-700 dark:text-gray-200 mb-1">🔍 איפה לבדוק?</p>
-        <p className="text-gray-600 dark:text-gray-300">
-          עברו ל<b>דף השקיפות</b> (מהתפריט: שקיפות) — שם תמצאו את הניקוד של כל חיילי היחידה לצד שלכם, ממוין ומסנן.
-        </p>
+          </div>
+        ))}
       </div>
     </div>
   );
