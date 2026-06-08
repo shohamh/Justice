@@ -5,6 +5,7 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ["Heebo", "Arial", "sans-serif"],
+        cinzel: ["Cinzel", "serif"],
       },
       colors: {
         approved: "#16a34a",
