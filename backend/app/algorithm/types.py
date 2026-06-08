@@ -17,6 +17,9 @@ class SoldierInput:
     hierarchy_node_id: uuid.UUID | None = None
     approved_constraint_dates: list[tuple[date, date]] = field(default_factory=list)
     exempted_duty_type_ids: set[uuid.UUID] = field(default_factory=set)
+    # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)
+    effort_offset: int = 0      # int(effort_score × EFFORT_SCALE) — historical quarterly share
+    effort_per_milli: int = 0   # int(C_over_D / unit_score_milli × EFFORT_SCALE) — per-milli contribution
 
 
 @dataclass

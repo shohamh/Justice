@@ -160,3 +160,22 @@ def test_effort_offset_integer():
     expected_offset = int(data.effort_score * EFFORT_SCALE)
     assert data.effort_offset == expected_offset
     assert data.effort_offset >= 0
+
+
+def test_soldier_input_has_effort_fields():
+    """SoldierInput must have effort_offset and effort_per_milli fields."""
+    from app.algorithm.types import SoldierInput
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    s = SoldierInput(
+        id=uuid.uuid4(),
+        enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"),
+        active_days=90,
+    )
+    assert hasattr(s, "effort_offset")
+    assert hasattr(s, "effort_per_milli")
+    assert s.effort_offset == 0
+    assert s.effort_per_milli == 0
