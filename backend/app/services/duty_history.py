@@ -42,7 +42,10 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
     # --- DutyAssignment events (assignment & cancellation & call_up) ---
     assignments = list(
         session.execute(
-            select(DutyAssignment).where(DutyAssignment.soldier_id == soldier_id)
+            select(DutyAssignment).where(
+                DutyAssignment.soldier_id == soldier_id,
+                DutyAssignment.status != "algorithm_draft",
+            )
         ).scalars().all()
     )
 
