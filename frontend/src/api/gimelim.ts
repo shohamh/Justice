@@ -57,3 +57,25 @@ export async function commitGimelim(
     preview_token: previewToken,
   })).data;
 }
+
+export interface GimelimAttachmentResult {
+  id: string;
+  file_name: string;
+  content_type: string;
+  created_at: string;
+}
+
+export async function uploadGimelimAttachment(
+  dismissalId: string,
+  file: File
+): Promise<GimelimAttachmentResult> {
+  const form = new FormData();
+  form.append("file", file);
+  return (
+    await api.post<GimelimAttachmentResult>(
+      `/gimelim/${dismissalId}/attachments`,
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    )
+  ).data;
+}
