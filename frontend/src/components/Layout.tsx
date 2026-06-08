@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CircleUser, Settings, HelpCircle } from "lucide-react";
@@ -6,17 +6,26 @@ import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
+import { getSystemSettings } from "../api/systemSettings";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { logout, user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [helpOpen, setHelpOpen] = useState(false);
+  const [gimelimEnabled, setGimelimEnabled] = useState(true);
+
+  useEffect(() => {
+    getSystemSettings().then((settings) => {
+      const enabled = settings["gimalim.enabled"];
+      setGimelimEnabled(enabled === true || enabled === undefined);
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-4 py-3 flex items-center justify-between">
           {/* Left side: profile icon + optional gear icon */}
