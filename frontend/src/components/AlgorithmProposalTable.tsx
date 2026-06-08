@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
@@ -29,6 +30,16 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
 
+  function apiErrorMsg(e: unknown): string {
+    if (axios.isAxiosError(e)) {
+      const detail = e.response?.data?.detail;
+      const status = e.response?.status;
+      if (detail) return `שגיאה ${status ?? ""}: ${detail}`;
+      return `שגיאה HTTP ${status ?? ""}`;
+    }
+    return t("errors.generic");
+  }
+
   const soldierName = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id.slice(0, 8);
   const soldierLink = (id: string): React.ReactNode => {
     const s = soldiers.find(s => s.id === id);
@@ -58,8 +69,8 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           p.assignment_id === proposal.assignment_id ? { ...p, status: "published" } : p
         ),
       });
-    } catch {
-      setApproveError(t("errors.generic"));
+    } catch (e) {
+      setApproveError(apiErrorMsg(e));
     }
   }
 
@@ -91,8 +102,8 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
         ),
       });
       setSelectedIds(new Set());
-    } catch {
-      setApproveError(t("errors.generic"));
+    } catch (e) {
+      setApproveError(apiErrorMsg(e));
     } finally {
       setApproving(false);
     }
