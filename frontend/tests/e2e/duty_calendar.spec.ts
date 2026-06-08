@@ -17,22 +17,12 @@ async function loginAsAdmin(page: Page) {
   await expect(page).toHaveURL("/");
 }
 
-test("calendar shows on my duties page, navigation works", async ({ page }) => {
+test("my diary page shows stats dashboard", async ({ page }) => {
   await loginAsAdmin(page);
 
   await page.getByTestId("nav-my-duties").click();
   await expect(page).toHaveURL(/\/my-duties$/);
 
-  await expect(page.getByTestId("duty-calendar")).toBeVisible();
-  await expect(page.getByTestId("my-duties-page")).toBeVisible();
-
-  const nextBtn = page.locator(".react-calendar__navigation__next-button");
-  if (await nextBtn.isVisible()) {
-    await nextBtn.click();
-  }
-
-  const prevBtn = page.locator(".react-calendar__navigation__prev-button");
-  if (await prevBtn.isVisible()) {
-    await prevBtn.click();
-  }
+  await expect(page.getByTestId("my-diary-page")).toBeVisible();
+  await expect(page.getByTestId("my-diary-stat-cards")).toBeVisible();
 });
