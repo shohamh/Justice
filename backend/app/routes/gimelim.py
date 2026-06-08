@@ -3,14 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, HierarchyNode, Soldier
+from app.db.models import DutyAssignment, DutyDismissal, GimelimAttachment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import gimelim as svc
 from app.services.gimelim import GimelimError
@@ -99,6 +99,13 @@ class GimelimCommitOut(BaseModel):
     future_primary_assignment_id: uuid.UUID | None
     future_demoted_assignment_id: uuid.UUID | None
     notifications_queued: int
+
+
+class GimelimAttachmentOut(BaseModel):
+    id: uuid.UUID
+    file_name: str
+    content_type: str
+    created_at: datetime
 
 
 def _preview_to_out(p: svc.GimelimPreview) -> GimelimPreviewOut:
@@ -205,4 +212,51 @@ def commit_gimelim_route(
         future_primary_assignment_id=result.future_primary_assignment_id,
         future_demoted_assignment_id=result.future_demoted_assignment_id,
         notifications_queued=result.notifications_queued,
+    )
+
+
+@router.post(
+    "/gimelim/{dismissal_id}/attachments",
+    response_model=GimelimAttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_gimelim_attachment(
+    dismissal_id: uuid.UUID,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> GimelimAttachmentOut:
+    dismissal = session.get(DutyDismissal, dismissal_id)
+    if dismissal is None or not dismissal.is_gimelim:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+
+    # Load the original primary assignment to get soldier_id for scope check
+    assignment = session.get(DutyAssignment, dismissal.duty_assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="gimelim_dismissal_not_found")
+    _require_gimelim_permission(session, user, assignment.soldier_id)
+
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="invalid_file_type")
+
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:  # 20 MB limit
+        raise HTTPException(status_code=400, detail="file_too_large")
+
+    attachment = GimelimAttachment(
+        dismissal_id=dismissal_id,
+        file_name=file.filename or "file",
+        content_type=file.content_type or "application/octet-stream",
+        data=data,
+        uploaded_by=user.id,
+    )
+    session.add(attachment)
+    session.commit()
+
+    return GimelimAttachmentOut(
+        id=attachment.id,
+        file_name=attachment.file_name,
+        content_type=attachment.content_type,
+        created_at=attachment.created_at,
     )
