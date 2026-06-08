@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal
 from typing import Any
 
 from app.algorithm.types import (
@@ -12,6 +11,7 @@ from app.algorithm.types import (
     ExplanationData,
     SoldierInput,
 )
+from app.services.effort_score import EFFORT_SCALE
 
 
 def build_explanations(
@@ -44,24 +44,26 @@ def build_explanations(
                         blocking.append("overlap")
                         break
 
-            pre_norm = s.cumulative_score / Decimal(s.active_days) if s.active_days > 0 else None
+            pre_effort = s.effort_offset / EFFORT_SCALE if EFFORT_SCALE > 0 else None
             blocked = len(blocking) > 0
-            post_norm = None
+            post_effort = None
             if not blocked:
-                block_score = duty.score_per_day * Decimal((duty.end_date - duty.start_date).days + 1)
-                post_total = s.cumulative_score + (block_score if s.id == a.soldier_id else Decimal("0"))
-                post_norm = post_total / Decimal(s.active_days) if s.active_days > 0 else None
+                block_milli = int(
+                    float(duty.score_per_day) * ((duty.end_date - duty.start_date).days + 1) * 1000
+                )
+                post_milli = s.effort_offset + s.effort_per_milli * block_milli
+                post_effort = post_milli / EFFORT_SCALE
 
             candidates.append(CandidateInfo(
                 soldier_id=s.id,
                 blocked=blocked,
                 blocking_constraints=blocking,
-                pre_norm_score=pre_norm,
-                post_norm_score=post_norm,
+                pre_effort_score=float(pre_effort) if pre_effort is not None else None,
+                post_effort_score=float(post_effort) if post_effort is not None else None,
             ))
 
         unblocked_count = sum(1 for c in candidates if not c.blocked)
-        tiebreaker_note = None if unblocked_count <= 1 else "lowest_post_norm_score"
+        tiebreaker_note = None if unblocked_count <= 1 else "lowest_post_effort_score"
 
         per_assignment.append(AssignmentExplanation(
             duty_id=a.duty_id,

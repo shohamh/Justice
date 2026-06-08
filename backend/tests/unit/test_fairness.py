@@ -75,11 +75,18 @@ from app.algorithm.types import DutyBlock, SoldierInput, SolverSettings
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
 def _soldier(score: float, active_days: int = 100) -> SoldierInput:
+    from app.services.effort_score import EFFORT_SCALE
+    # For tests, map cumulative_score/active_days to effort_offset
+    # This simulates a soldier with historical quarterly duty share
+    spd = score / active_days if active_days > 0 else 0
+    effort_offset = int(spd * EFFORT_SCALE)
     return SoldierInput(
         id=uuid.uuid4(),
         enrolled_at=date(2025, 1, 1),
         cumulative_score=Decimal(str(score)),
         active_days=active_days,
+        effort_offset=effort_offset,
+        effort_per_milli=0,  # Not used in unit tests, set during algorithm bridge
     )
 
 

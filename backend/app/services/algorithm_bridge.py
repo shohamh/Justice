@@ -380,8 +380,8 @@ def _explanation_payload(
         }
         if dm_view:
             entry["soldier_name"] = soldier_names.get(c.soldier_id, "")
-            entry["pre_norm_score"] = float(c.pre_norm_score) if c.pre_norm_score is not None else None
-            entry["post_norm_score"] = float(c.post_norm_score) if c.post_norm_score is not None else None
+            entry["pre_effort_score"] = c.pre_effort_score
+            entry["post_effort_score"] = c.post_effort_score
         candidates.append(entry)
     return {
         "duty_id": str(exp.duty_id),

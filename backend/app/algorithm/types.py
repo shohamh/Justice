@@ -84,8 +84,8 @@ class CandidateInfo:
     soldier_id: uuid.UUID
     blocked: bool = False
     blocking_constraints: list[str] = field(default_factory=list)
-    pre_norm_score: Decimal | None = None
-    post_norm_score: Decimal | None = None
+    pre_effort_score: float | None = None   # effort_offset / EFFORT_SCALE (historical effort)
+    post_effort_score: float | None = None  # effort after this assignment
 
 
 @dataclass
