@@ -36,6 +36,7 @@ class TransparencyRow(BaseModel):
     score_per_day: Decimal
     normalised_score: Decimal
     is_globally_exempted: bool = False
+    effort_score: float = 0.0
 
 
 class PerTypeRow(BaseModel):
