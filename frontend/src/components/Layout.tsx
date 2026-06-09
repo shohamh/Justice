@@ -7,6 +7,7 @@ import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
 import { getSystemSettings } from "../api/systemSettings";
+import JusticeLogo from "./JusticeLogo";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -39,8 +40,8 @@ export default function Layout({ children }: { children: ReactNode }) {
               </Link>
             )}
           </div>
-          {/* Center: app title */}
-          <h1 className="text-lg font-bold">{t("app.title")}</h1>
+          {/* Center: app logo */}
+          <JusticeLogo size="md" />
           {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
             <button
