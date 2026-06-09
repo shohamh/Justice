@@ -248,3 +248,174 @@ def test_sorted_descending(admin_session, soldier, duty_type, location):
 
     dates = [ev.date for ev in events]
     assert dates == sorted(dates, reverse=True), f"Expected descending order, got: {dates}"
+
+
+# ---------------------------------------------------------------------------
+# Score metadata tests
+# ---------------------------------------------------------------------------
+
+
+def test_assignment_score_regular(admin_session, soldier, duty_type, location):
+    """Regular 3-day assignment: score_total='3.0', formula='3 × 1.0 × 1.0'."""
+    # duty_type has score_per_day=Decimal("1.00")
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),  # 3 days inclusive
+        status="published",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    ev = next(e for e in events if e.event_type == "assignment")
+
+    assert ev.metadata["score_total"] == "3.0"
+    assert ev.metadata["score_formula"] == "3 × 1.0 × 1.0"
+
+
+def test_assignment_score_reserve_standby_only(admin_session, soldier, duty_type, location):
+    """Reserve 3-day standby (no call-up): score=0.6, formula uses standby multiplier 0.2."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="published",
+        is_reserve=True,
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    ev = next(e for e in events if e.event_type == "assignment")
+
+    assert ev.metadata["score_total"] == "0.6"
+    assert ev.metadata["score_formula"] == "3 × 1.0 × 0.2"
+
+
+def test_assignment_score_reserve_with_calledup(admin_session, soldier, duty_type, location):
+    """Reserve 5-day assignment where days 3-4 are called up.
+
+    Days 1-2 (Jun 10-11): standby ×0.2  → 0.4
+    Days 3-4 (Jun 12-13): called-up ×1.3 → 2.6
+    Day 5   (Jun 14):     standby ×0.2  → 0.2
+    Total: 3.2
+    """
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 14),
+        status="published",
+        is_reserve=True,
+        called_up_from=date(2026, 6, 12),
+        called_up_to=date(2026, 6, 13),
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    ev = next(e for e in events if e.event_type == "assignment")
+
+    assert ev.metadata["score_total"] == "3.2"
+    assert ev.metadata["score_formula"] == "2 × 1.0 × 0.2 + 2 × 1.0 × 1.3 + 1 × 1.0 × 0.2"
+
+
+def test_call_up_score_within_assignment(admin_session, soldier, duty_type, location):
+    """call_up event carries score for the called-up sub-period only."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 14),
+        status="published",
+        is_reserve=True,
+        called_up_from=date(2026, 6, 12),
+        called_up_to=date(2026, 6, 13),
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    call_up_ev = next(e for e in events if e.event_type == "call_up")
+
+    assert call_up_ev.metadata["score_total"] == "2.6"
+    assert call_up_ev.metadata["score_formula"] == "2 × 1.0 × 1.3"
+
+
+def test_call_up_score_zero_when_outside_assignment(admin_session, soldier, duty_type, location):
+    """call_up event before the main assignment span scores 0 (no overlap)."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="published",
+        is_reserve=True,
+        called_up_from=date(2026, 6, 8),   # before start_date — no overlap
+        called_up_to=date(2026, 6, 9),
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    call_up_ev = next(e for e in events if e.event_type == "call_up")
+
+    assert call_up_ev.metadata["score_total"] == "0.0"
+    assert call_up_ev.metadata.get("score_formula", "") == ""
+
+
+def test_dismissal_score_is_zero(admin_session, soldier, duty_type, location):
+    """Dismissal event carries score=0 with formula showing dismissed multiplier."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 14),
+        status="published",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    d = DutyDismissal(
+        duty_assignment_id=a.id,
+        dismissed_from=date(2026, 6, 11),
+        dismissed_to=date(2026, 6, 12),
+        reason="חופש",
+    )
+    admin_session.add(d)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    dismissal_ev = next(e for e in events if e.event_type == "dismissal")
+
+    assert dismissal_ev.metadata["score_total"] == "0.0"
+    assert dismissal_ev.metadata["score_formula"] == "2 × 1.0 × 0.0"
+
+
+def test_cancellation_score_is_zero(admin_session, soldier, duty_type, location):
+    """Cancelled assignment carries score_total='0' and no formula."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="cancelled",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    ev = next(e for e in events if e.event_type == "cancellation")
+
+    assert ev.metadata["score_total"] == "0"
+    assert "score_formula" not in ev.metadata

@@ -115,6 +115,18 @@ def _isodate(d: date | None) -> str | None:
 
 
 def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEvent]:
+    from app.services.scoring import _get_multiplier_setting
+
+    standby_mult = _get_multiplier_setting(
+        session, "scoring.reserve_standby_multiplier", "0.2"
+    )
+    called_up_mult = _get_multiplier_setting(
+        session, "scoring.reserve_called_up_multiplier", "1.3"
+    )
+    dismissed_mult = _get_multiplier_setting(
+        session, "scoring.dismissed_multiplier", "0.0"
+    )
+
     events: list[TimelineEvent] = []
 
     # --- DutyAssignment events (assignment & cancellation & call_up) ---
@@ -128,12 +140,14 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
     )
 
     duty_type_cache: dict[uuid.UUID, str] = {}
+    spd_cache: dict[uuid.UUID, Decimal] = {}
     location_cache: dict[uuid.UUID, str] = {}
 
     def _duty_type_name(dt_id: uuid.UUID) -> str:
         if dt_id not in duty_type_cache:
             dt = session.get(DutyType, dt_id)
             duty_type_cache[dt_id] = dt.name if dt else str(dt_id)
+            spd_cache[dt_id] = dt.score_per_day if dt else Decimal("0")
         return duty_type_cache[dt_id]
 
     def _location_name(loc_id: uuid.UUID) -> str:
@@ -144,10 +158,38 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
 
     for a in assignments:
         dt_name = _duty_type_name(a.duty_type_id)
+        spd = spd_cache.get(a.duty_type_id, Decimal("0"))
         loc_name = _location_name(a.duty_location_id)
+
+        # Collect dismissals first — needed for score calculation
+        dismissals = list(
+            session.execute(
+                select(DutyDismissal).where(DutyDismissal.duty_assignment_id == a.id)
+            ).scalars().all()
+        )
+        dismissal_ranges = [(d.dismissed_from, d.dismissed_to) for d in dismissals]
 
         # call_up event — if this assignment has called_up_from set
         if a.called_up_from is not None:
+            cu_total, cu_formula = _score_parts(
+                a,
+                dismissal_ranges,
+                spd,
+                standby_mult,
+                called_up_mult,
+                dismissed_mult,
+                date_from=a.called_up_from,
+                date_to=a.called_up_to,
+            )
+            cu_metadata: dict[str, str | None] = {
+                "duty_type_name": dt_name,
+                "location_name": loc_name,
+                "duty_assignment_id": str(a.id),
+                "is_reserve": "true",
+                "score_total": cu_total,
+            }
+            if cu_formula:
+                cu_metadata["score_formula"] = cu_formula
             events.append(
                 TimelineEvent(
                     id=uuid.uuid5(a.id, "call_up"),
@@ -157,12 +199,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                     title=f"הוקפץ לרזרבה: {dt_name}",
                     description=a.notes,
                     status=None,
-                    metadata={
-                        "duty_type_name": dt_name,
-                        "location_name": loc_name,
-                        "duty_assignment_id": str(a.id),
-                        "is_reserve": "true",
-                    },
+                    metadata=cu_metadata,
                     created_at=a.created_at.isoformat(),
                 )
             )
@@ -184,11 +221,32 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                         "duty_assignment_id": str(a.id),
                         "is_reserve": "true" if a.is_reserve else "false",
                         "called_up": "true" if a.called_up_from is not None else "false",
+                        "score_total": "0",
                     },
                     created_at=a.created_at.isoformat(),
                 )
             )
         else:
+            asgn_total, asgn_formula = _score_parts(
+                a,
+                dismissal_ranges,
+                spd,
+                standby_mult,
+                called_up_mult,
+                dismissed_mult,
+            )
+            asgn_metadata: dict[str, str | None] = {
+                "duty_type_name": dt_name,
+                "location_name": loc_name,
+                "duty_assignment_id": str(a.id),
+                "duty_type_id": str(a.duty_type_id),
+                "duty_location_id": str(a.duty_location_id),
+                "is_reserve": "true" if a.is_reserve else "false",
+                "called_up": "true" if a.called_up_from is not None else "false",
+                "score_total": asgn_total,
+            }
+            if asgn_formula:
+                asgn_metadata["score_formula"] = asgn_formula
             events.append(
                 TimelineEvent(
                     id=a.id,
@@ -198,26 +256,31 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                     title=f"{dt_name} ב{loc_name}",
                     description=a.notes,
                     status=a.status,
-                    metadata={
-                        "duty_type_name": dt_name,
-                        "location_name": loc_name,
-                        "duty_assignment_id": str(a.id),
-                        "duty_type_id": str(a.duty_type_id),
-                        "duty_location_id": str(a.duty_location_id),
-                        "is_reserve": "true" if a.is_reserve else "false",
-                        "called_up": "true" if a.called_up_from is not None else "false",
-                    },
+                    metadata=asgn_metadata,
                     created_at=a.created_at.isoformat(),
                 )
             )
 
         # dismissal events linked to this assignment
-        dismissals = list(
-            session.execute(
-                select(DutyDismissal).where(DutyDismissal.duty_assignment_id == a.id)
-            ).scalars().all()
-        )
         for d in dismissals:
+            dis_total, dis_formula = _score_parts(
+                a,
+                dismissal_ranges,
+                spd,
+                standby_mult,
+                called_up_mult,
+                dismissed_mult,
+                date_from=d.dismissed_from,
+                date_to=d.dismissed_to,
+            )
+            dis_metadata: dict[str, str | None] = {
+                "duty_type_name": dt_name,
+                "location_name": loc_name,
+                "duty_assignment_id": str(a.id),
+                "score_total": dis_total,
+            }
+            if dis_formula:
+                dis_metadata["score_formula"] = dis_formula
             events.append(
                 TimelineEvent(
                     id=d.id,
@@ -227,11 +290,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                     title=f"שוחרר מתורנות {dt_name}",
                     description=d.reason,
                     status=None,
-                    metadata={
-                        "duty_type_name": dt_name,
-                        "location_name": loc_name,
-                        "duty_assignment_id": str(a.id),
-                    },
+                    metadata=dis_metadata,
                     created_at=d.created_at.isoformat(),
                 )
             )
