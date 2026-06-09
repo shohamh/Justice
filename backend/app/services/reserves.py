@@ -428,19 +428,19 @@ def count_reserve_days_in_window(
     except SettingNotFound:
         W = 30
 
-    existing = session.execute(
-        select(DutyAssignment).where(
+    rows = session.execute(
+        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
             DutyAssignment.soldier_id == soldier_id,
             DutyAssignment.is_reserve.is_(True),
             DutyAssignment.status.in_(["published", "algorithm_draft"]),
         )
-    ).scalars().all()
+    ).all()
 
     # Build the full set of dates: existing reserves + candidate
     all_dates: set[date] = set()
-    for a in existing:
-        d = a.start_date
-        while d <= a.end_date:
+    for row in rows:
+        d = row.start_date
+        while d <= row.end_date:
             all_dates.add(d)
             d += timedelta(days=1)
     d = start_date

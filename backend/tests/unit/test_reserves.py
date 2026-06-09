@@ -397,3 +397,18 @@ def test_cap_counts_algorithm_draft_reserves(admin_session):
         admin_session, s.id, date(2026, 7, 9), date(2026, 7, 15)
     )
     assert passes is False
+
+
+def test_cap_respects_window_days_override(admin_session):
+    s, dt, loc = _make_soldier(admin_session, "cap-wdays")
+    # Default window is 30 days. Override to 10 days.
+    # Two ranges 12 days apart won't collide in a 10-day window but would in a 30-day one.
+    admin_session.add(SystemSetting(key="reserves.window_days", value=10))
+    admin_session.flush()
+    # 5 existing days (Jul 1-5), candidate Jul 17-21 (5 days) — 12 days apart, no 10-day window spans both
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 5))
+    passes, current, _ = check_reserve_cap(
+        admin_session, s.id, date(2026, 7, 17), date(2026, 7, 21)
+    )
+    assert passes is True   # would exceed 14 in a 30-day window but not in a 10-day window
+    assert current == 5     # peak is 5 (only one side fits per 10-day window)
