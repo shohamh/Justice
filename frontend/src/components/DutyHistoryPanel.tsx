@@ -128,11 +128,21 @@ function EventCard({
               )}
             </div>
           </div>
-          {badgeClass && (
-            <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass}`}>
-              {t(`my_requests.${e.status}`)}
-            </span>
-          )}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {badgeClass && (
+              <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass}`}>
+                {t(`my_requests.${e.status}`)}
+              </span>
+            )}
+            {e.metadata.score_total != null && (
+              <span
+                className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 whitespace-nowrap"
+                data-testid={`score-badge-${e.id}`}
+              >
+                {e.metadata.score_total} ניקוד
+              </span>
+            )}
+          </div>
         </div>
 
         {e.event_type === "assignment" && onOfferSwap && (
@@ -165,6 +175,14 @@ function EventCard({
         {isExpanded && (
           <div className="mt-2 space-y-1">
             {e.description && <p className="text-gray-600">{e.description}</p>}
+            {e.metadata.score_total != null && (
+              <p className="text-xs text-gray-500" data-testid={`score-formula-${e.id}`}>
+                ניקוד:{" "}
+                {e.metadata.score_formula
+                  ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
+                  : e.metadata.score_total}
+              </p>
+            )}
             {e.metadata.decision_note && (
               <p className="text-gray-400 text-xs">
                 {t("approvals.decision_note")}: {e.metadata.decision_note}
