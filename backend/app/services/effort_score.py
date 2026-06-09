@@ -9,12 +9,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.algorithm.types import EFFORT_SCALE
 from app.services.scoring import effective_duty_days
-
-# Scale factor for converting Decimal effort scores to CP-SAT integers.
-# effort_offset = int(effort_score × EFFORT_SCALE)
-# effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
-EFFORT_SCALE = 1_000_000_000  # 10^9
 
 
 @dataclass
