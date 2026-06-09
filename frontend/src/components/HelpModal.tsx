@@ -235,14 +235,14 @@ function FairnessTab() {
               </div>
               <div className="flex gap-2 items-start">
                 <span className="shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded px-1 font-medium">C</span>
-                <span className="text-gray-600 dark:text-gray-300"><strong>הסיבוב הנוכחי</strong> — עדיין לא הסתיים, לכן אף חייל לא צבר ממנו ניקוד עדיין. הוא נכלל במכנה כדי ש<em>כולם</em> יהיו "חייבים" אותו באופן שווה — ולא רק החדשים.</span>
+                <span className="text-gray-600 dark:text-gray-300"><strong>סיבוב עתידי — תמיד 1</strong> — מייצג סיבוב תכנון שלם שטרם בוצע. C אינו מודד כמה מהרבעון הנוכחי עבר — הוא קבוע 1 לכולם. הוא נכלל במכנה <em>בלבד</em>, כך שאין לו עדיין תרומה לעומס שנצבר.</span>
               </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-xs text-center font-medium text-indigo-800 dark:text-indigo-200">
-              עומס = עומס שנצבר ÷ (W + C)
+              עומס = עומס שנצבר ÷ (W + 1)
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              בגלל C, אפילו חייל שעשה הכל מושלם בעבר לא "ינוח" על הניקוד שלו — הסיבוב הנוכחי תמיד מוריד את הציון עד שמישהו יעשה תורנויות.
+              המשמעות: לפני כל סיבוב, הציון של <em>כולם</em> נמוך יותר ב-1 מחלק — ורק תורנויות חדשות יחזירו אותו לרמה הקודמת. זה מונע מוותיקים "לנוח" על ניקוד עבר.
             </p>
           </div>
         </div>
@@ -305,7 +305,7 @@ function FairnessTab() {
                   {[
                     { label: "עומס שנצבר", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
                     { label: "היסטוריה כוללת (W)", sub: "רבעונות מלאים של היסטוריה", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
-                    { label: "סיבוב נוכחי (C)", sub: "טרם הסתיים — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
+                    { label: "סיבוב עתידי (C)", sub: "קבוע 1 — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
                     { label: "מכנה (W + C)", sub: "", value: D.toFixed(2), cls: "text-gray-700 dark:text-gray-300", border: true },
                   ].map(({ label, sub, value, cls, border }) => (
                     <div key={label} className={`flex items-start justify-between gap-2 ${border ? "border-t border-green-200 dark:border-green-800 pt-1" : ""}`}>
