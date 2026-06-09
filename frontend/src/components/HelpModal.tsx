@@ -235,7 +235,7 @@ function FairnessTab() {
               </div>
               <div className="flex gap-2 items-start">
                 <span className="shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded px-1 font-medium">C</span>
-                <span className="text-gray-600 dark:text-gray-300"><strong>סיבוב עתידי — תמיד 1</strong> — מייצג סיבוב תכנון שלם שטרם בוצע. C אינו מודד כמה מהרבעון הנוכחי עבר — הוא קבוע 1 לכולם. הוא נכלל במכנה <em>בלבד</em>, כך שאין לו עדיין תרומה לעומס שנצבר.</span>
+                <span className="text-gray-600 dark:text-gray-300"><strong>רבעון נוכחי — תמיד 1</strong> — מייצג סיבוב תכנון שלם שטרם בוצע. C אינו מודד כמה מהרבעון הנוכחי עבר — הוא קבוע 1 לכולם. הוא נכלל במכנה <em>בלבד</em>, כך שאין לו עדיין תרומה לעומס שנצבר.</span>
               </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-xs text-center font-medium text-indigo-800 dark:text-indigo-200">
@@ -305,7 +305,7 @@ function FairnessTab() {
                   {[
                     { label: "עומס שנצבר", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
                     { label: "היסטוריה כוללת (W)", sub: "רבעונות מלאים של היסטוריה", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
-                    { label: "סיבוב עתידי (C)", sub: "קבוע 1 — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
+                    { label: "רבעון נוכחי (C)", sub: "קבוע 1 — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
                     { label: "מכנה (W + C)", sub: "", value: D.toFixed(2), cls: "text-gray-700 dark:text-gray-300", border: true },
                   ].map(({ label, sub, value, cls, border }) => (
                     <div key={label} className={`flex items-start justify-between gap-2 ${border ? "border-t border-green-200 dark:border-green-800 pt-1" : ""}`}>
