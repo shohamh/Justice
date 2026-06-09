@@ -268,24 +268,26 @@ function FairnessTab() {
               <thead>
                 <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-green-800">
                   <th className="text-right py-1 pb-1.5 font-medium">רבעון</th>
-                  <th className="text-left py-1 pb-1.5 font-medium">חייל</th>
-                  <th className="text-left py-1 pb-1.5 font-medium">יחידה</th>
-                  <th className="text-left py-1 pb-1.5 font-medium">נוכחות</th>
-                  <th className="text-left py-1 pb-1.5 font-medium">חלק%</th>
+                  <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד (חייל/יחידה)</th>
+                  <th className="text-right py-1 pb-1.5 font-medium">חלק%</th>
                 </tr>
               </thead>
               <tbody>
-                {myBreakdown.quarters.map((q) => (
-                  <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
-                    <td className="py-1 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
-                    <td className="py-1 text-left text-gray-700 dark:text-gray-300">{parseFloat(q.soldier_score).toFixed(1)}</td>
-                    <td className="py-1 text-left text-gray-500 dark:text-gray-400">
-                      {parseFloat(q.unit_score) > 0 ? parseFloat(q.unit_score).toFixed(1) : "—"}
-                    </td>
-                    <td className="py-1 text-left text-gray-500 dark:text-gray-400">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</td>
-                    <td className="py-1 text-left font-semibold text-green-700 dark:text-green-300">{(parseFloat(q.share) * 100).toFixed(2)}%</td>
-                  </tr>
-                ))}
+                {myBreakdown.quarters.map((q) => {
+                  const unitScore = parseFloat(q.unit_score);
+                  return (
+                    <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
+                      <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                      <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400">
+                        {parseFloat(q.soldier_score).toFixed(1)}
+                        {unitScore > 0 && <span className="text-gray-400 dark:text-gray-500"> / {unitScore.toFixed(1)}</span>}
+                      </td>
+                      <td className="py-1.5 text-right font-semibold text-green-700 dark:text-green-300">
+                        {(parseFloat(q.share) * 100).toFixed(2)}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {/* Derivation with real numbers */}
@@ -296,31 +298,26 @@ function FairnessTab() {
               const D = W + C;
               const effort = parseFloat(myBreakdown.effort_score);
               return (
-                <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-2 text-xs">
-                  <p className="font-medium text-green-800 dark:text-green-200">מה כל מספר אומר:</p>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-600 dark:text-gray-400">עומס שנצבר מהיסטוריה (סכום חלק×נוכחות)</span>
-                      <span className="font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{(A * 100).toFixed(2)}%</span>
+                <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 text-xs">
+                  {[
+                    { label: "עומס שנצבר", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
+                    { label: "היסטוריה כוללת (W)", sub: "רבעונות מלאים של היסטוריה", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
+                    { label: "סיבוב נוכחי (C)", sub: "טרם הסתיים — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
+                    { label: "מכנה (W + C)", sub: "", value: D.toFixed(2), cls: "text-gray-700 dark:text-gray-300", border: true },
+                  ].map(({ label, sub, value, cls, border }) => (
+                    <div key={label} className={`flex items-start justify-between gap-2 ${border ? "border-t border-green-200 dark:border-green-800 pt-1" : ""}`}>
+                      <div className="min-w-0">
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">{label}</span>
+                        {sub && <span className="text-gray-400 dark:text-gray-500"> — {sub}</span>}
+                      </div>
+                      <span className={`shrink-0 font-semibold tabular-nums ${cls}`}>{value}</span>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-600 dark:text-gray-400">היסטוריה כוללת W — "רבעונות" של היסטוריה</span>
-                      <span className="font-semibold text-amber-700 dark:text-amber-300 shrink-0">{W.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-600 dark:text-gray-400">סיבוב נוכחי C — טרם הסתיים, נכלל במכנה בלבד</span>
-                      <span className="font-semibold text-green-700 dark:text-green-300 shrink-0">{C.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 border-t border-green-200 dark:border-green-800 pt-1">
-                      <span className="font-medium text-gray-700 dark:text-gray-300">מכנה (W + C)</span>
-                      <span className="font-semibold text-gray-700 dark:text-gray-300 shrink-0">{D.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2 border-t border-green-200 dark:border-green-800 pt-1">
-                      <span className="font-bold text-green-800 dark:text-green-100">עומס = עומס שנצבר ÷ מכנה</span>
-                      <span className="font-bold text-green-700 dark:text-green-300 shrink-0">
-                        {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
-                      </span>
-                    </div>
+                  ))}
+                  <div className="border-t border-green-200 dark:border-green-800 pt-1">
+                    <p className="text-gray-600 dark:text-gray-400 font-medium">עומס = עומס שנצבר ÷ מכנה</p>
+                    <p className="font-bold text-green-700 dark:text-green-300 tabular-nums">
+                      {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
+                    </p>
                   </div>
                 </div>
               );
