@@ -73,6 +73,9 @@ class EffortBreakdownOut(BaseModel):
     quarters: list[EffortQuarterRow]
     effort_score: Decimal
     C_over_D: Decimal
+    A_i: Decimal   # Σ(share_q × active_frac_q)
+    W_i: Decimal   # Σ(active_frac_q) — historical weight
+    C_i: Decimal   # current planning-window fraction
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -278,6 +281,9 @@ def effort_breakdown(
         ],
         effort_score=bd.effort_score,
         C_over_D=bd.C_over_D,
+        A_i=bd.A_i,
+        W_i=bd.W_i,
+        C_i=bd.C_i,
     )
 
 

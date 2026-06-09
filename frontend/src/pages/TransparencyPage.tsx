@@ -598,6 +598,48 @@ export default function TransparencyPage() {
               )}
             </div>
 
+            {/* Derivation */}
+            <div className="px-4 py-3 border-t dark:border-gray-700 bg-indigo-50 dark:bg-indigo-950 text-xs space-y-1.5" dir="rtl">
+              <p className="font-semibold text-indigo-800 dark:text-indigo-200 mb-1">🧮 חישוב מפורט</p>
+              {(() => {
+                const A = parseFloat(effortBreakdown.A_i);
+                const W = parseFloat(effortBreakdown.W_i);
+                const C = parseFloat(effortBreakdown.C_i);
+                const D = W + C;
+                return (
+                  <div className="space-y-1 font-mono text-indigo-700 dark:text-indigo-300">
+                    <div className="flex gap-2 items-baseline">
+                      <span className="w-5 font-bold">A</span>
+                      <span className="text-gray-500 dark:text-gray-400">= Σ(חלק × נוכחות)</span>
+                      <span className="mr-auto font-semibold">= {(A * 100).toFixed(3)}%</span>
+                    </div>
+                    <div className="flex gap-2 items-baseline">
+                      <span className="w-5 font-bold">W</span>
+                      <span className="text-gray-500 dark:text-gray-400">= Σ(נוכחות) — משקל היסטורי</span>
+                      <span className="mr-auto font-semibold">= {W.toFixed(3)}</span>
+                    </div>
+                    <div className="flex gap-2 items-baseline">
+                      <span className="w-5 font-bold">C</span>
+                      <span className="text-gray-500 dark:text-gray-400">= משקל תקופה נוכחית</span>
+                      <span className="mr-auto font-semibold">= {C.toFixed(3)}</span>
+                    </div>
+                    <div className="flex gap-2 items-baseline border-t border-indigo-200 dark:border-indigo-800 pt-1">
+                      <span className="w-5 font-bold">D</span>
+                      <span className="text-gray-500 dark:text-gray-400">= W + C</span>
+                      <span className="mr-auto font-semibold">= {D.toFixed(3)}</span>
+                    </div>
+                    <div className="flex gap-2 items-baseline border-t border-indigo-200 dark:border-indigo-800 pt-1 text-sm">
+                      <span className="font-bold text-indigo-900 dark:text-indigo-100">עומס</span>
+                      <span className="text-gray-500 dark:text-gray-400">= A ÷ D</span>
+                      <span className="mr-auto font-bold text-indigo-900 dark:text-indigo-100">
+                        = {(A * 100).toFixed(3)}% ÷ {D.toFixed(3)} = {(parseFloat(effortBreakdown.effort_score) * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             {/* Footer */}
             <div className="px-5 py-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>

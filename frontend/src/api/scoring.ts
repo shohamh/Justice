@@ -38,6 +38,9 @@ export interface EffortBreakdown {
   quarters: EffortQuarterRow[];
   effort_score: string;
   C_over_D: string;
+  A_i: string;  // Σ(share_q × active_frac_q)
+  W_i: string;  // Σ(active_frac_q) — historical weight
+  C_i: string;  // current planning-window fraction
 }
 
 export async function getTransparency(): Promise<TransparencyRow[]> {

@@ -222,6 +222,21 @@ function FairnessTab() {
               רבעונים בהם שירתת פחות ימים (הצטרפת באמצע, חופשה ממושכת) מקבלים משקל פחות בממוצע. רבעון שלם = משקל מלא.
             </p>
           </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1.5">
+            <p className="font-medium text-sm">שלב 3 — חישוב סופי</p>
+            <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1 font-mono">
+              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">A</span> = Σ(חלק × נוכחות) <span className="font-sans text-gray-400">← סכום עמודת "חלק×נוכחות"</span></div>
+              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">W</span> = Σ(נוכחות) <span className="font-sans text-gray-400">← משקל היסטורי</span></div>
+              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">C</span> = משקל תקופת תכנון <span className="font-sans text-gray-400">← כמה מהסיבוב הנוכחי נכלל</span></div>
+              <div className="border-t border-indigo-100 dark:border-indigo-800 pt-1">
+                <span className="font-bold text-indigo-900 dark:text-indigo-100">עומס = A ÷ (W + C)</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              C מונע שעמידה בניקוד 0% בתקופה הנוכחית לא תדלל את הניקוד ההיסטורי — לכולם יש אותו משקל לעתיד.
+            </p>
+          </div>
         </div>
 
         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
@@ -265,6 +280,26 @@ function FairnessTab() {
                 ))}
               </tbody>
             </table>
+            {/* Derivation with real numbers */}
+            {(() => {
+              const A = parseFloat(myBreakdown.A_i);
+              const W = parseFloat(myBreakdown.W_i);
+              const C = parseFloat(myBreakdown.C_i);
+              const D = W + C;
+              return (
+                <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 font-mono text-xs text-green-700 dark:text-green-300">
+                  <p className="font-sans font-medium text-green-800 dark:text-green-200 mb-1">🧮 חישוב מפורט</p>
+                  <div className="flex gap-1"><span className="w-4 font-bold">A</span><span className="text-gray-500 dark:text-gray-400">= Σ(חלק×נוכחות)</span><span className="mr-auto">{(A * 100).toFixed(3)}%</span></div>
+                  <div className="flex gap-1"><span className="w-4 font-bold">W</span><span className="text-gray-500 dark:text-gray-400">= Σ(נוכחות) היסטורי</span><span className="mr-auto">{W.toFixed(3)}</span></div>
+                  <div className="flex gap-1"><span className="w-4 font-bold">C</span><span className="text-gray-500 dark:text-gray-400">= תקופה נוכחית</span><span className="mr-auto">{C.toFixed(3)}</span></div>
+                  <div className="flex gap-1 border-t border-green-200 dark:border-green-800 pt-1"><span className="w-4 font-bold">D</span><span className="text-gray-500 dark:text-gray-400">= W + C</span><span className="mr-auto">{D.toFixed(3)}</span></div>
+                  <div className="flex gap-1 border-t border-green-200 dark:border-green-800 pt-1 text-sm font-bold text-green-800 dark:text-green-100">
+                    <span>עומס = A÷D =</span>
+                    <span className="mr-auto">{(parseFloat(myBreakdown.effort_score) * 100).toFixed(2)}%</span>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex justify-between items-center pt-1 border-t border-green-200 dark:border-green-800">
               <span className="text-xs text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
               <span className="text-lg font-bold text-green-700 dark:text-green-300">

@@ -45,6 +45,11 @@ class EffortBreakdown:
     quarters: list[EffortQuarterDetail] = field(default_factory=list)
     effort_score: Decimal = Decimal("0")
     C_over_D: Decimal = Decimal("0")
+    # Raw components of the formula so the UI can display the full derivation:
+    # effort_score = A_i / D_i,  where D_i = W_i + C_i
+    A_i: Decimal = Decimal("0")   # Σ(share_q × active_frac_q)
+    W_i: Decimal = Decimal("0")   # Σ(active_frac_q)  — historical weight
+    C_i: Decimal = Decimal("0")   # current planning-window fraction
 
 
 def _quarter_label(q_start: date) -> str:
@@ -272,7 +277,11 @@ def compute_effort_breakdown(
             Decimal((planning_end - sol_plan_start).days + 1) / Decimal(planning_days)
             if sol_plan_start <= planning_end else Decimal("0")
         )
-        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), C_over_D=C_i if C_i > 0 else Decimal("0"))
+        return EffortBreakdown(
+            quarters=[], effort_score=Decimal("0"),
+            C_over_D=Decimal("1") if C_i > 0 else Decimal("0"),
+            A_i=Decimal("0"), W_i=Decimal("0"), C_i=C_i,
+        )
 
     # Fetch duty type scores
     dt_scores: dict[uuid.UUID, Decimal] = {
@@ -354,4 +363,7 @@ def compute_effort_breakdown(
         quarters=quarter_details,
         effort_score=effort_score,
         C_over_D=C_over_D,
+        A_i=A_i,
+        W_i=W_i,
+        C_i=C_i,
     )
