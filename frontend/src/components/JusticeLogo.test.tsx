@@ -26,4 +26,10 @@ describe("JusticeLogo", () => {
     render(<JusticeLogo size="lg" />);
     expect(screen.getByTestId("justice-logo-text")).toHaveClass("text-4xl");
   });
+
+  test("SVG has aria-hidden to hide it from screen readers", () => {
+    render(<JusticeLogo />);
+    const svg = screen.getByTestId("justice-logo").querySelector("svg");
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+  });
 });
