@@ -417,5 +417,5 @@ def test_cancellation_score_is_zero(admin_session, soldier, duty_type, location)
     events = get_duty_history(admin_session, soldier.id)
     ev = next(e for e in events if e.event_type == "cancellation")
 
-    assert ev.metadata["score_total"] == "0"
+    assert ev.metadata["score_total"] == "0.0"
     assert "score_formula" not in ev.metadata

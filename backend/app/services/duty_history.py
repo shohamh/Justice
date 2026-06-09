@@ -170,7 +170,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
         dismissal_ranges = [(d.dismissed_from, d.dismissed_to) for d in dismissals]
 
         # call_up event — if this assignment has called_up_from set
-        if a.called_up_from is not None:
+        if a.called_up_from is not None and a.called_up_to is not None:
             cu_total, cu_formula = _score_parts(
                 a,
                 dismissal_ranges,
@@ -221,7 +221,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                         "duty_assignment_id": str(a.id),
                         "is_reserve": "true" if a.is_reserve else "false",
                         "called_up": "true" if a.called_up_from is not None else "false",
-                        "score_total": "0",
+                        "score_total": "0.0",
                     },
                     created_at=a.created_at.isoformat(),
                 )
