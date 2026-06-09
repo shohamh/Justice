@@ -629,69 +629,103 @@ export default function TransparencyPage() {
               </div>
 
               {/* Derivation — inside the scrollable area */}
-              {(() => {
+              {effortBreakdown.quarters.length > 0 && (() => {
                 const A = parseFloat(effortBreakdown.A_i);
                 const W = parseFloat(effortBreakdown.W_i);
                 const C = parseFloat(effortBreakdown.C_i);
                 const D = W + C;
                 const effort = parseFloat(effortBreakdown.effort_score);
-                const derivRows = [
-                  {
-                    num: "A", color: "indigo",
-                    label: "עומס שנצבר",
-                    desc: 'סכום עמודת "תרומה לנוסחה" — כלומר, חלק הנטל של כל רבעון לאחר תיקון נוכחות. רבעון שבו היית נוכח חצי מהזמן נספר חצי.',
-                    value: `${(A * 100).toFixed(2)}%`,
-                  },
-                  {
-                    num: "W", color: "amber",
-                    label: "היסטוריה כוללת",
-                    desc: 'סכום עמודת "% נוכחות" — כמה "רבעונות מלאים" יש לך בהיסטוריה. נוכחות 100% לאורך שני רבעונות = W=2.',
-                    value: W.toFixed(2),
-                  },
-                  {
-                    num: "C", color: "green",
-                    label: "רבעון נוכחי (תכנון)",
-                    desc: "קבוע 1 — מייצג סיבוב תכנון שלם שעדיין לא בוצע. אין לאחד תורנויות ממנו עדיין, ולכן מוסף למכנה בלבד. כך כולם מתחילים כל סיבוב עם ניקוד מעט נמוך יותר.",
-                    value: C.toFixed(2),
-                  },
-                ] as const;
-                const colorMap = {
-                  indigo: "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300",
-                  amber:  "bg-amber-100  dark:bg-amber-900  text-amber-700  dark:text-amber-300",
-                  green:  "bg-green-100  dark:bg-green-900  text-green-700  dark:text-green-300",
-                };
+                const qs = effortBreakdown.quarters;
+
                 return (
-                  <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-3 text-xs" dir="rtl">
+                  <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-4 text-xs" dir="rtl">
                     <p className="font-semibold text-gray-700 dark:text-gray-300">כיצד מגיעים למספר הסופי?</p>
 
-                    {derivRows.map((r) => (
-                      <div key={r.num} className="flex gap-2 items-start">
-                        <span className={`mt-0.5 shrink-0 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px] ${colorMap[r.color]}`}>{r.num}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{r.label}</p>
-                            <span className={`shrink-0 font-semibold tabular-nums ${colorMap[r.color]
-                              .split(" ").filter(c => c.startsWith("text-")).join(" ")}`}>{r.value}</span>
-                          </div>
-                          <p className="text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{r.desc}</p>
+                    {/* Step 1: A — per-row arithmetic */}
+                    <div>
+                      <p className="font-medium text-indigo-700 dark:text-indigo-300 mb-1">
+                        שלב 1 — עומס שנצבר (A): לכל רבעון, ניקוד חייל ÷ ניקוד יחידה × % נוכחות
+                      </p>
+                      <div className="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 rounded-lg overflow-hidden">
+                        {qs.map((q, i) => {
+                          const ss = parseFloat(q.soldier_score);
+                          const us = parseFloat(q.unit_score);
+                          const ap = (parseFloat(q.active_frac) * 100).toFixed(0);
+                          const ws = (parseFloat(q.weighted_share) * 100).toFixed(2);
+                          const hasScore = us > 0;
+                          return (
+                            <div
+                              key={q.quarter_label}
+                              className={`flex items-center justify-between gap-2 px-2 py-1.5 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
+                            >
+                              <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
+                              {hasScore ? (
+                                <span className="tabular-nums text-gray-600 dark:text-gray-400 text-right">
+                                  {ss.toFixed(2)} ÷ {us.toFixed(2)} × {ap}%
+                                  {" = "}
+                                  <strong className="text-indigo-600 dark:text-indigo-400">{ws}%</strong>
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 dark:text-gray-500 italic">
+                                  אין תורנויות ביחידה — תרומה 0%
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div className="border-t border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 px-2 py-1.5 flex justify-between font-semibold text-indigo-700 dark:text-indigo-300">
+                          <span>סכום = A</span>
+                          <span className="tabular-nums">{(A * 100).toFixed(2)}%</span>
                         </div>
                       </div>
-                    ))}
+                    </div>
 
-                    {/* Final formula */}
-                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1">
-                      <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                        <span>מכנה (W + C)</span>
-                        <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
-                          {W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}
-                        </span>
+                    {/* Step 2: W — sum of presences */}
+                    <div>
+                      <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">
+                        שלב 2 — היסטוריה כוללת (W): סכום % נוכחות לכל רבעון
+                      </p>
+                      <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg overflow-hidden">
+                        {qs.map((q, i) => (
+                          <div
+                            key={q.quarter_label}
+                            className={`flex justify-between px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
+                          >
+                            <span className="font-medium text-gray-600 dark:text-gray-400 w-14">{q.quarter_label}</span>
+                            <span className="tabular-nums">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-1.5 flex justify-between font-semibold text-amber-700 dark:text-amber-300">
+                          <span>סכום = W</span>
+                          <span className="tabular-nums">{W.toFixed(2)}</span>
+                        </div>
                       </div>
-                      <div className="border-t border-gray-200 dark:border-gray-600 pt-1">
-                        <p className="text-gray-600 dark:text-gray-400">עומס = A ÷ (W + C)</p>
-                        <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">
-                          {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
-                        </p>
+                    </div>
+
+                    {/* Step 3: Final formula */}
+                    <div>
+                      <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">שלב 3 — חישוב סופי</p>
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1.5">
+                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                          <span>C — מקדם תכנון (קבוע לכולם)</span>
+                          <span className="tabular-nums font-medium text-green-700 dark:text-green-300">{C.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                          <span>מכנה = W + C</span>
+                          <span className="tabular-nums font-medium text-gray-700 dark:text-gray-300">
+                            {W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="border-t border-gray-200 dark:border-gray-600 pt-1.5">
+                          <p className="text-gray-500 dark:text-gray-400 mb-1">עומס = A ÷ (W + C)</p>
+                          <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
+                            {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = <span className="text-lg">{(effort * 100).toFixed(2)}%</span>
+                          </p>
+                        </div>
                       </div>
+                      <p className="mt-2 text-gray-500 dark:text-gray-400 leading-snug">
+                        <strong>C=1</strong> מייצג סיבוב תכנון שלם שטרם בוצע — נוסף למכנה בלבד כדי שלאיש לא יהיה יתרון &ldquo;ריק&rdquo; מסיבוב חדש לפני שכולם קיבלו תורנויות.
+                      </p>
                     </div>
                   </div>
                 );
