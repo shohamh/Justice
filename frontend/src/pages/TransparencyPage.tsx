@@ -573,8 +573,8 @@ export default function TransparencyPage() {
                         <th className="text-right py-1 pb-2 font-medium">רבעון</th>
                         <th className="text-right py-1 pb-2 font-medium px-3">ניקוד חייל</th>
                         <th className="text-right py-1 pb-2 font-medium px-3">ניקוד יחידה</th>
-                        <th className="text-right py-1 pb-2 font-medium px-3">נוכחות</th>
-                        <th className="text-right py-1 pb-2 font-medium">חלק%</th>
+                        <th className="text-right py-1 pb-2 font-medium px-3">% נוכחות</th>
+                        <th className="text-right py-1 pb-2 font-medium">חלק בנטל</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -583,8 +583,11 @@ export default function TransparencyPage() {
                         const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
                         const unitScore = parseFloat(q.unit_score);
                         return (
-                          <tr key={q.quarter_label} className="border-b dark:border-gray-700">
-                            <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                          <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
+                            <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
+                              <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
+                              {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 text-xs font-normal not-italic">(חלקי)</span>}
+                            </td>
                             <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
                             <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
                               {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
@@ -596,6 +599,11 @@ export default function TransparencyPage() {
                       })}
                     </tbody>
                   </table>
+                  {effortBreakdown.quarters.some((q) => q.is_partial) && (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                      ⚠️ <strong>רבעון חלקי</strong> — מציג נתונים עד אתמול בלבד. הרבעון עדיין בתהליך, ולכן הניקוד נמוך מרבעונות שלמים. הניקוד בטבלת השקיפות הראשית הוא מצטבר מאז ההצטרפות, ולא ניקוד רבעוני.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

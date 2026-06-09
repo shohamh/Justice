@@ -37,6 +37,7 @@ class EffortQuarterDetail:
     active_frac: Decimal     # fraction of quarter soldier was active (0.0–1.0)
     share: Decimal           # soldier_score / unit_score (0 if unit had no duties)
     weighted_share: Decimal  # share × active_frac
+    is_partial: bool = False # True if quarter end was clipped (still in progress)
 
 
 @dataclass
@@ -335,6 +336,7 @@ def compute_effort_breakdown(
             A_i += weighted_share
         W_i += active_frac
 
+        true_q_end = quarter_end(q_start_d)
         quarter_details.append(EffortQuarterDetail(
             quarter_start=q_start_d,
             quarter_end=q_end_d,
@@ -344,6 +346,7 @@ def compute_effort_breakdown(
             active_frac=active_frac,
             share=share,
             weighted_share=weighted_share,
+            is_partial=(q_end_d < true_q_end),
         ))
 
     # Planning window contribution

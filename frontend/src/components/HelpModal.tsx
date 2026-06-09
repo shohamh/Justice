@@ -271,16 +271,19 @@ function FairnessTab() {
                     <th className="text-right py-1 pb-1.5 font-medium">רבעון</th>
                     <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד חייל</th>
                     <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד יחידה</th>
-                    <th className="text-right py-1 pb-1.5 font-medium px-2">נוכחות</th>
-                    <th className="text-right py-1 pb-1.5 font-medium">חלק%</th>
+                    <th className="text-right py-1 pb-1.5 font-medium px-2">% נוכחות</th>
+                    <th className="text-right py-1 pb-1.5 font-medium">חלק בנטל</th>
                   </tr>
                 </thead>
                 <tbody>
                   {myBreakdown.quarters.map((q) => {
                     const unitScore = parseFloat(q.unit_score);
                     return (
-                      <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
-                        <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                      <tr key={q.quarter_label} className={`border-b border-green-200 dark:border-green-800 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
+                        <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">
+                          <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
+                          {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 font-normal not-italic">(חלקי)</span>}
+                        </td>
                         <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(1)}</td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
                           {unitScore > 0 ? unitScore.toFixed(1) : "—"}
@@ -292,6 +295,11 @@ function FairnessTab() {
                   })}
                 </tbody>
               </table>
+              {myBreakdown.quarters.some((q) => q.is_partial) && (
+                <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  ⚠️ <strong>רבעון חלקי</strong> — הרבעון עדיין בתהליך; מוצגים נתונים עד אתמול בלבד. ניקוד חייל/יחידה הוא ניקוד רבעוני בלבד — לא מצטבר.
+                </p>
+              )}
             </div>
             {/* Derivation with real numbers */}
             {(() => {
