@@ -599,49 +599,77 @@ export default function TransparencyPage() {
             </div>
 
             {/* Derivation */}
-            <div className="px-4 py-3 border-t dark:border-gray-700 bg-indigo-50 dark:bg-indigo-950 text-xs space-y-1.5" dir="rtl">
-              <p className="font-semibold text-indigo-800 dark:text-indigo-200 mb-1">🧮 חישוב מפורט</p>
-              {(() => {
-                const A = parseFloat(effortBreakdown.A_i);
-                const W = parseFloat(effortBreakdown.W_i);
-                const C = parseFloat(effortBreakdown.C_i);
-                const D = W + C;
-                return (
-                  <div className="space-y-1 font-mono text-indigo-700 dark:text-indigo-300">
-                    <div className="flex gap-2 items-baseline">
-                      <span className="w-5 font-bold">A</span>
-                      <span className="text-gray-500 dark:text-gray-400">= Σ(חלק × נוכחות)</span>
-                      <span className="mr-auto font-semibold">= {(A * 100).toFixed(3)}%</span>
+            {(() => {
+              const A = parseFloat(effortBreakdown.A_i);
+              const W = parseFloat(effortBreakdown.W_i);
+              const C = parseFloat(effortBreakdown.C_i);
+              const D = W + C;
+              const effort = parseFloat(effortBreakdown.effort_score);
+              return (
+                <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-3 text-xs" dir="rtl">
+                  <p className="font-semibold text-gray-700 dark:text-gray-300">כיצד מגיעים למספר הסופי?</p>
+
+                  {/* Step: accumulated load */}
+                  <div className="flex gap-3 items-start">
+                    <span className="mt-0.5 shrink-0 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px]">1</span>
+                    <div className="flex-1 space-y-0.5">
+                      <p className="font-medium text-gray-800 dark:text-gray-200">עומס שנצבר בהיסטוריה</p>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        סכום (חלק% × נוכחות) מכל הרבעונות בטבלה למעלה.
+                        רבעון בו היית שם חצי מהזמן נספר חצי. רבעון שלם נספר במלואו.
+                      </p>
                     </div>
-                    <div className="flex gap-2 items-baseline">
-                      <span className="w-5 font-bold">W</span>
-                      <span className="text-gray-500 dark:text-gray-400">= Σ(נוכחות) — משקל היסטורי</span>
-                      <span className="mr-auto font-semibold">= {W.toFixed(3)}</span>
+                    <span className="shrink-0 font-semibold text-indigo-700 dark:text-indigo-300">{(A * 100).toFixed(2)}%</span>
+                  </div>
+
+                  {/* Step: historical weight */}
+                  <div className="flex gap-3 items-start">
+                    <span className="mt-0.5 shrink-0 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px]">2</span>
+                    <div className="flex-1 space-y-0.5">
+                      <p className="font-medium text-gray-800 dark:text-gray-200">היסטוריה כוללת (W)</p>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        סכום הנוכחות בכל הרבעונות — כמה "רבעונות מלאים" של היסטוריה יש לך.
+                        חייל עם 4 רבעונות מלאים יקבל W=4.
+                      </p>
                     </div>
-                    <div className="flex gap-2 items-baseline">
-                      <span className="w-5 font-bold">C</span>
-                      <span className="text-gray-500 dark:text-gray-400">= משקל תקופה נוכחית</span>
-                      <span className="mr-auto font-semibold">= {C.toFixed(3)}</span>
+                    <span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">{W.toFixed(2)}</span>
+                  </div>
+
+                  {/* Step: current period */}
+                  <div className="flex gap-3 items-start">
+                    <span className="mt-0.5 shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px]">3</span>
+                    <div className="flex-1 space-y-0.5">
+                      <p className="font-medium text-gray-800 dark:text-gray-200">הסיבוב הנוכחי (C)</p>
+                      <p className="text-gray-500 dark:text-gray-400">
+                        הסיבוב הנוכחי עדיין לא הסתיים — לאף חייל אין עדיין ניקוד עבורו.
+                        לכן הוא מוסף למכנה <em>בלבד</em>, כך שכולם "חייבים" אותו באופן שווה.
+                        ערך 1.0 = סיבוב מלא.
+                      </p>
                     </div>
-                    <div className="flex gap-2 items-baseline border-t border-indigo-200 dark:border-indigo-800 pt-1">
-                      <span className="w-5 font-bold">D</span>
-                      <span className="text-gray-500 dark:text-gray-400">= W + C</span>
-                      <span className="mr-auto font-semibold">= {D.toFixed(3)}</span>
+                    <span className="shrink-0 font-semibold text-green-700 dark:text-green-300">{C.toFixed(2)}</span>
+                  </div>
+
+                  {/* Final formula */}
+                  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1.5">
+                    <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                      <span>מכנה = היסטוריה + סיבוב נוכחי</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}</span>
                     </div>
-                    <div className="flex gap-2 items-baseline border-t border-indigo-200 dark:border-indigo-800 pt-1 text-sm">
-                      <span className="font-bold text-indigo-900 dark:text-indigo-100">עומס</span>
-                      <span className="text-gray-500 dark:text-gray-400">= A ÷ D</span>
-                      <span className="mr-auto font-bold text-indigo-900 dark:text-indigo-100">
-                        = {(A * 100).toFixed(3)}% ÷ {D.toFixed(3)} = {(parseFloat(effortBreakdown.effort_score) * 100).toFixed(2)}%
+                    <div className="flex justify-between items-center border-t border-gray-200 dark:border-gray-600 pt-1.5">
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">
+                        עומס = עומס שנצבר ÷ מכנה
+                      </span>
+                      <span className="font-bold text-base text-indigo-700 dark:text-indigo-300">
+                        {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
                       </span>
                     </div>
                   </div>
-                );
-              })()}
-            </div>
+                </div>
+              );
+            })()}
 
             {/* Footer */}
-            <div className="px-5 py-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between text-sm">
+            <div className="px-5 py-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
               <span className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
                 {(parseFloat(effortBreakdown.effort_score) * 100).toFixed(2)}%

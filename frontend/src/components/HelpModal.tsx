@@ -223,18 +223,26 @@ function FairnessTab() {
             </p>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1.5">
-            <p className="font-medium text-sm">שלב 3 — חישוב סופי</p>
-            <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1 font-mono">
-              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">A</span> = Σ(חלק × נוכחות) <span className="font-sans text-gray-400">← סכום עמודת "חלק×נוכחות"</span></div>
-              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">W</span> = Σ(נוכחות) <span className="font-sans text-gray-400">← משקל היסטורי</span></div>
-              <div><span className="font-bold text-indigo-700 dark:text-indigo-300">C</span> = משקל תקופת תכנון <span className="font-sans text-gray-400">← כמה מהסיבוב הנוכחי נכלל</span></div>
-              <div className="border-t border-indigo-100 dark:border-indigo-800 pt-1">
-                <span className="font-bold text-indigo-900 dark:text-indigo-100">עומס = A ÷ (W + C)</span>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-2">
+            <p className="font-medium text-sm">שלב 3 — חישוב הממוצע הסופי</p>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              סכום החלקים המשוקללים מחולק ב<strong>מכנה</strong> הכולל שני חלקים:
+            </p>
+            <div className="text-xs space-y-1.5">
+              <div className="flex gap-2 items-start">
+                <span className="shrink-0 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded px-1 font-medium">W</span>
+                <span className="text-gray-600 dark:text-gray-300"><strong>היסטוריה כוללת</strong> — סכום הנוכחות ברבעונות העבר. 4 רבעונות מלאים = W=4.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded px-1 font-medium">C</span>
+                <span className="text-gray-600 dark:text-gray-300"><strong>הסיבוב הנוכחי</strong> — עדיין לא הסתיים, לכן אף חייל לא צבר ממנו ניקוד עדיין. הוא נכלל במכנה כדי ש<em>כולם</em> יהיו "חייבים" אותו באופן שווה — ולא רק החדשים.</span>
               </div>
             </div>
+            <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-xs text-center font-medium text-indigo-800 dark:text-indigo-200">
+              עומס = עומס שנצבר ÷ (W + C)
+            </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              C מונע שעמידה בניקוד 0% בתקופה הנוכחית לא תדלל את הניקוד ההיסטורי — לכולם יש אותו משקל לעתיד.
+              בגלל C, אפילו חייל שעשה הכל מושלם בעבר לא "ינוח" על הניקוד שלו — הסיבוב הנוכחי תמיד מוריד את הציון עד שמישהו יעשה תורנויות.
             </p>
           </div>
         </div>
@@ -286,16 +294,33 @@ function FairnessTab() {
               const W = parseFloat(myBreakdown.W_i);
               const C = parseFloat(myBreakdown.C_i);
               const D = W + C;
+              const effort = parseFloat(myBreakdown.effort_score);
               return (
-                <div className="mt-2 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 font-mono text-xs text-green-700 dark:text-green-300">
-                  <p className="font-sans font-medium text-green-800 dark:text-green-200 mb-1">🧮 חישוב מפורט</p>
-                  <div className="flex gap-1"><span className="w-4 font-bold">A</span><span className="text-gray-500 dark:text-gray-400">= Σ(חלק×נוכחות)</span><span className="mr-auto">{(A * 100).toFixed(3)}%</span></div>
-                  <div className="flex gap-1"><span className="w-4 font-bold">W</span><span className="text-gray-500 dark:text-gray-400">= Σ(נוכחות) היסטורי</span><span className="mr-auto">{W.toFixed(3)}</span></div>
-                  <div className="flex gap-1"><span className="w-4 font-bold">C</span><span className="text-gray-500 dark:text-gray-400">= תקופה נוכחית</span><span className="mr-auto">{C.toFixed(3)}</span></div>
-                  <div className="flex gap-1 border-t border-green-200 dark:border-green-800 pt-1"><span className="w-4 font-bold">D</span><span className="text-gray-500 dark:text-gray-400">= W + C</span><span className="mr-auto">{D.toFixed(3)}</span></div>
-                  <div className="flex gap-1 border-t border-green-200 dark:border-green-800 pt-1 text-sm font-bold text-green-800 dark:text-green-100">
-                    <span>עומס = A÷D =</span>
-                    <span className="mr-auto">{(parseFloat(myBreakdown.effort_score) * 100).toFixed(2)}%</span>
+                <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-2 text-xs">
+                  <p className="font-medium text-green-800 dark:text-green-200">מה כל מספר אומר:</p>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-600 dark:text-gray-400">עומס שנצבר מהיסטוריה (סכום חלק×נוכחות)</span>
+                      <span className="font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{(A * 100).toFixed(2)}%</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-600 dark:text-gray-400">היסטוריה כוללת W — "רבעונות" של היסטוריה</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-300 shrink-0">{W.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-gray-600 dark:text-gray-400">סיבוב נוכחי C — טרם הסתיים, נכלל במכנה בלבד</span>
+                      <span className="font-semibold text-green-700 dark:text-green-300 shrink-0">{C.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 border-t border-green-200 dark:border-green-800 pt-1">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">מכנה (W + C)</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300 shrink-0">{D.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 border-t border-green-200 dark:border-green-800 pt-1">
+                      <span className="font-bold text-green-800 dark:text-green-100">עומס = עומס שנצבר ÷ מכנה</span>
+                      <span className="font-bold text-green-700 dark:text-green-300 shrink-0">
+                        {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
