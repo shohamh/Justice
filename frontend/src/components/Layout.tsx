@@ -41,7 +41,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             )}
           </div>
           {/* Center: app logo */}
-          <JusticeLogo size="md" />
+          <JusticeLogo size="sm" />
           {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
             <button
