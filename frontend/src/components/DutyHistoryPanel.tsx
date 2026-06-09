@@ -176,7 +176,7 @@ function EventCard({
           <div className="mt-2 space-y-1">
             {e.description && <p className="text-gray-600">{e.description}</p>}
             {e.metadata.score_total != null && (
-              <p className="text-xs text-gray-500" data-testid={`score-formula-${e.id}`}>
+              <p className="text-xs text-gray-500 dark:text-gray-400" data-testid={`score-formula-${e.id}`}>
                 ניקוד:{" "}
                 {e.metadata.score_formula
                   ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
