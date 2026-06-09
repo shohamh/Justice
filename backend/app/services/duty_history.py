@@ -40,7 +40,7 @@ def _fmt(d: Decimal) -> str:
               Decimal("1.300") -> "1.3", Decimal("0.000") -> "0.0"
     """
     n = d.normalize()
-    sign, _, exponent = n.as_tuple()
+    _, _, exponent = n.as_tuple()
     if exponent >= 0:
         return str(int(n)) + ".0"
     return format(n, "f")
@@ -102,9 +102,6 @@ def _score_parts(
         day += timedelta(days=1)
     if cur_mult is not None:
         segments.append((cur_count, cur_mult))
-
-    if not segments:
-        return "0.0", ""
 
     total: Decimal = sum(Decimal(str(count)) * spd * mult for count, mult in segments)
     formula = " + ".join(
