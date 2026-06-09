@@ -179,7 +179,7 @@ def test_take_free_reserve_blocked_when_cap_exceeded(admin_session):
         svc.take_free(admin_session, assignment_id=reserve_a.id, covering_soldier_id=taker.id, actor_id=taker.id)
         assert False, "expected SwapError"
     except svc.SwapError as exc:
-        assert str(exc).startswith("reserve_cap_exceeded:")
+        assert str(exc) == "reserve_cap_exceeded:21/14"
 
 
 def test_take_free_reserve_succeeds_under_cap(admin_session):
