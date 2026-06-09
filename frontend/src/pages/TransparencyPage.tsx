@@ -561,121 +561,142 @@ export default function TransparencyPage() {
               </button>
             </div>
 
-            {/* Table */}
-            <div className="overflow-y-auto flex-1 py-3">
-              {effortBreakdown.quarters.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">אין נתוני היסטוריה — חייל חדש.</p>
-              ) : (
-                <div className="overflow-x-auto px-4">
-                  <table className="w-full text-sm border-collapse" style={{ minWidth: "380px" }}>
-                    <thead>
-                      <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                        <th className="text-right py-1 pb-2 font-medium">רבעון</th>
-                        <th className="text-right py-1 pb-2 font-medium px-3">ניקוד חייל</th>
-                        <th className="text-right py-1 pb-2 font-medium px-3">ניקוד יחידה</th>
-                        <th className="text-right py-1 pb-2 font-medium px-3">% נוכחות</th>
-                        <th className="text-right py-1 pb-2 font-medium">חלק בנטל</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {effortBreakdown.quarters.map((q) => {
-                        const sharePct = (parseFloat(q.share) * 100).toFixed(2);
-                        const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
-                        const unitScore = parseFloat(q.unit_score);
-                        return (
-                          <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
-                            <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
-                              <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                              {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 text-xs font-normal not-italic">(חלקי)</span>}
-                            </td>
-                            <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
-                            <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
-                              {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
-                            </td>
-                            <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{activePct}%</td>
-                            <td className="py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">{sharePct}%</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {effortBreakdown.quarters.some((q) => q.is_partial) && (
-                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                      ⚠️ <strong>רבעון חלקי</strong> — מציג נתונים עד אתמול בלבד. הרבעון עדיין בתהליך, ולכן הניקוד נמוך מרבעונות שלמים. הניקוד בטבלת השקיפות הראשית הוא מצטבר מאז ההצטרפות, ולא ניקוד רבעוני.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Table + Derivation (scrollable together so header & footer always visible) */}
+            <div className="overflow-y-auto flex-1">
+              {/* Table */}
+              <div className="py-3">
+                {effortBreakdown.quarters.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">אין נתוני היסטוריה — חייל חדש.</p>
+                ) : (
+                  <div className="overflow-x-auto px-4">
+                    <table className="w-full text-sm border-collapse" style={{ minWidth: "480px" }}>
+                      <thead>
+                        <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                          <th className="text-right py-1 pb-2 font-medium">רבעון</th>
+                          <th className="text-right py-1 pb-2 font-medium px-3">ניקוד חייל</th>
+                          <th
+                            className="text-right py-1 pb-2 font-medium px-3 cursor-help underline decoration-dotted"
+                            title="סכום נקודות כל התורנויות של כל חיילי היחידה ברבעון זה. מחלקים בו את ניקוד החייל כדי לחשב את % חלקו."
+                          >
+                            ניקוד יחידה (סה״כ)
+                          </th>
+                          <th className="text-right py-1 pb-2 font-medium px-3">% נוכחות</th>
+                          <th
+                            className="text-right py-1 pb-2 font-medium px-3 cursor-help underline decoration-dotted"
+                            title="חלק החייל מניקוד היחידה (ניקוד חייל ÷ ניקוד יחידה), לפני תיקון נוכחות."
+                          >
+                            חלק בנטל
+                          </th>
+                          <th
+                            className="text-right py-1 pb-2 font-medium cursor-help underline decoration-dotted"
+                            title="חלק בנטל × % נוכחות. זהו הערך שמצטבר לנוסחה הסופית (A)."
+                          >
+                            תרומה לנוסחה
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {effortBreakdown.quarters.map((q) => {
+                          const sharePct = (parseFloat(q.share) * 100).toFixed(2);
+                          const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
+                          const unitScore = parseFloat(q.unit_score);
+                          const weightedSharePct = (parseFloat(q.weighted_share) * 100).toFixed(2);
+                          return (
+                            <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
+                              <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
+                                <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
+                                {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 text-xs font-normal not-italic">(חלקי)</span>}
+                              </td>
+                              <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
+                              <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
+                                {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
+                              </td>
+                              <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{activePct}%</td>
+                              <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{sharePct}%</td>
+                              <td className="py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">{weightedSharePct}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {effortBreakdown.quarters.some((q) => q.is_partial) && (
+                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                        ⚠️ <strong>רבעון חלקי</strong> — מציג נתונים עד אתמול בלבד. הרבעון עדיין בתהליך, ולכן הניקוד נמוך מרבעונות שלמים. הניקוד בטבלת השקיפות הראשית הוא מצטבר מאז ההצטרפות, ולא ניקוד רבעוני.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
-            {/* Derivation */}
-            {(() => {
-              const A = parseFloat(effortBreakdown.A_i);
-              const W = parseFloat(effortBreakdown.W_i);
-              const C = parseFloat(effortBreakdown.C_i);
-              const D = W + C;
-              const effort = parseFloat(effortBreakdown.effort_score);
-              const rows = [
-                {
-                  num: "1", color: "indigo",
-                  label: "עומס שנצבר",
-                  desc: "סכום (חלק% × נוכחות) לכל רבעון. רבעון שבו היית שם חצי מהזמן נספר חצי.",
-                  value: `${(A * 100).toFixed(2)}%`,
-                },
-                {
-                  num: "2", color: "amber",
-                  label: "היסטוריה כוללת (W)",
-                  desc: "סכום הנוכחות — כמה \"רבעונות מלאים\" יש לך בהיסטוריה.",
-                  value: W.toFixed(2),
-                },
-                {
-                  num: "3", color: "green",
-                  label: "רבעון נוכחי (C)",
-                  desc: "קבוע 1 — מייצג סיבוב תכנון שלם שעדיין לא בוצע. לאיש אין עדיין ניקוד ממנו, ולכן הוא מוסף למכנה בלבד. זה מוריד מעט את הציון של כולם לפני כל סיבוב — ורק תורנויות חדשות יחזירו אותו למעלה.",
-                  value: C.toFixed(2),
-                },
-              ] as const;
-              const colorMap = {
-                indigo: "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300",
-                amber:  "bg-amber-100  dark:bg-amber-900  text-amber-700  dark:text-amber-300",
-                green:  "bg-green-100  dark:bg-green-900  text-green-700  dark:text-green-300",
-              };
-              return (
-                <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-3 text-xs" dir="rtl">
-                  <p className="font-semibold text-gray-700 dark:text-gray-300">כיצד מגיעים למספר הסופי?</p>
+              {/* Derivation — inside the scrollable area */}
+              {(() => {
+                const A = parseFloat(effortBreakdown.A_i);
+                const W = parseFloat(effortBreakdown.W_i);
+                const C = parseFloat(effortBreakdown.C_i);
+                const D = W + C;
+                const effort = parseFloat(effortBreakdown.effort_score);
+                const derivRows = [
+                  {
+                    num: "A", color: "indigo",
+                    label: "עומס שנצבר",
+                    desc: 'סכום עמודת "תרומה לנוסחה" — כלומר, חלק הנטל של כל רבעון לאחר תיקון נוכחות. רבעון שבו היית נוכח חצי מהזמן נספר חצי.',
+                    value: `${(A * 100).toFixed(2)}%`,
+                  },
+                  {
+                    num: "W", color: "amber",
+                    label: "היסטוריה כוללת",
+                    desc: 'סכום עמודת "% נוכחות" — כמה "רבעונות מלאים" יש לך בהיסטוריה. נוכחות 100% לאורך שני רבעונות = W=2.',
+                    value: W.toFixed(2),
+                  },
+                  {
+                    num: "C", color: "green",
+                    label: "רבעון נוכחי (תכנון)",
+                    desc: "קבוע 1 — מייצג סיבוב תכנון שלם שעדיין לא בוצע. אין לאחד תורנויות ממנו עדיין, ולכן מוסף למכנה בלבד. כך כולם מתחילים כל סיבוב עם ניקוד מעט נמוך יותר.",
+                    value: C.toFixed(2),
+                  },
+                ] as const;
+                const colorMap = {
+                  indigo: "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300",
+                  amber:  "bg-amber-100  dark:bg-amber-900  text-amber-700  dark:text-amber-300",
+                  green:  "bg-green-100  dark:bg-green-900  text-green-700  dark:text-green-300",
+                };
+                return (
+                  <div className="border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-4 space-y-3 text-xs" dir="rtl">
+                    <p className="font-semibold text-gray-700 dark:text-gray-300">כיצד מגיעים למספר הסופי?</p>
 
-                  {rows.map((r) => (
-                    <div key={r.num} className="flex gap-2 items-start">
-                      <span className={`mt-0.5 shrink-0 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px] ${colorMap[r.color]}`}>{r.num}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{r.label}</p>
-                          <span className={`shrink-0 font-semibold tabular-nums ${colorMap[r.color]
-                            .split(" ").filter(c => c.startsWith("text-")).join(" ")}`}>{r.value}</span>
+                    {derivRows.map((r) => (
+                      <div key={r.num} className="flex gap-2 items-start">
+                        <span className={`mt-0.5 shrink-0 rounded-full w-5 h-5 flex items-center justify-center font-bold text-[10px] ${colorMap[r.color]}`}>{r.num}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="font-medium text-gray-800 dark:text-gray-200 leading-snug">{r.label}</p>
+                            <span className={`shrink-0 font-semibold tabular-nums ${colorMap[r.color]
+                              .split(" ").filter(c => c.startsWith("text-")).join(" ")}`}>{r.value}</span>
+                          </div>
+                          <p className="text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{r.desc}</p>
                         </div>
-                        <p className="text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{r.desc}</p>
+                      </div>
+                    ))}
+
+                    {/* Final formula */}
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1">
+                      <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                        <span>מכנה (W + C)</span>
+                        <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+                          {W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="border-t border-gray-200 dark:border-gray-600 pt-1">
+                        <p className="text-gray-600 dark:text-gray-400">עומס = A ÷ (W + C)</p>
+                        <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">
+                          {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
+                        </p>
                       </div>
                     </div>
-                  ))}
-
-                  {/* Final formula — stacked so it fits narrow screens */}
-                  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1">
-                    <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                      <span>מכנה (W + C)</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
-                        {W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="border-t border-gray-200 dark:border-gray-600 pt-1">
-                      <p className="text-gray-600 dark:text-gray-400">עומס = עומס שנצבר ÷ מכנה</p>
-                      <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">
-                        {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
-                      </p>
-                    </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
+            </div>
 
             {/* Footer */}
             <div className="px-5 py-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between text-sm">
