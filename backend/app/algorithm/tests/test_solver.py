@@ -13,6 +13,7 @@ from ortools.sat.python import cp_model
 from app.algorithm.model import build_model
 from app.algorithm.solver import solve
 from app.algorithm.types import (
+    EFFORT_SCALE,
     DutyBlock,
     ExistingAssignment,
     SoldierInput,
@@ -316,3 +317,73 @@ def test_reserve_blocks_prefer_closer_soldier() -> None:
     assert result.status in ("OPTIMAL", "FEASIBLE")
     reserve_assignment = next(a for a in result.assignments if a.duty_id == reserve_block.id)
     assert reserve_assignment.soldier_id == s_close
+
+
+def test_effort_objective_l1_prefers_lower_effort_over_lower_score_per_day() -> None:
+    """The L1 effort objective should assign the duty to the soldier with lower
+    historical effort score (low_effort), even though the old score_per_day
+    objective would have preferred high_effort (whose score_per_day is 0).
+
+    Setup:
+      - 1 duty: 1 day, score_per_day=1.0  →  _block_score = 1 000 milli
+      - unit_score_milli = 1 000, C_over_D = 1.0
+        → effort_per_milli = EFFORT_SCALE // 1 000 = 1 000 000
+
+      high_effort: cumulative_score=0, active_days=1000 (spd=0.000)
+                   effort_offset = 50% × EFFORT_SCALE (high historical load)
+      low_effort:  cumulative_score=5, active_days=50  (spd=0.100)
+                   effort_offset = 10% × EFFORT_SCALE (low historical load)
+
+    Old score_per_day objective:
+      assigning to high_effort → max_norm = (0+1000)/1000 = 1   ← preferred
+      assigning to low_effort  → max_norm = (5000+1000)/50 = 120
+
+    New L1 effort objective:
+      assigning to high_effort → efforts {1 500M, 100M} → total dev = 1 400M
+      assigning to low_effort  → efforts {500M, 1 100M} → total dev =   600M ← preferred
+    """
+    dt = uuid4()
+    loc = uuid4()
+    effort_per_milli = EFFORT_SCALE // 1000  # = 1_000_000
+
+    high_effort = uuid4()
+    low_effort = uuid4()
+
+    soldiers = [
+        SoldierInput(
+            id=high_effort,
+            enrolled_at=date(2026, 1, 1),
+            cumulative_score=Decimal("0"),
+            active_days=1000,
+            effort_offset=int(0.5 * EFFORT_SCALE),
+            effort_per_milli=effort_per_milli,
+        ),
+        SoldierInput(
+            id=low_effort,
+            enrolled_at=date(2026, 1, 1),
+            cumulative_score=Decimal("5"),
+            active_days=50,
+            effort_offset=int(0.1 * EFFORT_SCALE),
+            effort_per_milli=effort_per_milli,
+        ),
+    ]
+    duties = [
+        DutyBlock(
+            id=uuid4(),
+            duty_type_id=dt,
+            duty_location_id=loc,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            score_per_day=Decimal("1.00"),
+        )
+    ]
+
+    result = solve(
+        soldiers=soldiers,
+        duties=duties,
+        existing=[],
+        settings=SolverSettings(time_limit_seconds=10),
+    )
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 1
+    assert result.assignments[0].soldier_id == low_effort
