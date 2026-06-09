@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum as _enum
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -140,6 +140,12 @@ class DutyType(Base):
     reserve_minimum: Mapped[int] = mapped_column(
         server_default=text("0"), default=0
     )
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False)
+    contact_name: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    contact_phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    start_time: Mapped[time | None] = mapped_column(sa.Time, nullable=True, default=None)
+    end_time: Mapped[time | None] = mapped_column(sa.Time, nullable=True, default=None)
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
