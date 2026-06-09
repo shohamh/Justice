@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +31,86 @@ class TimelineEvent:
     status: str | None
     metadata: dict = field(default_factory=dict)
     created_at: str = ""
+
+
+def _fmt(d: Decimal) -> str:
+    """Format a Decimal in fixed notation with at least one decimal place.
+
+    Examples: Decimal("3.000") -> "3.0", Decimal("0.600") -> "0.6",
+              Decimal("1.300") -> "1.3", Decimal("0.000") -> "0.0"
+    """
+    n = d.normalize()
+    sign, _, exponent = n.as_tuple()
+    if exponent >= 0:
+        return str(int(n)) + ".0"
+    return format(n, "f")
+
+
+def _score_parts(
+    a: "DutyAssignment",
+    dismissal_ranges: list[tuple[date, date]],
+    spd: Decimal,
+    standby_mult: Decimal,
+    called_up_mult: Decimal,
+    dismissed_mult: Decimal,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[str, str]:
+    """Return (score_total, score_formula) for the given period of an assignment.
+
+    date_from / date_to optionally restrict computation to a sub-period (used
+    for call_up and dismissal events).  score_formula is an empty string when
+    there are no days in range or spd is zero.
+
+    Formula notation: "N × SPD × mult" per segment, joined by " + ".
+    """
+    start = max(a.start_date, date_from) if date_from is not None else a.start_date
+    end = min(a.end_date, date_to) if date_to is not None else a.end_date
+
+    if start > end or spd == Decimal("0"):
+        return "0.0", ""
+
+    def _day_mult(day: date) -> Decimal:
+        if a.is_reserve:
+            if (
+                a.called_up_from is not None
+                and a.called_up_to is not None
+                and a.called_up_from <= day <= a.called_up_to
+            ):
+                return called_up_mult
+            return standby_mult
+        if any(df <= day <= dt for df, dt in dismissal_ranges):
+            return dismissed_mult
+        return Decimal("1.0")
+
+    # Group consecutive days by multiplier to build formula segments
+    segments: list[tuple[int, Decimal]] = []
+    cur_mult: Decimal | None = None
+    cur_count = 0
+
+    day = start
+    while day <= end:
+        m = _day_mult(day)
+        if m == cur_mult:
+            cur_count += 1
+        else:
+            if cur_mult is not None:
+                segments.append((cur_count, cur_mult))
+            cur_mult = m
+            cur_count = 1
+        day += timedelta(days=1)
+    if cur_mult is not None:
+        segments.append((cur_count, cur_mult))
+
+    if not segments:
+        return "0.0", ""
+
+    total: Decimal = sum(Decimal(str(count)) * spd * mult for count, mult in segments)
+    formula = " + ".join(
+        f"{count} × {_fmt(spd)} × {_fmt(mult)}" for count, mult in segments
+    )
+    return _fmt(total), formula
 
 
 def _isodate(d: date | None) -> str | None:
