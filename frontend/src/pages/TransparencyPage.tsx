@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { Breakdown, TransparencyRow, getBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
+import { Breakdown, EffortBreakdown, TransparencyRow, getBreakdown, getEffortBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -138,6 +138,8 @@ export default function TransparencyPage() {
   const [rows, setRows] = useState<TransparencyRow[]>([]);
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [effortBreakdown, setEffortBreakdown] = useState<EffortBreakdown | null>(null);
+  const [effortBreakdownSoldierName, setEffortBreakdownSoldierName] = useState<string | null>(null);
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -151,6 +153,11 @@ export default function TransparencyPage() {
   async function toggleOwn() {
     if (!breakdownOpen && user) setBreakdown(await getBreakdown(user.id));
     setBreakdownOpen((o) => !o);
+  }
+
+  async function openEffortBreakdown(soldierId: string, soldierName: string) {
+    setEffortBreakdownSoldierName(soldierName);
+    setEffortBreakdown(await getEffortBreakdown(soldierId));
   }
 
   // ── flat node list & lookup map ──
@@ -304,11 +311,19 @@ export default function TransparencyPage() {
     },
     {
       id: "effort_score", header: "עומס רבעוני",
-      headerTooltip: "ממוצע משוקלל של חלק התורנויות של החייל מסך תורנויות היחידה לרבעון, מאז תאריך האיפוס. 0 = לא עשה תורנויות. ערך גבוה = עשה יותר מחלקו.",
+      headerTooltip: "ממוצע משוקלל של חלק התורנויות של החייל מסך תורנויות היחידה לרבעון, מאז תאריך האיפוס. לחץ לפירוט רבעוני.",
       cell: (r) => {
         const n = r.effort_score;
-        if (isNaN(n) || n === undefined) return "—";
-        return (n * 100).toFixed(2) + "%";
+        const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
+        return (
+          <button
+            className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+            onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
+            title="לחץ לפירוט רבעוני"
+          >
+            {label}
+          </button>
+        );
       },
       sortValue: (r) => r.effort_score,
     },
@@ -521,6 +536,78 @@ export default function TransparencyPage() {
       </section>
 
       {treeOpen && <div className="fixed inset-0 z-10" onClick={() => setTreeOpen(false)} />}
+
+      {/* Effort breakdown modal */}
+      {effortBreakdown && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setEffortBreakdown(null)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b dark:border-gray-700">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                📊 פירוט עומס רבעוני — {effortBreakdownSoldierName}
+              </h2>
+              <button
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+                onClick={() => setEffortBreakdown(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-y-auto flex-1 px-4 py-3">
+              {effortBreakdown.quarters.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">אין נתוני היסטוריה — חייל חדש.</p>
+              ) : (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                      <th className="text-right py-1 pb-2 font-medium">רבעון</th>
+                      <th className="text-left py-1 pb-2 font-medium">ניקוד חייל</th>
+                      <th className="text-left py-1 pb-2 font-medium">ניקוד יחידה</th>
+                      <th className="text-left py-1 pb-2 font-medium">נוכחות</th>
+                      <th className="text-left py-1 pb-2 font-medium">חלק%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {effortBreakdown.quarters.map((q) => {
+                      const sharePct = (parseFloat(q.share) * 100).toFixed(2);
+                      const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
+                      const unitScore = parseFloat(q.unit_score);
+                      return (
+                        <tr key={q.quarter_label} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750">
+                          <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                          <td className="py-1.5 text-left text-gray-700 dark:text-gray-300">{parseFloat(q.soldier_score).toFixed(2)}</td>
+                          <td className="py-1.5 text-left text-gray-500 dark:text-gray-400">
+                            {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא תורנויות</span>}
+                          </td>
+                          <td className="py-1.5 text-left text-gray-500 dark:text-gray-400">{activePct}%</td>
+                          <td className="py-1.5 text-left font-semibold text-indigo-700 dark:text-indigo-300">{sharePct}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between text-sm">
+              <span className="text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
+              <span className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
+                {(parseFloat(effortBreakdown.effort_score) * 100).toFixed(2)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
@@ -24,6 +24,33 @@ class EffortData:
     C_over_D: Decimal          # C_i / D_i: current-window weight over total weight
     effort_offset: int = 0     # int(effort_score × EFFORT_SCALE) — precomputed for model
     effort_per_milli: int = 0  # int(C_over_D / unit_score_milli × EFFORT_SCALE) — set by bridge
+
+
+@dataclass
+class EffortQuarterDetail:
+    """Per-quarter breakdown for a single soldier."""
+    quarter_start: date
+    quarter_end: date
+    quarter_label: str       # e.g. "Q1 2026"
+    soldier_score: Decimal   # raw score earned by soldier in this quarter
+    unit_score: Decimal      # total unit score in this quarter
+    active_frac: Decimal     # fraction of quarter soldier was active (0.0–1.0)
+    share: Decimal           # soldier_score / unit_score (0 if unit had no duties)
+    weighted_share: Decimal  # share × active_frac
+
+
+@dataclass
+class EffortBreakdown:
+    """Full per-quarter breakdown for one soldier, plus the aggregate result."""
+    quarters: list[EffortQuarterDetail] = field(default_factory=list)
+    effort_score: Decimal = Decimal("0")
+    C_over_D: Decimal = Decimal("0")
+
+
+def _quarter_label(q_start: date) -> str:
+    """Return human-readable quarter label, e.g. 'Q1 2026'."""
+    q = (q_start.month - 1) // 3 + 1
+    return f"Q{q} {q_start.year}"
 
 
 def quarter_start(d: date) -> date:
@@ -204,4 +231,127 @@ def compute_effort_data(
         quarter_soldier_scores=q_soldier_scores,
         planning_start=planning_start,
         planning_end=planning_end,
+    )
+
+
+def compute_effort_breakdown(
+    session: Session,
+    *,
+    soldier: Any,   # object with .id (UUID) and .enrolled_at (date)
+    planning_start: date,
+    planning_end: date,
+    reset_date: date,
+) -> EffortBreakdown:
+    """
+    Compute a full per-quarter effort breakdown for a single soldier.
+
+    Returns EffortBreakdown with one EffortQuarterDetail per historical quarter
+    plus the aggregate effort_score and C_over_D.
+    """
+    from sqlalchemy import select
+    from app.db.models import DutyType
+
+    history_end = planning_start - timedelta(days=1)
+
+    # Build quarter list (same clipping logic as compute_effort_data)
+    quarters: list[tuple[date, date]] = []
+    if history_end >= reset_date:
+        q_s = quarter_start(reset_date)
+        while q_s < planning_start:
+            q_e = quarter_end(q_s)
+            actual_start = max(q_s, reset_date)
+            actual_end = min(q_e, history_end)
+            quarters.append((actual_start, actual_end))
+            q_s = q_e + timedelta(days=1)
+
+    if not quarters:
+        # No history — return empty breakdown with just planning window
+        planning_days = (planning_end - planning_start).days + 1
+        sol_plan_start = max(soldier.enrolled_at, planning_start)
+        C_i = (
+            Decimal((planning_end - sol_plan_start).days + 1) / Decimal(planning_days)
+            if sol_plan_start <= planning_end else Decimal("0")
+        )
+        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), C_over_D=C_i if C_i > 0 else Decimal("0"))
+
+    # Fetch duty type scores
+    dt_scores: dict[uuid.UUID, Decimal] = {
+        dt.id: dt.score_per_day
+        for dt in session.execute(select(DutyType)).scalars().all()
+    }
+
+    # Expand published assignments to per-day rows
+    days_data = effective_duty_days(session, date_from=reset_date, date_to=history_end)
+
+    # Map each calendar date → quarter_start
+    date_to_quarter: dict[date, date] = {}
+    for q_start_d, q_end_d in quarters:
+        d = q_start_d
+        while d <= q_end_d:
+            date_to_quarter[d] = q_start_d
+            d += timedelta(days=1)
+
+    # Aggregate scores per quarter
+    q_unit_scores: dict[date, Decimal] = {}
+    q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
+    for day, s_id, duty_type_id, mult in days_data:
+        qs = date_to_quarter.get(day)
+        if qs is None:
+            continue
+        score = dt_scores.get(duty_type_id, Decimal("0")) * mult
+        q_unit_scores[qs] = q_unit_scores.get(qs, Decimal("0")) + score
+        q_s_map = q_soldier_scores.setdefault(qs, {})
+        q_s_map[s_id] = q_s_map.get(s_id, Decimal("0")) + score
+
+    # Compute per-quarter detail for this soldier
+    quarter_details: list[EffortQuarterDetail] = []
+    A_i = Decimal("0")
+    W_i = Decimal("0")
+
+    for q_start_d, q_end_d in quarters:
+        q_days = (q_end_d - q_start_d).days + 1
+        soldier_start = max(soldier.enrolled_at, q_start_d)
+        if soldier_start > q_end_d:
+            continue  # not enrolled in this quarter
+
+        active_in_q = (q_end_d - soldier_start).days + 1
+        active_frac = Decimal(active_in_q) / Decimal(q_days)
+
+        unit_score = q_unit_scores.get(q_start_d, Decimal("0"))
+        s_score = q_soldier_scores.get(q_start_d, {}).get(soldier.id, Decimal("0"))
+        share = s_score / unit_score if unit_score > 0 else Decimal("0")
+        weighted_share = share * active_frac
+
+        if unit_score > 0:
+            A_i += weighted_share
+        W_i += active_frac
+
+        quarter_details.append(EffortQuarterDetail(
+            quarter_start=q_start_d,
+            quarter_end=q_end_d,
+            quarter_label=_quarter_label(q_start_d),
+            soldier_score=s_score,
+            unit_score=unit_score,
+            active_frac=active_frac,
+            share=share,
+            weighted_share=weighted_share,
+        ))
+
+    # Planning window contribution
+    planning_days = (planning_end - planning_start).days + 1
+    sol_plan_start = max(soldier.enrolled_at, planning_start)
+    if sol_plan_start <= planning_end:
+        sol_planning_days = (planning_end - sol_plan_start).days + 1
+        C_i = Decimal(sol_planning_days) / Decimal(planning_days)
+    else:
+        C_i = Decimal("0")
+
+    D_i = W_i + C_i
+    effort_score = A_i / D_i if D_i > 0 else Decimal("0")
+    C_over_D = C_i / D_i if D_i > 0 else Decimal("0")
+
+    return EffortBreakdown(
+        quarters=quarter_details,
+        effort_score=effort_score,
+        C_over_D=C_over_D,
     )

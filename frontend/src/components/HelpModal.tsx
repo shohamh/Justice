@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 
 interface Props {
   onClose: () => void;
@@ -179,6 +181,19 @@ function AlgorithmTab() {
 }
 
 function FairnessTab() {
+  const { user } = useAuth();
+  const [myBreakdown, setMyBreakdown] = useState<EffortBreakdown | null>(null);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoadingBreakdown(true);
+    getEffortBreakdown(user.id)
+      .then(setMyBreakdown)
+      .catch(() => setMyBreakdown(null))
+      .finally(() => setLoadingBreakdown(false));
+  }, [user]);
+
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">הוגנות ושקיפות</h3>
@@ -215,6 +230,51 @@ function FairnessTab() {
         </div>
       </div>
 
+      {/* Personal breakdown */}
+      <div className="bg-green-50 dark:bg-green-950 rounded-xl p-4 border border-green-200 dark:border-green-800 space-y-2">
+        <p className="font-semibold text-green-800 dark:text-green-200">🔢 הנתונים שלי</p>
+        {loadingBreakdown && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">טוען...</p>
+        )}
+        {!loadingBreakdown && myBreakdown && myBreakdown.quarters.length === 0 && (
+          <p className="text-xs text-gray-600 dark:text-gray-400">אין היסטוריה — חייל חדש. העומס שלך הוא 0%.</p>
+        )}
+        {!loadingBreakdown && myBreakdown && myBreakdown.quarters.length > 0 && (
+          <>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-green-800">
+                  <th className="text-right py-1 pb-1.5 font-medium">רבעון</th>
+                  <th className="text-left py-1 pb-1.5 font-medium">חייל</th>
+                  <th className="text-left py-1 pb-1.5 font-medium">יחידה</th>
+                  <th className="text-left py-1 pb-1.5 font-medium">נוכחות</th>
+                  <th className="text-left py-1 pb-1.5 font-medium">חלק%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myBreakdown.quarters.map((q) => (
+                  <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
+                    <td className="py-1 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                    <td className="py-1 text-left text-gray-700 dark:text-gray-300">{parseFloat(q.soldier_score).toFixed(1)}</td>
+                    <td className="py-1 text-left text-gray-500 dark:text-gray-400">
+                      {parseFloat(q.unit_score) > 0 ? parseFloat(q.unit_score).toFixed(1) : "—"}
+                    </td>
+                    <td className="py-1 text-left text-gray-500 dark:text-gray-400">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</td>
+                    <td className="py-1 text-left font-semibold text-green-700 dark:text-green-300">{(parseFloat(q.share) * 100).toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="flex justify-between items-center pt-1 border-t border-green-200 dark:border-green-800">
+              <span className="text-xs text-gray-500 dark:text-gray-400">עומס רבעוני מצטבר:</span>
+              <span className="text-lg font-bold text-green-700 dark:text-green-300">
+                {(parseFloat(myBreakdown.effort_score) * 100).toFixed(2)}%
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -237,7 +297,7 @@ function FairnessTab() {
       <div className="space-y-2">
         <p className="font-medium text-gray-800 dark:text-gray-200">🔎 שקיפות</p>
         {[
-          { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את העומס הרבעוני שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי עומס." },
+          { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את העומס הרבעוני שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי עומס. לחץ על הערך לפירוט רבעוני." },
           { icon: "📅", title: "תאריך איפוס", desc: "מנהל המערכת יכול לקבוע מאיזה תאריך מחשבים היסטוריה. מומלץ: תחילת רבעון. תורנויות לפני תאריך זה לא נלקחות בחשבון." },
           { icon: "⚖️", title: "הגינות לחדשים", desc: "חייל שהצטרף לאחרונה מושווה רק לתקופה שבה שירת — הוא לא נפגע מכך שהיחידה הייתה פחות עסוקה לפני שהצטרף." },
         ].map(({ icon, title, desc }) => (

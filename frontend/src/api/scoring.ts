@@ -23,11 +23,31 @@ export interface Breakdown {
   adjustments: { id: string; delta: string; reason: string; created_at: string }[];
 }
 
+export interface EffortQuarterRow {
+  quarter_start: string;
+  quarter_end: string;
+  quarter_label: string;
+  soldier_score: string;
+  unit_score: string;
+  active_frac: string;
+  share: string;
+  weighted_share: string;
+}
+
+export interface EffortBreakdown {
+  quarters: EffortQuarterRow[];
+  effort_score: string;
+  C_over_D: string;
+}
+
 export async function getTransparency(): Promise<TransparencyRow[]> {
   return (await api.get<TransparencyRow[]>(`/scoring/transparency`)).data;
 }
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
+}
+export async function getEffortBreakdown(soldierId: string): Promise<EffortBreakdown> {
+  return (await api.get<EffortBreakdown>(`/scoring/soldiers/${soldierId}/effort-breakdown`)).data;
 }
 
 function _triggerBlobDownload(blob: Blob, filename: string): void {

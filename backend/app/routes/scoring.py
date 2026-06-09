@@ -58,6 +58,23 @@ class BreakdownOut(BaseModel):
     adjustments: list[AdjustmentRow]
 
 
+class EffortQuarterRow(BaseModel):
+    quarter_start: date
+    quarter_end: date
+    quarter_label: str
+    soldier_score: Decimal
+    unit_score: Decimal
+    active_frac: Decimal
+    share: Decimal
+    weighted_share: Decimal
+
+
+class EffortBreakdownOut(BaseModel):
+    quarters: list[EffortQuarterRow]
+    effort_score: Decimal
+    C_over_D: Decimal
+
+
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
@@ -214,6 +231,54 @@ def transparency_sub_units_export(
         ])
 
     return _xlsx_response(wb, "sub-units.xlsx")
+
+
+@router.get("/soldiers/{soldier_id}/effort-breakdown", response_model=EffortBreakdownOut)
+def effort_breakdown(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> EffortBreakdownOut:
+    from app.services.effort_score import compute_effort_breakdown, quarter_start
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    s = session.get(Soldier, soldier_id)
+    if s is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if s.id != user.id:
+        authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
+
+    today = date.today()
+    try:
+        reset_raw = get_setting(session, "fairness.reset_date")
+        reset_date = date.fromisoformat(str(reset_raw))
+    except Exception:
+        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+
+    bd = compute_effort_breakdown(
+        session,
+        soldier=s,
+        planning_start=today,
+        planning_end=today,
+        reset_date=reset_date,
+    )
+    return EffortBreakdownOut(
+        quarters=[
+            EffortQuarterRow(
+                quarter_start=q.quarter_start,
+                quarter_end=q.quarter_end,
+                quarter_label=q.quarter_label,
+                soldier_score=q.soldier_score,
+                unit_score=q.unit_score,
+                active_frac=q.active_frac,
+                share=q.share,
+                weighted_share=q.weighted_share,
+            )
+            for q in bd.quarters
+        ],
+        effort_score=bd.effort_score,
+        C_over_D=bd.C_over_D,
+    )
 
 
 @router.get("/soldiers/{soldier_id}", response_model=BreakdownOut)
