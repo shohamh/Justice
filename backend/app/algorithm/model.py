@@ -9,7 +9,13 @@ from decimal import Decimal
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
-from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
+from app.algorithm.types import (
+    EFFORT_SCALE,
+    DutyBlock,
+    ExistingAssignment,
+    SoldierInput,
+    SolverSettings,
+)
 
 
 def _block_score(d: DutyBlock) -> int:
@@ -111,56 +117,41 @@ def build_model(
             else:
                 model.Add(sum(day_vars) <= 1)
 
-    # ── Normalised-score expressions ─────────────────────────────────────────
+    # ── Effort-score expressions (L1 objective) ──────────────────────────────
     #
-    # norm_s = (cumulative_score * 1000 + new_assignment_score) / active_days
+    # projected_effort[si] = effort_offset[si]
+    #                       + effort_per_milli[si] × Σ(_block_score(d) × x[di,si])
     #
-    # This represents the soldier's post-run score_per_day in milli-units.
-    # It's the single fairness metric: we want all soldiers to converge toward
-    # the same value over time.  Using cumulative (not incremental-only) ensures
-    # the algorithm accounts for history: a soldier already at spd=0.5 gets no
-    # new duties while one at spd=0 gets many, even if their incremental load
-    # would be equal.
+    # Fully linear — no AddDivisionEquality — which CP-SAT handles efficiently.
+    # effort_offset and effort_per_milli are set by inject_effort_scores() in the
+    # bridge before solve() is called.  Both default to 0, giving a degenerate
+    # but valid objective that falls back to minimising reserve hierarchy distance.
+    #
+    # Variable bound: effort_score ∈ [0,1] so effort_offset ∈ [0, EFFORT_SCALE].
+    # Max increment = C_over_D × EFFORT_SCALE ≤ EFFORT_SCALE.
+    # Therefore projected_effort ∈ [0, 2 × EFFORT_SCALE].
 
-    # Eligible-only norms for the "raise the floor" secondary objective.
-    # Soldiers with no eligible duties always have norm = historical base and
-    # cannot be improved; including them would pin the floor unnecessarily.
-    all_norm_exprs: list[LinearExpr] = []
-    eligible_norm_exprs: list[LinearExpr] = []
-    # Historical tiebreaker: cost of assigning to a soldier with high spd.
-    # Uses score_per_day (not raw cumulative_score) so a soldier with 10 pts
-    # over 200 days (spd=0.05) is correctly preferred over one with 10 pts
-    # over 100 days (spd=0.10).
-    hist_penalty_terms: list = []
+    _EFFORT_BOUND = 2 * EFFORT_SCALE
+
+    dev_vars: list[LinearExpr] = []
+    target = model.NewIntVar(0, _EFFORT_BOUND, "effort_target")
 
     for si, s in enumerate(soldier_list):
-        if s.active_days == 0:
-            continue
-
         duties_for_s = soldier_duties.get(si, [])
-        block_sum = sum(
+
+        # Total score (×1000) of duties assigned to this soldier
+        block_score_milli_sum = sum(
             _block_score(duty_list[di]) * x[(di, si)]
             for di in duties_for_s
-        )
+        )  # returns 0 (int) when duties_for_s is empty
 
-        base = int(s.cumulative_score * 1000)
-        cum_total = base + block_sum
-        norm = model.NewIntVar(0, 10_000_000, f"norm_s{si}")
-        model.AddDivisionEquality(norm, cum_total, s.active_days)
-        all_norm_exprs.append(norm)
+        # projected effort score in EFFORT_SCALE units
+        effort_expr = s.effort_offset + s.effort_per_milli * block_score_milli_sum
 
-        if duties_for_s:
-            eligible_norm_exprs.append(norm)
-
-        # hist_milli = score_per_day in milli-units (an integer constant, not a variable)
-        hist_milli = int(s.cumulative_score * 1000) // s.active_days
-        for di in duties_for_s:
-            hist_penalty_terms.append(hist_milli * x[(di, si)])
-
-    max_norm_var = None
-    if all_norm_exprs:
-        max_norm_var = model.NewIntVar(0, 10_000_000, "max_norm")
-        model.AddMaxEquality(max_norm_var, all_norm_exprs)
+        dev = model.NewIntVar(0, _EFFORT_BOUND, f"dev_s{si}")
+        model.Add(dev >= effort_expr - target)
+        model.Add(dev >= target - effort_expr)
+        dev_vars.append(dev)
 
     # Hard constraint: max T duty-days in any rolling W-day window per soldier
     #
@@ -234,44 +225,20 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
-    # ── Fairness objective ──────────────────────────────────────────────────
+    # ── Fairness objective (L1 minimise effort variance) ─────────────────────
     #
-    # Fairness goal: all soldiers converge toward the same score_per_day
-    # (norm = cumulative_score / active_days).
+    # Minimise the sum of absolute deviations of projected effort scores from a
+    # free target variable.  The solver drives target to the median of projected
+    # efforts.  O(n) auxiliary variables — scales to 5 000+ soldiers.
     #
-    # PRIMARY  (weight alpha_int ≈ 1000):
-    #   Minimise max(norm).  Assigning a duty to an already-high-norm soldier
-    #   raises max; assigning to a low-norm soldier leaves max unchanged.
-    #   This naturally steers duties toward lower-norm soldiers.
-    #
-    # SECONDARY  (weight 1, ≈1000× weaker than primary):
-    #   Maximise min(norm) among eligible soldiers.  When the primary is tied
-    #   (e.g. the max is already pinned by a high-history soldier), this lifts
-    #   the floor — giving extra duties to the lowest-norm soldiers first rather
-    #   than concentrating them arbitrarily.
-    #
-    # TIEBREAKER  (weight 1, proportional to hist_milli per assignment):
-    #   When both primary and secondary are tied, prefer assigning to the soldier
-    #   with the lower historical score_per_day.  Uses score/day not raw score
-    #   so active_days is correctly accounted for.
-    #
-    # RESERVE PROXIMITY  (weight gamma_int):
-    #   Minor bonus for pairing reserves with geographically close primaries.
-    # ────────────────────────────────────────────────────────────────────────
+    # Secondary: reserve hierarchy proximity (dist_term) acts as tiebreaker.
+    # ─────────────────────────────────────────────────────────────────────────
 
-    alpha_int = int(settings.alpha * 1000)
     dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
-    hist_penalty = sum(hist_penalty_terms) if hist_penalty_terms else 0
 
-    if max_norm_var is not None and alpha_int > 0:
-        min_term = 0
-        if len(eligible_norm_exprs) > 1:
-            min_norm_var = model.NewIntVar(0, 10_000_000, "min_norm_eligible")
-            model.AddMinEquality(min_norm_var, eligible_norm_exprs)
-            min_term = min_norm_var
-
-        model.Maximize(-alpha_int * max_norm_var + min_term - hist_penalty - dist_term)
+    if dev_vars:
+        model.Minimize(sum(dev_vars) + dist_term)
     else:
-        model.Maximize(-dist_term)
+        model.Minimize(dist_term if reserve_dist_terms else 0)
 
     return model, x
