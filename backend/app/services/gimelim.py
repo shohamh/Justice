@@ -24,7 +24,7 @@ from app.db.models import (
 from app.services.algorithm_bridge import build_hierarchy_maps
 from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.notifications import create_notification
-from app.services.reserves import ReserveError, call_up_reserve, dismiss_primary
+from app.services.reserves import ReserveError, call_up_reserve, check_reserve_cap, dismiss_primary
 from app.services.scoring import duty_score_by_soldier
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -337,6 +337,13 @@ def preview_gimelim(
     earliest_date = primary_a.end_date + timedelta(days=rest_days)
 
     warnings: list[str] = []
+
+    cap_passes, cap_current, cap_max = check_reserve_cap(
+        session, reserve_b.soldier_id,
+        primary_a.start_date, primary_a.end_date,
+    )
+    if not cap_passes:
+        warnings.append(f"reserve_cap_exceeded:{cap_current}/{cap_max}")
 
     future_result = _find_future_slot(
         session,

@@ -290,3 +290,82 @@ def test_commit_full_flow(admin_session):
             preview_token=preview.preview_token,
             actor_id=actor.id,
         )
+
+
+# ── Cap warning tests ─────────────────────────────────────────────────────────
+
+def _make_full_gimelim_scene(session):
+    """Returns (dt, loc, soldier_a, soldier_b, shift, primary, reserve)."""
+    node = HierarchyNode(level="division", name="unit-cap", parent_id=None, commander_id=None, path_ids=[])
+    session.add(node)
+    session.flush()
+
+    dt = DutyType(name="שמירה-cap", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="עמדה-cap")
+    soldier_a = _make_soldier(session, "gcap-a", "A-cap", node_id=node.id)
+    soldier_b = _make_soldier(session, "gcap-b", "B-cap", node_id=node.id)
+    session.add_all([dt, loc])
+    session.flush()
+
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7), required_count=1,
+    )
+    session.add(shift)
+    session.flush()
+
+    primary = DutyAssignment(
+        soldier_id=soldier_a.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7),
+        status="published", is_reserve=False, duty_shift_id=shift.id,
+    )
+    reserve = DutyAssignment(
+        soldier_id=soldier_b.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7),
+        status="published", is_reserve=True, duty_shift_id=shift.id,
+    )
+    session.add_all([primary, reserve])
+    session.flush()
+
+    link = DutyReserveLink(primary_assignment_id=primary.id, reserve_assignment_id=reserve.id)
+    session.add(link)
+    session.flush()
+    return dt, loc, soldier_a, soldier_b, shift, primary, reserve
+
+
+def test_preview_gimelim_warns_when_reserve_over_cap(admin_session):
+    dt, loc, soldier_a, soldier_b, shift, primary, reserve = _make_full_gimelim_scene(admin_session)
+
+    # Saturate B's window: give them 14 existing reserve days in the same 30-day window
+    extra = DutyAssignment(
+        soldier_id=soldier_b.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 9, 8), end_date=date(2026, 9, 21),
+        status="published", is_reserve=True, duty_shift_id=shift.id,
+    )
+    admin_session.add(extra)
+    admin_session.flush()
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=0,
+        reason="חופשה",
+        actor_id=soldier_a.id,
+    )
+    cap_warnings = [w for w in preview.warnings if w.startswith("reserve_cap_exceeded:")]
+    assert len(cap_warnings) == 1
+
+
+def test_preview_gimelim_no_warning_when_reserve_under_cap(admin_session):
+    dt, loc, soldier_a, soldier_b, shift, primary, reserve = _make_full_gimelim_scene(admin_session)
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=0,
+        reason="חופשה",
+        actor_id=soldier_a.id,
+    )
+    cap_warnings = [w for w in preview.warnings if w.startswith("reserve_cap_exceeded:")]
+    assert len(cap_warnings) == 0
