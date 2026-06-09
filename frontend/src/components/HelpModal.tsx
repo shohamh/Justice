@@ -264,32 +264,35 @@ function FairnessTab() {
         )}
         {!loadingBreakdown && myBreakdown && myBreakdown.quarters.length > 0 && (
           <>
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-green-800">
-                  <th className="text-right py-1 pb-1.5 font-medium">רבעון</th>
-                  <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד (חייל/יחידה)</th>
-                  <th className="text-right py-1 pb-1.5 font-medium">חלק%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myBreakdown.quarters.map((q) => {
-                  const unitScore = parseFloat(q.unit_score);
-                  return (
-                    <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
-                      <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
-                      <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400">
-                        {parseFloat(q.soldier_score).toFixed(1)}
-                        {unitScore > 0 && <span className="text-gray-400 dark:text-gray-500"> / {unitScore.toFixed(1)}</span>}
-                      </td>
-                      <td className="py-1.5 text-right font-semibold text-green-700 dark:text-green-300">
-                        {(parseFloat(q.share) * 100).toFixed(2)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse" style={{ minWidth: "320px" }}>
+                <thead>
+                  <tr className="text-gray-500 dark:text-gray-400 border-b dark:border-green-800">
+                    <th className="text-right py-1 pb-1.5 font-medium">רבעון</th>
+                    <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד חייל</th>
+                    <th className="text-right py-1 pb-1.5 font-medium px-2">ניקוד יחידה</th>
+                    <th className="text-right py-1 pb-1.5 font-medium px-2">נוכחות</th>
+                    <th className="text-right py-1 pb-1.5 font-medium">חלק%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myBreakdown.quarters.map((q) => {
+                    const unitScore = parseFloat(q.unit_score);
+                    return (
+                      <tr key={q.quarter_label} className="border-b border-green-200 dark:border-green-800">
+                        <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                        <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(1)}</td>
+                        <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
+                          {unitScore > 0 ? unitScore.toFixed(1) : "—"}
+                        </td>
+                        <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</td>
+                        <td className="py-1.5 text-right font-semibold text-green-700 dark:text-green-300 tabular-nums">{(parseFloat(q.share) * 100).toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {/* Derivation with real numbers */}
             {(() => {
               const A = parseFloat(myBreakdown.A_i);

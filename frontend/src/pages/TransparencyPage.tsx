@@ -562,38 +562,41 @@ export default function TransparencyPage() {
             </div>
 
             {/* Table */}
-            <div className="overflow-y-auto flex-1 px-4 py-3">
+            <div className="overflow-y-auto flex-1 py-3">
               {effortBreakdown.quarters.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">אין נתוני היסטוריה — חייל חדש.</p>
               ) : (
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
-                      <th className="text-right py-1 pb-2 font-medium">רבעון</th>
-                      <th className="text-right py-1 pb-2 font-medium px-2">ניקוד חייל / יחידה</th>
-                      <th className="text-right py-1 pb-2 font-medium px-2">נוכחות</th>
-                      <th className="text-right py-1 pb-2 font-medium">חלק%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {effortBreakdown.quarters.map((q) => {
-                      const sharePct = (parseFloat(q.share) * 100).toFixed(2);
-                      const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
-                      const unitScore = parseFloat(q.unit_score);
-                      return (
-                        <tr key={q.quarter_label} className="border-b dark:border-gray-700">
-                          <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
-                          <td className="py-2 text-right px-2 text-gray-500 dark:text-gray-400 text-xs">
-                            {parseFloat(q.soldier_score).toFixed(1)}
-                            {unitScore > 0 && <span className="text-gray-400 dark:text-gray-500"> / {unitScore.toFixed(1)}</span>}
-                          </td>
-                          <td className="py-2 text-right px-2 text-gray-500 dark:text-gray-400">{activePct}%</td>
-                          <td className="py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300">{sharePct}%</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto px-4">
+                  <table className="w-full text-sm border-collapse" style={{ minWidth: "380px" }}>
+                    <thead>
+                      <tr className="text-xs text-gray-500 dark:text-gray-400 border-b dark:border-gray-700">
+                        <th className="text-right py-1 pb-2 font-medium">רבעון</th>
+                        <th className="text-right py-1 pb-2 font-medium px-3">ניקוד חייל</th>
+                        <th className="text-right py-1 pb-2 font-medium px-3">ניקוד יחידה</th>
+                        <th className="text-right py-1 pb-2 font-medium px-3">נוכחות</th>
+                        <th className="text-right py-1 pb-2 font-medium">חלק%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {effortBreakdown.quarters.map((q) => {
+                        const sharePct = (parseFloat(q.share) * 100).toFixed(2);
+                        const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
+                        const unitScore = parseFloat(q.unit_score);
+                        return (
+                          <tr key={q.quarter_label} className="border-b dark:border-gray-700">
+                            <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">{q.quarter_label}</td>
+                            <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
+                            <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
+                              {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
+                            </td>
+                            <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{activePct}%</td>
+                            <td className="py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">{sharePct}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
