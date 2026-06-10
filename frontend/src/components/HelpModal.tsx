@@ -415,7 +415,34 @@ function GimelimTab() {
 function DeepDiveTab() {
   return (
     <div className="space-y-5 text-sm leading-relaxed" dir="rtl">
-      <p className="text-gray-400 text-xs">טוען...</p>
+
+      {/* ── Math warning ── */}
+      <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 text-amber-800 dark:text-amber-300 text-xs">
+        ⚠️ <strong>הסבר מתמטי</strong> — הסעיף הזה מכיל נוסחאות. כל מושג מוסבר גם במילים פשוטות — קראו לפי הנוח לכם.
+      </div>
+
+      {/* ── Section 1: הבעיה ── */}
+      <section className="space-y-2">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">⚖️ הבעיה: למה לספור תורנויות לא מספיק?</h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          נניח ששני חיילים עשו כל אחד 10 תורנויות השנה. האם הם שוויוניים?
+          לא בהכרח — אחד שירת 300 ימים, השני רק 30. ביחס לזמן שכל אחד היה זמין,
+          השני נשא עומס כפול פי 10.
+        </p>
+        <p className="text-gray-700 dark:text-gray-300">
+          ספירת תורנויות גולמית מתעלמת משלושה גורמים:
+        </p>
+        <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400 pr-2">
+          <li><strong>זמן שירות</strong> — חייל חדש לא ניתן להשוואה לוותיק ישירות.</li>
+          <li><strong>משקל התורנות</strong> — תורנות ארוכה שווה יותר מקצרה.</li>
+          <li><strong>גודל היחידה</strong> — אם היחידה צמחה, מאגר התורנויות גדל איתה.</li>
+        </ul>
+        <p className="text-gray-700 dark:text-gray-300">
+          הפתרון: במקום לספור, מודדים <strong>חלק יחסי</strong> — איזה אחוז מסך עומס היחידה נשא החייל,
+          יחסית לכמה זמן הוא היה פעיל.
+        </p>
+      </section>
+
     </div>
   );
 }
