@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import time
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -28,6 +29,12 @@ def create_duty_type(
     description: str | None = None,
     reserve_ratio: Decimal = Decimal("0.000"),
     reserve_minimum: int = 0,
+    contact_name: str | None = None,
+    contact_phone: str | None = None,
+    start_time: time | None = None,
+    end_time: time | None = None,
+    instructions: str | None = None,
+    is_external: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> DutyType:
     if score_per_day < 0:
@@ -40,6 +47,12 @@ def create_duty_type(
         description=description,
         reserve_ratio=reserve_ratio,
         reserve_minimum=reserve_minimum,
+        contact_name=contact_name,
+        contact_phone=contact_phone,
+        start_time=start_time,
+        end_time=end_time,
+        instructions=instructions,
+        is_external=is_external,
     )
     session.add(dt)
     session.flush()
@@ -54,6 +67,7 @@ def create_duty_type(
             "score_per_day": str(score_per_day),
             "reserve_ratio": str(reserve_ratio),
             "reserve_minimum": reserve_minimum,
+            "is_external": is_external,
         },
     )
     return dt
@@ -70,6 +84,12 @@ def update_duty_type(
     requirements: dict | None = None,
     reserve_ratio: Decimal | None = None,
     reserve_minimum: int | None = None,
+    contact_name: str | None = None,
+    contact_phone: str | None = None,
+    start_time: time | None = None,
+    end_time: time | None = None,
+    instructions: str | None = None,
+    is_external: bool | None = None,
 ) -> DutyType:
     before = {
         "name": duty_type.name,
@@ -96,6 +116,18 @@ def update_duty_type(
     if reserve_minimum is not None:
         before["reserve_minimum"] = duty_type.reserve_minimum
         duty_type.reserve_minimum = reserve_minimum
+    if contact_name is not None:
+        duty_type.contact_name = contact_name
+    if contact_phone is not None:
+        duty_type.contact_phone = contact_phone
+    if start_time is not None:
+        duty_type.start_time = start_time
+    if end_time is not None:
+        duty_type.end_time = end_time
+    if instructions is not None:
+        duty_type.instructions = instructions
+    if is_external is not None:
+        duty_type.is_external = is_external
     write_audit(
         session,
         actor_id=actor_id,
