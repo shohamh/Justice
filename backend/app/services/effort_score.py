@@ -144,6 +144,32 @@ def _compute_effort_data(
     return result
 
 
+def _build_future_quarters(
+    days_data: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]],
+    planning_end: date,
+) -> list[tuple[date, date]]:
+    """
+    Given per-day rows from effective_duty_days, return a list of (q_start, q_end)
+    tuples for all calendar quarters that contain dates strictly after planning_end.
+    Returns an empty list if there are no such dates.
+    """
+    future_dates = [day for day, _sid, _dtid, _mult in days_data if day > planning_end]
+    if not future_dates:
+        return []
+
+    min_future = min(future_dates)
+    max_future = max(future_dates)
+
+    future_quarters: list[tuple[date, date]] = []
+    q_s = quarter_start(min_future)
+    while q_s <= max_future:
+        q_e = quarter_end(q_s)
+        future_quarters.append((q_s, q_e))
+        q_s = q_e + timedelta(days=1)
+
+    return future_quarters
+
+
 def compute_effort_data(
     session: Session,
     *,
@@ -156,7 +182,8 @@ def compute_effort_data(
     Compute EffortData for all soldiers using published assignment history.
 
     Uses effective_duty_days() from scoring.py (same source-of-truth as score calculations).
-    Loads history from reset_date up to (but not including) planning_start.
+    Loads history from reset_date up to (but not including) planning_start, PLUS any
+    published assignments after planning_end (future duties beyond the planning window).
 
     Returns dict[soldier_id, EffortData] with effort_per_milli=0;
     the caller (bridge) sets effort_per_milli after knowing unit_score_milli.
@@ -165,33 +192,29 @@ def compute_effort_data(
     from app.db.models import DutyType
 
     history_end = planning_start - timedelta(days=1)
-    if history_end < reset_date:
-        # No historical data — all soldiers start fresh
-        return _compute_effort_data(
-            soldiers=soldiers,
-            quarters=[],
-            quarter_unit_scores={},
-            quarter_soldier_scores={},
-            planning_start=planning_start,
-            planning_end=planning_end,
-        )
 
-    # Build list of complete quarters between reset_date and planning_start.
-    # Clip the first quarter's start to reset_date so active_frac is only
-    # counted from when we have actual duty data (avoids inflating W_i for
-    # soldiers enrolled before reset_date when reset falls mid-quarter).
-    quarters = []
-    q_s = quarter_start(reset_date)
-    while q_s < planning_start:
-        q_e = quarter_end(q_s)
-        actual_start = max(q_s, reset_date)
-        actual_end = min(q_e, history_end)
-        quarters.append((actual_start, actual_end))
-        # Advance to next quarter
-        next_month = q_e + timedelta(days=1)
-        q_s = next_month
+    # Build list of past quarters (reset_date → planning_start-1), clipping first quarter
+    # start to reset_date so active_frac is only counted from when we have actual duty data.
+    past_quarters: list[tuple[date, date]] = []
+    if history_end >= reset_date:
+        q_s = quarter_start(reset_date)
+        while q_s < planning_start:
+            q_e = quarter_end(q_s)
+            actual_start = max(q_s, reset_date)
+            actual_end = min(q_e, history_end)
+            past_quarters.append((actual_start, actual_end))
+            next_month = q_e + timedelta(days=1)
+            q_s = next_month
 
-    if not quarters:
+    # Fetch ALL published duties from reset_date onwards (covers past and future)
+    days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
+
+    # Build future quarters from dates after planning_end
+    future_quarters = _build_future_quarters(days_data, planning_end)
+
+    all_quarters = past_quarters + future_quarters
+
+    if not all_quarters:
         return _compute_effort_data(
             soldiers=soldiers,
             quarters=[],
@@ -207,12 +230,9 @@ def compute_effort_data(
         for dt in session.execute(select(DutyType)).scalars().all()
     }
 
-    # Expand published assignments to per-day rows, filtered to history range
-    days_data = effective_duty_days(session, date_from=reset_date, date_to=history_end)
-
-    # Map each calendar date to its quarter_start
+    # Map each calendar date to its quarter_start (skipping the planning window gap naturally)
     date_to_quarter: dict[date, date] = {}
-    for q_start_d, q_end_d in quarters:
+    for q_start_d, q_end_d in all_quarters:
         d = q_start_d
         while d <= q_end_d:
             date_to_quarter[d] = q_start_d
@@ -222,6 +242,9 @@ def compute_effort_data(
     q_unit_scores: dict[date, Decimal] = {}
     q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
     for day, soldier_id, duty_type_id, mult in days_data:
+        # Skip the planning window — solver controls those
+        if planning_start <= day <= planning_end:
+            continue
         qs = date_to_quarter.get(day)
         if qs is None:
             continue
@@ -232,7 +255,7 @@ def compute_effort_data(
 
     return _compute_effort_data(
         soldiers=soldiers,
-        quarters=quarters,
+        quarters=all_quarters,
         quarter_unit_scores=q_unit_scores,
         quarter_soldier_scores=q_soldier_scores,
         planning_start=planning_start,
@@ -252,25 +275,33 @@ def compute_effort_breakdown(
     Compute a full per-quarter effort breakdown for a single soldier.
 
     Returns EffortBreakdown with one EffortQuarterDetail per historical quarter
-    plus the aggregate effort_score and C_over_D.
+    (past and future beyond planning window) plus the aggregate effort_score and C_over_D.
     """
     from sqlalchemy import select
     from app.db.models import DutyType
 
     history_end = planning_start - timedelta(days=1)
 
-    # Build quarter list (same clipping logic as compute_effort_data)
-    quarters: list[tuple[date, date]] = []
+    # Build past quarter list (same clipping logic as compute_effort_data)
+    past_quarters: list[tuple[date, date]] = []
     if history_end >= reset_date:
         q_s = quarter_start(reset_date)
         while q_s < planning_start:
             q_e = quarter_end(q_s)
             actual_start = max(q_s, reset_date)
             actual_end = min(q_e, history_end)
-            quarters.append((actual_start, actual_end))
+            past_quarters.append((actual_start, actual_end))
             q_s = q_e + timedelta(days=1)
 
-    if not quarters:
+    # Fetch ALL published duties from reset_date onwards
+    days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
+
+    # Build future quarters from dates after planning_end
+    future_quarters = _build_future_quarters(days_data, planning_end)
+
+    all_quarters = past_quarters + future_quarters
+
+    if not all_quarters:
         # No history — return empty breakdown with just planning window
         planning_days = (planning_end - planning_start).days + 1
         sol_plan_start = max(soldier.enrolled_at, planning_start)
@@ -290,12 +321,9 @@ def compute_effort_breakdown(
         for dt in session.execute(select(DutyType)).scalars().all()
     }
 
-    # Expand published assignments to per-day rows
-    days_data = effective_duty_days(session, date_from=reset_date, date_to=history_end)
-
-    # Map each calendar date → quarter_start
+    # Map each calendar date → quarter_start (skipping planning window)
     date_to_quarter: dict[date, date] = {}
-    for q_start_d, q_end_d in quarters:
+    for q_start_d, q_end_d in all_quarters:
         d = q_start_d
         while d <= q_end_d:
             date_to_quarter[d] = q_start_d
@@ -305,6 +333,9 @@ def compute_effort_breakdown(
     q_unit_scores: dict[date, Decimal] = {}
     q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
     for day, s_id, duty_type_id, mult in days_data:
+        # Skip the planning window — solver controls those
+        if planning_start <= day <= planning_end:
+            continue
         qs = date_to_quarter.get(day)
         if qs is None:
             continue
@@ -318,7 +349,7 @@ def compute_effort_breakdown(
     A_i = Decimal("0")
     W_i = Decimal("0")
 
-    for q_start_d, q_end_d in quarters:
+    for q_start_d, q_end_d in all_quarters:
         q_days = (q_end_d - q_start_d).days + 1
         soldier_start = max(soldier.enrolled_at, q_start_d)
         if soldier_start > q_end_d:
@@ -337,6 +368,7 @@ def compute_effort_breakdown(
         W_i += active_frac
 
         true_q_end = quarter_end(q_start_d)
+        # Past quarters may be clipped (partial); future quarters are full calendar quarters
         quarter_details.append(EffortQuarterDetail(
             quarter_start=q_start_d,
             quarter_end=q_end_d,

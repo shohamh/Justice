@@ -14,6 +14,8 @@ from app.services.effort_score import (
     quarter_end,
     quarter_start,
     _compute_effort_data,
+    compute_effort_data,
+    compute_effort_breakdown,
 )
 
 
@@ -222,3 +224,195 @@ def test_transparency_rows_has_effort_score_key():
     from app.services import scoring as sc
     src = inspect.getsource(sc.transparency_rows)
     assert "effort_score" in src, "transparency_rows must include effort_score in output"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: future published duties beyond planning_end
+# ---------------------------------------------------------------------------
+
+def test_future_duties_increase_effort_offset(admin_session):
+    """
+    Soldier with heavy future published duties (after planning_end) should have
+    a higher effort_offset than a soldier with light future published duties.
+    Soldiers with no future duties should be unaffected (offset = 0 when no history).
+    """
+    from decimal import Decimal
+    from app.db.models import DutyLocation, DutyType
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    # Create duty type with score = 1.0 per day
+    dt = DutyType(name="שמירה-future", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    loc = DutyLocation(name="מוצב-future")
+    admin_session.add(loc)
+    admin_session.flush()
+
+    # Three soldiers enrolled long before the planning window
+    enrolled = date(2025, 1, 1)
+    s_heavy = create_soldier(admin_session, personal_number="9700001")
+    s_heavy.enrolled_at = enrolled
+    s_light = create_soldier(admin_session, personal_number="9700002")
+    s_light.enrolled_at = enrolled
+    s_none = create_soldier(admin_session, personal_number="9700003")
+    s_none.enrolled_at = enrolled
+    admin_session.flush()
+
+    # Planning window: 2026-Q3 (Jul–Sep)
+    planning_start = date(2026, 7, 1)
+    planning_end = date(2026, 9, 30)
+    reset_date = date(2025, 1, 1)
+
+    # Future duties in Q4 2026 (after planning_end)
+    # s_heavy gets 30 days, s_light gets 3 days, s_none gets nothing
+    create_assignment(
+        admin_session,
+        soldier_id=s_heavy.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 30),
+        actor_id=None,
+    )
+    create_assignment(
+        admin_session,
+        soldier_id=s_light.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 3),
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    soldiers = [s_heavy, s_light, s_none]
+    result = compute_effort_data(
+        admin_session,
+        soldiers=soldiers,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        reset_date=reset_date,
+    )
+
+    heavy_data = result[s_heavy.id]
+    light_data = result[s_light.id]
+    none_data = result[s_none.id]
+
+    # s_heavy has more future duties → higher effort_offset
+    assert heavy_data.effort_offset > light_data.effort_offset, (
+        f"heavy ({heavy_data.effort_offset}) should exceed light ({light_data.effort_offset})"
+    )
+    # s_light has more than none
+    assert light_data.effort_offset > none_data.effort_offset, (
+        f"light ({light_data.effort_offset}) should exceed none ({none_data.effort_offset})"
+    )
+    # s_none has no duties anywhere → effort_score = 0, offset = 0
+    assert none_data.effort_score == Decimal("0")
+    assert none_data.effort_offset == 0
+
+
+def test_planning_window_duties_excluded_from_offset(admin_session):
+    """
+    Published assignments inside the planning window must NOT affect effort_offset.
+    Only past and future (beyond planning_end) duties count.
+    """
+    from decimal import Decimal
+    from app.db.models import DutyLocation, DutyType
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    dt = DutyType(name="שמירה-excl", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    loc = DutyLocation(name="מוצב-excl")
+    admin_session.add(loc)
+    admin_session.flush()
+
+    enrolled = date(2025, 1, 1)
+    s_window = create_soldier(admin_session, personal_number="9700004")
+    s_window.enrolled_at = enrolled
+    s_clean = create_soldier(admin_session, personal_number="9700005")
+    s_clean.enrolled_at = enrolled
+    admin_session.flush()
+
+    planning_start = date(2026, 7, 1)
+    planning_end = date(2026, 9, 30)
+    reset_date = date(2025, 1, 1)
+
+    # s_window gets a duty INSIDE the planning window (should be excluded)
+    create_assignment(
+        admin_session,
+        soldier_id=s_window.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 5),
+        end_date=date(2026, 7, 10),
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    result = compute_effort_data(
+        admin_session,
+        soldiers=[s_window, s_clean],
+        planning_start=planning_start,
+        planning_end=planning_end,
+        reset_date=reset_date,
+    )
+
+    # Planning window is controlled by solver; neither soldier should have offset from it
+    assert result[s_window.id].effort_offset == result[s_clean.id].effort_offset == 0
+
+
+def test_future_quarters_appear_in_breakdown(admin_session):
+    """
+    compute_effort_breakdown should include future quarters in the returned
+    quarter_details list when there are published assignments after planning_end.
+    """
+    from decimal import Decimal
+    from app.db.models import DutyLocation, DutyType
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    dt = DutyType(name="שמירה-bd2", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    loc = DutyLocation(name="מוצב-bd2")
+    admin_session.add(loc)
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="9700006")
+    s.enrolled_at = date(2025, 1, 1)
+    admin_session.flush()
+
+    planning_start = date(2026, 7, 1)
+    planning_end = date(2026, 9, 30)
+    reset_date = date(2025, 1, 1)
+
+    # Assign a future duty in Q4 2026
+    create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 5),
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    breakdown = compute_effort_breakdown(
+        admin_session,
+        soldier=s,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        reset_date=reset_date,
+    )
+
+    # At least one quarter detail should cover Q4 2026 (after planning_end)
+    future_quarters = [
+        q for q in breakdown.quarters
+        if q.quarter_start > planning_end
+    ]
+    assert future_quarters, "Expected at least one future quarter in breakdown"
+    # The future quarter should have a non-zero soldier score
+    assert any(q.soldier_score > 0 for q in future_quarters)
+    # effort_score should be nonzero since the soldier has future duties
+    assert breakdown.effort_score > Decimal("0")
