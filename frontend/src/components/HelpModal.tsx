@@ -12,6 +12,7 @@ function buildTabs(gimelimEnabled: boolean) {
     { id: "swaps", label: "🔄 החלפות" },
     { id: "algorithm", label: "⚙️ האלגוריתם" },
     { id: "fairness", label: "⚖️ הוגנות ושקיפות" },
+    { id: "deep", label: "🔬 מאחורי הקלעים" },
   ];
   if (gimelimEnabled) {
     tabs.push({ id: "gimelim", label: "🏥 גימלים" });
@@ -411,6 +412,14 @@ function GimelimTab() {
   );
 }
 
+function DeepDiveTab() {
+  return (
+    <div className="space-y-5 text-sm leading-relaxed" dir="rtl">
+      <p className="text-gray-400 text-xs">טוען...</p>
+    </div>
+  );
+}
+
 export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
   const [activeTab, setActiveTab] = useState("swaps");
   const TABS = buildTabs(gimelimEnabled);
@@ -437,7 +446,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b dark:border-gray-600 px-2 pt-1" dir="rtl">
+        <div className="flex border-b dark:border-gray-600 px-2 pt-1 overflow-x-auto" dir="rtl">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -458,6 +467,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
           {activeTab === "swaps" && <SwapsTab />}
           {activeTab === "algorithm" && <AlgorithmTab />}
           {activeTab === "fairness" && <FairnessTab />}
+          {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "gimelim" && <GimelimTab />}
         </div>
       </div>
