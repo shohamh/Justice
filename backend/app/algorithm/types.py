@@ -6,6 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+EFFORT_SCALE = 1_000_000_000
 
 @dataclass
 class SoldierInput:
