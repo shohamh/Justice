@@ -443,6 +443,66 @@ function DeepDiveTab() {
         </p>
       </section>
 
+      {/* ── Section 2: effort_score ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 ניקוד עומס — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_score = A / D</code></h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          לכל חייל מחושב ציון אחד — <strong>עומס רבעוני ממוצע</strong>. הוא מייצג: מתוך כל התורנויות שהיחידה עשתה,
+          כמה אחוז נשא החייל בכל רבעון שהיה פעיל בו, בממוצע משוקלל.
+        </p>
+
+        {/* Term table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse" style={{ minWidth: "420px" }}>
+            <thead>
+              <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
+                <th className="text-right py-1 pr-2 font-medium w-20">סמל</th>
+                <th className="text-right py-1 pr-2 font-medium w-32">שם</th>
+                <th className="text-right py-1 font-medium">הסבר</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-700 dark:text-gray-300">
+              {[
+                { sym: "shareq", name: "חלק רבעוני", def: "ניקוד החייל ברבעון q ÷ ניקוד כלל היחידה ברבעון q. מספר בין 0 ל-1." },
+                { sym: "active_fracq", name: "שבר נוכחות", def: "חלק הרבעון שבו החייל היה פעיל (0–1). רבעון מלא = 1." },
+                { sym: "A", name: "עומס שנצבר", def: "Σ(shareq × active_fracq) על כל הרבעונים ההיסטוריים. ממוצע משוקלל של החלקים." },
+                { sym: "W", name: "היסטוריה כוללת", def: "Σ(active_fracq) על הרבעונים ההיסטוריים. סכום משקלי הנוכחות." },
+                { sym: "C", name: "רבעון נוכחי", def: "תמיד 1. מייצג סיבוב התכנון הנוכחי. נכנס למכנה בלבד — אין לו עדיין תרומה לעומס שנצבר." },
+                { sym: "D", name: "מכנה", def: "W + C" },
+                { sym: "effort_score", name: "עומס רבעוני", def: "A / D — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל." },
+              ].map(({ sym, name, def }) => (
+                <tr key={sym} className="border-b border-gray-100 dark:border-gray-700">
+                  <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{sym}</td>
+                  <td className="py-1.5 pr-2 font-medium">{name}</td>
+                  <td className="py-1.5">{def}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
+          <p className="font-medium text-indigo-800 dark:text-indigo-200">💡 למה C תמיד 1?</p>
+          <p className="text-indigo-700 dark:text-indigo-300">
+            לפני כל סיבוב, המכנה של <em>כולם</em> גדל ב-1 — גם אם עוד לא שובצו תורנויות.
+            זה "מדלל" את הציון הנוכחי של כולם, ומכריח ותיקים להרוויח מחדש את חלקם.
+            חייל שישב בחופשה כל הרבעון לא יכול לנוח על ניקוד עבר.
+          </p>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
+          <p className="font-medium text-gray-800 dark:text-gray-200">📝 דוגמה</p>
+          <p className="text-gray-600 dark:text-gray-300">
+            חייל שירת 4 רבעונות מלאים, ותמיד נשא 5% מעומס היחידה:
+          </p>
+          <ul className="list-none space-y-0.5 text-gray-600 dark:text-gray-300 pr-2">
+            <li>A = 4 × 0.05 = 0.20</li>
+            <li>W = 4.0, C = 1.0, D = 5.0</li>
+            <li className="font-semibold text-indigo-700 dark:text-indigo-300">effort_score = 0.20 / 5.0 = 0.04 (4%)</li>
+          </ul>
+        </div>
+      </section>
+
     </div>
   );
 }
