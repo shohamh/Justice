@@ -6,7 +6,7 @@ import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptio
 import { approveConstraint, rejectConstraint } from "../api/constraints";
 import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { listDutyTypes } from "../api/dutyConfig";
+import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
@@ -79,6 +79,7 @@ function EventCard({
   openSwaps,
   onCover,
   onOfferSwap,
+  dutyType,
   t,
 }: {
   e: TimelineEvent;
@@ -92,6 +93,7 @@ function EventCard({
   openSwaps?: SwapRequest[];
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  dutyType?: DutyType | null;
   t: (key: string) => string;
 }) {
   const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
@@ -175,6 +177,29 @@ function EventCard({
         {isExpanded && (
           <div className="mt-2 space-y-1">
             {e.description && <p className="text-gray-600">{e.description}</p>}
+            {dutyType && (() => {
+              const hasInfo = dutyType.start_time || dutyType.end_time || dutyType.contact_name || dutyType.contact_phone || dutyType.instructions;
+              if (!hasInfo && !dutyType) return null;
+              return (
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${dutyType.is_external ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"}`}>
+                      {dutyType.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal")}
+                    </span>
+                    {(dutyType.start_time || dutyType.end_time) && (
+                      <span dir="ltr">{dutyType.start_time?.slice(0, 5) ?? "?"}–{dutyType.end_time?.slice(0, 5) ?? "?"}</span>
+                    )}
+                    {dutyType.contact_name && <span>{dutyType.contact_name}</span>}
+                    {dutyType.contact_phone && (
+                      <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-400" onClick={(ev) => ev.stopPropagation()}>{dutyType.contact_phone}</a>
+                    )}
+                  </div>
+                  {dutyType.instructions && (
+                    <p className="mt-0.5 whitespace-pre-wrap">{dutyType.instructions}</p>
+                  )}
+                </div>
+              );
+            })()}
             {e.metadata.score_total != null && (
               <p className="text-xs text-gray-500 dark:text-gray-400" data-testid={`score-formula-${e.id}`}>
                 ניקוד:{" "}
@@ -247,6 +272,7 @@ function Timeline({
   swapsByAssignment,
   onCover,
   onOfferSwap,
+  dutyTypeById,
   t,
 }: {
   events: TimelineEvent[];
@@ -260,6 +286,7 @@ function Timeline({
   swapsByAssignment?: Record<string, SwapRequest[]>;
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  dutyTypeById: Record<string, DutyType>;
   t: (key: string) => string;
 }) {
   return (
@@ -280,6 +307,7 @@ function Timeline({
             openSwaps={swapsByAssignment?.[e.id]}
             onCover={onCover}
             onOfferSwap={onOfferSwap}
+            dutyType={e.metadata.duty_type_id ? (dutyTypeById[e.metadata.duty_type_id] ?? null) : null}
             t={t}
           />
         ))}
@@ -300,6 +328,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
   const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
+  const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
   const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -329,6 +358,13 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     void load(controller.signal);
     return () => controller.abort();
   }, [isActive, soldierId, load]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    listDutyTypes()
+      .then((dts) => setDutyTypeById(Object.fromEntries(dts.map((d) => [d.id, d]))))
+      .catch(() => {/* non-critical */});
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive || soldierId === user?.id) return;
@@ -447,6 +483,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     swapsByAssignment,
     onCover: handleOpenCoverModal,
     onOfferSwap: isOtherSoldier ? setOfferSwapEvent : undefined,
+    dutyTypeById,
     t,
   };
 
