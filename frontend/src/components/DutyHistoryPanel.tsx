@@ -34,9 +34,9 @@ const TYPE_COLORS: Record<string, string> = {
   assignment: "border-indigo-500 bg-indigo-50 dark:bg-indigo-950",
   cancellation: "border-red-400 bg-red-50 dark:bg-red-950",
   call_up: "border-orange-400 bg-orange-50 dark:bg-orange-950",
-  dismissal: "border-yellow-400 bg-yellow-50",
-  exemption_request: "border-blue-400 bg-blue-50",
-  personal_constraint: "border-purple-400 bg-purple-50",
+  dismissal: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950",
+  exemption_request: "border-blue-400 bg-blue-50 dark:bg-blue-950",
+  personal_constraint: "border-purple-400 bg-purple-50 dark:bg-purple-950",
 };
 
 const DOT_COLORS: Record<string, string> = {

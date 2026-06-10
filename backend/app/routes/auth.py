@@ -168,7 +168,18 @@ def refresh(
     if soldier is None or soldier.left_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
 
+    settings = get_settings()
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
+    refresh = issue_refresh_token(user_id=soldier.id)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh,
+        max_age=settings.refresh_token_days * 24 * 3600,
+        httponly=True,
+        secure=False,
+        samesite="strict",
+        path="/api/auth",
+    )
     return LoginResponse(access_token=access, must_change_password=soldier.must_change_password)
 
 

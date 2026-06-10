@@ -1,11 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
-import { setAccessToken } from "../api/client";
+import { api, setAccessToken } from "../api/client";
 
 interface AuthContextValue {
   user: Me | null;
   loggedIn: boolean;
+  authLoading: boolean;
   mustChangePassword: boolean;
   telegramLinked: boolean;
   telegramRequired: boolean;
@@ -20,6 +21,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    api.post<{ access_token: string }>("/auth/refresh")
+      .then((r) => { setAccessToken(r.data.access_token); return fetchMe(); })
+      .then(setUser)
+      .catch(() => {})
+      .finally(() => setAuthLoading(false));
+  }, []);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const r = await apiLogin(personal_number, password, remember_me);
@@ -54,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loggedIn: user !== null,
+      authLoading,
       mustChangePassword: user?.must_change_password ?? false,
       telegramLinked: user?.telegram_linked ?? false,
       telegramRequired: user?.telegram_required ?? false,
@@ -63,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       changePassword,
       refreshMe,
     }),
-    [user, login, loginWithToken, logout, changePassword, refreshMe],
+    [user, authLoading, login, loginWithToken, logout, changePassword, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

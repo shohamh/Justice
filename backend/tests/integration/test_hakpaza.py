@@ -117,3 +117,44 @@ def test_pending_count(client, admin_session):
     resp = client.get("/api/hakpaza/pending-count", headers=auth_headers(dm))
     assert resp.status_code == 200
     assert resp.json()["count"] >= 1
+
+
+def test_approve_hakpaza_sets_multiplier_no_score_adjustment(client, admin_session):
+    """Approving a hakpaza sets forced_call_up_multiplier on the replacement
+    assignment and does NOT create a ScoreAdjustment."""
+    from app.db.models import ScoreAdjustment
+    from sqlalchemy import select
+
+    dm, commander, pulled, replacement, assignment = _setup(admin_session, "hk005")
+
+    create_resp = client.post(
+        "/api/hakpaza",
+        json={
+            "pulled_assignment_id": str(assignment.id),
+            "pull_date": "2030-01-05",
+            "replacement_soldier_id": str(replacement.id),
+        },
+        headers=auth_headers(commander),
+    )
+    assert create_resp.status_code == 201
+    hakpaza_id = create_resp.json()["id"]
+
+    approve_resp = client.post(
+        f"/api/hakpaza/{hakpaza_id}/approve",
+        headers=auth_headers(dm),
+    )
+    assert approve_resp.status_code == 200
+    data = approve_resp.json()
+    assert data["replacement_assignment_id"] is not None
+
+    # replacement assignment must have the multiplier set
+    from app.db.models import DutyAssignment
+    repl_asgn = admin_session.get(DutyAssignment, data["replacement_assignment_id"])
+    assert repl_asgn is not None
+    assert repl_asgn.forced_call_up_multiplier == Decimal("2.0")
+
+    # no ScoreAdjustment should have been created for the replacement soldier
+    adjs = admin_session.execute(
+        select(ScoreAdjustment).where(ScoreAdjustment.soldier_id == replacement.id)
+    ).scalars().all()
+    assert adjs == []

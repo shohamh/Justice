@@ -45,9 +45,6 @@ def seed(*, force: bool = False, with_assignments: bool = False):
     with SessionLocal() as session:
         # All regular soldiers share this password.
         hashed = hash_password("1234567890")
-        # The bootstrap admin starts with must_change_password=True so the E2E
-        # "admin first login" spec can exercise the forced-change flow.
-        admin_hashed = hash_password("ChangeMeOnFirstLogin!")
 
         if clear:
             session.query(ExemptionRequest).delete()
@@ -70,8 +67,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
 
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
         if admin:
-            admin.password_hash = admin_hashed
-            admin.must_change_password = True
+            admin.password_hash = hashed
+            admin.must_change_password = False
             session.flush()
 
         if session.query(Soldier).filter(Soldier.personal_number == "2000001").first():
@@ -201,8 +198,6 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             discharge_date=date(2035, 1, 1),
             gender="male",
         )
-        s_admin.password_hash = admin_hashed
-        s_admin.must_change_password = True
         session.flush()
         all_soldiers.append(s_admin)
         psips.commander_id = s_admin.id

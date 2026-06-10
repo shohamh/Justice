@@ -36,6 +36,7 @@ vite.log
 
 # Worktrees (isolated development workspaces)
 .worktrees/
+.claude/worktrees/
 
 # Postgres data volume (when running compose locally)
 .docker-data/
