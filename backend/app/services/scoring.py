@@ -74,7 +74,9 @@ def effective_duty_days(
                 ov = overrides.get((a.id, day))
                 eff = ov.effective_soldier_id if ov is not None else a.soldier_id
                 if eff is not None:
-                    if a.is_reserve:
+                    if a.forced_call_up_multiplier is not None:
+                        mult = a.forced_call_up_multiplier
+                    elif a.is_reserve:
                         if (a.called_up_from is not None and a.called_up_to is not None
                                 and a.called_up_from <= day <= a.called_up_to):
                             mult = called_up_mult
@@ -292,11 +294,23 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
     except (SettingNotFound, ValueError, Exception):
         reset_date = quarter_start(date(today.year - 2, today.month, 1))
 
+    # Include future published assignments by using the day after the latest
+    # published assignment as the planning horizon.  Without this, effort_score
+    # is always 0 when all assignments are for upcoming dates.
+    from sqlalchemy import func as sql_func
+    latest_published_end = session.execute(
+        select(sql_func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= today:
+        planning_start = latest_published_end + timedelta(days=1)
+    else:
+        planning_start = today
+
     effort_map = compute_effort_data(
         session,
         soldiers=list(soldiers),
-        planning_start=today,
-        planning_end=today,
+        planning_start=planning_start,
+        planning_end=planning_start,
         reset_date=reset_date,
     )
 
