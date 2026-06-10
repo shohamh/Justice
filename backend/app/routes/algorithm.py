@@ -55,7 +55,6 @@ class SolverSettingsIn(BaseModel):
     T: int = 7
     W: int = 14
     alpha: float = 1.0
-    beta: float = 2.0
     time_limit_seconds: int = 30
 
 
