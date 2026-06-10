@@ -70,7 +70,9 @@ def effective_duty_days(
     for a in assignments:
         day = a.start_date
         while day <= a.end_date:
-            if (date_from is None or day >= date_from) and (date_to is None or day <= date_to):
+            if date_to is not None and day > date_to:
+                break
+            if (date_from is None or day >= date_from):
                 ov = overrides.get((a.id, day))
                 eff = ov.effective_soldier_id if ov is not None else a.soldier_id
                 if eff is not None:
@@ -173,8 +175,7 @@ def shift_count_by_soldier(session: Session) -> dict[uuid.UUID, int]:
 def duty_score_by_soldier(session: Session) -> dict[uuid.UUID, Decimal]:
     scores = _duty_type_scores(session)
     out: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
-    today = date.today()
-    for _day, eff, dtid, mult in effective_duty_days(session, date_to=today):
+    for _day, eff, dtid, mult in effective_duty_days(session):
         out[eff] += scores.get(dtid, Decimal("0")) * mult
     return out
 
@@ -342,8 +343,7 @@ def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[
     scores = _duty_type_scores(session)
     dt_names = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
     by_type: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
-    today = date.today()
-    for _day, eff, dtid, mult in effective_duty_days(session, date_to=today):
+    for _day, eff, dtid, mult in effective_duty_days(session):
         if eff == soldier_id:
             by_type[dtid] += scores.get(dtid, Decimal("0")) * mult
     per_type = [
