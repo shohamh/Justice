@@ -11,6 +11,7 @@ from app.db.models import DutyAssignment, NotificationType, Soldier, SwapRequest
 from app.services import assignments as assignments_svc
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.reserves import check_reserve_cap
 
 
 class SwapError(Exception):
@@ -308,6 +309,21 @@ def take_free(
     ).scalar_one_or_none()
     if existing is not None:
         raise SwapError("already_pending")
+
+    if assignment.is_reserve:
+        try:
+            allow = bool(get_setting(session, "reserves.allow_take_free"))
+        except SettingNotFound:
+            allow = True
+        if not allow:
+            raise SwapError("reserve_take_free_disabled")
+
+        passes, current, max_days = check_reserve_cap(
+            session, covering_soldier_id,
+            assignment.start_date, assignment.end_date,
+        )
+        if not passes:
+            raise SwapError(f"reserve_cap_exceeded:{current}/{max_days}")
 
     req = SwapRequest(
         duty_assignment_id=assignment_id,

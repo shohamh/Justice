@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink
 from app.services.algorithm_bridge import build_hierarchy_maps
+from app.services.settings_loader import SettingNotFound, get_setting
 
 
 class ReserveError(Exception):
@@ -409,3 +410,71 @@ def reallocate_orphaned_primaries(
         )
 
     return results
+
+
+def count_reserve_days_in_window(
+    session: Session,
+    soldier_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+) -> int:
+    """Peak reserve-day count in any W-day window that overlaps [start_date, end_date].
+
+    Includes the candidate range itself alongside existing published/draft reserves.
+    Uses the same sliding-window logic as _passes_density in gimelim.py.
+    """
+    try:
+        W = int(get_setting(session, "reserves.window_days"))
+    except SettingNotFound:
+        W = 30
+
+    rows = session.execute(
+        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.soldier_id == soldier_id,
+            DutyAssignment.is_reserve.is_(True),
+            DutyAssignment.status.in_(["published", "algorithm_draft"]),
+        )
+    ).all()
+
+    # Build the full set of dates: existing reserves + candidate
+    all_dates: set[date] = set()
+    for row in rows:
+        d = row.start_date
+        while d <= row.end_date:
+            all_dates.add(d)
+            d += timedelta(days=1)
+    d = start_date
+    while d <= end_date:
+        all_dates.add(d)
+        d += timedelta(days=1)
+
+    if not all_dates:
+        return 0
+
+    sorted_dates = sorted(all_dates)
+    peak = 0
+    for anchor in sorted_dates:
+        window_end = anchor + timedelta(days=W - 1)
+        count = sum(1 for x in sorted_dates if anchor <= x <= window_end)
+        if count > peak:
+            peak = count
+    return peak
+
+
+def check_reserve_cap(
+    session: Session,
+    soldier_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+) -> tuple[bool, int, int]:
+    """Return (passes, current_peak_days, max_allowed).
+
+    passes=True means adding [start_date, end_date] stays within the cap.
+    """
+    try:
+        max_days = int(get_setting(session, "reserves.max_days_per_window"))
+    except SettingNotFound:
+        max_days = 14
+
+    peak = count_reserve_days_in_window(session, soldier_id, start_date, end_date)
+    return peak <= max_days, peak, max_days
