@@ -485,7 +485,7 @@ function DeepDiveTab() {
           <p className="font-medium text-indigo-800 dark:text-indigo-200">💡 למה C תמיד 1?</p>
           <p className="text-indigo-700 dark:text-indigo-300">
             לפני כל סיבוב, המכנה של <em>כולם</em> גדל ב-1 — גם אם עוד לא שובצו תורנויות.
-            זה "מדלל" את הציון הנוכחי של כולם, ומכריח ותיקים להרוויח מחדש את חלקם.
+            זה &quot;מדלל&quot; את הציון הנוכחי של כולם, ומכריח ותיקים להרוויח מחדש את חלקם.
             חייל שישב בחופשה כל הרבעון לא יכול לנוח על ניקוד עבר.
           </p>
         </div>
@@ -500,6 +500,72 @@ function DeepDiveTab() {
             <li>W = 4.0, C = 1.0, D = 5.0</li>
             <li className="font-semibold text-indigo-700 dark:text-indigo-300">effort_score = 0.20 / 5.0 = 0.04 (4%)</li>
           </ul>
+        </div>
+      </section>
+
+      {/* ── Section 3: Integer bridge ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🔢 מהמספר לשלם — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_offset</code> ו-<code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_per_milli</code></h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          פותר ה-CP-SAT עובד עם <strong>מספרים שלמים בלבד</strong> — לא עשרוניים.
+          לכן לפני שמעבירים לו את הנתונים, מחשבים מראש שני קבועים שלמים לכל חייל:
+        </p>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse" style={{ minWidth: "420px" }}>
+            <thead>
+              <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
+                <th className="text-right py-1 pr-2 font-medium w-36">שם</th>
+                <th className="text-right py-1 pr-2 font-medium w-48">נוסחה</th>
+                <th className="text-right py-1 font-medium">משמעות</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-700 dark:text-gray-300">
+              {[
+                {
+                  name: "EFFORT_SCALE",
+                  formula: "10⁹",
+                  meaning: "גורם קנה-מידה. ממיר עשרוניים לשלמים בלי אובדן דיוק.",
+                },
+                {
+                  name: "effort_offset",
+                  formula: "int(effort_score × EFFORT_SCALE)",
+                  meaning: "ניקוד העומס ההיסטורי כשלם קבוע. לא משתנה בזמן הפתרון.",
+                },
+                {
+                  name: "unit_score_milli",
+                  formula: "Σ block_score(d) × 1000 לכל תורנויות החלון",
+                  meaning: "סך ניקוד כל התורנויות שהפותר יכול לשבץ — קבוע.",
+                },
+                {
+                  name: "C_over_D",
+                  formula: "C / D",
+                  meaning: "כמה מהמשקל הכולל מיוחס לסיבוב הנוכחי. גבוה לחיילים חדשים (W קטן), נמוך לוותיקים.",
+                },
+                {
+                  name: "effort_per_milli",
+                  formula: "int(C_over_D / unit_score_milli × EFFORT_SCALE)",
+                  meaning: "כמה כל מילי-ניקוד אחד של תורנות מזיז את עומס החייל. קבוע — מחושב לפני הפתרון.",
+                },
+              ].map(({ name, formula, meaning }) => (
+                <tr key={name} className="border-b border-gray-100 dark:border-gray-700">
+                  <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{name}</td>
+                  <td className="py-1.5 pr-2 font-mono text-gray-600 dark:text-gray-400">{formula}</td>
+                  <td className="py-1.5">{meaning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
+          <p className="font-medium text-indigo-800 dark:text-indigo-200">💡 האינרציה של הוותיק</p>
+          <p className="text-indigo-700 dark:text-indigo-300">
+            לחייל ותיק עם W=8 יש C_over_D = 1/(8+1) ≈ 0.11.
+            לחייל חדש עם W=0 יש C_over_D = 1/(0+1) = 1.0.
+            כלומר: אותה תורנות בדיוק מזיזה את ניקוד החדש פי 9 יותר מאשר את הוותיק.
+            לחייל ותיק יש &quot;עמידות&quot; גבוהה יותר לשינויים — צריך הרבה תורנויות כדי להזיז אותו.
+          </p>
         </div>
       </section>
 
