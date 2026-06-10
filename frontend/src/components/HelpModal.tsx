@@ -617,6 +617,65 @@ function DeepDiveTab() {
         </div>
       </section>
 
+      {/* ── Section 5: L1 ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📏 מה זה L1? — מדיאנה, לא ממוצע</h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          רוצים שכל הניקודים יהיו קרובים זה לזה. אבל &quot;קרוב&quot; ניתן להגדיר בשתי דרכים:
+        </p>
+
+        <div className="grid grid-cols-1 gap-2 text-xs">
+          <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
+            <p className="font-semibold text-orange-800 dark:text-orange-200 mb-1">L2 — סכום ריבועי סטיות (הממוצע)</p>
+            <p className="font-mono text-orange-700 dark:text-orange-300 mb-1">Σ (projected_effort[i] − mean)²</p>
+            <p className="text-orange-700 dark:text-orange-300">
+              ריבוע הסטייה מעניש קשות על חריגים. ערך חריג אחד יכול לדחוף את כל השיבוצים
+              בניסיון להקטין אותו — גם כשזה לא הוגן לשאר.
+            </p>
+          </div>
+          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800">
+            <p className="font-semibold text-green-800 dark:text-green-200 mb-1">L1 — סכום סטיות מוחלטות (המדיאנה) ✓</p>
+            <p className="font-mono text-green-700 dark:text-green-300 mb-1">Σ |projected_effort[i] − target|</p>
+            <p className="text-green-700 dark:text-green-300">
+              כל סטייה נספרת באותו משקל, ללא קנס על חריגים. הפתרון האופטימלי מושך את
+              <code className="mx-1">target</code> לכיוון <strong>המדיאנה</strong> — עמיד בפני ותיקים עם היסטוריה גבוהה מאוד.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs">
+          <p className="font-medium text-indigo-800 dark:text-indigo-200 mb-1">💡 משתנה target חופשי</p>
+          <p className="text-indigo-700 dark:text-indigo-300">
+            לא קובעים מראש מה המטרה. הפותר מוסיף משתנה שלם <code>target</code> ומוצא את ערכו יחד עם שאר המשתנים.
+            מתמטית, הערך האופטימלי של <code>target</code> הוא תמיד המדיאנה של הניקודים הצפויים —
+            הפותר &quot;מגלה&quot; זאת מעצמו.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Section 6: Final objective ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🏁 המטרה הסופית</h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          לכל חייל נוצר משתנה עזר <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">dev[i]</code> עם שני אילוצים:
+        </p>
+
+        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre">{`dev[i] ≥  projected_effort[i] − target
+dev[i] ≥  target − projected_effort[i]`}</pre>
+
+        <p className="text-gray-700 dark:text-gray-300 text-xs">
+          שני האילוצים האלה כופים ש-<code>dev[i] = |projected_effort[i] − target|</code>.
+          הפותר ימזער את <code>dev[i]</code> כמה שניתן — כי הוא מופיע בפונקציית המטרה:
+        </p>
+
+        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-indigo-700 dark:text-indigo-300 font-bold leading-relaxed whitespace-pre">{`Minimize  Σ dev[i]  +  dist_term`}</pre>
+
+        <p className="text-gray-600 dark:text-gray-400 text-xs">
+          <code>dist_term</code> — קנס קטן על שיבוץ חיילי רזרבה ליחידות רחוקות בהיררכיה.
+          משמש כשובר שוויון בלבד — משקלו קטן בהרבה מסכום הסטיות.
+        </p>
+      </section>
+
     </div>
   );
 }
