@@ -60,6 +60,29 @@ const STATUS_BADGE: Record<string, string> = {
   algorithm_rejected: "bg-red-100 text-red-800",
 };
 
+interface ScoreSegment {
+  days: number;
+  spd: string;
+  mult: string;
+  type: "regular" | "reserve_standby" | "reserve_called_up" | "forced_call_up" | "dismissed";
+}
+
+const SEGMENT_CHIP_COLORS: Record<ScoreSegment["type"], string> = {
+  regular: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+  reserve_standby: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  reserve_called_up: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  forced_call_up: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  dismissed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+};
+
+const SEGMENT_LABELS: Record<ScoreSegment["type"], string> = {
+  regular: "רגיל",
+  reserve_standby: "רזרבה",
+  reserve_called_up: "הוקפץ מרזרבה",
+  forced_call_up: "הקפצה פיקודית",
+  dismissed: "שוחרר",
+};
+
 interface Props {
   soldierId: string;
   soldierName?: string;
@@ -99,6 +122,15 @@ function EventCard({
   const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
   const dotColor = DOT_COLORS[e.event_type] ?? "bg-gray-400";
   const badgeClass = e.status ? (STATUS_BADGE[e.status] ?? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300") : null;
+  const scoreSegments: ScoreSegment[] | null = (() => {
+    try {
+      const raw = e.metadata.score_segments;
+      if (!raw) return null;
+      return JSON.parse(raw) as ScoreSegment[];
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div
@@ -201,12 +233,26 @@ function EventCard({
               );
             })()}
             {e.metadata.score_total != null && (
-              <p className="text-xs text-gray-500 dark:text-gray-400" data-testid={`score-formula-${e.id}`}>
-                ניקוד:{" "}
-                {e.metadata.score_formula
-                  ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
-                  : e.metadata.score_total}
-              </p>
+              <div data-testid={`score-formula-${e.id}`}>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ניקוד:{" "}
+                  {e.metadata.score_formula
+                    ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
+                    : e.metadata.score_total}
+                </p>
+                {scoreSegments && scoreSegments.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {scoreSegments.map((seg, i) => (
+                      <span
+                        key={i}
+                        className={`text-xs px-1.5 py-0.5 rounded ${SEGMENT_CHIP_COLORS[seg.type]}`}
+                      >
+                        {SEGMENT_LABELS[seg.type]} ×{seg.mult}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {e.metadata.decision_note && (
               <p className="text-gray-400 text-xs">
