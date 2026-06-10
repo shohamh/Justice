@@ -569,6 +569,54 @@ function DeepDiveTab() {
         </div>
       </section>
 
+      {/* ── Section 4: projected_effort ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🎯 הניקוד הצפוי — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">projected_effort</code></h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          בתוך הפותר, לכל חייל נבנית <strong>ביטוי לינארי</strong> שמחשב מה יהיה ניקוד העומס שלו
+          לאחר שיבוץ:
+        </p>
+
+        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre">{`projected_effort[i] =
+    effort_offset[i]
+  + effort_per_milli[i] × Σ( block_score(d) × x[d,i] )`}</pre>
+
+        <div className="space-y-2 text-xs text-gray-700 dark:text-gray-300">
+          {[
+            {
+              term: "x[d, i]",
+              desc: "משתנה בינארי של הפותר: 1 אם תורנות d שובצה לחייל i, 0 אחרת. זה מה שהפותר בוחר.",
+            },
+            {
+              term: "block_score(d)",
+              desc: "ניקוד תורנות d (משך ימים × משקל סוג התורנות), ביחידות מילי. קבוע.",
+            },
+            {
+              term: "Σ block_score(d) × x[d,i]",
+              desc: "סך הניקוד של כל התורנויות ששובצו לחייל i. ביטוי לינארי — סכום של קבועים כפול משתנים.",
+            },
+          ].map(({ term, desc }) => (
+            <div key={term} className="flex gap-2 bg-gray-50 dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-600">
+              <code className="shrink-0 text-indigo-700 dark:text-indigo-300 font-mono">{term}</code>
+              <span>{desc}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-1">
+          <p className="font-medium text-green-800 dark:text-green-200">✅ למה זה חשוב — לינאריות</p>
+          <p className="text-green-700 dark:text-green-300">
+            <code>effort_per_milli</code> ו-<code>block_score(d)</code> הם קבועים שלמים — רק <code>x[d,i]</code> הם משתנים.
+            הביטוי כולו לינארי לחלוטין — אין חילוק, אין ריבועים.
+            CP-SAT פותר בעיות לינאריות מהר מאוד.
+          </p>
+          <p className="text-green-700 dark:text-green-300 mt-1">
+            בגרסה הקודמת, הניקוד חולק ב-<code>active_days</code> בתוך הפותר — אילוץ חילוק שהאט את הפתרון.
+            כאן, החילוק מתבצע פעם אחת מחוץ לפותר (בחישוב <code>effort_per_milli</code>) — וזה מה שהופך את הגישה לסקלאבילית.
+          </p>
+        </div>
+      </section>
+
     </div>
   );
 }
