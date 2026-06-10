@@ -112,7 +112,17 @@
     "global": "גלובלי",
     "global_exempt_desc": "פוטר מכל סוגי התורנויות",
     "medical": "פטור רפואי",
-    "delete": "מחק"
+    "delete": "מחק",
+    "contact_name": "איש קשר",
+    "contact_phone": "טלפון איש קשר",
+    "start_time": "שעת התחלה",
+    "end_time": "שעת סיום",
+    "instructions": "הנחיות",
+    "instructions_hint": "עד 300 מילים",
+    "is_external": "סוג תורנות",
+    "is_external_internal": "פנימית",
+    "is_external_external": "חיצונית",
+    "is_external_placeholder": "בחר סוג..."
   },
   "exemptions": {
     "title": "פטורים",
