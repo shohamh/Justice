@@ -676,6 +676,88 @@ dev[i] ≥  target − projected_effort[i]`}</pre>
         </p>
       </section>
 
+      {/* ── Section 7: Worked example ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🧮 דוגמה מספרית מלאה</h3>
+
+        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          המספרים נבחרו לקריאות (EFFORT_SCALE=1,000,000 במקום 10⁹). היחסים בין הערכים זהים לייצור.
+        </div>
+
+        <p className="text-xs font-medium text-gray-700 dark:text-gray-300">הגדרה: 3 חיילים, 2 תורנויות זהות (score_milli=2,500 כל אחת → unit_score_milli=5,000)</p>
+
+        {/* Soldier table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse" style={{ minWidth: "460px" }}>
+            <thead>
+              <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
+                {["חייל", "effort_score", "effort_offset", "C_over_D", "effort_per_milli"].map(h => (
+                  <th key={h} className="text-right py-1 pr-3 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="text-gray-700 dark:text-gray-300">
+              {[
+                { name: "דן (ותיק)", score: "4%", offset: "40,000", cod: "0.20", epm: "40", color: "text-blue-700 dark:text-blue-300" },
+                { name: "יעל (חדשה)", score: "0%", offset: "0", cod: "1.00", epm: "200", color: "text-purple-700 dark:text-purple-300" },
+                { name: "רוני (ותיק)", score: "8%", offset: "80,000", cod: "0.20", epm: "40", color: "text-orange-700 dark:text-orange-300" },
+              ].map(({ name, score, offset, cod, epm, color }) => (
+                <tr key={name} className="border-b border-gray-100 dark:border-gray-700">
+                  <td className={`py-1.5 pr-3 font-medium ${color}`}>{name}</td>
+                  <td className="py-1.5 pr-3 font-mono">{score}</td>
+                  <td className="py-1.5 pr-3 font-mono">{offset}</td>
+                  <td className="py-1.5 pr-3 font-mono">{cod}</td>
+                  <td className="py-1.5 font-mono">{epm}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-xs text-gray-600 dark:text-gray-400">
+          שים לב: <code>effort_per_milli</code> של יעל הוא 200 — פי 5 מהותיקים. כי C_over_D שלה = 1.0 (אין היסטוריה).
+        </p>
+
+        {/* Assignment A */}
+        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-2">
+          <p className="font-semibold text-green-800 dark:text-green-200">שיבוץ א׳ (הפותר יבחר בזה): תורנות 1→דן, תורנות 2→רוני</p>
+          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+projected[יעל] =      0 + 200 × 0     =       0   ( 0%)
+projected[רוני]= 80,000 + 40  × 2,500 = 180,000  (18%)`}</pre>
+          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`target = מדיאנה = 140,000
+dev[דן]  = |140,000 − 140,000| =       0
+dev[יעל] = |      0 − 140,000| = 140,000
+dev[רוני]= |180,000 − 140,000| =  40,000
+──────────────────────────────────────────
+סה"כ = 180,000`}</pre>
+        </div>
+
+        {/* Assignment B */}
+        <div className="bg-red-50 dark:bg-red-950 rounded-lg p-3 border border-red-200 dark:border-red-800 text-xs space-y-2">
+          <p className="font-semibold text-red-800 dark:text-red-200">שיבוץ ב׳ (גרוע יותר): תורנות 1→דן, תורנות 2→יעל</p>
+          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+projected[יעל] =      0 + 200 × 2,500 = 500,000  (50%)  ← זינוק!
+projected[רוני]=      80,000           =  80,000  ( 8%)`}</pre>
+          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`target = מדיאנה = 140,000
+dev[דן]  =       0
+dev[יעל] = 360,000
+dev[רוני]=  60,000
+──────────────────────────────────────────
+סה"כ = 420,000  ← פי 2.3 יותר גרוע!`}</pre>
+        </div>
+
+        <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
+          <p className="font-semibold text-indigo-800 dark:text-indigo-200">🔑 תובנה מפתח</p>
+          <p className="text-indigo-700 dark:text-indigo-300">
+            הפותר <strong>לא</strong> פשוט משבץ את החייל עם הניקוד הנמוך ביותר.
+            הוא שוקל כמה כל שיבוץ <em>מזיז</em> את הניקוד של כל חייל.
+            יעל מתחילה ב-0%, אבל כל תורנות &quot;שווה לה&quot; פי 5 יותר מאשר לוותיקים —
+            כי היא חדשה. שיבוץ אחד יזניק אותה ל-50% ויצור חריג גדול.
+            עדיף לפזר בין שני הוותיקים ולאפשר ליעל להתכנס בהדרגה לאורך מספר סיבובים.
+          </p>
+        </div>
+      </section>
+
     </div>
   );
 }
