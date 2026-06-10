@@ -34,26 +34,27 @@ def upgrade() -> None:
     # These are now fully represented by the forced_call_up_multiplier field.
     op.execute(text("""
         DELETE FROM score_adjustments
-        WHERE reason LIKE 'הקפצה פיקודית%'
+        WHERE reason LIKE 'הקפצה פיקודית — %'
     """))
 
 
 def downgrade() -> None:
-    # Restore ScoreAdjustments for approved forced callups before dropping column
-    # Join through original_assignment to get end_date (ForcedCallup has no original_end_date column)
+    # Restore ScoreAdjustments for approved forced callups before dropping column.
+    # Join through replacement_assignment (not original) because approve() sets
+    # orig.end_date = pull_date - 1, which would make the delta zero.
     op.execute(text("""
         INSERT INTO score_adjustments (id, soldier_id, delta, reason, created_by)
         SELECT
             gen_random_uuid(),
             fc.replacement_soldier_id,
             dt.score_per_day
-                * ((orig.end_date - fc.pull_date + 1))
+                * ((repl.end_date - fc.pull_date + 1))
                 * fc.callup_multiplier,
             'הקפצה פיקודית (restored)',
             fc.approver_id
         FROM forced_callups fc
-        JOIN duty_assignments orig ON orig.id = fc.original_assignment_id
-        JOIN duty_types dt ON dt.id = orig.duty_type_id
+        JOIN duty_assignments repl ON repl.id = fc.replacement_assignment_id
+        JOIN duty_types dt ON dt.id = repl.duty_type_id
         WHERE fc.status = 'approved'
           AND fc.replacement_assignment_id IS NOT NULL
     """))
