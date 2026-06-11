@@ -44,7 +44,7 @@ def test_blocked_by_duty_type_eligibility(admin_session):
     admin_session.flush()
     ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
-    assert reason is not None
+    assert reason == "אי-כשירות לסוג תורנות זה"
 
 
 def test_blocked_by_global_exemption(admin_session):

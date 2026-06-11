@@ -198,7 +198,7 @@ def check_soldier_for_assignment(
             PersonalConstraint.start_date <= assignment.end_date,
             PersonalConstraint.end_date >= assignment.start_date,
         )
-    ).scalar_one_or_none() is not None:
+    ).first() is not None:
         return False, "אילוץ אישי מאושר בתאריך זה"
 
     # 4. Scheduling conflict — existing published assignment for this soldier on these dates
@@ -210,7 +210,7 @@ def check_soldier_for_assignment(
     )
     if exclude_assignment_id is not None:
         conflict_q = conflict_q.where(DutyAssignment.id != exclude_assignment_id)
-    if session.execute(conflict_q).scalar_one_or_none() is not None:
+    if session.execute(conflict_q).first() is not None:
         return False, "שיבוץ קיים בתאריכים אלו"
 
     return True, None
