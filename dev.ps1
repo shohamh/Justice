@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Start the full dev stack in one window (DB only in Docker).
@@ -30,7 +30,20 @@ try { docker compose stop backend frontend telegram-bot *>$null } catch {}
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
 Write-Host "[dev] Starting DB container..." -ForegroundColor Cyan
-try { docker compose up db -d *>$null } catch {}
+$dbOut = docker compose up db -d 2>&1
+if ($LASTEXITCODE -ne 0) {
+    if ($dbOut -match "ports are not available|access a socket") {
+        # Windows reserved the port range that includes 5432 (Hyper-V/WinNAT).
+        # Reset WinNAT to release it, then retry.
+        Write-Host "[dev] Port 5432 reserved by Windows — resetting WinNAT (UAC prompt may appear)..." -ForegroundColor Yellow
+        Start-Process powershell -Verb RunAs -ArgumentList '-Command', 'net stop winnat; net start winnat' -Wait -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+        $dbOut = docker compose up db -d 2>&1
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "[dev] DB container failed to start: $dbOut"; exit 1
+    }
+}
 
 Write-Host "[dev] Waiting for DB to be healthy..." -ForegroundColor Cyan
 $dbContainer = docker compose ps -q db
@@ -57,14 +70,14 @@ $colors = [System.Collections.Generic.List[string]]::new()
 $cmds   = [System.Collections.Generic.List[string]]::new()
 
 $names.Add("backend");  $colors.Add("cyan");
-$cmds.Add("cd /d `"$root\backend`" && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
+$cmds.Add("cd /d `"$root\backend`" && uv run python run_dev_server.py")
 
 $names.Add("frontend"); $colors.Add("yellow")
 $cmds.Add("cd /d `"$root\frontend`" && pnpm dev")
 
 if (-not $NoBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && uv run watchfiles --filter python `"python -m bot.main`" app/ bot/")
+    $cmds.Add("cd /d `"$root\backend`" && uv run python -m bot.main")
 }
 
 # ── Launch ────────────────────────────────────────────────────────────────────
@@ -76,7 +89,6 @@ Write-Host "  Press Ctrl+C to stop all services." -ForegroundColor DarkGray
 Write-Host ""
 
 $concurrentlyArgs = @(
-    "--kill-others-on-fail",
     "--names",         ($names  -join ","),
     "--prefix-colors", ($colors -join ",")
 ) + $cmds.ToArray()

@@ -261,6 +261,9 @@ class DutyAssignment(Base):
     )
     called_up_from: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     called_up_to: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    forced_call_up_multiplier: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 2), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

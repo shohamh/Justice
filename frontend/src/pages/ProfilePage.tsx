@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import ExemptionsPanel from "../components/ExemptionsPanel";
+import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 import {
   FieldUpdateDTO,
@@ -146,6 +147,12 @@ export default function ProfilePage() {
           {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {user.discharge_date}</div>}
           {user?.last_mitvahim_date && <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {user.last_mitvahim_date}</div>}
           {user?.last_alal_date && <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {user.last_alal_date}</div>}
+          {user?.direct_commander_id && user?.direct_commander_name && (
+            <div>
+              <span className="font-medium">{t("soldier_profile.direct_commander")}:</span>{" "}
+              <SoldierLink id={user.direct_commander_id} name={user.direct_commander_name} />
+            </div>
+          )}
         </div>
 
         <div className="space-y-2 text-sm">

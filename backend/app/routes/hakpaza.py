@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyType, ForcedCallup, ScoreAdjustment, Soldier
+from app.db.models import DutyAssignment, ForcedCallup, Soldier
 from app.db.session import get_session
 from app.services import hakpaza as svc
 from app.services.settings_loader import get_setting
@@ -170,23 +170,11 @@ def approve(
         end_date=original_end_date,
         status="published",
         is_reserve=False,
+        forced_call_up_multiplier=h.callup_multiplier,
         notes=f"הקפצה פיקודית — מחליף {session.get(Soldier, h.pulled_soldier_id).full_name if session.get(Soldier, h.pulled_soldier_id) else ''}",
     )
     session.add(new_assignment)
     session.flush()
-
-    dt = session.get(DutyType, original.duty_type_id)
-    days_served = (original_end_date - h.pull_date).days + 1
-    if dt and days_served > 0:
-        delta = dt.score_per_day * days_served * h.callup_multiplier
-        pulled_soldier = session.get(Soldier, h.pulled_soldier_id)
-        adj = ScoreAdjustment(
-            soldier_id=h.replacement_soldier_id,
-            delta=delta,
-            reason=f"הקפצה פיקודית — {pulled_soldier.full_name if pulled_soldier else ''}",
-            created_by=actor.id,
-        )
-        session.add(adj)
 
     h.status = "approved"
     h.approver_id = actor.id

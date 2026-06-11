@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_password_changed
-from app.db.models import Soldier, TelegramLink
+from app.db.models import HierarchyNode, Soldier, TelegramLink
 from app.db.session import get_session
 from app.services import email_verification as ev_svc
 from app.services.settings_loader import get_setting
@@ -38,10 +38,28 @@ class MeResponse(BaseModel):
     last_alal_date: str | None = None
     email: str | None = None
     email_verified: bool = False
+    direct_commander_id: uuid.UUID | None = None
+    direct_commander_name: str | None = None
 
 
 class SetEmailRequest(BaseModel):
     email: str | None = Field(default=None, max_length=200)
+
+
+def _direct_commander(session: Session, s: Soldier) -> Soldier | None:
+    if s.hierarchy_node_id is None:
+        return None
+    node = session.get(HierarchyNode, s.hierarchy_node_id)
+    if node is None:
+        return None
+    if node.commander_id and node.commander_id != s.id:
+        return session.get(Soldier, node.commander_id)
+    if node.parent_id is None:
+        return None
+    parent = session.get(HierarchyNode, node.parent_id)
+    if parent is None or parent.commander_id is None or parent.commander_id == s.id:
+        return None
+    return session.get(Soldier, parent.commander_id)
 
 
 @router.get("", response_model=MeResponse)
@@ -62,6 +80,8 @@ def me(
 
     def _date(d) -> str | None:
         return str(d) if d is not None else None
+
+    commander = _direct_commander(session, user)
 
     return MeResponse(
         id=user.id,
@@ -84,6 +104,8 @@ def me(
         last_alal_date=_date(user.last_alal_date),
         email=user.email,
         email_verified=user.email_verified,
+        direct_commander_id=commander.id if commander else None,
+        direct_commander_name=commander.full_name if commander else None,
     )
 
 

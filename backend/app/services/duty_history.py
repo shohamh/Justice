@@ -1,6 +1,7 @@
 # backend/app/services/duty_history.py
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    AuditLog,
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
@@ -56,65 +58,69 @@ def _score_parts(
     *,
     date_from: date | None = None,
     date_to: date | None = None,
-) -> tuple[str, str]:
-    """Return (score_total, score_formula) for the given period of an assignment.
+) -> tuple[str, str, str]:
+    """Return (score_total, score_formula, segments_json) for the given period.
 
-    date_from / date_to optionally restrict computation to a sub-period (used
-    for call_up and dismissal events).  score_formula is an empty string when
-    there are no days in range or spd is zero.
-
-    Formula notation: "N × SPD × mult" per segment, joined by " + ".
+    segments_json is a JSON array of {"days", "spd", "mult", "type"} objects.
+    Returns ("0.0", "", "[]") when there are no days in range or spd is zero.
     """
     start = max(a.start_date, date_from) if date_from is not None else a.start_date
     end = min(a.end_date, date_to) if date_to is not None else a.end_date
 
     if start > end or spd == Decimal("0"):
-        return "0.0", ""
+        return "0.0", "", "[]"
 
-    def _day_mult(day: date) -> Decimal:
+    def _day_mult_and_type(day: date) -> tuple[Decimal, str]:
+        if a.forced_call_up_multiplier is not None:
+            return a.forced_call_up_multiplier, "forced_call_up"
+        if any(df <= day <= dt for df, dt in dismissal_ranges):
+            return dismissed_mult, "dismissed"
         if a.is_reserve:
             if (
                 a.called_up_from is not None
                 and a.called_up_to is not None
                 and a.called_up_from <= day <= a.called_up_to
             ):
-                return called_up_mult
-            return standby_mult
-        if any(df <= day <= dt for df, dt in dismissal_ranges):
-            return dismissed_mult
-        return Decimal("1.0")
+                return called_up_mult, "reserve_called_up"
+            return standby_mult, "reserve_standby"
+        return Decimal("1.0"), "regular"
 
-    # Group consecutive days by multiplier to build formula segments
-    segments: list[tuple[int, Decimal]] = []
-    cur_mult: Decimal | None = None
+    # Group consecutive days by (mult, seg_type)
+    segments: list[tuple[int, Decimal, str]] = []
+    cur_key: tuple[Decimal, str] | None = None
     cur_count = 0
 
     day = start
     while day <= end:
-        m = _day_mult(day)
-        if m == cur_mult:
+        m, t = _day_mult_and_type(day)
+        key = (m, t)
+        if key == cur_key:
             cur_count += 1
         else:
-            if cur_mult is not None:
-                segments.append((cur_count, cur_mult))
-            cur_mult = m
+            if cur_key is not None:
+                segments.append((cur_count, cur_key[0], cur_key[1]))
+            cur_key = key
             cur_count = 1
         day += timedelta(days=1)
-    if cur_mult is not None:
-        segments.append((cur_count, cur_mult))
+    if cur_key is not None:
+        segments.append((cur_count, cur_key[0], cur_key[1]))
 
-    total: Decimal = sum(Decimal(str(count)) * spd * mult for count, mult in segments)
+    total: Decimal = sum(Decimal(str(count)) * spd * mult for count, mult, _ in segments)
     formula = " + ".join(
-        f"{count} × {_fmt(spd)} × {_fmt(mult)}" for count, mult in segments
+        f"{count} × {_fmt(spd)} × {_fmt(mult)}" for count, mult, _ in segments
     )
-    return _fmt(total), formula
+    segments_json = json.dumps([
+        {"days": count, "spd": _fmt(spd), "mult": _fmt(mult), "type": seg_type}
+        for count, mult, seg_type in segments
+    ])
+    return _fmt(total), formula, segments_json
 
 
 def _isodate(d: date | None) -> str | None:
     return d.isoformat() if d else None
 
 
-def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEvent]:
+def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bool = False) -> list[TimelineEvent]:
     from app.services.scoring import _get_multiplier_setting
 
     standby_mult = _get_multiplier_setting(
@@ -130,11 +136,15 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
     events: list[TimelineEvent] = []
 
     # --- DutyAssignment events (assignment & cancellation & call_up) ---
+    excluded_statuses = ["algorithm_rejected"]
+    if not include_drafts:
+        excluded_statuses.append("algorithm_draft")
+
     assignments = list(
         session.execute(
             select(DutyAssignment).where(
                 DutyAssignment.soldier_id == soldier_id,
-                DutyAssignment.status.not_in(["algorithm_draft", "algorithm_rejected"]),
+                DutyAssignment.status.not_in(excluded_statuses),
             )
         ).scalars().all()
     )
@@ -171,7 +181,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
 
         # call_up event — if this assignment has called_up_from set
         if a.called_up_from is not None and a.called_up_to is not None:
-            cu_total, cu_formula = _score_parts(
+            cu_total, cu_formula, cu_segments = _score_parts(
                 a,
                 dismissal_ranges,
                 spd,
@@ -187,6 +197,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 "duty_assignment_id": str(a.id),
                 "is_reserve": "true",
                 "score_total": cu_total,
+                "score_segments": cu_segments,
             }
             if cu_formula:
                 cu_metadata["score_formula"] = cu_formula
@@ -227,7 +238,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 )
             )
         else:
-            asgn_total, asgn_formula = _score_parts(
+            asgn_total, asgn_formula, asgn_segments = _score_parts(
                 a,
                 dismissal_ranges,
                 spd,
@@ -244,7 +255,17 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 "is_reserve": "true" if a.is_reserve else "false",
                 "called_up": "true" if a.called_up_from is not None else "false",
                 "score_total": asgn_total,
+                "score_segments": asgn_segments,
             }
+            if a.status == "algorithm_draft":
+                job_id_str = session.execute(
+                    select(AuditLog.context["job_id"].astext).where(
+                        AuditLog.action == "algorithm.proposal.create",
+                        AuditLog.entity_id == a.id,
+                    ).limit(1)
+                ).scalar_one_or_none()
+                if job_id_str:
+                    asgn_metadata["job_id"] = job_id_str
             if asgn_formula:
                 asgn_metadata["score_formula"] = asgn_formula
             events.append(
@@ -263,7 +284,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
 
         # dismissal events linked to this assignment
         for d in dismissals:
-            dis_total, dis_formula = _score_parts(
+            dis_total, dis_formula, dis_segments = _score_parts(
                 a,
                 dismissal_ranges,
                 spd,
@@ -278,6 +299,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 "location_name": loc_name,
                 "duty_assignment_id": str(a.id),
                 "score_total": dis_total,
+                "score_segments": dis_segments,
             }
             if dis_formula:
                 dis_metadata["score_formula"] = dis_formula

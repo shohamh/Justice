@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import time
 from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,12 @@ class DutyTypeOut(BaseModel):
     requirements: dict[str, Any] = {}
     reserve_ratio: Decimal = Decimal("0.000")
     reserve_minimum: int = 0
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    instructions: str | None = None
+    is_external: bool = False
 
 
 class CreateDutyTypeRequest(BaseModel):
@@ -45,6 +52,19 @@ class CreateDutyTypeRequest(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     reserve_ratio: Decimal = Field(default=Decimal("0.000"), ge=0, le=1)
     reserve_minimum: int = Field(default=0, ge=0)
+    contact_name: str | None = Field(default=None, max_length=200)
+    contact_phone: str | None = Field(default=None, max_length=50)
+    start_time: time | None = None
+    end_time: time | None = None
+    instructions: str | None = Field(default=None)
+    is_external: bool  # required — no default
+
+    @field_validator("instructions")
+    @classmethod
+    def validate_instructions_word_count(cls, v: str | None) -> str | None:
+        if v is not None and len(v.split()) > 300:
+            raise ValueError("instructions must be at most 300 words")
+        return v
 
 
 class UpdateDutyTypeRequest(BaseModel):
@@ -55,6 +75,19 @@ class UpdateDutyTypeRequest(BaseModel):
     requirements: dict[str, Any] | None = None
     reserve_ratio: Decimal | None = Field(default=None, ge=0, le=1)
     reserve_minimum: int | None = Field(default=None, ge=0)
+    contact_name: str | None = Field(default=None, max_length=200)
+    contact_phone: str | None = Field(default=None, max_length=50)
+    start_time: time | None = None
+    end_time: time | None = None
+    instructions: str | None = Field(default=None)
+    is_external: bool | None = None
+
+    @field_validator("instructions")
+    @classmethod
+    def validate_instructions_word_count(cls, v: str | None) -> str | None:
+        if v is not None and len(v.split()) > 300:
+            raise ValueError("instructions must be at most 300 words")
+        return v
 
 
 def _dt_out(d: DutyType) -> DutyTypeOut:
@@ -67,6 +100,12 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         requirements=d.requirements or {},
         reserve_ratio=d.reserve_ratio or Decimal("0.000"),
         reserve_minimum=d.reserve_minimum or 0,
+        contact_name=d.contact_name,
+        contact_phone=d.contact_phone,
+        start_time=d.start_time,
+        end_time=d.end_time,
+        instructions=d.instructions,
+        is_external=d.is_external,
     )
 
 
@@ -91,6 +130,12 @@ def create_duty_type(
             description=body.description,
             reserve_ratio=body.reserve_ratio,
             reserve_minimum=body.reserve_minimum,
+            contact_name=body.contact_name,
+            contact_phone=body.contact_phone,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            instructions=body.instructions,
+            is_external=body.is_external,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
@@ -121,6 +166,12 @@ def update_duty_type(
             requirements=body.requirements,
             reserve_ratio=body.reserve_ratio,
             reserve_minimum=body.reserve_minimum,
+            contact_name=body.contact_name,
+            contact_phone=body.contact_phone,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            instructions=body.instructions,
+            is_external=body.is_external,
         )
         if body.active is not None:
             svc.set_duty_type_active(session, duty_type=dt, active=body.active, actor_id=user.id)

@@ -51,7 +51,7 @@ def test_rbac_duty_config_role_gate(client: TestClient, admin_session: Session):
     dm = create_soldier(admin_session, personal_number="5300002", role="duty_manager")
     cmd = create_soldier(admin_session, personal_number="5300003", role="commander")
     sol = create_soldier(admin_session, personal_number="5300004", role="soldier")
-    payload = {"name": "rbac-dt", "score_per_day": "1.00"}
+    payload = {"name": "rbac-dt", "score_per_day": "1.00", "is_external": False}
     assert (
         client.post(
             "/api/duty-config/duty-types", headers=auth_headers(admin), json=payload
@@ -62,7 +62,7 @@ def test_rbac_duty_config_role_gate(client: TestClient, admin_session: Session):
         client.post(
             "/api/duty-config/duty-types",
             headers=auth_headers(dm),
-            json={"name": "rbac-dt2", "score_per_day": "1.00"},
+            json={"name": "rbac-dt2", "score_per_day": "1.00", "is_external": False},
         ).status_code
         == 201
     )
