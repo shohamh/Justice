@@ -51,6 +51,8 @@ class SoldierOut(BaseModel):
     last_alal_date: date_type | None = None
     telegram_linked: bool = False
     email: str | None = None
+    direct_commander_id: uuid.UUID | None = None
+    direct_commander_name: str | None = None
 
 
 class OnboardRequest(BaseModel):
@@ -130,6 +132,24 @@ class SoldierScoreOut(BaseModel):
     normalised_score: Decimal
 
 
+def _direct_commander(session: Session, s: Soldier) -> Soldier | None:
+    """Return the soldier's direct commander from the hierarchy, skipping self."""
+    if s.hierarchy_node_id is None:
+        return None
+    node = session.get(HierarchyNode, s.hierarchy_node_id)
+    if node is None:
+        return None
+    if node.commander_id and node.commander_id != s.id:
+        return session.get(Soldier, node.commander_id)
+    # Soldier is their own node's commander — go up one level
+    if node.parent_id is None:
+        return None
+    parent = session.get(HierarchyNode, node.parent_id)
+    if parent is None or parent.commander_id is None or parent.commander_id == s.id:
+        return None
+    return session.get(Soldier, parent.commander_id)
+
+
 def _can_see_private_fields(session: Session, user: Soldier, target: Soldier) -> bool:
     """Private fields (gender, email) visible to self, commanders in chain, DMs, admins."""
     if user.id == target.id:
@@ -144,7 +164,13 @@ def _can_see_private_fields(session: Session, user: Soldier, target: Soldier) ->
     return False
 
 
-def _out(s: Soldier, *, include_private: bool = False, telegram_linked: bool = False) -> SoldierOut:
+def _out(
+    s: Soldier,
+    *,
+    include_private: bool = False,
+    telegram_linked: bool = False,
+    direct_commander: Soldier | None = None,
+) -> SoldierOut:
     return SoldierOut(
         id=s.id,
         personal_number=s.personal_number,
@@ -166,6 +192,8 @@ def _out(s: Soldier, *, include_private: bool = False, telegram_linked: bool = F
         last_alal_date=s.last_alal_date,
         telegram_linked=telegram_linked,
         email=s.email if include_private else None,
+        direct_commander_id=direct_commander.id if direct_commander else None,
+        direct_commander_name=direct_commander.full_name if direct_commander else None,
     )
 
 
@@ -383,7 +411,13 @@ def get_soldier(
             TelegramLink.is_verified == True,
         )
     ).scalar_one_or_none()
-    return _out(s, include_private=_can_see_private_fields(session, user, s), telegram_linked=link is not None)
+    commander = _direct_commander(session, s)
+    return _out(
+        s,
+        include_private=_can_see_private_fields(session, user, s),
+        telegram_linked=link is not None,
+        direct_commander=commander,
+    )
 
 
 @router.patch("/{soldier_id}", response_model=SoldierOut)

@@ -21,6 +21,8 @@ export interface SoldierDTO {
   last_alal_date: string | null;
   telegram_linked: boolean;
   email?: string | null;
+  direct_commander_id?: string | null;
+  direct_commander_name?: string | null;
 }
 
 export interface OnboardResult extends SoldierDTO {
