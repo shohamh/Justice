@@ -37,6 +37,12 @@ def create_request(
         raise SwapError("not_published")
     if target_soldier_id is not None and target_soldier_id == requesting_soldier_id:
         raise SwapError("cannot_target_self")
+    if target_soldier_id is not None:
+        eligible, reason = check_soldier_for_assignment(
+            session, target_soldier_id, duty_assignment_id
+        )
+        if not eligible:
+            raise SwapError(f"cover_not_eligible:{reason}")
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,

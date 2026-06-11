@@ -276,3 +276,16 @@ def test_take_free_blocked_when_covering_has_constraint(admin_session):
         assert False, "expected SwapError"
     except svc.SwapError as exc:
         assert str(exc).startswith("cover_not_eligible:")
+
+
+def test_create_direct_request_blocked_when_target_has_constraint(admin_session):
+    a, b, assignment = _seed(admin_session)
+    _approved_constraint(admin_session, b.id, assignment.start_date, assignment.end_date)
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+            target_soldier_id=b.id, reason="cover me", actor_id=a.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc).startswith("cover_not_eligible:")
