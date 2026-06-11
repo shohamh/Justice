@@ -419,3 +419,72 @@ def test_cancellation_score_is_zero(admin_session, soldier, duty_type, location)
 
     assert ev.metadata["score_total"] == "0.0"
     assert "score_formula" not in ev.metadata
+
+
+def test_draft_hidden_by_default(admin_session, soldier, duty_type, location):
+    """algorithm_draft assignment does NOT appear when include_drafts is False."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="algorithm_draft",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id)
+    assert events == []
+
+
+def test_draft_shown_with_include_drafts(admin_session, soldier, duty_type, location):
+    """algorithm_draft assignment appears when include_drafts=True."""
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="algorithm_draft",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id, include_drafts=True)
+
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.event_type == "assignment"
+    assert ev.status == "algorithm_draft"
+
+
+def test_draft_metadata_includes_job_id(admin_session, soldier, duty_type, location):
+    """Draft assignment metadata includes job_id when an audit log entry exists."""
+    import uuid as _uuid
+    from app.db.models import AuditLog
+
+    a = DutyAssignment(
+        soldier_id=soldier.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=location.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 12),
+        status="algorithm_draft",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    fake_job_id = str(_uuid.uuid4())
+    audit = AuditLog(
+        action="algorithm.proposal.create",
+        entity_type="duty_assignment",
+        entity_id=a.id,
+        context={"job_id": fake_job_id},
+    )
+    admin_session.add(audit)
+    admin_session.flush()
+
+    events = get_duty_history(admin_session, soldier.id, include_drafts=True)
+    ev = events[0]
+    assert ev.metadata["job_id"] == fake_job_id

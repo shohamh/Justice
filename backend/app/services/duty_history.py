@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    AuditLog,
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
@@ -119,7 +120,7 @@ def _isodate(d: date | None) -> str | None:
     return d.isoformat() if d else None
 
 
-def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEvent]:
+def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bool = False) -> list[TimelineEvent]:
     from app.services.scoring import _get_multiplier_setting
 
     standby_mult = _get_multiplier_setting(
@@ -135,11 +136,15 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
     events: list[TimelineEvent] = []
 
     # --- DutyAssignment events (assignment & cancellation & call_up) ---
+    excluded_statuses = ["algorithm_rejected"]
+    if not include_drafts:
+        excluded_statuses.append("algorithm_draft")
+
     assignments = list(
         session.execute(
             select(DutyAssignment).where(
                 DutyAssignment.soldier_id == soldier_id,
-                DutyAssignment.status.not_in(["algorithm_draft", "algorithm_rejected"]),
+                DutyAssignment.status.not_in(excluded_statuses),
             )
         ).scalars().all()
     )
@@ -252,6 +257,15 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID) -> list[TimelineEv
                 "score_total": asgn_total,
                 "score_segments": asgn_segments,
             }
+            if a.status == "algorithm_draft":
+                job_id_str = session.execute(
+                    select(AuditLog.context["job_id"].astext).where(
+                        AuditLog.action == "algorithm.proposal.create",
+                        AuditLog.entity_id == a.id,
+                    ).limit(1)
+                ).scalar_one_or_none()
+                if job_id_str:
+                    asgn_metadata["job_id"] = job_id_str
             if asgn_formula:
                 asgn_metadata["score_formula"] = asgn_formula
             events.append(
