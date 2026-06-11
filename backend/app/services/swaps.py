@@ -12,6 +12,7 @@ from app.services import assignments as assignments_svc
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.reserves import check_reserve_cap
+from app.services.eligibility import check_soldier_for_assignment
 
 
 class SwapError(Exception):
@@ -167,6 +168,11 @@ def claim_request(
         raise SwapError("not_targeted_at_you")
     if session.get(Soldier, covering_soldier_id) is None:
         raise SwapError("soldier_not_found")
+    eligible, reason = check_soldier_for_assignment(
+        session, covering_soldier_id, req.duty_assignment_id
+    )
+    if not eligible:
+        raise SwapError(f"cover_not_eligible:{reason}")
     req.covering_soldier_id = covering_soldier_id
     before_status = req.status
     if _require_approval(session):
@@ -292,7 +298,7 @@ def take_free(
     assignment_id: uuid.UUID,
     covering_soldier_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
-) -> SwapRequest:
+) -> tuple[SwapRequest, list[str]]:
     """Proactively take another soldier's entire shift without requiring a prior swap request."""
     assignment = session.get(DutyAssignment, assignment_id)
     if assignment is None:
@@ -310,6 +316,8 @@ def take_free(
     if existing is not None:
         raise SwapError("already_pending")
 
+    warnings: list[str] = []
+
     if assignment.is_reserve:
         try:
             allow = bool(get_setting(session, "reserves.allow_take_free"))
@@ -318,12 +326,27 @@ def take_free(
         if not allow:
             raise SwapError("reserve_take_free_disabled")
 
+        try:
+            window = int(get_setting(session, "reserves.window_days"))
+        except SettingNotFound:
+            window = 30
+
         passes, current, max_days = check_reserve_cap(
             session, covering_soldier_id,
             assignment.start_date, assignment.end_date,
         )
         if not passes:
-            raise SwapError(f"reserve_cap_exceeded:{current}/{max_days}")
+            raise SwapError(f"reserve_cap_exceeded:{current}/{max_days}/{window}")
+
+        headroom = max_days - current
+        if 0 <= headroom <= 3:
+            warnings.append(f"reserve_cap_near:{current}/{max_days}/{window}")
+
+    eligible, reason = check_soldier_for_assignment(
+        session, covering_soldier_id, assignment_id
+    )
+    if not eligible:
+        raise SwapError(f"cover_not_eligible:{reason}")
 
     req = SwapRequest(
         duty_assignment_id=assignment_id,
@@ -358,7 +381,7 @@ def take_free(
         },
     )
     session.flush()
-    return req
+    return req, warnings
 
 
 def cover_offer(
@@ -377,7 +400,11 @@ def cover_offer(
         raise SwapError("swap_not_open")
     if req.requesting_soldier_id == covering_soldier_id:
         raise SwapError("cannot_cover_own_swap")
-
+    eligible, reason = check_soldier_for_assignment(
+        session, covering_soldier_id, req.duty_assignment_id
+    )
+    if not eligible:
+        raise SwapError(f"cover_not_eligible:{reason}")
     req.covering_soldier_id = covering_soldier_id
     req.offered_assignment_ids = [str(aid) for aid in offered_assignment_ids]
 

@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, Soldier, SwapRequest, SystemSetting
+from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, PersonalConstraint, Soldier, SwapRequest, SystemSetting
 from app.services import swaps as svc
 from app.services.settings_loader import set_setting
 
@@ -179,14 +179,15 @@ def test_take_free_reserve_blocked_when_cap_exceeded(admin_session):
         svc.take_free(admin_session, assignment_id=reserve_a.id, covering_soldier_id=taker.id, actor_id=taker.id)
         assert False, "expected SwapError"
     except svc.SwapError as exc:
-        assert str(exc) == "reserve_cap_exceeded:21/14"
+        assert str(exc) == "reserve_cap_exceeded:21/14/30"
 
 
 def test_take_free_reserve_succeeds_under_cap(admin_session):
     owner, taker, reserve_a, _, _ = _seed_with_reserve(admin_session)
     # No existing reserves for taker → under cap
-    result = svc.take_free(admin_session, assignment_id=reserve_a.id, covering_soldier_id=taker.id, actor_id=taker.id)
+    result, warnings = svc.take_free(admin_session, assignment_id=reserve_a.id, covering_soldier_id=taker.id, actor_id=taker.id)
     assert result.status in ("open", "applied")
+    assert warnings == []
 
 
 def test_take_free_primary_unaffected_by_reserve_setting(admin_session):
@@ -197,3 +198,81 @@ def test_take_free_primary_unaffected_by_reserve_setting(admin_session):
     # Should succeed — primary assignment, not reserve
     result = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=b.id, actor_id=b.id)
     assert result is not None
+
+
+def _approved_constraint(session, soldier_id, start, end):
+    c = PersonalConstraint(
+        soldier_id=soldier_id, start_date=start, end_date=end,
+        reason="busy", status="approved",
+    )
+    session.add(c)
+    session.flush()
+    return c
+
+
+def test_claim_blocked_when_covering_has_constraint(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", False, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    _approved_constraint(admin_session, b.id, assignment.start_date, assignment.end_date)
+    try:
+        svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc).startswith("cover_not_eligible:")
+
+
+def test_claim_blocked_when_covering_has_conflict_assignment(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", False, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    conflict = DutyAssignment(
+        soldier_id=b.id,
+        duty_type_id=assignment.duty_type_id,
+        duty_location_id=assignment.duty_location_id,
+        start_date=assignment.start_date,
+        end_date=assignment.end_date,
+        status="published",
+    )
+    admin_session.add(conflict)
+    admin_session.flush()
+    try:
+        svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc).startswith("cover_not_eligible:")
+
+
+def test_cover_offer_blocked_when_covering_has_constraint(admin_session):
+    a, b, assignment = _seed(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    _approved_constraint(admin_session, b.id, assignment.start_date, assignment.end_date)
+    try:
+        svc.cover_offer(admin_session, swap_id=req.id, covering_soldier_id=b.id,
+                        offered_assignment_ids=[], actor_id=b.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc).startswith("cover_not_eligible:")
+
+
+def test_take_free_blocked_when_covering_has_constraint(admin_session):
+    a, b, assignment = _seed(admin_session)
+    _approved_constraint(admin_session, b.id, assignment.start_date, assignment.end_date)
+    try:
+        svc.take_free(admin_session, assignment_id=assignment.id,
+                      covering_soldier_id=b.id, actor_id=b.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc).startswith("cover_not_eligible:")
