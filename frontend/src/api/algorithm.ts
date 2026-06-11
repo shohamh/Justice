@@ -181,3 +181,11 @@ export interface DraftsPreviewOut {
 export async function getDraftsPreview(): Promise<DraftsPreviewOut> {
   return (await api.get<DraftsPreviewOut>("/algorithm/drafts-preview")).data;
 }
+
+export async function acceptProposalDirect(assignmentId: string): Promise<void> {
+  await api.post(`/algorithm/proposals/${assignmentId}/accept`);
+}
+
+export async function rejectProposalDirect(assignmentId: string): Promise<void> {
+  await api.post(`/algorithm/proposals/${assignmentId}/reject`);
+}
