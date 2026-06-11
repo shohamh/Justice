@@ -719,7 +719,7 @@ def accept_proposal_direct(
         entity_id=a.id,
         before={"status": "algorithm_draft"},
         after={"status": "published"},
-        context={},
+        context={"source": "direct"},
     )
     session.commit()
     return {"status": "published"}
@@ -744,7 +744,7 @@ def reject_proposal_direct(
         entity_id=a.id,
         before={"status": "algorithm_draft"},
         after={"status": "algorithm_rejected"},
-        context={},
+        context={"source": "direct"},
     )
     session.commit()
     return {"status": "algorithm_rejected"}
