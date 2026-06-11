@@ -175,7 +175,7 @@ function EventCard({
                 {t("duty_history.draft_badge")}
               </span>
             )}
-            {badgeClass && (
+            {badgeClass && e.status !== "algorithm_draft" && (
               <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass}`}>
                 {t(`my_requests.${e.status}`)}
               </span>
