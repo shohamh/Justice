@@ -5,7 +5,7 @@ from datetime import date as date_type
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -365,6 +365,7 @@ _PUBLIC_EVENT_TYPES = {"assignment", "cancellation"}
 @router.get("/{soldier_id}/duty-history", response_model=list[TimelineEventOut])
 def get_soldier_duty_history(
     soldier_id: uuid.UUID,
+    include_drafts: bool = Query(False),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ):
@@ -375,7 +376,10 @@ def get_soldier_duty_history(
     if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
 
-    events = get_duty_history(session, soldier_id)
+    if include_drafts and user.role not in ("duty_manager", "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    events = get_duty_history(session, soldier_id, include_drafts=include_drafts)
 
     if is_plain_soldier and not is_self:
         events = [e for e in events if e.event_type in _PUBLIC_EVENT_TYPES]
