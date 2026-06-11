@@ -657,6 +657,7 @@
     "filter_dismissals": "שחרורים",
     "filter_exemption_requests": "בקשות פטור",
     "filter_constraints": "אילוצים אישיים",
+    "filter_drafts": "טיוטות",
     "empty": "אין אירועים להצגה",
     "upcoming": "תורנויות עתידיות",
     "past": "היסטוריה",
@@ -669,7 +670,8 @@
     "event_exemption_request": "בקשת פטור",
     "event_constraint": "אילוץ אישי",
     "reserve": "רזרבה",
-    "called_up": "הוקפץ"
+    "called_up": "הוקפץ",
+    "draft_badge": "טיוטה"
   },
   "upcoming_duty_alert": {
     "today": "היום",
