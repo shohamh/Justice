@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, getEligibleDuties } from "../api/swaps";
+import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, getEligibleDuties, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 
 interface Props {
@@ -45,6 +45,7 @@ export default function OfferSwapModal({
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +54,8 @@ export default function OfferSwapModal({
   const [busyAssignmentIds, setBusyAssignmentIds] = useState<Set<string>>(new Set());
   const [serverEligibility, setServerEligibility] = useState<Record<string, EligibilityResult>>({});
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [freeCoverCheck, setFreeCoverCheck] = useState<CoverEligibilityResult | null>(null);
+  const [freeCoverCheckLoading, setFreeCoverCheckLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -96,6 +99,14 @@ export default function OfferSwapModal({
   }, [targetSoldierId]);
 
   useEffect(() => {
+    setFreeCoverCheckLoading(true);
+    checkCoverEligibility(targetAssignmentId)
+      .then(setFreeCoverCheck)
+      .catch(() => setFreeCoverCheck({ eligible: true, reason: null }))
+      .finally(() => setFreeCoverCheckLoading(false));
+  }, [targetAssignmentId]);
+
+  useEffect(() => {
     if (!showInfo) return;
     function handle(e: MouseEvent) {
       if (infoRef.current && !infoRef.current.contains(e.target as Node)) {
@@ -110,8 +121,13 @@ export default function OfferSwapModal({
   const scorePerDay = targetDutyType ? parseFloat(targetDutyType.score_per_day) : null;
   const totalPoints = scorePerDay !== null ? Math.round(scorePerDay * days * 10) / 10 : null;
 
-  // Free take is blocked if the user already has any duty overlapping the target window
-  const freeBlocked = conflictingDuties.length > 0;
+  // Free take is blocked if the user has a scheduling conflict or is ineligible for the duty
+  const freeConflict = conflictingDuties.length > 0;
+  const freeIneligibleReason =
+    !freeCoverCheckLoading && freeCoverCheck && !freeCoverCheck.eligible
+      ? freeCoverCheck.reason
+      : null;
+  const freeBlocked = freeConflict || !!freeIneligibleReason;
 
   // Eligible duties to offer in swap mode:
   // - If the user has conflicting duties → only those (offering a non-conflicting duty
@@ -124,9 +140,19 @@ export default function OfferSwapModal({
 
   async function handleSubmit() {
     setError(null);
+    setWarning(null);
     try {
       if (mode === "free") {
-        await takeDutyFree(targetAssignmentId);
+        const result = await takeDutyFree(targetAssignmentId);
+        const capNear = result.warnings?.find((w) => w.startsWith("reserve_cap_near:"));
+        if (capNear) {
+          const m = capNear.match(/^reserve_cap_near:(\d+)\/(\d+)\/(\d+)$/);
+          if (m) {
+            const headroom = parseInt(m[2]) - parseInt(m[1]);
+            setWarning(t("errors.reserve_cap_near", { headroom, max: m[2], window: m[3] }));
+            return;
+          }
+        }
       } else {
         if (!selectedDuty) return;
         await createSwap({
@@ -138,11 +164,22 @@ export default function OfferSwapModal({
       onDone();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      if (detail) {
+        const capMatch = detail.match(/^reserve_cap_exceeded:(\d+)\/(\d+)\/(\d+)$/);
+        if (capMatch) {
+          setError(t("errors.reserve_cap_exceeded", { current: capMatch[1], max: capMatch[2], window: capMatch[3] }));
+        } else {
+          setError(detail);
+        }
+      } else {
+        setError("שגיאה");
+      }
     }
   }
 
-  const canSubmit = mode === "free" ? !freeBlocked : !!selectedDuty;
+  const canSubmit = mode === "free"
+    ? !freeBlocked && !freeCoverCheckLoading
+    : !!selectedDuty;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
@@ -202,9 +239,14 @@ export default function OfferSwapModal({
               )}
             </div>
           </div>
-          {freeBlocked && mode !== "free" && (
+          {freeConflict && mode !== "free" && (
             <p className="text-xs text-amber-600 dark:text-amber-400 pr-4">
               {t("swaps.free_blocked_conflict")}
+            </p>
+          )}
+          {freeIneligibleReason && mode !== "free" && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 pr-4">
+              {freeIneligibleReason}
             </p>
           )}
         </div>
@@ -279,24 +321,42 @@ export default function OfferSwapModal({
           </div>
         )}
 
+        {warning && (
+          <div className="mt-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+            <span>⚠️</span>
+            <div className="flex-1">{warning}</div>
+          </div>
+        )}
         {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300"
-          >
-            {t("swaps.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={!canSubmit}
-            className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {t("swaps.submit_offer")}
-          </button>
+          {warning ? (
+            <button
+              type="button"
+              onClick={onDone}
+              className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700"
+            >
+              {t("app.close")}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300"
+              >
+                {t("swaps.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={!canSubmit}
+                className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {t("swaps.submit_offer")}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
