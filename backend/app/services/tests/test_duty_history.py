@@ -8,6 +8,7 @@ from decimal import Decimal
 import pytest
 
 from app.db.models import (
+    AuditLog,
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
@@ -462,7 +463,6 @@ def test_draft_shown_with_include_drafts(admin_session, soldier, duty_type, loca
 def test_draft_metadata_includes_job_id(admin_session, soldier, duty_type, location):
     """Draft assignment metadata includes job_id when an audit log entry exists."""
     import uuid as _uuid
-    from app.db.models import AuditLog
 
     a = DutyAssignment(
         soldier_id=soldier.id,
