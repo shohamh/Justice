@@ -20,6 +20,11 @@ export interface SwapRequest {
   duty_location_id: string | null;
   duty_start_date: string | null;
   duty_end_date: string | null;
+  warnings?: string[];
+  requesting_soldier_name?: string | null;
+  covering_soldier_name?: string | null;
+  requesting_commander_name?: string | null;
+  covering_commander_name?: string | null;
 }
 
 export interface CreateSwapInput {
@@ -105,5 +110,19 @@ export async function submitCoverOffer(
   const res = await api.post<SwapRequest>(`/swaps/${swapId}/offer`, {
     offered_assignment_ids: offeredAssignmentIds,
   });
+  return res.data;
+}
+
+export interface CoverEligibilityResult {
+  eligible: boolean;
+  reason: string | null;
+}
+
+export async function checkCoverEligibility(
+  assignmentId: string,
+): Promise<CoverEligibilityResult> {
+  const res = await api.get<CoverEligibilityResult>(
+    `/swaps/${assignmentId}/cover-eligibility`,
+  );
   return res.data;
 }
