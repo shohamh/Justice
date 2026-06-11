@@ -430,8 +430,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soldierId, t]);
+  }, [soldierId, canManage, t]);
 
   useEffect(() => {
     if (!isActive) return;
