@@ -100,10 +100,12 @@ def test_solve_determinism() -> None:
 
 
 def test_settings_and_existing_have_reserve_caps() -> None:
-    # R defaults to the same value as T and is independent of it.
+    # R defaults to 15 (wider window than T=8 to allow reserve headroom).
     s = SolverSettings()
     assert s.T == 8
-    assert s.R == 8
+    assert s.R == 15
+    assert s.Wt == 14
+    assert s.Wr == 28
     s2 = SolverSettings(T=7, R=11)
     assert s2.R == 11
     # ExistingAssignment carries an is_reserve flag, default False.
@@ -154,7 +156,7 @@ def test_infeasibility_relaxation() -> None:
     # but T=1, W=2 allows at most 1 duty-day in any 2-day window.
     # The window [June 1, June 2] contains both → violates T=1.
     # The relaxation chain should raise T→2 and find a feasible solution.
-    result = solve(soldiers, duties, [], SolverSettings(T=1, W=2, time_limit_seconds=5))
+    result = solve(soldiers, duties, [], SolverSettings(T=1, Wt=2, Wr=4, time_limit_seconds=5))
     assert result.status in ("OPTIMAL", "FEASIBLE")
     assert len(result.relaxed) > 0  # T was relaxed
 
@@ -174,7 +176,8 @@ def test_golden_fixture(fixture_name: str) -> None:
     settings_dict = data["settings"]
     settings = SolverSettings(
         T=settings_dict["T"],
-        W=settings_dict["W"],
+        Wt=settings_dict.get("Wt", settings_dict.get("W", 14)),
+        Wr=settings_dict.get("Wr", settings_dict.get("W", 28)),
         alpha=__import__("decimal").Decimal(settings_dict.get("alpha", "1.0")),
         time_limit_seconds=settings_dict.get("time_limit_seconds", 30),
     )
@@ -548,7 +551,7 @@ def test_batched_solve_covers_all_and_balances_by_effort() -> None:
                   score_per_day=Decimal("1.00"))
         for d in range(24)
     ]
-    settings = SolverSettings(batching_enabled=True, batch_size=8, batch_time_limit_seconds=10, T=14, W=14)
+    settings = SolverSettings(batching_enabled=True, batch_window_days=8, batch_time_limit_seconds=10, T=14, Wt=14, Wr=28)
     result = solve(soldiers, duties, [], settings)
     assert result.status in ("OPTIMAL", "FEASIBLE")
     assert len(result.assignments) == 24  # full coverage across batches
@@ -590,18 +593,18 @@ def test_window_caps_split_reserve_and_real() -> None:
 
     # T=2, R=5: must cover all 6, but 6 > R=5 → INFEASIBLE.
     model, _ = build_model(soldiers=soldiers, duties=duties, existing=[],
-                           settings=SolverSettings(T=2, R=5, W=14))
+                           settings=SolverSettings(T=2, R=5, Wt=14, Wr=28))
     assert solver.Solve(model) == cp_model.INFEASIBLE
 
     # T=2, R=6: total fits under R, but only 2 of the 3 real duties may be taken...
     # coverage still forces all 3 real → infeasible on T=2.
     model2, _ = build_model(soldiers=soldiers, duties=duties, existing=[],
-                            settings=SolverSettings(T=2, R=6, W=14))
+                            settings=SolverSettings(T=2, R=6, Wt=14, Wr=28))
     assert solver.Solve(model2) == cp_model.INFEASIBLE
 
     # T=3, R=6: 3 real (== T) + 3 reserve (total 6 == R) → feasible.
     model3, x3 = build_model(soldiers=soldiers, duties=duties, existing=[],
-                             settings=SolverSettings(T=3, R=6, W=14))
+                             settings=SolverSettings(T=3, R=6, Wt=14, Wr=28))
     assert solver.Solve(model3) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assigned_real = sum(
         solver.Value(x3[(di, 0)])
@@ -623,7 +626,7 @@ def test_relaxation_relaxes_R_before_T() -> None:
         for i in range(8)  # 8 real duty-days in a 14-day window
     ]
     result = solve(soldiers, duties, [],
-                   SolverSettings(T=7, R=7, W=14, time_limit_seconds=5))
+                   SolverSettings(T=7, R=7, Wt=14, Wr=14, time_limit_seconds=5))
     assert result.status in ("OPTIMAL", "FEASIBLE")
     r_idx = next((i for i, r in enumerate(result.relaxed) if r.startswith("R")), None)
     t_idx = next((i for i, r in enumerate(result.relaxed) if r.startswith("T")), None)
@@ -657,12 +660,12 @@ def test_existing_reserve_counts_toward_R_not_T() -> None:
     # T=1 satisfied (1 real ≤ 1, existing reserves don't count toward T),
     # but R=2 violated (2 reserve + 1 real = 3 > 2) → INFEASIBLE.
     model, _ = build_model(soldiers=soldiers, duties=duties, existing=existing,
-                           settings=SolverSettings(T=1, R=2, W=14))
+                           settings=SolverSettings(T=1, R=2, Wt=14, Wr=28))
     assert solver.Solve(model) == cp_model.INFEASIBLE
 
     # R=3 gives headroom for the total → FEASIBLE, real duty assigned.
     model2, x2 = build_model(soldiers=soldiers, duties=duties, existing=existing,
-                             settings=SolverSettings(T=1, R=3, W=14))
+                             settings=SolverSettings(T=1, R=3, Wt=14, Wr=28))
     assert solver.Solve(model2) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assert solver.Value(x2[(0, 0)]) == 1
 
@@ -682,12 +685,12 @@ def test_relax_r_ceiling_is_configurable() -> None:
     # (T relaxes to 9 which covers all 10 duties... wait, T=9 < 10 so still INFEASIBLE).
     # So: use 5 duties (needs T≥5). Default T_MAX=9 covers it.
     duties5 = duties[:5]
-    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, W=14))
+    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14))
     assert result_default.status in ("OPTIMAL", "FEASIBLE")
     assert "T→5" in result_default.relaxed  # relaxed T from 3 to 5
 
     # With relax_t_ceiling=3 the chain cannot relax beyond T=3 → INFEASIBLE.
-    result_capped = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, W=14,
+    result_capped = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14,
                                                                 relax_r_ceiling=3,
                                                                 relax_t_ceiling=3))
     assert result_capped.status == "INFEASIBLE"
@@ -719,7 +722,7 @@ def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
         soldiers=soldiers,
         duties=[reserve_duty, real_duty],
         existing=[],
-        settings=SolverSettings(T=1, R=3, W=14, batching_enabled=True, batch_size=1,
+        settings=SolverSettings(T=1, R=3, Wt=14, Wr=14, batching_enabled=True, batch_window_days=1,
                                 time_limit_seconds=5),
     )
     assert result.status in ("OPTIMAL", "FEASIBLE"), (
@@ -730,3 +733,38 @@ def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
     assert not t_relaxed, (
         f"T was relaxed ({t_relaxed}), meaning the reserve was mis-counted as real"
     )
+
+
+def test_calendar_window_batches_groups_by_start_date():
+    """Calendar window batching must group duties whose start_date falls within
+    [window_start, window_start + batch_window_days), advancing the window start
+    to each new duty's date when that duty would exceed the window."""
+    from app.algorithm.solver import _calendar_window_batches
+    from app.algorithm.types import DutyBlock
+    import uuid
+    from datetime import date
+    from decimal import Decimal
+
+    def _blk(d: date) -> DutyBlock:
+        return DutyBlock(
+            id=uuid.uuid4(),
+            duty_type_id=uuid.uuid4(),
+            duty_location_id=uuid.uuid4(),
+            start_date=d,
+            end_date=d,
+            score_per_day=Decimal("1.0"),
+        )
+
+    # 3 duties in first window (Jan 1-28), 2 duties in second window (Feb 1-28)
+    duties = [
+        _blk(date(2027, 1, 1)),
+        _blk(date(2027, 1, 15)),
+        _blk(date(2027, 1, 28)),
+        _blk(date(2027, 2, 1)),
+        _blk(date(2027, 2, 20)),
+    ]
+    idxs = list(range(5))
+    batches = _calendar_window_batches(idxs, duties, batch_window_days=28)
+    assert len(batches) == 2
+    assert batches[0] == [0, 1, 2]
+    assert batches[1] == [3, 4]

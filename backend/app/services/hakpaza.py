@@ -136,7 +136,7 @@ def find_candidates(
         is_reserve=False,
     )
 
-    settings = SolverSettings(T=7, W=14, alpha=Decimal("2.0"), time_limit_seconds=10)
+    settings = SolverSettings(T=7, Wt=14, Wr=28, alpha=Decimal("2.0"), time_limit_seconds=10)
     result = solve(candidate_inputs, [remaining_block], existing, settings)
 
     assigned_ids = {a.soldier_id for a in result.assignments}

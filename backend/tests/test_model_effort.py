@@ -66,7 +66,7 @@ def test_new_soldier_gets_duties_over_veteran():
         DutyBlock(id=uuid.uuid4(), duty_type_id=dt_id, duty_location_id=loc_id,
                   start_date=date(2026, 7, 2), end_date=date(2026, 7, 2), score_per_day=Decimal("0.5")),
     ]
-    settings = SolverSettings(T=7, W=14, alpha=Decimal("1.0"), time_limit_seconds=10)
+    settings = SolverSettings(T=7, Wt=14, Wr=28, alpha=Decimal("1.0"), time_limit_seconds=10)
     result = solve([veteran, newbie], duties, [], settings)
     assert result.status in ("OPTIMAL", "FEASIBLE")
 
@@ -90,7 +90,7 @@ def test_model_builds_without_error_with_zero_effort():
                   score_per_day=Decimal("0.5"))
         for i in range(1, 4)
     ]
-    settings = SolverSettings(T=7, W=14, alpha=Decimal("1.0"), time_limit_seconds=10)
+    settings = SolverSettings(T=7, Wt=14, Wr=28, alpha=Decimal("1.0"), time_limit_seconds=10)
     result = solve(soldiers, duties, [], settings)
     assert result.status in ("OPTIMAL", "FEASIBLE")
     assert len(result.assignments) == 3

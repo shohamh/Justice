@@ -50,7 +50,7 @@ def solve(
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
     and after each batch completes, so callers can report real progress.
     """
-    if settings.batching_enabled and len(duties) > settings.batch_size:
+    if settings.batching_enabled:
         return _decomposed_solve(
             soldiers, duties, existing, settings, reserve_dist,
             cancel_event=cancel_event, progress_cb=progress_cb,
@@ -135,19 +135,27 @@ def _connected_components(
     return components
 
 
-def _date_batches(
-    duty_idxs_sorted: list[int], duties: Sequence[DutyBlock], batch_size: int
+def _calendar_window_batches(
+    duty_idxs_sorted: list[int], duties: Sequence[DutyBlock], batch_window_days: int
 ) -> list[list[int]]:
-    """Chronological batches of ~batch_size duties that never split a single date.
+    """Group duties into non-overlapping calendar windows of batch_window_days.
 
-    Keeping a date whole avoids cross-batch no-overlap conflicts (a soldier carried
-    as 'existing' from one batch can't take a same-date duty in the next).
+    Window N covers [window_start, window_start + batch_window_days). When the
+    next duty's start_date falls outside the current window, a new window opens
+    anchored at that duty's start_date. This keeps duties that couple via the
+    Wr density window in the same batch, reducing infeasibility-relaxation artifacts.
     """
+    if not duty_idxs_sorted:
+        return []
     batches: list[list[int]] = []
+    window_start = duties[duty_idxs_sorted[0]].start_date
     cur: list[int] = []
     for di in duty_idxs_sorted:
-        if cur and len(cur) >= batch_size and duties[di].start_date != duties[cur[-1]].start_date:
-            batches.append(cur)
+        d = duties[di]
+        if (d.start_date - window_start).days >= batch_window_days:
+            if cur:
+                batches.append(cur)
+            window_start = d.start_date
             cur = []
         cur.append(di)
     if cur:
@@ -180,7 +188,7 @@ def _decomposed_solve(
             continue  # duties with no eligible soldier → left unassigned (infeasible component)
         # Chronological order so duties that couple via the T/W window batch together.
         duty_idxs = sorted(duty_idxs, key=lambda di: (duties[di].start_date, str(duties[di].id)))
-        for batch in _date_batches(duty_idxs, duties, settings.batch_size):
+        for batch in _calendar_window_batches(duty_idxs, duties, settings.batch_window_days):
             if batch:
                 plan.append((soldier_idxs, batch))
 

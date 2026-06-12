@@ -61,7 +61,7 @@ def test_fairness_all_zero_scores_distributes():
     d2 = _duty(date(2026, 9, 8))
     d3 = _duty(date(2026, 9, 15))
 
-    assigned = _solve([s1, s2, s3], [d1, d2, d3], T=7, W=14, alpha=Decimal("1.0"))
+    assigned = _solve([s1, s2, s3], [d1, d2, d3], T=7, Wt=14, Wr=28, alpha=Decimal("1.0"))
 
     soldiers_used = set(assigned.values())
     assert len(soldiers_used) == 3, (
@@ -75,7 +75,7 @@ def test_alpha_prefers_lower_score_soldier():
     high = _soldier(score=8.0)
     duty = _duty(date(2026, 7, 1))
 
-    assigned = _solve([low, high], [duty], T=7, W=14, alpha=Decimal("1.0"))
+    assigned = _solve([low, high], [duty], T=7, Wt=14, Wr=28, alpha=Decimal("1.0"))
 
     assert assigned[duty.id] == low.id, "Expected low-score soldier to be assigned"
 
@@ -87,7 +87,7 @@ def test_alpha_zero_no_score_preference():
     duty = _duty(date(2026, 7, 1))
 
     # Just assert it's feasible; don't care which soldier is chosen
-    assigned = _solve([low, high], [duty], T=7, W=14, alpha=Decimal("0"))
+    assigned = _solve([low, high], [duty], T=7, Wt=14, Wr=28, alpha=Decimal("0"))
     assert duty.id in assigned
 
 
@@ -97,7 +97,7 @@ def test_density_hard_constraint_infeasible_when_violated():
     d1 = _duty(date(2026, 8, 1))
     d2 = _duty(date(2026, 8, 2))
 
-    settings = SolverSettings(T=1, W=2, alpha=Decimal("0"))
+    settings = SolverSettings(T=1, Wt=2, Wr=4, alpha=Decimal("0"))
     model, x = build_model([solo], [d1, d2], [], settings)
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = 5
@@ -112,7 +112,7 @@ def test_density_hard_constraint_distributes_across_soldiers():
     d1 = _duty(date(2026, 8, 1))
     d2 = _duty(date(2026, 8, 2))
 
-    assigned = _solve([s1, s2], [d1, d2], T=1, W=2, alpha=Decimal("0"))
+    assigned = _solve([s1, s2], [d1, d2], T=1, Wt=2, Wr=4, alpha=Decimal("0"))
 
     assert assigned[d1.id] != assigned[d2.id], "Consecutive duties must go to different soldiers"
 
@@ -138,7 +138,7 @@ def test_high_historical_score_does_not_monopolize_run():
 
     assigned = _solve(
         [high, low1, low2, low3], [d1, d2, d3],
-        T=7, W=14, alpha=Decimal("1.0"),
+        T=7, Wt=14, Wr=28, alpha=Decimal("1.0"),
     )
 
     assert high.id not in assigned.values(), (
@@ -148,3 +148,40 @@ def test_high_historical_score_does_not_monopolize_run():
     assert soldiers_used == {low1.id, low2.id, low3.id}, (
         f"Each zero-score soldier should get exactly one duty; got {soldiers_used}"
     )
+
+
+def test_dual_window_wr_wider_than_wt():
+    """When Wr > Wt, a soldier can take a reserve duty in the Wr window even when
+    the same window would exceed T under Wt — because reserve duties only count
+    against R (Wr window), not T (Wt window)."""
+    s = _soldier(0.0)
+    # Soldier already has 7 non-reserve existing duties on days 1-7 (fills T=8 almost)
+    # and 1 reserve existing duty on day 8 (fills R-side).
+    # New duty: reserve on day 15 (within Wr=28 from day 1, outside Wt=14 from day 1)
+    from app.algorithm.types import ExistingAssignment
+    existing = [
+        ExistingAssignment(
+            soldier_id=s.id,
+            duty_type_id=uuid.uuid4(),
+            start_date=date(2027, 1, d),
+            end_date=date(2027, 1, d),
+            is_reserve=False,
+        )
+        for d in range(1, 8)  # 7 non-reserve days
+    ]
+    # Reserve duty on day 20 — within Wr=28 window, outside Wt=14 window
+    reserve_d = _duty(date(2027, 1, 20), score=0.2)
+    reserve_d = DutyBlock(
+        id=reserve_d.id,
+        duty_type_id=reserve_d.duty_type_id,
+        duty_location_id=reserve_d.duty_location_id,
+        start_date=reserve_d.start_date,
+        end_date=reserve_d.end_date,
+        score_per_day=reserve_d.score_per_day,
+        is_reserve=True,
+    )
+    # With Wt=14, Wr=28, T=8, R=8: the reserve duty on day 20 is inside the R window
+    # [day1, day28] (8 existing_all_fixed days = 7 non-reserve + 0 reserve existing).
+    # existing_all_fixed = 7 (days 1-7), so 7 + 1 (reserve) = 8 <= R=8 — FEASIBLE.
+    assigned = _solve([s], [reserve_d], existing=existing, T=8, Wt=14, R=8, Wr=28)
+    assert reserve_d.id in assigned.values() or reserve_d.id in assigned

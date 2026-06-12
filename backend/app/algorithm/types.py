@@ -54,14 +54,16 @@ class ExistingAssignment:
 class SolverSettings:
     """CP-SAT solver configuration.
 
-    T: non-reserve (real) duty-day cap per rolling window
-    R: total duty-day cap per rolling window (incl. reserve); invariant T <= R
-    W: rolling window length in days
+    T: non-reserve duty-day cap per Wt rolling window
+    Wt: rolling window length (days) for the T (non-reserve) cap
+    R: total duty-day cap per Wr rolling window (incl. reserve); invariant T <= R
+    Wr: rolling window length (days) for the R (all-duties) cap
     alpha: score-preference weight (higher = stronger preference for low-score soldiers)
     """
     T: int = 8
-    R: int = 8
-    W: int = 14
+    Wt: int = 14
+    R: int = 15
+    Wr: int = 28
     alpha: Decimal = Decimal("1.0")
     time_limit_seconds: int = 30
     seed: int | None = None
@@ -70,11 +72,11 @@ class SolverSettings:
     effort_resolution: int = 10_000
     # Infeasibility relaxation ceilings: R relaxes first up to relax_r_ceiling,
     # then T relaxes up to relax_t_ceiling. Invariant: relax_t_ceiling <= relax_r_ceiling.
-    relax_r_ceiling: int = 12
+    relax_r_ceiling: int = 20
     relax_t_ceiling: int = 10
-    # Decomposition + chronological batching (keeps each L1 solve small/tractable).
+    # Decomposition + chronological calendar-window batching.
     batching_enabled: bool = True
-    batch_size: int = 50
+    batch_window_days: int = 28
     batch_time_limit_seconds: int = 10
 
 

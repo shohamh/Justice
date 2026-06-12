@@ -56,7 +56,8 @@ def build_model(
     model = CpModel()
     duty_list = list(duties)
     soldier_list = list(soldiers)
-    W = settings.W
+    Wt = settings.Wt
+    Wr = settings.Wr
     T = settings.T
     R = settings.R
 
@@ -219,39 +220,43 @@ def build_model(
         sorted_existing_all = sorted(existing_all)
         sorted_existing_real = sorted(existing_real)
 
+        # ── T cap: non-reserve duty-days per Wt-day rolling window ───────────
         ws = min_d
         while ws <= max_d:
-            we = ws + timedelta(days=W - 1)
-
-            existing_all_fixed = (
-                bisect.bisect_right(sorted_existing_all, we)
-                - bisect.bisect_left(sorted_existing_all, ws)
-            )
+            we = ws + timedelta(days=Wt - 1)
             existing_real_fixed = (
                 bisect.bisect_right(sorted_existing_real, we)
                 - bisect.bisect_left(sorted_existing_real, ws)
             )
-
-            # A duty overlaps window [ws, we] iff start_date ≤ we AND end_date ≥ ws.
             right = bisect.bisect_right(starts_sorted, we)
-            vars_all: list[IntVar] = []
             vars_real: list[IntVar] = []
             for i in range(right):
                 if ends_sorted[i] < ws:
                     continue
                 di = si_duties_sorted[i]
-                var = x[(di, si)]
-                vars_all.append(var)
                 if not duty_list[di].is_reserve:
-                    vars_real.append(var)
-
-            # R cap: all duty-days (reserve + real) in the window.
-            if vars_all or existing_all_fixed:
-                model.Add(existing_all_fixed + sum(vars_all) <= R)
-            # T cap: non-reserve duty-days only.
+                    vars_real.append(x[(di, si)])
             if vars_real or existing_real_fixed:
                 model.Add(existing_real_fixed + sum(vars_real) <= T)
+            ws += timedelta(days=1)
 
+        # ── R cap: all duty-days (reserve + real) per Wr-day rolling window ──
+        ws = min_d
+        while ws <= max_d:
+            we = ws + timedelta(days=Wr - 1)
+            existing_all_fixed = (
+                bisect.bisect_right(sorted_existing_all, we)
+                - bisect.bisect_left(sorted_existing_all, ws)
+            )
+            right = bisect.bisect_right(starts_sorted, we)
+            vars_all: list[IntVar] = []
+            for i in range(right):
+                if ends_sorted[i] < ws:
+                    continue
+                di = si_duties_sorted[i]
+                vars_all.append(x[(di, si)])
+            if vars_all or existing_all_fixed:
+                model.Add(existing_all_fixed + sum(vars_all) <= R)
             ws += timedelta(days=1)
 
     # Soft objective: hierarchy proximity for reserve blocks

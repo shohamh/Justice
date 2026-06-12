@@ -556,17 +556,18 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
 
     return SolverSettings(
         T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 8))),
-        R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 8))),
-        W=int(settings_json.get("W", _setting_int("algorithm.window_days", 14))),
+        R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 15))),
+        Wt=int(settings_json.get("Wt", settings_json.get("W", _setting_int("algorithm.window_days_t", 14)))),
+        Wr=int(settings_json.get("Wr", settings_json.get("W", _setting_int("algorithm.window_days_r", 28)))),
         alpha=Decimal(str(settings_json.get("alpha", 1.0))),
         time_limit_seconds=int(settings_json.get("time_limit_seconds", 30)),
         reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
         effort_resolution=_setting_int("fairness.effort_resolution", 10_000),
         batching_enabled=_setting_bool("algorithm.batching_enabled", True),
-        batch_size=_setting_int("algorithm.batch_size", 50),
+        batch_window_days=_setting_int("algorithm.batch_window_days", 28),
         batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
         relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
-        relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 12))),
+        relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
     )
 
 
@@ -645,7 +646,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session,
                     planning_start=planning_start,
                     planning_end=planning_end,
-                    W=settings.W,
+                    W=settings.Wr,
                 )
 
                 if not soldiers:

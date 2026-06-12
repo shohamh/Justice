@@ -142,7 +142,7 @@ def _new_spd(assigned: dict, soldiers: list[SoldierInput],
     return {s.id: new_score[s.id] / s.active_days for s in soldiers}
 
 
-STD = dict(T=7, W=14, alpha=Decimal("1.0"))
+STD = dict(T=7, Wt=14, Wr=28, alpha=Decimal("1.0"))
 
 # ─── Property 1: Convergence ──────────────────────────────────────────────────
 

@@ -67,7 +67,7 @@ from app.algorithm.types import EFFORT_SCALE, DutyBlock, SoldierInput, SolverSet
 
 # ─── Shared constants ─────────────────────────────────────────────────────────
 
-STD = dict(T=7, W=14, alpha=Decimal("1.0"))
+STD = dict(T=7, Wt=14, Wr=28, alpha=Decimal("1.0"))
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -332,7 +332,7 @@ def test_e2e_extreme_gap_low_absorbs_all(n_low: int, n_high: int, m: int, seed: 
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Settings for large-scale tests (daily spacing, permissive density)
-LARGE_STD = dict(T=14, W=14, alpha=Decimal("1.0"))
+LARGE_STD = dict(T=14, Wt=14, Wr=28, alpha=Decimal("1.0"))
 LARGE_TIMEOUT = 120
 
 
