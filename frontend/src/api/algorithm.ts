@@ -3,10 +3,17 @@ import { api } from "./client";
 export interface SolverSettings {
   K: number;
   T: number;
+  R: number;
   W: number;
   alpha: number;
   beta: number;
   time_limit_seconds: number;
+}
+
+export interface AlgorithmDefaults {
+  T: number;
+  R: number;
+  W: number;
 }
 
 export interface CreateJobRequest {
@@ -180,6 +187,10 @@ export interface DraftsPreviewOut {
 
 export async function getDraftsPreview(): Promise<DraftsPreviewOut> {
   return (await api.get<DraftsPreviewOut>("/algorithm/drafts-preview")).data;
+}
+
+export async function getAlgorithmDefaults(): Promise<AlgorithmDefaults> {
+  return (await api.get<AlgorithmDefaults>("/algorithm/defaults")).data;
 }
 
 export async function acceptProposalDirect(assignmentId: string): Promise<void> {

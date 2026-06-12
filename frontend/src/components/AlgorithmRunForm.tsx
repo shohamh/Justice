@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SolverSettings, submitJob } from "../api/algorithm";
+import { SolverSettings, submitJob, getAlgorithmDefaults } from "../api/algorithm";
 import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
@@ -12,7 +12,7 @@ interface Props {
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
-  K: 8, T: 7, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
+  K: 8, T: 7, R: 7, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
 };
 
 function todayStr() {
@@ -60,6 +60,12 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
   useEffect(() => {
     void loadShifts();
   }, [loadShifts]);
+
+  useEffect(() => {
+    void getAlgorithmDefaults()
+      .then(d => setSettings(s => ({ ...s, T: d.T, R: d.R, W: d.W })))
+      .catch(() => { /* keep hardcoded defaults if unavailable */ });
+  }, []);
 
   function toggleShift(id: string) {
     setSelectedShiftIds(prev =>
@@ -160,7 +166,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
       </button>
       {showSettings && (
         <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 dark:bg-gray-700 p-3 rounded">
-          {(["K", "T", "W", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
+          {(["K", "T", "R", "W", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
             <label key={key} className="block">
               {key}
               <input
