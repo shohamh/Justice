@@ -130,11 +130,14 @@ export default function OfferSwapModal({
   const freeBlocked = freeConflict || !!freeIneligibleReason;
 
   // Eligible duties to offer in swap mode:
-  // - If the user has conflicting duties → only those (offering a non-conflicting duty
-  //   would leave them double-assigned during the target window)
-  // - If no conflicts → all duties (they can take on the extra shift)
-  // In both cases, exclude duties that already have an open swap pending
-  const eligibleDuties = (conflictingDuties.length > 0 ? conflictingDuties : myDuties).filter(
+  // - 0 conflicts → all duties (user can take on the extra shift alongside their own)
+  // - 1 conflict  → only that duty (trading it away resolves the overlap)
+  // - 2+ conflicts → nothing (offering just one still leaves the user double-assigned)
+  const swapCandidates =
+    conflictingDuties.length === 0 ? myDuties :
+    conflictingDuties.length === 1 ? conflictingDuties :
+    [];
+  const eligibleDuties = swapCandidates.filter(
     (d) => !busyAssignmentIds.has(d.assignment_id)
   );
 
@@ -261,9 +264,11 @@ export default function OfferSwapModal({
           )
         ) : eligibleDuties.length === 0 ? (
           <p className="text-sm text-gray-500">
-            {conflictingDuties.length > 0
-              ? t("swaps.conflict_duties_all_busy")
-              : t("swaps.no_duties")}
+            {conflictingDuties.length > 1
+              ? t("swaps.multiple_conflicts_swap_blocked")
+              : conflictingDuties.length === 1
+                ? t("swaps.conflict_duties_all_busy")
+                : t("swaps.no_duties")}
           </p>
         ) : (
           <div className="space-y-3">

@@ -552,6 +552,7 @@
     "free_blocked_conflict": "לא ניתן לקחת בחינם — יש לך תורנות חופפת בתאריכים אלו",
     "must_offer_conflicting": "יש לך תורנות חופפת — ניתן להציע רק אותה להחלפה",
     "conflict_duties_all_busy": "התורנות החופפת כבר ממתינה להחלפה אחרת",
+    "multiple_conflicts_swap_blocked": "יש לך מספר תורנויות חופפות — לא ניתן להחליף כל אחת בנפרד",
     "tab_pending": "ממתינים לאישור",
     "none_pending": "אין החלפות ממתינות לאישורך",
     "side_requester": "מבקש ההחלפה",
