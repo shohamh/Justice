@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from app.db.models import (
+    DutyAssignment,
     DutyLocation,
     DutyType,
     PersonalConstraint,
@@ -129,3 +130,42 @@ def test_build_hierarchy_maps(admin_session):
     assert child.id in hier_children[root.id]
     assert soldier_node[s.id] == child.id
     assert s.id in node_soldiers[child.id]
+
+
+def test_load_existing_assignments_carries_is_reserve(admin_session):
+    s = create_soldier(admin_session, personal_number="alg_isres_001", role="soldier")
+    dt = _duty_type(admin_session, name="שמירה_isres")
+    loc = _location(admin_session, name="שער_isres")
+
+    real_assignment = DutyAssignment(
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 6, 10),
+        end_date=date(2026, 6, 10),
+        status="published",
+        is_reserve=False,
+    )
+    reserve_assignment = DutyAssignment(
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 6, 11),
+        end_date=date(2026, 6, 11),
+        status="published",
+        is_reserve=True,
+    )
+    admin_session.add(real_assignment)
+    admin_session.add(reserve_assignment)
+    admin_session.commit()
+
+    existing = load_existing_assignments(
+        admin_session,
+        planning_start=date(2026, 6, 10),
+        planning_end=date(2026, 6, 11),
+        W=14,
+    )
+
+    by_start = {ea.start_date: ea for ea in existing if ea.soldier_id == s.id}
+    assert by_start[date(2026, 6, 10)].is_reserve is False
+    assert by_start[date(2026, 6, 11)].is_reserve is True
