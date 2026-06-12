@@ -12,7 +12,7 @@ interface Props {
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
-  K: 8, T: 8, R: 8, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
+  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
 };
 
 function todayStr() {
@@ -63,7 +63,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
 
   useEffect(() => {
     void getAlgorithmDefaults()
-      .then(d => setSettings(s => ({ ...s, T: d.T, R: d.R, W: d.W })))
+      .then(d => setSettings(s => ({ ...s, T: d.T, Wt: d.Wt, R: d.R, Wr: d.Wr })))
       .catch(() => { /* keep hardcoded defaults if unavailable */ });
   }, []);
 
@@ -166,7 +166,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
       </button>
       {showSettings && (
         <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 dark:bg-gray-700 p-3 rounded">
-          {(["K", "T", "R", "W", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
+          {(["K", "T", "Wt", "R", "Wr", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
             <label key={key} className="block">
               {key}
               <input

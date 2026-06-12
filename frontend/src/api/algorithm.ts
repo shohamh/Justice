@@ -3,8 +3,9 @@ import { api } from "./client";
 export interface SolverSettings {
   K: number;
   T: number;
+  Wt: number;
   R: number;
-  W: number;
+  Wr: number;
   alpha: number;
   beta: number;
   time_limit_seconds: number;
@@ -12,8 +13,9 @@ export interface SolverSettings {
 
 export interface AlgorithmDefaults {
   T: number;
+  Wt: number;
   R: number;
-  W: number;
+  Wr: number;
 }
 
 export interface CreateJobRequest {
