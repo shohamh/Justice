@@ -115,6 +115,12 @@ class JobListOut(BaseModel):
     total: int
 
 
+class AlgorithmDefaultsOut(BaseModel):
+    T: int
+    R: int
+    W: int
+
+
 class DraftPreviewItem(BaseModel):
     assignment_id: uuid.UUID
     soldier_name: str
@@ -377,6 +383,17 @@ def create_job(
 
     background_tasks.add_task(run_algorithm_job, job.id, user.id)
     return {"id": str(job.id), "status": job.status}
+
+
+@router.get("/defaults", response_model=AlgorithmDefaultsOut)
+def get_algorithm_defaults(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> AlgorithmDefaultsOut:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    from app.services.algorithm_bridge import resolve_solver_settings
+    s = resolve_solver_settings(session, {})
+    return AlgorithmDefaultsOut(T=s.T, R=s.R, W=s.W)
 
 
 @router.get("/jobs", response_model=JobListOut)

@@ -58,6 +58,20 @@ def test_create_job_returns_202(client, admin_session):
     assert data["status"] == "pending"
 
 
+def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
+    from app.services.settings_loader import set_setting
+    dm, _node = _setup_dm(admin_session, "route_alg_def")
+    set_setting(admin_session, "algorithm.max_total_duties_per_window", 10, actor_id=None)
+    admin_session.commit()
+
+    resp = client.get("/api/algorithm/defaults", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["T"] == 7
+    assert body["R"] == 10
+    assert body["W"] == 14
+
+
 def test_create_job_rejects_T_greater_than_R(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_tr")
     shift, _dt, _loc = _make_shift(admin_session, "route_tr", "2027-07-02")
