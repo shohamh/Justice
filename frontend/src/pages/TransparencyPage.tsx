@@ -498,7 +498,7 @@ export default function TransparencyPage() {
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3" dir="rtl">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(2)}</p>
