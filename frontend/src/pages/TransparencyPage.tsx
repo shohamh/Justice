@@ -137,15 +137,41 @@ interface SubRow {
 
 function FairnessCard({ stats, helpText }: { stats: EffortStats | null; helpText?: string }) {
   const { t } = useTranslation();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const helpButton = helpText && (
+    <button
+      type="button"
+      onClick={() => setModalOpen(true)}
+      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs border border-gray-300 dark:border-gray-500 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
+    >
+      ?
+    </button>
+  );
+
+  const modal = modalOpen && helpText && (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setModalOpen(false)}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm whitespace-pre-line">{helpText}</p>
+        <div className="mt-4 text-left">
+          <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setModalOpen(false)}>סגור</button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!stats) {
     return (
-      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
-        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-          {t("transparency.effort_spread")}
-          {helpText && <span className="cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={helpText}>(?)</span>}
-        </p>
-        <p className="text-lg font-semibold text-gray-400">—</p>
-      </div>
+      <>
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+            {t("transparency.effort_spread")}
+            {helpButton}
+          </p>
+          <p className="text-lg font-semibold text-gray-400">—</p>
+        </div>
+        {modal}
+      </>
     );
   }
   const cvPct = stats.cv * 100;
@@ -156,19 +182,22 @@ function FairnessCard({ stats, helpText }: { stats: EffortStats | null; helpText
       : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700";
   const dotClass = cvPct < 25 ? "bg-green-500" : cvPct < 50 ? "bg-yellow-500" : "bg-red-500";
   return (
-    <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
-      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-        <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
-        {t("transparency.effort_spread")}
-        {helpText && <span className="cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={helpText}>(?)</span>}
-      </p>
-      <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
-      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-        <p>{t("transparency.effort_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
-        <p>{t("transparency.effort_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
-        <p>{t("transparency.effort_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
+    <>
+      <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
+        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+          <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
+          {t("transparency.effort_spread")}
+          {helpButton}
+        </p>
+        <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
+        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+          <p>{t("transparency.effort_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
+          <p>{t("transparency.effort_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
+          <p>{t("transparency.effort_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
+        </div>
       </div>
-    </div>
+      {modal}
+    </>
   );
 }
 
