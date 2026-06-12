@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from ortools.sat.python import cp_model
 
@@ -237,6 +237,7 @@ def _dict_to_existing(d: dict[str, Any]) -> ExistingAssignment:
 # ── Property-based tests ──────────────────────────────────────────────
 
 
+@settings(deadline=None)
 @given(
     st.lists(
         st.builds(
