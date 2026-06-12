@@ -169,7 +169,7 @@ def test_dual_window_wr_wider_than_wt():
         )
         for d in range(1, 8)  # 7 non-reserve days
     ]
-    # Reserve duty on day 20 — within Wr=28 window, outside Wt=14 window
+    # Reserve duty on day 20 — excluded from vars_real by the is_reserve flag, not by window position
     reserve_d = _duty(date(2027, 1, 20), score=0.2)
     reserve_d = DutyBlock(
         id=reserve_d.id,

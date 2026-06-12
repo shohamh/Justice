@@ -557,8 +557,8 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
     return SolverSettings(
         T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 8))),
         R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 15))),
-        Wt=int(settings_json.get("Wt", settings_json.get("W", _setting_int("algorithm.window_days_t", 14)))),
-        Wr=int(settings_json.get("Wr", settings_json.get("W", _setting_int("algorithm.window_days_r", 28)))),
+        Wt=int(settings_json.get("Wt", settings_json.get("W", _setting_int("algorithm.window_t", 14)))),
+        Wr=int(settings_json.get("Wr", settings_json.get("W", _setting_int("algorithm.window_r", 28)))),
         alpha=Decimal(str(settings_json.get("alpha", 1.0))),
         time_limit_seconds=int(settings_json.get("time_limit_seconds", 30)),
         reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),

@@ -186,7 +186,7 @@ def _decomposed_solve(
     for duty_idxs, soldier_idxs in components:
         if not soldier_idxs:
             continue  # duties with no eligible soldier → left unassigned (infeasible component)
-        # Chronological order so duties that couple via the T/W window batch together.
+        # Chronological order so duties that couple via the T/Wt and R/Wr windows batch together.
         duty_idxs = sorted(duty_idxs, key=lambda di: (duties[di].start_date, str(duties[di].id)))
         for batch in _calendar_window_batches(duty_idxs, duties, settings.batch_window_days):
             if batch:

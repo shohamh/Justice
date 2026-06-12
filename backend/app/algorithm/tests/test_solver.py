@@ -534,7 +534,7 @@ def test_connected_components_splits_disjoint_eligibility_groups() -> None:
 
 
 def test_batched_solve_covers_all_and_balances_by_effort() -> None:
-    """A run larger than batch_size is decomposed/batched, still covers every duty,
+    """A run spanning multiple calendar windows is decomposed/batched, still covers every duty,
     and routes new duties toward LOW-effort soldiers (high-effort get fewer)."""
     duty_type = uuid4()
     loc = uuid4()
