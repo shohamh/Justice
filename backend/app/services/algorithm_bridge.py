@@ -355,6 +355,7 @@ def load_existing_assignments(
             duty_type_id=a.duty_type_id,
             start_date=a.start_date,
             end_date=a.end_date,
+            is_reserve=a.is_reserve,
         )
         for a in rows
     ]
@@ -528,6 +529,47 @@ def _count_proposals_for_job(session: "Session", job: "AlgorithmJob") -> int:
     ).scalar_one()
 
 
+def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSettings:
+    """Build SolverSettings from per-run overrides layered over system-setting defaults.
+
+    Per-run keys in settings_json win; system settings win over dataclass defaults.
+    """
+    from app.services.settings_loader import get_setting
+
+    def _setting_int(key: str, default: int) -> int:
+        try:
+            return int(get_setting(session, key))
+        except Exception:
+            return default
+
+    def _setting_decimal(key: str, default: str) -> Decimal:
+        try:
+            return Decimal(str(get_setting(session, key)))
+        except Exception:
+            return Decimal(default)
+
+    def _setting_bool(key: str, default: bool) -> bool:
+        try:
+            return bool(get_setting(session, key))
+        except Exception:
+            return default
+
+    return SolverSettings(
+        T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
+        R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 7))),
+        W=int(settings_json.get("W", _setting_int("algorithm.window_days", 14))),
+        alpha=Decimal(str(settings_json.get("alpha", 1.0))),
+        time_limit_seconds=int(settings_json.get("time_limit_seconds", 30)),
+        reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
+        effort_resolution=_setting_int("fairness.effort_resolution", 10_000),
+        batching_enabled=_setting_bool("algorithm.batching_enabled", True),
+        batch_size=_setting_int("algorithm.batch_size", 50),
+        batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
+        relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 9))),
+        relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 11))),
+    )
+
+
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     from app.algorithm.explain import build_explanations
@@ -554,35 +596,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
             session.commit()
 
             try:
+                settings = resolve_solver_settings(session, job.settings_json)
+
                 def _setting_decimal(key: str, default: str) -> Decimal:
                     try:
                         return Decimal(str(get_setting(session, key)))
                     except Exception:
                         return Decimal(default)
 
-                def _setting_int(key: str, default: int) -> int:
-                    try:
-                        return int(get_setting(session, key))
-                    except Exception:
-                        return default
-
-                def _setting_bool(key: str, default: bool) -> bool:
-                    try:
-                        return bool(get_setting(session, key))
-                    except Exception:
-                        return default
-
-                settings = SolverSettings(
-                    T=int(job.settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
-                    W=int(job.settings_json.get("W", _setting_int("algorithm.window_days", 14))),
-                    alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
-                    time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
-                    reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
-                    effort_resolution=_setting_int("fairness.effort_resolution", 10_000),
-                    batching_enabled=_setting_bool("algorithm.batching_enabled", True),
-                    batch_size=_setting_int("algorithm.batch_size", 50),
-                    batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
-                )
                 standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
                 shift_ids = [uuid.UUID(s) for s in job.shift_ids]
