@@ -68,6 +68,16 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
+    label: "מגבלות צפיפות (אלגוריתם)",
+    settings: [
+      { key: "algorithm.max_duties_per_window", label: "מכסת תורנויות (ללא רזרבה) בחלון", description: "מספר תורנויות אמת מרבי לחייל בכל חלון נע (T). חייב להיות קטן או שווה למכסה הכוללת.", type: "number", defaultValue: 7 },
+      { key: "algorithm.max_total_duties_per_window", label: "מכסת תורנויות כוללת (כולל רזרבה) בחלון", description: "מספר התורנויות הכולל המרבי לחייל בכל חלון נע, כולל רזרבה (R).", type: "number", defaultValue: 7 },
+      { key: "algorithm.window_days", label: "אורך החלון (ימים)", description: "אורך החלון הנע בימים שבו נספרות המכסות (W).", type: "number", defaultValue: 14 },
+      { key: "algorithm.relax_t_ceiling", label: "תקרת הרפיה — תורנויות (ללא רזרבה)", description: "הערך המרבי שאליו ניתן להרפות את מכסת תורנויות האמת כשאין פתרון (ברירת מחדל 9).", type: "number", defaultValue: 9 },
+      { key: "algorithm.relax_r_ceiling", label: "תקרת הרפיה — תורנויות כוללת", description: "הערך המרבי שאליו ניתן להרפות את המכסה הכוללת כשאין פתרון (ברירת מחדל 11).", type: "number", defaultValue: 11 },
+    ],
+  },
+  {
     label: "פירוק ואצווה (אלגוריתם)",
     settings: [
       { key: "algorithm.batching_enabled", label: "פירוק ואצווה", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולאצוות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
