@@ -58,6 +58,24 @@ def test_create_job_returns_202(client, admin_session):
     assert data["status"] == "pending"
 
 
+def test_create_job_rejects_T_greater_than_R(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_tr")
+    shift, _dt, _loc = _make_shift(admin_session, "route_tr", "2027-07-02")
+    create_soldier(admin_session, personal_number="route_soldier_tr", role="soldier")
+
+    resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(shift.id)],
+            "mode": "shadow",
+            "settings": {"T": 9, "R": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
+        },
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "t_exceeds_r"
+
+
 def test_create_job_rejects_unknown_shift(client, admin_session):
     dm, _node = _setup_dm(admin_session, "route_alg_002")
 

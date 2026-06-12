@@ -53,6 +53,7 @@ def _compute_candidate_rank(
 class SolverSettingsIn(BaseModel):
     K: int = 8
     T: int = 7
+    R: int = 7
     W: int = 14
     alpha: float = 1.0
     time_limit_seconds: int = 30
@@ -335,6 +336,8 @@ def create_job(
 ) -> dict[str, Any]:
     if body.mode not in ("shadow", "dm_reviewed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_mode")
+    if body.settings.T > body.settings.R:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="t_exceeds_r")
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
     from app.services.shifts import get_shift_fill

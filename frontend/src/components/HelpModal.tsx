@@ -137,7 +137,7 @@ function AlgorithmTab() {
           { icon: "📊", title: "עומס רבעוני", desc: "מי שחלקו בתורנויות ברבעונים האחרונים נמוך מחבריו מקבל עדיפות. חייל חדש בעל עומס אפס יזכה בתורנויות עד שישתווה לשאר. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
-          { icon: "🔒", title: "איזון עומסים", desc: "האלגוריתם ממזער את הפער בין החייל עם העומס הגבוה ביותר לנמוך ביותר. אם אין מספיק חיילים כשירים, הפער עלול להישאר — האלגוריתם עושה את מיטבו בתוך האילוצים." },
+          { icon: "🔒", title: "איזון עומסים", desc: "האלגוריתם ממזער את סכום הסטיות המוחלטות מהממוצע (נורמת L1): כל חייל תורם |עומסו הצפוי − ממוצע| למטרה. פתרון שמפזר תורנויות בהפרשים שווים תמיד מנצח פתרון שיוצר חריגים. אם אין מספיק חיילים כשירים, האלגוריתם עושה מיטבו בתוך האילוצים." },
           { icon: "⏱️", title: "מגבלת עומס (T/W)", desc: "חייל לא יכול לקבל יותר מ-T ימי תורנות בכל חלון W ימים ברצף. זה מונע עומס יתר על חייל אחד." },
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
         ].map(({ icon, title, desc }) => (
@@ -439,7 +439,7 @@ function DeepDiveTab() {
 
       {/* ── Section 2: effort_score ── */}
       <section className="space-y-3">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 ניקוד עומס — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_score = A / D</code></h3>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 ניקוד עומס — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_score = A / W</code></h3>
         <p className="text-gray-700 dark:text-gray-300">
           לכל חייל מחושב ציון אחד — <strong>עומס רבעוני ממוצע</strong>. הוא מייצג: מתוך כל התורנויות שהיחידה עשתה,
           כמה אחוז נשא החייל בכל רבעון שהיה פעיל בו, בממוצע משוקלל.
@@ -461,9 +461,7 @@ function DeepDiveTab() {
                 { sym: "active_fracq", name: "שבר נוכחות", def: "חלק הרבעון שבו החייל היה פעיל (0–1). רבעון מלא = 1." },
                 { sym: "A", name: "עומס שנצבר", def: "Σ(shareq × active_fracq) על כל הרבעונים ההיסטוריים. ממוצע משוקלל של החלקים." },
                 { sym: "W", name: "היסטוריה כוללת", def: "Σ(active_fracq) על הרבעונים ההיסטוריים. סכום משקלי הנוכחות." },
-                { sym: "C", name: "רבעון נוכחי", def: "תמיד 1. מייצג סיבוב התכנון הנוכחי. נכנס למכנה בלבד — אין לו עדיין תרומה לעומס שנצבר." },
-                { sym: "D", name: "מכנה", def: "W + C" },
-                { sym: "effort_score", name: "עומס רבעוני", def: "A / D — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל." },
+                { sym: "effort_score", name: "עומס רבעוני", def: "A / W — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל." },
               ].map(({ sym, name, def }) => (
                 <tr key={sym} className="border-b border-gray-100 dark:border-gray-700">
                   <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{sym}</td>
@@ -475,15 +473,6 @@ function DeepDiveTab() {
           </table>
         </div>
 
-        <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
-          <p className="font-medium text-indigo-800 dark:text-indigo-200">💡 למה C תמיד 1?</p>
-          <p className="text-indigo-700 dark:text-indigo-300">
-            לפני כל סיבוב, המכנה של <em>כולם</em> גדל ב-1 — גם אם עוד לא שובצו תורנויות.
-            זה &quot;מדלל&quot; את הציון הנוכחי של כולם, ומכריח ותיקים להרוויח מחדש את חלקם.
-            חייל שישב בחופשה כל הרבעון לא יכול לנוח על ניקוד עבר.
-          </p>
-        </div>
-
         <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
           <p className="font-medium text-gray-800 dark:text-gray-200">📝 דוגמה</p>
           <p className="text-gray-600 dark:text-gray-300">
@@ -491,8 +480,8 @@ function DeepDiveTab() {
           </p>
           <ul className="list-none space-y-0.5 text-gray-600 dark:text-gray-300 pr-2">
             <li>A = 4 × 0.05 = 0.20</li>
-            <li>W = 4.0, C = 1.0, D = 5.0</li>
-            <li className="font-semibold text-indigo-700 dark:text-indigo-300">effort_score = 0.20 / 5.0 = 0.04 (4%)</li>
+            <li>W = 4.0</li>
+            <li className="font-semibold text-indigo-700 dark:text-indigo-300">effort_score = 0.20 / 4.0 = 0.05 (5%)</li>
           </ul>
         </div>
       </section>
@@ -533,7 +522,7 @@ function DeepDiveTab() {
                 },
                 {
                   name: "C_over_D",
-                  formula: "C / D",
+                  formula: "1 / W (או 1 אם W=0)",
                   meaning: "כמה מהמשקל הכולל מיוחס לסיבוב הנוכחי. גבוה לחיילים חדשים (W קטן), נמוך לוותיקים.",
                 },
                 {
@@ -555,9 +544,9 @@ function DeepDiveTab() {
         <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
           <p className="font-medium text-indigo-800 dark:text-indigo-200">💡 האינרציה של הוותיק</p>
           <p className="text-indigo-700 dark:text-indigo-300">
-            לחייל ותיק עם W=8 יש C_over_D = 1/(8+1) ≈ 0.11.
-            לחייל חדש עם W=0 יש C_over_D = 1/(0+1) = 1.0.
-            כלומר: אותה תורנות בדיוק מזיזה את ניקוד החדש פי 9 יותר מאשר את הוותיק.
+            לחייל ותיק עם W=8 יש C_over_D = 1/8 = 0.125.
+            לחייל חדש עם W=0 יש C_over_D = 1/1 = 1.0.
+            כלומר: אותה תורנות בדיוק מזיזה את ניקוד החדש פי 8 יותר מאשר את הוותיק.
             לחייל ותיק יש &quot;עמידות&quot; גבוהה יותר לשינויים — צריך הרבה תורנויות כדי להזיז אותו.
           </p>
         </div>
@@ -613,36 +602,35 @@ function DeepDiveTab() {
 
       {/* ── Section 5: L1 ── */}
       <section className="space-y-3">
-        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📏 מה זה L1? — מדיאנה, לא ממוצע</h3>
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">📏 מה זה L1? — ממוצע קבוע, לא חופשי</h3>
         <p className="text-gray-700 dark:text-gray-300">
           רוצים שכל הניקודים יהיו קרובים זה לזה. אבל &quot;קרוב&quot; ניתן להגדיר בשתי דרכים:
         </p>
 
         <div className="grid grid-cols-1 gap-2 text-xs">
           <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
-            <p className="font-semibold text-orange-800 dark:text-orange-200 mb-1">L2 — סכום ריבועי סטיות (הממוצע)</p>
-            <p className="font-mono text-orange-700 dark:text-orange-300 mb-1">Σ (projected_effort[i] − mean)²</p>
+            <p className="font-semibold text-orange-800 dark:text-orange-200 mb-1">L2 — סכום ריבועי סטיות</p>
+            <p className="font-mono text-orange-700 dark:text-orange-300 mb-1">Σ (projected_effort[i] − μ)²</p>
             <p className="text-orange-700 dark:text-orange-300">
               ריבוע הסטייה מעניש קשות על חריגים. ערך חריג אחד יכול לדחוף את כל השיבוצים
               בניסיון להקטין אותו — גם כשזה לא הוגן לשאר.
             </p>
           </div>
           <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800">
-            <p className="font-semibold text-green-800 dark:text-green-200 mb-1">L1 — סכום סטיות מוחלטות (המדיאנה) ✓</p>
-            <p className="font-mono text-green-700 dark:text-green-300 mb-1">Σ |projected_effort[i] − target|</p>
+            <p className="font-semibold text-green-800 dark:text-green-200 mb-1">L1 — סכום סטיות מוחלטות ✓</p>
+            <p className="font-mono text-green-700 dark:text-green-300 mb-1">Σ |projected_effort[i] − μ|</p>
             <p className="text-green-700 dark:text-green-300">
-              כל סטייה נספרת באותו משקל, ללא קנס על חריגים. הפתרון האופטימלי מושך את
-              <code className="mx-1">target</code> לכיוון <strong>המדיאנה</strong> — עמיד בפני ותיקים עם היסטוריה גבוהה מאוד.
+              כל סטייה נספרת באותו משקל, ללא קנס על חריגים. עמיד בפני ותיקים עם היסטוריה גבוהה מאוד.
             </p>
           </div>
         </div>
 
         <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs">
-          <p className="font-medium text-indigo-800 dark:text-indigo-200 mb-1">💡 משתנה target חופשי</p>
+          <p className="font-medium text-indigo-800 dark:text-indigo-200 mb-1">💡 μ — ממוצע קבוע שנקבע מראש</p>
           <p className="text-indigo-700 dark:text-indigo-300">
-            לא קובעים מראש מה המטרה. הפותר מוסיף משתנה שלם <code>target</code> ומוצא את ערכו יחד עם שאר המשתנים.
-            מתמטית, הערך האופטימלי של <code>target</code> הוא תמיד המדיאנה של הניקודים הצפויים —
-            הפותר &quot;מגלה&quot; זאת מעצמו.
+            המטרה <code>μ</code> אינה משתנה חופשי — היא מחושבת לפני הפעלת הפותר כ<strong>ממוצע</strong> של הניקודים הצפויים
+            (סכום ה-effort_offset של כל החיילים הכשירים, בתוספת אומדן העומס מהתורנויות החדשות, חלקי מספר החיילים).
+            הפותר לא &quot;מגלה&quot; את המטרה — היא קבועה מראש, והוא רק מחפש שיבוץ שממזמינם את הסטיות ממנה.
           </p>
         </div>
       </section>
@@ -654,20 +642,34 @@ function DeepDiveTab() {
           לכל חייל נוצר משתנה עזר <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">dev[i]</code> עם שני אילוצים:
         </p>
 
-        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre">{`dev[i] ≥  projected_effort[i] − target
-dev[i] ≥  target − projected_effort[i]`}</pre>
+        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre">{`dev[i] ≥  projected_effort[i] − μ
+dev[i] ≥  μ − projected_effort[i]`}</pre>
 
         <p className="text-gray-700 dark:text-gray-300 text-xs">
-          שני האילוצים האלה כופים ש-<code>dev[i] = |projected_effort[i] − target|</code>.
-          הפותר ימזער את <code>dev[i]</code> כמה שניתן — כי הוא מופיע בפונקציית המטרה:
+          שני האילוצים האלה כופים ש-<code>dev[i] = |projected_effort[i] − μ|</code>.
+          פונקציית המטרה היא <strong>ממוזגת</strong> מארבעה רכיבים עם משקולות היררכיים:
         </p>
 
-        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-indigo-700 dark:text-indigo-300 font-bold leading-relaxed whitespace-pre">{`Minimize  Σ dev[i]  +  dist_term`}</pre>
+        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-indigo-700 dark:text-indigo-300 font-bold leading-relaxed whitespace-pre">{`Maximize(
+  −1×10¹¹ × Σ dev[i]       ← L1: איזון עומסים  (דומיננטי)
+  −1×10⁶  × prior_term     ← המשכיות היסטורית
+  −1×10⁴  × count_spread   ← פיזור מספר תורנויות
+  −dist_term               ← קנס מרחק רזרבה
+)`}</pre>
 
-        <p className="text-gray-600 dark:text-gray-400 text-xs">
-          <code>dist_term</code> — קנס קטן על שיבוץ חיילי רזרבה ליחידות רחוקות בהיררכיה.
-          משמש כשובר שוויון בלבד — משקלו קטן בהרבה מסכום הסטיות.
-        </p>
+        <div className="space-y-1.5 text-xs text-gray-700 dark:text-gray-300">
+          {[
+            { term: "Σ dev[i]", desc: "סכום הסטיות המוחלטות מ-μ — רכיב האיזון הראשי. משקלו 1×10¹¹ גורם לו להיות דומיננטי לחלוטין." },
+            { term: "prior_term", desc: "ממזמין חריגה מהניקוד ההיסטורי של כל חייל — מונע שינויים חדים מסבב לסבב. משקל 1×10⁶." },
+            { term: "count_spread", desc: "ממזמין פיזור גולמי של מספר התורנויות (בלי משקל). משקל 1×10⁴ — שובר שוויון עדין." },
+            { term: "dist_term", desc: "קנס קטן על שיבוץ חיילי רזרבה ליחידות רחוקות בהיררכיה. משקל קטן בהרבה." },
+          ].map(({ term, desc }) => (
+            <div key={term} className="flex gap-2 bg-gray-50 dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-600">
+              <code className="shrink-0 text-indigo-700 dark:text-indigo-300 font-mono">{term}</code>
+              <span>{desc}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ── Section 7: Worked example ── */}
@@ -709,7 +711,8 @@ dev[i] ≥  target − projected_effort[i]`}</pre>
         </div>
 
         <p className="text-xs text-gray-600 dark:text-gray-400">
-          שים לב: <code>effort_per_milli</code> של יעל הוא 200 — פי 5 מהותיקים. כי C_over_D שלה = 1.0 (אין היסטוריה).
+          שים לב: <code>effort_per_milli</code> של יעל הוא 200 — פי 5 מהותיקים. כי C_over_D שלה = 1/1 = 1.0 (אין היסטוריה).
+          בקוד האמיתי μ מחושב פעם אחת לפני הפותר (ולא לכל שיבוץ בנפרד) — הדוגמה מפשטת זאת לצורך הבנה.
         </p>
 
         {/* Assignment A */}
@@ -718,12 +721,12 @@ dev[i] ≥  target − projected_effort[i]`}</pre>
           <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 0     =       0   ( 0%)
 projected[רוני]= 80,000 + 40  × 2,500 = 180,000  (18%)`}</pre>
-          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`target = מדיאנה = 140,000
-dev[דן]  = |140,000 − 140,000| =       0
-dev[יעל] = |      0 − 140,000| = 140,000
-dev[רוני]= |180,000 − 140,000| =  40,000
+          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 0 + 180,000) / 3 ≈ 106,667
+dev[דן]  = |140,000 − 106,667| =  33,333
+dev[יעל] = |      0 − 106,667| = 106,667
+dev[רוני]= |180,000 − 106,667| =  73,333
 ──────────────────────────────────────────
-סה"כ = 180,000`}</pre>
+סה"כ = 213,333`}</pre>
         </div>
 
         {/* Assignment B */}
@@ -732,12 +735,12 @@ dev[רוני]= |180,000 − 140,000| =  40,000
           <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 2,500 = 500,000  (50%)  ← זינוק!
 projected[רוני]=      80,000           =  80,000  ( 8%)`}</pre>
-          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`target = מדיאנה = 140,000
-dev[דן]  =       0
-dev[יעל] = 360,000
-dev[רוני]=  60,000
+          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 500,000 + 80,000) / 3 = 240,000
+dev[דן]  = |140,000 − 240,000| = 100,000
+dev[יעל] = |500,000 − 240,000| = 260,000
+dev[רוני]= | 80,000 − 240,000| = 160,000
 ──────────────────────────────────────────
-סה"כ = 420,000  ← פי 2.3 יותר גרוע!`}</pre>
+סה"כ = 520,000  ← פי ~2.4 יותר גרוע!`}</pre>
         </div>
 
         <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
@@ -782,12 +785,12 @@ export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b dark:border-gray-600 px-2 pt-1 overflow-x-auto" dir="rtl">
+        <div className="flex border-b dark:border-gray-600 px-2 pt-1 overflow-x-auto shrink-0" dir="rtl">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              className={`px-3 py-3 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "border-indigo-600 text-indigo-600"
                   : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"

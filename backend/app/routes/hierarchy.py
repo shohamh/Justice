@@ -147,6 +147,11 @@ def get_tree(
 ) -> list[NodeOut]:
     if user.role == "admin":
         nodes = session.execute(select(HierarchyNode)).scalars().all()
+    elif user.role == "soldier":
+        if user.hierarchy_node_id is None:
+            return []
+        node = session.get(HierarchyNode, user.hierarchy_node_id)
+        return [_out(node, session)] if node else []
     else:
         roots = scope_root_ids(session, user)
         if not roots:
