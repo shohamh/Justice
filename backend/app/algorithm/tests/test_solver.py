@@ -664,3 +664,31 @@ def test_existing_reserve_counts_toward_R_not_T() -> None:
                              settings=SolverSettings(T=1, R=3, W=14))
     assert solver.Solve(model2) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assert solver.Value(x2[(0, 0)]) == 1
+
+
+def test_relax_r_ceiling_is_configurable() -> None:
+    """A low relax_r_ceiling caps how far R is relaxed, leaving the problem INFEASIBLE."""
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    # 10 real duties in one window — needs T/R ≥ 10 to be feasible.
+    duties = [_single_day_duty(base + timedelta(days=i), duty_type, is_reserve=False)
+              for i in range(10)]
+
+    # With default ceilings (R=11, T=9) the chain relaxes and finds a solution
+    # (T relaxes to 9 which covers all 10 duties... wait, T=9 < 10 so still INFEASIBLE).
+    # So: use 5 duties (needs T≥5). Default T_MAX=9 covers it.
+    duties5 = duties[:5]
+    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, W=14))
+    assert result_default.status in ("OPTIMAL", "FEASIBLE")
+    assert "T→5" in result_default.relaxed  # relaxed T from 3 to 5
+
+    # With relax_t_ceiling=3 the chain cannot relax beyond T=3 → INFEASIBLE.
+    result_capped = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, W=14,
+                                                                relax_r_ceiling=3,
+                                                                relax_t_ceiling=3))
+    assert result_capped.status == "INFEASIBLE"
+    # No relaxation steps taken (already at ceiling).
+    assert result_capped.relaxed == []

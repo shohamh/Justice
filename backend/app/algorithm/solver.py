@@ -280,12 +280,9 @@ def _infeasibility_relaxation_chain(
     relaxed: list[str] = []
 
     # Two-stage density relaxation. R (total, incl. reserve) loosens first in
-    # hops of 2 up to 11, absorbing reserve overload before real-duty fairness
-    # is touched. Then T (real only) loosens in hops of 2 up to 9. The invariant
-    # T <= R holds throughout: R reaches 11 before T leaves 7.
-    R_MAX = 11
-    T_MAX = 9
-
+    # hops of 2 up to relax_r_ceiling, absorbing reserve overload before real-duty
+    # fairness is touched. Then T (real only) loosens up to relax_t_ceiling.
+    # The invariant T <= R holds throughout.
     while True:
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
         status_name = solver.StatusName(status)
@@ -295,12 +292,12 @@ def _infeasibility_relaxation_chain(
             return SolverResult(assignments=[], status="CANCELLED", seed=(current.seed if current.seed is not None else DEFAULT_SOLVER_SEED), relaxed=relaxed)
 
         if status_name == "INFEASIBLE":
-            if current.R < R_MAX:
-                current.R = min(R_MAX, current.R + 2)
+            if current.R < current.relax_r_ceiling:
+                current.R = min(current.relax_r_ceiling, current.R + 2)
                 relaxed.append(f"R\u2192{current.R}")
                 continue
-            if current.T < T_MAX:
-                current.T = min(T_MAX, current.T + 2)
+            if current.T < current.relax_t_ceiling:
+                current.T = min(current.relax_t_ceiling, current.T + 2)
                 relaxed.append(f"T\u2192{current.T}")
                 continue
             return SolverResult(

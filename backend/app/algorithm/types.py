@@ -68,6 +68,10 @@ class SolverSettings:
     reserve_hierarchy_weight: Decimal = Decimal("0.5")
     # Fairness L1 in count-space: effort × effort_resolution, rounded to integers.
     effort_resolution: int = 10_000
+    # Infeasibility relaxation ceilings: R relaxes first up to relax_r_ceiling,
+    # then T relaxes up to relax_t_ceiling. Invariant: relax_t_ceiling <= relax_r_ceiling.
+    relax_r_ceiling: int = 11
+    relax_t_ceiling: int = 9
     # Decomposition + chronological batching (keeps each L1 solve small/tractable).
     batching_enabled: bool = True
     batch_size: int = 50
