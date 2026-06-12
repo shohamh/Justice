@@ -8,6 +8,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
+import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -128,6 +129,76 @@ interface SubRow {
   total_score_per_day: number;
   avg_active_days: number;
   avg_normalised: number;
+  avg_effort: number;
+  cv_effort: number | null;
+}
+
+// ─── fairness card ────────────────────────────────────────────────────────────
+
+function FairnessCard({ stats, helpText }: { stats: EffortStats | null; helpText?: string }) {
+  const { t } = useTranslation();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const helpButton = helpText && (
+    <button
+      type="button"
+      onClick={() => setModalOpen(true)}
+      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs border border-gray-300 dark:border-gray-500 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
+    >
+      ?
+    </button>
+  );
+
+  const modal = modalOpen && helpText && (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setModalOpen(false)}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm whitespace-pre-line">{helpText}</p>
+        <div className="mt-4 text-left">
+          <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setModalOpen(false)}>סגור</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!stats) {
+    return (
+      <>
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+            {t("transparency.effort_spread")}
+            {helpButton}
+          </p>
+          <p className="text-lg font-semibold text-gray-400">—</p>
+        </div>
+        {modal}
+      </>
+    );
+  }
+  const cvPct = stats.cv * 100;
+  const cardClass = cvPct < 25
+    ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700"
+    : cvPct < 50
+      ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700"
+      : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700";
+  const dotClass = cvPct < 25 ? "bg-green-500" : cvPct < 50 ? "bg-yellow-500" : "bg-red-500";
+  return (
+    <>
+      <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
+        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+          <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
+          {t("transparency.effort_spread")}
+          {helpButton}
+        </p>
+        <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
+        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+          <p>{t("transparency.effort_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
+          <p>{t("transparency.effort_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
+          <p>{t("transparency.effort_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
+        </div>
+      </div>
+      {modal}
+    </>
+  );
 }
 
 // ─── main page ────────────────────────────────────────────────────────────────
@@ -227,6 +298,15 @@ export default function TransparencyPage() {
             total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
             avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
             avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
+            avg_effort: (() => {
+              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+              return efforts.length > 0 ? efforts.reduce((a, b) => a + b, 0) / efforts.length : 0;
+            })(),
+            cv_effort: (() => {
+              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+              const stats = computeEffortStats(efforts);
+              return stats ? stats.cv : null;
+            })(),
           });
         }
         traverse(node.id);
@@ -250,6 +330,14 @@ export default function TransparencyPage() {
   const avgNormalised = statsRows
     ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.normalised_score), 0) / statsRows.length
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_normalised, 0) / subRows.length;
+
+  const effortStats: EffortStats | null = tab === 0
+    ? computeEffortStats(visibleRows.map((r) => r.effort_score).filter((v) => !isNaN(v)))
+    : null;
+
+  const subEffortStats: EffortStats | null = tab === 1
+    ? computeEffortStats(subRows.map((r) => r.avg_effort).filter((v) => !isNaN(v) && v > 0))
+    : null;
 
   function handleSelectNode(id: string) {
     setSelectedNodeId((prev) => (prev === id ? null : id));
@@ -315,14 +403,17 @@ export default function TransparencyPage() {
       cell: (r) => {
         const n = r.effort_score;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
+        const colorClass = effortStats ? getEffortColor(n, effortStats.mean, effortStats.stddev) : "";
         return (
-          <button
-            className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
-            onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
-            title="לחץ לפירוט רבעוני"
-          >
-            {label}
-          </button>
+          <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
+            <button
+              className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+              onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
+              title="לחץ לפירוט רבעוני"
+            >
+              {label}
+            </button>
+          </span>
         );
       },
       sortValue: (r) => r.effort_score,
@@ -384,6 +475,27 @@ export default function TransparencyPage() {
       headerTooltip: t("transparency.normalised_tooltip"),
       cell: (r) => r.avg_normalised.toFixed(3),
       sortValue: (r) => r.avg_normalised,
+    },
+    {
+      id: "avg_effort",
+      header: t("transparency.subunit_avg_effort"),
+      cell: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
+      sortValue: (r) => r.avg_effort,
+    },
+    {
+      id: "cv_effort",
+      header: t("transparency.subunit_cv_effort"),
+      cell: (r) => {
+        if (r.cv_effort === null) return "—";
+        const pct = r.cv_effort * 100;
+        const colorClass = pct < 25
+          ? "text-green-600 dark:text-green-400"
+          : pct < 50
+            ? "text-yellow-600 dark:text-yellow-400"
+            : "text-red-600 dark:text-red-400 font-medium";
+        return <span className={colorClass}>{pct.toFixed(1)}%</span>;
+      },
+      sortValue: (r) => r.cv_effort ?? -1,
     },
   ];
 
@@ -454,7 +566,7 @@ export default function TransparencyPage() {
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(2)}</p>
@@ -472,6 +584,8 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
+          {tab === 0 && <FairnessCard stats={effortStats} helpText={t("transparency.effort_spread_help")} />}
+          {tab === 1 && <FairnessCard stats={subEffortStats} helpText={t("transparency.effort_spread_subunits_help")} />}
         </div>
 
         {/* Filter pills (soldiers tab only) */}
