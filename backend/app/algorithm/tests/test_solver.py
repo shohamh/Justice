@@ -100,10 +100,10 @@ def test_solve_determinism() -> None:
 
 
 def test_settings_and_existing_have_reserve_caps() -> None:
-    # R defaults to 7 and is independent of T.
+    # R defaults to the same value as T and is independent of it.
     s = SolverSettings()
-    assert s.T == 7
-    assert s.R == 7
+    assert s.T == 8
+    assert s.R == 8
     s2 = SolverSettings(T=7, R=11)
     assert s2.R == 11
     # ExistingAssignment carries an is_reserve flag, default False.

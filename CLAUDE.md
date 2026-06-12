@@ -50,7 +50,10 @@ frontend/src/
 
 ```bash
 # Backend (run from backend/)
-uv run pytest -q                          # all tests
+uv run pytest -q                          # fast suite (excludes @pytest.mark.slow; serial)
+uv run pytest -n 8 -q                     # fast suite in parallel (each xdist worker gets its own throwaway Postgres container)
+uv run pytest -m slow -q                  # only the 8 large-scale CP-SAT tests (~11 min)
+uv run pytest -m "slow or not slow" -n 8  # EVERYTHING (slow + fast) in parallel — run locally before a release (CI skips slow)
 uv run alembic revision -m "description" # new migration
 uv run alembic upgrade head               # apply migrations
 

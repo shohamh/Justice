@@ -93,14 +93,39 @@ _SYSTEM_SETTINGS_DEFAULTS = [
 ]
 
 
+@pytest.fixture(scope="session")
+def admin_engine(db_admin_url: str) -> Iterator["Engine"]:  # noqa: F821
+    """Superuser engine, shared for the whole session.
+
+    Session-scoped so the connection pool is created once per worker instead of
+    rebuilt for every test (the old function-scoped engine + the per-test engine
+    in _truncate_tables were the dominant fixture overhead)."""
+    engine = create_engine(db_admin_url, future=True)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def app_engine(db_admin_url: str) -> Iterator["Engine"]:  # noqa: F821
+    """Engine using the unprivileged 'app' role — exposes RBAC errors at the DB layer.
+
+    Session-scoped for the same pool-reuse reason as admin_engine."""
+    app_url = make_url(db_admin_url).set(username="app", password="app_pw")
+    engine = create_engine(app_url.render_as_string(hide_password=False), future=True)
+    yield engine
+    engine.dispose()
+
+
 @pytest.fixture(autouse=True)
-def _truncate_tables(db_admin_url: str) -> Iterator[None]:
+def _truncate_tables(admin_engine) -> Iterator[None]:
     """Wipe all data rows before each test so personal_number and other unique constraints
     never collide across test functions, even when they use the same hardcoded values.
-    Re-seeds system_settings defaults (set by migrations) after truncation."""
-    engine = create_engine(db_admin_url, future=True)
+    Re-seeds system_settings defaults (set by migrations) after truncation.
+
+    Reuses the session-scoped admin_engine (one pooled connection) rather than
+    building and disposing a fresh engine on every test."""
     table_list = ", ".join(_ALL_DATA_TABLES)
-    with engine.begin() as conn:
+    with admin_engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
         # Re-apply migration-seeded defaults for system_settings.
         # Use string formatting (not bind params) to avoid :param vs ::cast ambiguity.
@@ -113,13 +138,7 @@ def _truncate_tables(db_admin_url: str) -> Iterator[None]:
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
             )
         )
-    engine.dispose()
     yield
-
-
-@pytest.fixture()
-def admin_engine(db_admin_url: str):
-    return create_engine(db_admin_url, future=True)
 
 
 @pytest.fixture()
@@ -127,13 +146,6 @@ def admin_session(admin_engine) -> Iterator[Session]:
     SessionLocal = sessionmaker(bind=admin_engine, expire_on_commit=False)
     with SessionLocal() as s:
         yield s
-
-
-@pytest.fixture()
-def app_engine(db_admin_url: str):
-    """Engine using the unprivileged 'app' role — exposes RBAC errors at the DB layer."""
-    app_url = make_url(db_admin_url).set(username="app", password="app_pw")
-    return create_engine(app_url.render_as_string(hide_password=False), future=True)
 
 
 @pytest.fixture()
