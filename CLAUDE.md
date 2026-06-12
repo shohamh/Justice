@@ -50,7 +50,9 @@ frontend/src/
 
 ```bash
 # Backend (run from backend/)
-uv run pytest -q                          # all tests
+uv run pytest -q                          # all DB tests (serial)
+uv run pytest -n 8 -q                     # parallel: ~2x faster (each xdist worker gets its own throwaway Postgres container)
+uv run pytest -n auto -q                  # parallel using all cores (heavier: one container per worker)
 uv run alembic revision -m "description" # new migration
 uv run alembic upgrade head               # apply migrations
 
