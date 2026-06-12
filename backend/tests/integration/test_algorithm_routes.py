@@ -67,7 +67,7 @@ def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
     resp = client.get("/api/algorithm/defaults", headers=auth_headers(dm))
     assert resp.status_code == 200
     body = resp.json()
-    assert body["T"] == 7
+    assert body["T"] == 8
     assert body["R"] == 10
     assert body["W"] == 14
 

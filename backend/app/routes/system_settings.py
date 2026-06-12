@@ -18,10 +18,10 @@ router = APIRouter(prefix="/admin/system-settings", tags=["system_settings"])
 _HIDDEN_KEYS = {"system.holding_node_id"}
 
 _DENSITY_DEFAULTS = {
-    "algorithm.max_duties_per_window": 7,
-    "algorithm.max_total_duties_per_window": 7,
-    "algorithm.relax_t_ceiling": 9,
-    "algorithm.relax_r_ceiling": 11,
+    "algorithm.max_duties_per_window": 8,
+    "algorithm.max_total_duties_per_window": 8,
+    "algorithm.relax_t_ceiling": 10,
+    "algorithm.relax_r_ceiling": 12,
 }
 
 

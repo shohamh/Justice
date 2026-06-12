@@ -31,8 +31,8 @@ def test_resolve_solver_settings_per_run_overrides_win(admin_session):
 
 def test_resolve_solver_settings_falls_back_to_hardcoded_defaults(admin_session):
     s = resolve_solver_settings(admin_session, {})
-    assert s.T == 7
-    assert s.R == 7
+    assert s.T == 8
+    assert s.R == 8
     assert s.W == 14
-    assert s.relax_t_ceiling == 9
-    assert s.relax_r_ceiling == 11
+    assert s.relax_t_ceiling == 10
+    assert s.relax_r_ceiling == 12

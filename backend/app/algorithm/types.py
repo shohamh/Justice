@@ -59,8 +59,8 @@ class SolverSettings:
     W: rolling window length in days
     alpha: score-preference weight (higher = stronger preference for low-score soldiers)
     """
-    T: int = 7
-    R: int = 7
+    T: int = 8
+    R: int = 8
     W: int = 14
     alpha: Decimal = Decimal("1.0")
     time_limit_seconds: int = 30
@@ -70,8 +70,8 @@ class SolverSettings:
     effort_resolution: int = 10_000
     # Infeasibility relaxation ceilings: R relaxes first up to relax_r_ceiling,
     # then T relaxes up to relax_t_ceiling. Invariant: relax_t_ceiling <= relax_r_ceiling.
-    relax_r_ceiling: int = 11
-    relax_t_ceiling: int = 9
+    relax_r_ceiling: int = 12
+    relax_t_ceiling: int = 10
     # Decomposition + chronological batching (keeps each L1 solve small/tractable).
     batching_enabled: bool = True
     batch_size: int = 50

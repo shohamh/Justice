@@ -555,8 +555,8 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
             return default
 
     return SolverSettings(
-        T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
-        R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 7))),
+        T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 8))),
+        R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 8))),
         W=int(settings_json.get("W", _setting_int("algorithm.window_days", 14))),
         alpha=Decimal(str(settings_json.get("alpha", 1.0))),
         time_limit_seconds=int(settings_json.get("time_limit_seconds", 30)),
@@ -565,8 +565,8 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         batching_enabled=_setting_bool("algorithm.batching_enabled", True),
         batch_size=_setting_int("algorithm.batch_size", 50),
         batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
-        relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 9))),
-        relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 11))),
+        relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
+        relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 12))),
     )
 
 
