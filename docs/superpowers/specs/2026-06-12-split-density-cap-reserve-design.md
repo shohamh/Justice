@@ -83,8 +83,97 @@ Add coverage for:
 - Existing **published reserve** duty-days count toward `R` but not `T`
   (via `ExistingAssignment.is_reserve`).
 
-## Out of scope
+## Out of scope (Phase 1)
 
 - No change to the objective/fairness terms, reserve hierarchy proximity, or
   batching.
-- No UI/API surface for configuring `R` separately (uses the new default).
+
+---
+
+# Phase 2 — Configurable T/R/W and relaxation ceilings
+
+Phase 1 hardcodes the caps (`T=R=7`, `W=14`) and the relaxation ceilings
+(`R→11`, `T→9`). Phase 2 makes these admin-configurable in system settings and
+overrideable per run, following the existing settings pattern in
+[algorithm_bridge.py:576-577](../../../backend/app/services/algorithm_bridge.py)
+(`job.settings_json.get(key, _setting_int(system_key, default))`).
+
+## System-setting keys
+
+Read in the bridge as fallback defaults; per-run `settings_json` values override them.
+
+| Key | Meaning | Default |
+|-----|---------|---------|
+| `algorithm.max_duties_per_window` | `T` — non-reserve cap per window | 7 |
+| `algorithm.max_total_duties_per_window` | `R` — total cap incl. reserve | 7 |
+| `algorithm.window_days` | `W` — rolling window length | 14 |
+| `algorithm.relax_t_ceiling` | `T` relaxation ceiling | 9 |
+| `algorithm.relax_r_ceiling` | `R` relaxation ceiling | 11 |
+
+`T` and `W` already exist as bridge fallbacks; `R` and the two ceilings are new.
+
+## Design
+
+### 1. SolverSettings ([types.py](../../../backend/app/algorithm/types.py))
+
+Add `relax_t_ceiling: int = 9` and `relax_r_ceiling: int = 11` to `SolverSettings`
+(alongside the Phase 1 `T`, `R`, `W`).
+
+### 2. Solver ([solver.py](../../../backend/app/algorithm/solver.py))
+
+Replace the Phase 1 `R_MAX = 11` / `T_MAX = 9` constants with
+`current.relax_r_ceiling` / `current.relax_t_ceiling`. Hop size stays 2.
+
+### 3. Bridge ([algorithm_bridge.py:575-585](../../../backend/app/services/algorithm_bridge.py))
+
+Wire `R` and both ceilings from `settings_json` with system-setting fallbacks,
+mirroring the existing `T`/`W` lines:
+
+```python
+R=int(job.settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 7))),
+relax_t_ceiling=int(job.settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 9))),
+relax_r_ceiling=int(job.settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 11))),
+```
+
+### 4. Per-run advanced options ([algorithm.py:53](../../../backend/app/routes/algorithm.py))
+
+Add `R: int = 7` to `SolverSettingsIn`. Relaxation ceilings stay system-only
+(not per-run). Frontend `SolverSettings` type, `DEFAULT_SETTINGS`, and the field
+list in [AlgorithmRunForm.tsx:163](../../../frontend/src/components/AlgorithmRunForm.tsx)
+gain `R`.
+
+### 5. `GET /algorithm/defaults`
+
+New endpoint authorized by `Action.ALGORITHM_RUN`, returning resolved
+`{T, R, W}` from system settings (falling back to 7/7/14). The run form fetches
+it on mount to initialize the override fields, so a system setting acts as the
+per-run default a DM can override. Without this, a non-admin DM cannot read the
+admin-only `/admin/system-settings`, and the form's hardcoded `7` would always
+win over the system value.
+
+### 6. System Settings UI ([SystemSettingsPage.tsx](../../../frontend/src/pages/SystemSettingsPage.tsx))
+
+New `SETTING_GROUPS` entry — group label **"מגבלות צפיפות (אלגוריתם)"** — with
+five `type: "number"` fields:
+
+- `algorithm.max_duties_per_window` — "מכסת תורנויות (ללא רזרבה) בחלון", default 7
+- `algorithm.max_total_duties_per_window` — "מכסת תורנויות כוללת (כולל רזרבה) בחלון", default 7
+- `algorithm.window_days` — "אורך החלון (ימים)", default 14
+- `algorithm.relax_t_ceiling` — "תקרת הרפיה — תורנויות (ללא רזרבה)", default 9
+- `algorithm.relax_r_ceiling` — "תקרת הרפיה — תורנויות כוללת", default 11
+
+### 7. Validation — enforce `T <= R` (HTTP 400)
+
+- **System settings `PUT`** ([system_settings.py:38](../../../backend/app/routes/system_settings.py)):
+  after merging the update over existing values, reject with 400 if any of:
+  `T > R`, `relax_t_ceiling > relax_r_ceiling`, `T > relax_t_ceiling`,
+  `R > relax_r_ceiling`. Resolve each via the merged map, falling back to the
+  table defaults when a key is absent.
+- **Job submit `POST /algorithm/jobs`** ([algorithm.py:329](../../../backend/app/routes/algorithm.py)):
+  reject with 400 (`detail="t_exceeds_r"`) if `body.settings.T > body.settings.R`.
+
+## Phase 2 out of scope
+
+- Relaxation hop size stays a code constant (2).
+- `K`, `alpha`, `beta`, `time_limit_seconds` per-run defaults stay hardcoded in
+  the form (not loaded from system settings) — only the density caps are.
