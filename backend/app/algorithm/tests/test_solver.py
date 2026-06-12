@@ -98,6 +98,27 @@ def test_solve_determinism() -> None:
     assert r1.objective_value == r2.objective_value
 
 
+def test_settings_and_existing_have_reserve_caps() -> None:
+    # R defaults to 7 and is independent of T.
+    s = SolverSettings()
+    assert s.T == 7
+    assert s.R == 7
+    s2 = SolverSettings(T=7, R=11)
+    assert s2.R == 11
+    # ExistingAssignment carries an is_reserve flag, default False.
+    ea = ExistingAssignment(
+        soldier_id=uuid4(), duty_type_id=uuid4(),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+    )
+    assert ea.is_reserve is False
+    ea_r = ExistingAssignment(
+        soldier_id=uuid4(), duty_type_id=uuid4(),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+        is_reserve=True,
+    )
+    assert ea_r.is_reserve is True
+
+
 def test_solve_no_eligible_soldiers() -> None:
     soldier_id = uuid4()
     exempt_type = uuid4()

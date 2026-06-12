@@ -47,17 +47,20 @@ class ExistingAssignment:
     duty_type_id: uuid.UUID
     start_date: date
     end_date: date
+    is_reserve: bool = False
 
 
 @dataclass
 class SolverSettings:
     """CP-SAT solver configuration.
 
-    T: density hard cap (duty-days per rolling window)
+    T: non-reserve (real) duty-day cap per rolling window
+    R: total duty-day cap per rolling window (incl. reserve); invariant T <= R
     W: rolling window length in days
     alpha: score-preference weight (higher = stronger preference for low-score soldiers)
     """
     T: int = 7
+    R: int = 7
     W: int = 14
     alpha: Decimal = Decimal("1.0")
     time_limit_seconds: int = 30
