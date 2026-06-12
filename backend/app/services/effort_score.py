@@ -252,7 +252,7 @@ def compute_effort_breakdown(
 
     history_end = planning_start - timedelta(days=1)
 
-    # Build past quarter list (same clipping logic as compute_effort_data)
+    # Past quarters (reset_date → planning_start-1), clipped to reset_date.
     past_quarters: list[tuple[date, date]] = []
     if history_end >= reset_date:
         q_s = quarter_start(reset_date)
@@ -263,7 +263,14 @@ def compute_effort_breakdown(
             past_quarters.append((actual_start, actual_end))
             q_s = q_e + timedelta(days=1)
 
-    if not past_quarters:
+    # Fetch ALL published duties from reset_date onwards (covers past and future),
+    # then derive future quarters the SAME way compute_effort_data does, so the
+    # breakdown's quarters and effort_score match the algorithm's exactly.
+    days_data = effective_duty_days(session, date_from=reset_date, date_to=date(2099, 12, 31))
+    future_quarters = _build_future_quarters(days_data, planning_end)
+    quarters = past_quarters + future_quarters
+
+    if not quarters:
         return EffortBreakdown(quarters=[], effort_score=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
 
     # Fetch duty type scores
@@ -272,11 +279,9 @@ def compute_effort_breakdown(
         for dt in session.execute(select(DutyType)).scalars().all()
     }
 
-    days_data = effective_duty_days(session, date_from=reset_date, date_to=history_end)
-
-    # Map each calendar date → quarter_start (skipping planning window)
+    # Map each calendar date → quarter_start
     date_to_quarter: dict[date, date] = {}
-    for q_start_d, q_end_d in past_quarters:
+    for q_start_d, q_end_d in quarters:
         d = q_start_d
         while d <= q_end_d:
             date_to_quarter[d] = q_start_d
@@ -302,7 +307,7 @@ def compute_effort_breakdown(
     A_i = Decimal("0")
     W_i = Decimal("0")
 
-    for q_start_d, q_end_d in past_quarters:
+    for q_start_d, q_end_d in quarters:
         q_days = (q_end_d - q_start_d).days + 1
         soldier_start = max(soldier.enrolled_at, q_start_d)
         if soldier_start > q_end_d:

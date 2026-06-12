@@ -59,12 +59,15 @@ def test_future_published_assignments_count_toward_effort(admin_session: Session
     assert eff[b.id].effort_score == Decimal("0")
     assert eff[a.id].effort_score > eff[b.id].effort_score
 
-    # Sanity: the OLD behaviour (window stopping at planning_start) misses it entirely.
-    eff_old = compute_effort_data(
+    # compute_effort_data folds future published assignments in internally (it
+    # builds future quarters from all published duties beyond the planning
+    # window), so even an unextended window counts soldier A's future duty.
+    eff_unextended = compute_effort_data(
         admin_session, soldiers=soldiers,
         planning_start=planning_start, planning_end=planning_start, reset_date=reset_date,
     )
-    assert eff_old[a.id].effort_score == Decimal("0")
+    assert eff_unextended[a.id].effort_score > Decimal("0")
+    assert eff_unextended[b.id].effort_score == Decimal("0")
 
 
 def test_horizon_falls_back_to_planning_start_without_future_work(admin_session: Session) -> None:
