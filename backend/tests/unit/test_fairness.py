@@ -76,8 +76,11 @@ from app.algorithm.types import DutyBlock, SoldierInput, SolverSettings
 
 def _soldier(score: float, active_days: int = 100) -> SoldierInput:
     from app.services.effort_score import EFFORT_SCALE
-    # For tests, map cumulative_score/active_days to effort_offset
-    # This simulates a soldier with historical quarterly duty share
+    # The model optimises quarterly EFFORT. Map this score-based scenario onto
+    # effort: historical load = score_per_day × EFFORT_SCALE, with a uniform
+    # marginal so a new 1-day duty of score s raises effort by s/active_days ×
+    # EFFORT_SCALE (i.e. score_per_day's marginal). effort_per_milli must be set
+    # — with it at 0 the assignment can't move effort and the choice is arbitrary.
     spd = score / active_days if active_days > 0 else 0
     effort_offset = int(spd * EFFORT_SCALE)
     return SoldierInput(
@@ -86,7 +89,7 @@ def _soldier(score: float, active_days: int = 100) -> SoldierInput:
         cumulative_score=Decimal(str(score)),
         active_days=active_days,
         effort_offset=effort_offset,
-        effort_per_milli=0,  # Not used in unit tests, set during algorithm bridge
+        effort_per_milli=EFFORT_SCALE // (active_days * 1000),
     )
 
 

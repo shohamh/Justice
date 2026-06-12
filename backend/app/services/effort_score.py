@@ -9,12 +9,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.algorithm.types import EFFORT_SCALE  # noqa: F401  (re-exported for importers)
 from app.services.scoring import effective_duty_days
 
-# Scale factor for converting Decimal effort scores to CP-SAT integers.
-# effort_offset = int(effort_score × EFFORT_SCALE)
-# effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
-EFFORT_SCALE = 1_000_000_000  # 10^9
+# EFFORT_SCALE (defined in app.algorithm.types so the pure solver can share it)
+# converts Decimal effort scores to CP-SAT integers.
+#   effort_offset    = int(effort_score × EFFORT_SCALE)
+#   effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
 
 
 @dataclass
@@ -45,12 +46,9 @@ class EffortBreakdown:
     """Full per-quarter breakdown for one soldier, plus the aggregate result."""
     quarters: list[EffortQuarterDetail] = field(default_factory=list)
     effort_score: Decimal = Decimal("0")
-    C_over_D: Decimal = Decimal("0")
-    # Raw components of the formula so the UI can display the full derivation:
-    # effort_score = A_i / D_i,  where D_i = W_i + C_i
+    # Raw components: effort_score = A_i / W_i
     A_i: Decimal = Decimal("0")   # Σ(share_q × active_frac_q)
     W_i: Decimal = Decimal("0")   # Σ(active_frac_q)  — historical weight
-    C_i: Decimal = Decimal("0")   # current planning-window fraction
 
 
 def _quarter_label(q_start: date) -> str:
@@ -79,17 +77,13 @@ def _compute_effort_data(
     quarters: list[tuple[date, date]],
     quarter_unit_scores: dict[date, Decimal],   # keyed by quarter_start date
     quarter_soldier_scores: dict[date, dict[uuid.UUID, Decimal]],  # keyed by quarter_start date
-    planning_start: date,
-    planning_end: date,
 ) -> dict[uuid.UUID, EffortData]:
     """
     Pure-logic core: compute EffortData per soldier given pre-aggregated quarter scores.
 
-    quarters: list of (q_start, q_end) in ascending order.
-    quarter_unit_scores: total unit score per quarter, keyed by q_start.
-    quarter_soldier_scores: per-soldier scores per quarter, keyed by q_start.
+    effort_score = A_i / W_i  (historical weighted-average share; 0 for new soldiers)
+    C_over_D     = 1 / max(W_i, 1)  — used by the bridge to compute effort_per_milli.
     """
-    planning_days = (planning_end - planning_start).days + 1
     result: dict[uuid.UUID, EffortData] = {}
 
     for soldier in soldiers:
@@ -114,24 +108,9 @@ def _compute_effort_data(
             # Count the quarter in W_i regardless of whether unit had duties
             W_i += active_frac
 
-        # Current planning window contribution
-        sol_plan_start = max(soldier.enrolled_at, planning_start)
-        if sol_plan_start <= planning_end:
-            sol_planning_days = (planning_end - sol_plan_start).days + 1
-            C_i = Decimal(sol_planning_days) / Decimal(planning_days)
-        else:
-            C_i = Decimal("0")
-
-        D_i = W_i + C_i
-        if D_i <= 0:
-            result[soldier.id] = EffortData(
-                effort_score=Decimal("0"), C_over_D=Decimal("0"),
-                effort_offset=0, effort_per_milli=0,
-            )
-            continue
-
-        effort_score = A_i / D_i
-        C_over_D = C_i / D_i
+        effective_W = W_i if W_i > Decimal("0") else Decimal("1")
+        effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
+        C_over_D = Decimal("1") / effective_W
         effort_offset = int(effort_score * EFFORT_SCALE)
 
         result[soldier.id] = EffortData(
@@ -172,8 +151,6 @@ def compute_effort_data(
             quarters=[],
             quarter_unit_scores={},
             quarter_soldier_scores={},
-            planning_start=planning_start,
-            planning_end=planning_end,
         )
 
     # Build list of complete quarters between reset_date and planning_start.
@@ -197,8 +174,6 @@ def compute_effort_data(
             quarters=[],
             quarter_unit_scores={},
             quarter_soldier_scores={},
-            planning_start=planning_start,
-            planning_end=planning_end,
         )
 
     # Fetch duty type scores
@@ -235,8 +210,6 @@ def compute_effort_data(
         quarters=quarters,
         quarter_unit_scores=q_unit_scores,
         quarter_soldier_scores=q_soldier_scores,
-        planning_start=planning_start,
-        planning_end=planning_end,
     )
 
 
@@ -271,18 +244,7 @@ def compute_effort_breakdown(
             q_s = q_e + timedelta(days=1)
 
     if not quarters:
-        # No history — return empty breakdown with just planning window
-        planning_days = (planning_end - planning_start).days + 1
-        sol_plan_start = max(soldier.enrolled_at, planning_start)
-        C_i = (
-            Decimal((planning_end - sol_plan_start).days + 1) / Decimal(planning_days)
-            if sol_plan_start <= planning_end else Decimal("0")
-        )
-        return EffortBreakdown(
-            quarters=[], effort_score=Decimal("0"),
-            C_over_D=Decimal("1") if C_i > 0 else Decimal("0"),
-            A_i=Decimal("0"), W_i=Decimal("0"), C_i=C_i,
-        )
+        return EffortBreakdown(quarters=[], effort_score=Decimal("0"), A_i=Decimal("0"), W_i=Decimal("0"))
 
     # Fetch duty type scores
     dt_scores: dict[uuid.UUID, Decimal] = {
@@ -349,24 +311,11 @@ def compute_effort_breakdown(
             is_partial=(q_end_d < true_q_end),
         ))
 
-    # Planning window contribution
-    planning_days = (planning_end - planning_start).days + 1
-    sol_plan_start = max(soldier.enrolled_at, planning_start)
-    if sol_plan_start <= planning_end:
-        sol_planning_days = (planning_end - sol_plan_start).days + 1
-        C_i = Decimal(sol_planning_days) / Decimal(planning_days)
-    else:
-        C_i = Decimal("0")
-
-    D_i = W_i + C_i
-    effort_score = A_i / D_i if D_i > 0 else Decimal("0")
-    C_over_D = C_i / D_i if D_i > 0 else Decimal("0")
+    effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
 
     return EffortBreakdown(
         quarters=quarter_details,
         effort_score=effort_score,
-        C_over_D=C_over_D,
         A_i=A_i,
         W_i=W_i,
-        C_i=C_i,
     )

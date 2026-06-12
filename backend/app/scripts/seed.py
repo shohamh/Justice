@@ -146,6 +146,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
 
         from datetime import timedelta
 
+        seed_today = date.today()
+
         # Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
         _MANDATORY_MONTHS = {"male": 32, "female": 24}
 
@@ -165,6 +167,15 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             return str(pn_counter)
 
         def make_soldier(pn: str, name: str, role: str, node_id: int, **extra):
+            # Keep intended-חובה soldiers (no discharge_date) classified as חובה
+            # even as the real-world clock advances past their hardcoded
+            # mandatory_end_date. Otherwise inferred_service_type() flips them to
+            # קבע and they become ineligible for every conscript-only duty type.
+            # enrolled_at (below) drives active_days; this only corrects service
+            # type so those soldiers stay assignable.
+            med = extra.get("mandatory_end_date")
+            if extra.get("discharge_date") is None and med is not None and med <= seed_today:
+                extra["mandatory_end_date"] = seed_today + timedelta(days=365)
             s = Soldier(
                 personal_number=pn,
                 full_name=name,

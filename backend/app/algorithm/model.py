@@ -9,7 +9,13 @@ from decimal import Decimal
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
-from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
+from app.algorithm.types import (
+    EFFORT_SCALE,
+    DutyBlock,
+    ExistingAssignment,
+    SoldierInput,
+    SolverSettings,
+)
 
 
 def _block_score(d: DutyBlock) -> int:
@@ -111,56 +117,67 @@ def build_model(
             else:
                 model.Add(sum(day_vars) <= 1)
 
-    # ── Normalised-score expressions ─────────────────────────────────────────
+    # ── Count-space effort ────────────────────────────────────────────────────
     #
-    # norm_s = (cumulative_score * 1000 + new_assignment_score) / active_days
+    # We optimise quarterly EFFORT (the metric shown on the transparency page and
+    # in app/algorithm/explain.py), but expressed as small integers so the L1
+    # objective below stays tractable:
     #
-    # This represents the soldier's post-run score_per_day in milli-units.
-    # It's the single fairness metric: we want all soldiers to converge toward
-    # the same value over time.  Using cumulative (not incremental-only) ensures
-    # the algorithm accounts for history: a soldier already at spd=0.5 gets no
-    # new duties while one at spd=0 gets many, even if their incremental load
-    # would be equal.
+    #   DIV            = EFFORT_SCALE // effort_resolution      (K = resolution)
+    #   count_offset_i = effort_offset_i // DIV                 (prior effort, a constant)
+    #   weight_i(duty) = max(1, effort_per_milli_i × block_score(duty) // DIV)
+    #   total_i        = count_offset_i + Σ_{assigned} weight_i(duty)
+    #
+    # effort_offset / effort_per_milli are injected by the bridge over the FULL
+    # duty set (so per_milli is not inflated by a small subset).  Scaling by 1/DIV
+    # only rounds away effort differences below 1/K — everything else (the W and
+    # unit-score normalisation) stays baked in.  A reserve's block_score is already
+    # standby_multiplier× its primary, so its weight is the same fraction; the
+    # max(1, …) floor keeps a reserve worth ≥ 1 unit.
+    div = max(1, EFFORT_SCALE // settings.effort_resolution)
+    # Upper bound on count-space total: offset (≤ EFFORT_SCALE/DIV) plus the marginal
+    # (sums to ≤ EFFORT_SCALE/DIV); pad for the per-duty floor rounding.
+    total_ub = 4 * (EFFORT_SCALE // div) + len(duty_list) + 1
 
-    # Eligible-only norms for the "raise the floor" secondary objective.
-    # Soldiers with no eligible duties always have norm = historical base and
-    # cannot be improved; including them would pin the floor unnecessarily.
-    all_norm_exprs: list[LinearExpr] = []
-    eligible_norm_exprs: list[LinearExpr] = []
-    # Historical tiebreaker: cost of assigning to a soldier with high spd.
-    # Uses score_per_day (not raw cumulative_score) so a soldier with 10 pts
-    # over 200 days (spd=0.05) is correctly preferred over one with 10 pts
-    # over 100 days (spd=0.10).
-    hist_penalty_terms: list = []
+    # We optimise over *eligible* soldiers only (those that can receive ≥1 duty).
+    eligible_total_exprs: list[LinearExpr] = []  # count_offset + new weight per soldier
+    eligible_offsets: list[int] = []             # count_offset constants
+    # Secondary tiebreak (below L1) breaks L1's flat-region ties:
+    #   • prior_terms = count_offset × new_count → prefer LOW-prior soldiers
+    #   • count_spread (max−min of new counts) → split evenly among equals
+    # Both are linear/cheap (no squares), so the model stays fast.
+    prior_terms: list = []           # count_offset × new_count
+    count_vars: list[IntVar] = []    # new-duty counts (for the even-split spread)
+    total_new_weight = 0              # Σ over all duties of their unit weight (for μ)
 
     for si, s in enumerate(soldier_list):
-        if s.active_days == 0:
+        duties_for_s = soldier_duties.get(si, [])
+        if not duties_for_s:
             continue
 
-        duties_for_s = soldier_duties.get(si, [])
-        block_sum = sum(
-            _block_score(duty_list[di]) * x[(di, si)]
+        count_offset = s.effort_offset // div
+        new_weight = sum(
+            max(1, (s.effort_per_milli * _block_score(duty_list[di])) // div) * x[(di, si)]
             for di in duties_for_s
         )
+        eligible_total_exprs.append(count_offset + new_weight)
+        eligible_offsets.append(count_offset)
 
-        base = int(s.cumulative_score * 1000)
-        cum_total = base + block_sum
-        norm = model.NewIntVar(0, 10_000_000, f"norm_s{si}")
-        model.AddDivisionEquality(norm, cum_total, s.active_days)
-        all_norm_exprs.append(norm)
+        count = model.NewIntVar(0, len(duties_for_s), f"count_s{si}")
+        model.Add(count == sum(x[(di, si)] for di in duties_for_s))
+        count_vars.append(count)
+        if count_offset:
+            prior_terms.append(count_offset * count)
 
-        if duties_for_s:
-            eligible_norm_exprs.append(norm)
-
-        # hist_milli = score_per_day in milli-units (an integer constant, not a variable)
-        hist_milli = int(s.cumulative_score * 1000) // s.active_days
-        for di in duties_for_s:
-            hist_penalty_terms.append(hist_milli * x[(di, si)])
-
-    max_norm_var = None
-    if all_norm_exprs:
-        max_norm_var = model.NewIntVar(0, 10_000_000, "max_norm")
-        model.AddMaxEquality(max_norm_var, all_norm_exprs)
+    # Total new weight that will be distributed (each duty goes to exactly one of
+    # its eligible soldiers).  The per-duty weight depends on the assigned
+    # soldier's per_milli, which we don't know yet; use the AVERAGE eligible
+    # per_milli as the least-biased representative for the centre μ.  (Using max
+    # would inflate μ and wrongly pull duties toward high-marginal soldiers.)
+    for di, d in enumerate(duty_list):
+        per_millis = [soldier_list[si].effort_per_milli for (dii, si) in eligible if dii == di]
+        pm = sum(per_millis) // len(per_millis) if per_millis else 0
+        total_new_weight += max(1, (pm * _block_score(d)) // div)
 
     # Hard constraint: max T duty-days in any rolling W-day window per soldier
     #
@@ -234,43 +251,55 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
-    # ── Fairness objective ──────────────────────────────────────────────────
+    # ── Fairness objective: L1 dispersion of count-space effort ───────────────
     #
-    # Fairness goal: all soldiers converge toward the same score_per_day
-    # (norm = cumulative_score / active_days).
+    # minimise   Σ_i | total_i − μ |   +   ε · reserve_proximity
     #
-    # PRIMARY  (weight alpha_int ≈ 1000):
-    #   Minimise max(norm).  Assigning a duty to an already-high-norm soldier
-    #   raises max; assigning to a low-norm soldier leaves max unchanged.
-    #   This naturally steers duties toward lower-norm soldiers.
+    # where total_i = count_offset_i + Σ assigned weight_i(duty), and μ is FIXED
+    # to the post-run mean (a constant) so the deviation vars decouple → fast.
+    # Because every soldier contributes their own |deviation| term, L1 equalises
+    # the WHOLE distribution — including interior sub-populations (e.g. officers
+    # clustered at low effort) that a min(max−min) spread is blind to.  This is
+    # only tractable because the caller (solver.py) decomposes each run into
+    # connected components and chronological batches, so each build_model is small.
     #
-    # SECONDARY  (weight 1, ≈1000× weaker than primary):
-    #   Maximise min(norm) among eligible soldiers.  When the primary is tied
-    #   (e.g. the max is already pinned by a high-history soldier), this lifts
-    #   the floor — giving extra duties to the lowest-norm soldiers first rather
-    #   than concentrating them arbitrarily.
-    #
-    # TIEBREAKER  (weight 1, proportional to hist_milli per assignment):
-    #   When both primary and secondary are tied, prefer assigning to the soldier
-    #   with the lower historical score_per_day.  Uses score/day not raw score
-    #   so active_days is correctly accounted for.
-    #
-    # RESERVE PROXIMITY  (weight gamma_int):
-    #   Minor bonus for pairing reserves with geographically close primaries.
+    # SECONDARY (below L1) — prefer low-prior soldiers, then split counts evenly.
+    # RESERVE PROXIMITY (gamma_int) is the smallest tier.
+    # Tiers: L1 ≫ prior ≫ count-spread ≫ reserve proximity.
     # ────────────────────────────────────────────────────────────────────────
 
     alpha_int = int(settings.alpha * 1000)
     dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
-    hist_penalty = sum(hist_penalty_terms) if hist_penalty_terms else 0
 
-    if max_norm_var is not None and alpha_int > 0:
-        min_term = 0
-        if len(eligible_norm_exprs) > 1:
-            min_norm_var = model.NewIntVar(0, 10_000_000, "min_norm_eligible")
-            model.AddMinEquality(min_norm_var, eligible_norm_exprs)
-            min_term = min_norm_var
+    if eligible_total_exprs and alpha_int > 0:
+        # Tiers (each ≫ the next): L1 ≫ prior ≫ count-spread ≫ reserve proximity.
+        l1_w = 100_000_000_000  # 1e11
+        prior_w = 1_000_000     # 1e6
+        count_w = 10_000        # 1e4 — above the per-move reserve-distance term
+        n_elig = len(eligible_total_exprs)
+        mu_const = (sum(eligible_offsets) + total_new_weight) // n_elig
 
-        model.Maximize(-alpha_int * max_norm_var + min_term - hist_penalty - dist_term)
+        dev_terms: list[IntVar] = []
+        for i, total in enumerate(eligible_total_exprs):
+            dev = model.NewIntVar(0, total_ub, f"effort_dev{i}")
+            model.Add(dev >= total - mu_const)
+            model.Add(dev >= mu_const - total)
+            dev_terms.append(dev)
+        l1_term = sum(dev_terms)
+
+        prior_term = sum(prior_terms) if prior_terms else 0
+
+        count_spread: LinearExpr | int = 0
+        if len(count_vars) > 1:
+            max_count_var = model.NewIntVar(0, len(duty_list), "max_count")
+            min_count_var = model.NewIntVar(0, len(duty_list), "min_count")
+            model.AddMaxEquality(max_count_var, count_vars)
+            model.AddMinEquality(min_count_var, count_vars)
+            count_spread = max_count_var - min_count_var
+
+        model.Maximize(
+            -l1_w * l1_term - prior_w * prior_term - count_w * count_spread - dist_term
+        )
     else:
         model.Maximize(-dist_term)
 

@@ -56,7 +56,10 @@ def _sid():
 
 
 def test_new_soldier_no_history():
-    """Soldier with no historical duties → effort_score=0, C_over_D=1.0."""
+    """Soldier present but with no scored duties → effort_score=0.
+
+    effort_score = A_i / W_i = 0 / 1 = 0. C_over_D = 1/max(W_i,1) = 1.0.
+    """
     sid = _sid()
     soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 4, 1))
     result = _compute_effort_data(
@@ -64,17 +67,12 @@ def test_new_soldier_no_history():
         quarters=[(date(2026, 4, 1), date(2026, 6, 30))],
         quarter_unit_scores={date(2026, 4, 1): Decimal("100")},
         quarter_soldier_scores={date(2026, 4, 1): {}},
-        planning_start=date(2026, 7, 1),
-        planning_end=date(2026, 8, 31),
     )
     data = result[sid]
     assert data.effort_score == Decimal("0")
-    # C_i = full planning window / planning_window_length = 1.0
-    # W_i = 1.0 (soldier enrolled on quarter start, so active_frac=1.0 for Q2 2026)
-    # D_i = W_i + C_i = 1 + 1 = 2
-    # C_over_D = 1/2 = 0.5
-    # NOTE: Plan draft incorrectly asserted C_over_D=1 (had W_i=0); corrected to 0.5.
-    assert abs(data.C_over_D - Decimal("0.5")) < Decimal("0.001")
+    # W_i = 1.0 (enrolled on quarter start → active_frac=1.0 for Q2 2026)
+    # C_over_D = 1 / max(W_i, 1) = 1.0
+    assert abs(data.C_over_D - Decimal("1.0")) < Decimal("0.001")
 
 
 def test_veteran_perfect_average():
@@ -99,14 +97,12 @@ def test_veteran_perfect_average():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
-        planning_start=date(2025, 7, 1),
-        planning_end=date(2025, 9, 30),
     )
     data = result[sid]
     # share_q1 = share_q2 = 0.1, active_frac = 1.0 both quarters
-    # A_i = 0.1 + 0.1 = 0.2, W_i = 2.0, C_i = 1.0, D_i = 3.0
-    # effort_score = A_i / D_i = 0.2 / 3 ≈ 0.0667
-    assert abs(data.effort_score - Decimal("0.2") / Decimal("3")) < Decimal("0.0001")
+    # A_i = 0.1 + 0.1 = 0.2, W_i = 2.0
+    # effort_score = A_i / W_i = 0.2 / 2 = 0.1
+    assert abs(data.effort_score - Decimal("0.1")) < Decimal("0.0001")
 
 
 def test_soldier_not_yet_enrolled():
@@ -130,15 +126,13 @@ def test_soldier_not_yet_enrolled():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
-        planning_start=date(2025, 7, 1),
-        planning_end=date(2025, 9, 30),
     )
     data = result[sid]
     # Q1: soldier not enrolled → skip. Q2: active_frac=1.0, share=0.1
-    # A_i=0.1, W_i=1.0, C_i=1.0, D_i=2.0
-    # effort_score = 0.1 / 2 = 0.05
-    assert abs(data.effort_score - Decimal("0.05")) < Decimal("0.0001")
-    assert abs(data.C_over_D - Decimal("0.5")) < Decimal("0.0001")
+    # A_i=0.1, W_i=1.0
+    # effort_score = A_i / W_i = 0.1 / 1 = 0.1
+    assert abs(data.effort_score - Decimal("0.1")) < Decimal("0.0001")
+    assert abs(data.C_over_D - Decimal("1.0")) < Decimal("0.0001")
 
 
 def test_effort_offset_integer():
@@ -153,8 +147,6 @@ def test_effort_offset_integer():
         quarters=quarters,
         quarter_unit_scores=unit_scores,
         quarter_soldier_scores=soldier_scores,
-        planning_start=date(2025, 4, 1),
-        planning_end=date(2025, 6, 30),
     )
     data = result[sid]
     expected_offset = int(data.effort_score * EFFORT_SCALE)

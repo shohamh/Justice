@@ -6,6 +6,12 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+# Scale factor for converting Decimal effort scores to CP-SAT integers.
+# Lives here (the pure, dependency-free types module) so both the solver
+# (app.algorithm.model) and the effort service (app.services.effort_score)
+# can share it without the solver importing any DB code.
+EFFORT_SCALE = 1_000_000_000  # 10^9
+
 
 @dataclass
 class SoldierInput:
@@ -20,6 +26,10 @@ class SoldierInput:
     # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)
     effort_offset: int = 0      # int(effort_score × EFFORT_SCALE) — historical quarterly share
     effort_per_milli: int = 0   # int(C_over_D / unit_score_milli × EFFORT_SCALE) — per-milli contribution
+    # Count-space prior load: recent effective duty score × 5 (reserve=1, primary=5).
+    # Used by the L1 fairness objective (small eligibility groups only) to balance
+    # total load (recent + new). Set by the algorithm_bridge.
+    recent_load: int = 0
 
 
 @dataclass
@@ -58,6 +68,12 @@ class SolverSettings:
     time_limit_seconds: int = 30
     seed: int | None = None
     reserve_hierarchy_weight: Decimal = Decimal("0.5")
+    # Fairness L1 in count-space: effort × effort_resolution, rounded to integers.
+    effort_resolution: int = 10_000
+    # Decomposition + chronological batching (keeps each L1 solve small/tractable).
+    batching_enabled: bool = True
+    batch_size: int = 50
+    batch_time_limit_seconds: int = 10
 
 
 @dataclass

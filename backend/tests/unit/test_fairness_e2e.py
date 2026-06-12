@@ -63,13 +63,33 @@ import pytest
 from ortools.sat.python.cp_model import CpSolver
 
 from app.algorithm.model import build_model
-from app.algorithm.types import DutyBlock, SoldierInput, SolverSettings
+from app.algorithm.types import EFFORT_SCALE, DutyBlock, SoldierInput, SolverSettings
 
 # ─── Shared constants ─────────────────────────────────────────────────────────
 
 STD = dict(T=7, W=14, alpha=Decimal("1.0"))
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _effort(cumulative_score: Decimal, active_days: int) -> dict:
+    """Effort fields that mirror the production metric for these score-based
+    scenarios, so the effort-optimising model reproduces score_per_day fairness.
+
+    The model optimises quarterly EFFORT, not cumulative_score; these tests
+    historically expressed load as cumulative_score / active_days (score_per_day).
+    We map that onto effort on the EFFORT_SCALE:
+        effort_offset    = score_per_day × EFFORT_SCALE   (historical load)
+        effort_per_milli = EFFORT_SCALE / (active_days × 1000)
+    so a new 1-day duty of score s raises effort by s / active_days × EFFORT_SCALE
+    — exactly score_per_day's marginal. effort_offset is monotonic in
+    cumulative_score (active_days is uniform here), so assertions that sort by
+    cumulative_score are unchanged.
+    """
+    return {
+        "effort_offset": int(Decimal(cumulative_score) * EFFORT_SCALE / active_days),
+        "effort_per_milli": EFFORT_SCALE // (active_days * 1000),
+    }
 
 
 def _duties(m: int, rng: random.Random, gap_days: int = 14) -> list[DutyBlock]:
@@ -96,29 +116,34 @@ def _duties(m: int, rng: random.Random, gap_days: int = 14) -> list[DutyBlock]:
 
 def _soldiers_equal_days(n: int, rng: random.Random, days: int = 100) -> list[SoldierInput]:
     """n soldiers with the same active_days but uniformly randomised cumulative scores."""
-    return [
-        SoldierInput(
+    out = []
+    for _ in range(n):
+        # Two decimal places — Decimal arithmetic stays exact when multiplied by 1000
+        cum = Decimal(str(round(rng.uniform(0, 150), 2)))
+        out.append(SoldierInput(
             id=uuid.uuid4(),
             enrolled_at=date(2024, 1, 1),
-            # Two decimal places — Decimal arithmetic stays exact when multiplied by 1000
-            cumulative_score=Decimal(str(round(rng.uniform(0, 150), 2))),
+            cumulative_score=cum,
             active_days=days,
-        )
-        for _ in range(n)
-    ]
+            **_effort(cum, days),
+        ))
+    return out
 
 
 def _soldiers_mixed_days(n: int, rng: random.Random) -> list[SoldierInput]:
     """n soldiers with randomised cumulative scores and randomised active_days."""
-    return [
-        SoldierInput(
+    out = []
+    for _ in range(n):
+        cum = Decimal(str(round(rng.uniform(0, 200), 2)))
+        days = rng.randint(30, 500)
+        out.append(SoldierInput(
             id=uuid.uuid4(),
             enrolled_at=date(2024, 1, 1),
-            cumulative_score=Decimal(str(round(rng.uniform(0, 200), 2))),
-            active_days=rng.randint(30, 500),
-        )
-        for _ in range(n)
-    ]
+            cumulative_score=cum,
+            active_days=days,
+            **_effort(cum, days),
+        ))
+    return out
 
 
 def _solve(
@@ -254,24 +279,21 @@ def test_e2e_extreme_gap_low_absorbs_all(n_low: int, n_high: int, m: int, seed: 
     """
     rng = random.Random(seed)
 
-    low_group = [
-        SoldierInput(
-            id=uuid.uuid4(),
-            enrolled_at=date(2024, 1, 1),
-            cumulative_score=Decimal(str(round(rng.uniform(0.0, 1.0), 2))),
-            active_days=100,
-        )
-        for _ in range(n_low)
-    ]
-    high_group = [
-        SoldierInput(
-            id=uuid.uuid4(),
-            enrolled_at=date(2024, 1, 1),
-            cumulative_score=Decimal(str(round(rng.uniform(50.0, 100.0), 2))),
-            active_days=100,
-        )
-        for _ in range(n_high)
-    ]
+    def _grp(n: int, lo: float, hi: float) -> list[SoldierInput]:
+        out = []
+        for _ in range(n):
+            cum = Decimal(str(round(rng.uniform(lo, hi), 2)))
+            out.append(SoldierInput(
+                id=uuid.uuid4(),
+                enrolled_at=date(2024, 1, 1),
+                cumulative_score=cum,
+                active_days=100,
+                **_effort(cum, 100),
+            ))
+        return out
+
+    low_group = _grp(n_low, 0.0, 1.0)
+    high_group = _grp(n_high, 50.0, 100.0)
 
     duties = _duties(m, rng)
     new_score, _ = _solve(low_group + high_group, duties)
@@ -383,24 +405,21 @@ def test_e2e_large_extreme_gap(n_low: int, n_high: int, m: int, seed: int) -> No
     """Large scale: low-spd group (spd≈0) absorbs all duties; high-spd (spd≈0.5+) get none."""
     rng = random.Random(seed)
 
-    low_group = [
-        SoldierInput(
-            id=uuid.uuid4(),
-            enrolled_at=date(2024, 1, 1),
-            cumulative_score=Decimal(str(round(rng.uniform(0.0, 1.0), 2))),
-            active_days=100,
-        )
-        for _ in range(n_low)
-    ]
-    high_group = [
-        SoldierInput(
-            id=uuid.uuid4(),
-            enrolled_at=date(2024, 1, 1),
-            cumulative_score=Decimal(str(round(rng.uniform(50.0, 100.0), 2))),
-            active_days=100,
-        )
-        for _ in range(n_high)
-    ]
+    def _grp(n: int, lo: float, hi: float) -> list[SoldierInput]:
+        out = []
+        for _ in range(n):
+            cum = Decimal(str(round(rng.uniform(lo, hi), 2)))
+            out.append(SoldierInput(
+                id=uuid.uuid4(),
+                enrolled_at=date(2024, 1, 1),
+                cumulative_score=cum,
+                active_days=100,
+                **_effort(cum, 100),
+            ))
+        return out
+
+    low_group = _grp(n_low, 0.0, 1.0)
+    high_group = _grp(n_high, 50.0, 100.0)
 
     duties = _duties(m, rng, gap_days=1)
     new_score, _ = _solve(

@@ -162,9 +162,9 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                 <table className="w-full text-xs border-collapse">
                   <tbody>
                     <tr className="border-b dark:border-gray-700">
-                      <td className="py-1 text-gray-500 w-40">ניקוד מצטבר</td>
+                      <td className="py-1 text-gray-500 w-40">עומס רבעוני</td>
                       <td className="py-1 font-medium">
-                        {enriched.score_at_assignment != null ? enriched.score_at_assignment.toFixed(3) : "—"}
+                        {enriched.score_at_assignment != null ? (enriched.score_at_assignment * 100).toFixed(2) + "%" : "—"}
                       </td>
                     </tr>
                     <tr className="border-b dark:border-gray-700">
@@ -192,7 +192,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                           {c.reason_excluded
                             ? ` — ${c.reason_excluded}`
                             : c.score != null
-                              ? ` — ניקוד גבוה יותר (${c.score.toFixed(3)})`
+                              ? ` — עומס גבוה יותר (${(c.score * 100).toFixed(2)}%)`
                               : ""}
                         </span>
                       </li>
