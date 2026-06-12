@@ -28,6 +28,12 @@ export function DutyConfigContent() {
   const [dtScore, setDtScore] = useState("1.00");
   const [dtReserveRatio, setDtReserveRatio] = useState("0.000");
   const [dtReserveMin, setDtReserveMin] = useState("0");
+  const [dtContactName, setDtContactName] = useState("");
+  const [dtContactPhone, setDtContactPhone] = useState("");
+  const [dtStartTime, setDtStartTime] = useState("");
+  const [dtEndTime, setDtEndTime] = useState("");
+  const [dtInstructions, setDtInstructions] = useState("");
+  const [dtIsExternal, setDtIsExternal] = useState<"" | "true" | "false">("");
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
@@ -51,8 +57,21 @@ export function DutyConfigContent() {
 
   async function addDutyType(e: FormEvent) {
     e.preventDefault();
-    await createDutyType({ name: dtName, score_per_day: dtScore, reserve_ratio: dtReserveRatio, reserve_minimum: parseInt(dtReserveMin) || 0 });
+    await createDutyType({
+      name: dtName,
+      score_per_day: dtScore,
+      reserve_ratio: dtReserveRatio,
+      reserve_minimum: parseInt(dtReserveMin) || 0,
+      contact_name: dtContactName || null,
+      contact_phone: dtContactPhone || null,
+      start_time: dtStartTime || null,
+      end_time: dtEndTime || null,
+      instructions: dtInstructions || null,
+      is_external: dtIsExternal === "true",
+    });
     setDtName(""); setDtScore("1.00"); setDtReserveRatio("0.000"); setDtReserveMin("0");
+    setDtContactName(""); setDtContactPhone(""); setDtStartTime(""); setDtEndTime("");
+    setDtInstructions(""); setDtIsExternal("");
     await refresh();
   }
   async function addLocation(e: FormEvent) {
@@ -80,25 +99,54 @@ export function DutyConfigContent() {
 
       <div data-testid="duty-types-section">
         <h3 className="font-medium mb-2">{t("duty_config.duty_types")}</h3>
-        <form onSubmit={addDutyType} className="flex items-end gap-2 mb-2" data-testid="duty-type-form">
-          <label className="block"><span className="text-xs">{t("duty_config.name")}</span>
-            <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
-          <label className="block"><span className="text-xs">{t("duty_config.score_per_day")}</span>
-            <input className="block border rounded p-1 w-24 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
-          <label className="block"><span className="text-xs">{t("reserve_ratio")}</span>
-            <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
-          <label className="block"><span className="text-xs">{t("reserve_minimum")}</span>
-            <input type="number" min="0" step="1" className="block border rounded p-1 w-16 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
+        <form onSubmit={addDutyType} className="space-y-2 mb-2" data-testid="duty-type-form">
+          <div className="flex items-end gap-2 flex-wrap">
+            <label className="block"><span className="text-xs">{t("duty_config.name")}</span>
+              <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.score_per_day")}</span>
+              <input className="block border rounded p-1 w-24 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
+            <label className="block"><span className="text-xs">{t("reserve_ratio")}</span>
+              <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
+            <label className="block"><span className="text-xs">{t("reserve_minimum")}</span>
+              <input type="number" min="0" step="1" className="block border rounded p-1 w-16 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.contact_name")}</span>
+              <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtContactName} onChange={(e) => setDtContactName(e.target.value)} data-testid="dt-contact-name" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.contact_phone")}</span>
+              <input className="block border rounded p-1 w-32 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtContactPhone} onChange={(e) => setDtContactPhone(e.target.value)} data-testid="dt-contact-phone" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.start_time")}</span>
+              <input type="time" className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtStartTime} onChange={(e) => setDtStartTime(e.target.value)} data-testid="dt-start-time" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.end_time")}</span>
+              <input type="time" className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtEndTime} onChange={(e) => setDtEndTime(e.target.value)} data-testid="dt-end-time" /></label>
+            <label className="block"><span className="text-xs">{t("duty_config.is_external")} *</span>
+              <select required className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtIsExternal} onChange={(e) => setDtIsExternal(e.target.value as "" | "true" | "false")} data-testid="dt-is-external">
+                <option value="" disabled>{t("duty_config.is_external_placeholder")}</option>
+                <option value="false">{t("duty_config.is_external_internal")}</option>
+                <option value="true">{t("duty_config.is_external_external")}</option>
+              </select></label>
+          </div>
+          <label className="block">
+            <span className="text-xs">{t("duty_config.instructions")} <span className="text-gray-400">({t("duty_config.instructions_hint")})</span></span>
+            <textarea
+              className="block border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              rows={3}
+              value={dtInstructions}
+              onChange={(e) => setDtInstructions(e.target.value)}
+              data-testid="dt-instructions"
+            />
+          </label>
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dt-submit">{t("duty_config.add")}</button>
         </form>
         <div className="space-y-1 text-sm" data-testid="duty-type-list">
           {dutyTypes.map((d) => (
             <div key={d.id} data-testid={`dt-row-${d.name}`} className="border dark:border-gray-600 rounded p-2 space-y-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>{d.name} — {d.score_per_day}</span>
                 {d.reserve_ratio && parseFloat(d.reserve_ratio) > 0 && (
                   <span className="text-xs text-purple-600 dark:text-purple-400">ר:{d.reserve_ratio} מינ:{d.reserve_minimum ?? 0}</span>
                 )}
+                <span className={`text-xs px-1.5 py-0.5 rounded ${d.is_external ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"}`}>
+                  {d.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal")}
+                </span>
                 <button className="text-xs text-indigo-600 dark:text-indigo-400" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
                   {d.active ? t("duty_config.active") : "—"}
                 </button>
@@ -110,6 +158,17 @@ export function DutyConfigContent() {
                   {t("eligibility.title")}
                 </button>
               </div>
+              {(d.contact_name || d.contact_phone || d.start_time || d.end_time || d.instructions) && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 mt-1">
+                  {(d.contact_name || d.contact_phone) && (
+                    <p>{t("duty_config.contact_name")}: {d.contact_name ?? "—"}{d.contact_phone ? ` | ${d.contact_phone}` : ""}</p>
+                  )}
+                  {(d.start_time || d.end_time) && (
+                    <p>{t("duty_config.start_time")}: {d.start_time?.slice(0, 5) ?? "—"} — {d.end_time?.slice(0, 5) ?? "—"}</p>
+                  )}
+                  {d.instructions && <p>{t("duty_config.instructions")}: {d.instructions}</p>}
+                </div>
+              )}
               {expandedDtId === d.id && (
                 <DutyTypeRequirementsEditor
                   dutyType={d}

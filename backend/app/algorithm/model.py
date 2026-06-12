@@ -117,41 +117,67 @@ def build_model(
             else:
                 model.Add(sum(day_vars) <= 1)
 
-    # ── Effort-score expressions (L1 objective) ──────────────────────────────
+    # ── Count-space effort ────────────────────────────────────────────────────
     #
-    # projected_effort[si] = effort_offset[si]
-    #                       + effort_per_milli[si] × Σ(_block_score(d) × x[di,si])
+    # We optimise quarterly EFFORT (the metric shown on the transparency page and
+    # in app/algorithm/explain.py), but expressed as small integers so the L1
+    # objective below stays tractable:
     #
-    # Fully linear — no AddDivisionEquality — which CP-SAT handles efficiently.
-    # effort_offset and effort_per_milli are set by inject_effort_scores() in the
-    # bridge before solve() is called.  Both default to 0, giving a degenerate
-    # but valid objective that falls back to minimising reserve hierarchy distance.
+    #   DIV            = EFFORT_SCALE // effort_resolution      (K = resolution)
+    #   count_offset_i = effort_offset_i // DIV                 (prior effort, a constant)
+    #   weight_i(duty) = max(1, effort_per_milli_i × block_score(duty) // DIV)
+    #   total_i        = count_offset_i + Σ_{assigned} weight_i(duty)
     #
-    # Variable bound: effort_score ∈ [0,1] so effort_offset ∈ [0, EFFORT_SCALE].
-    # Max increment = C_over_D × EFFORT_SCALE ≤ EFFORT_SCALE.
-    # Therefore projected_effort ∈ [0, 2 × EFFORT_SCALE].
+    # effort_offset / effort_per_milli are injected by the bridge over the FULL
+    # duty set (so per_milli is not inflated by a small subset).  Scaling by 1/DIV
+    # only rounds away effort differences below 1/K — everything else (the W and
+    # unit-score normalisation) stays baked in.  A reserve's block_score is already
+    # standby_multiplier× its primary, so its weight is the same fraction; the
+    # max(1, …) floor keeps a reserve worth ≥ 1 unit.
+    div = max(1, EFFORT_SCALE // settings.effort_resolution)
+    # Upper bound on count-space total: offset (≤ EFFORT_SCALE/DIV) plus the marginal
+    # (sums to ≤ EFFORT_SCALE/DIV); pad for the per-duty floor rounding.
+    total_ub = 4 * (EFFORT_SCALE // div) + len(duty_list) + 1
 
-    _EFFORT_BOUND = 2 * EFFORT_SCALE
-
-    dev_vars: list[LinearExpr] = []
-    target = model.NewIntVar(0, _EFFORT_BOUND, "effort_target")
+    # We optimise over *eligible* soldiers only (those that can receive ≥1 duty).
+    eligible_total_exprs: list[LinearExpr] = []  # count_offset + new weight per soldier
+    eligible_offsets: list[int] = []             # count_offset constants
+    # Secondary tiebreak (below L1) breaks L1's flat-region ties:
+    #   • prior_terms = count_offset × new_count → prefer LOW-prior soldiers
+    #   • count_spread (max−min of new counts) → split evenly among equals
+    # Both are linear/cheap (no squares), so the model stays fast.
+    prior_terms: list = []           # count_offset × new_count
+    count_vars: list[IntVar] = []    # new-duty counts (for the even-split spread)
+    total_new_weight = 0              # Σ over all duties of their unit weight (for μ)
 
     for si, s in enumerate(soldier_list):
         duties_for_s = soldier_duties.get(si, [])
+        if not duties_for_s:
+            continue
 
-        # Total score (×1000) of duties assigned to this soldier
-        block_score_milli_sum = sum(
-            _block_score(duty_list[di]) * x[(di, si)]
+        count_offset = s.effort_offset // div
+        new_weight = sum(
+            max(1, (s.effort_per_milli * _block_score(duty_list[di])) // div) * x[(di, si)]
             for di in duties_for_s
-        )  # returns 0 (int) when duties_for_s is empty
+        )
+        eligible_total_exprs.append(count_offset + new_weight)
+        eligible_offsets.append(count_offset)
 
-        # projected effort score in EFFORT_SCALE units
-        effort_expr = s.effort_offset + s.effort_per_milli * block_score_milli_sum
+        count = model.NewIntVar(0, len(duties_for_s), f"count_s{si}")
+        model.Add(count == sum(x[(di, si)] for di in duties_for_s))
+        count_vars.append(count)
+        if count_offset:
+            prior_terms.append(count_offset * count)
 
-        dev = model.NewIntVar(0, _EFFORT_BOUND, f"dev_s{si}")
-        model.Add(dev >= effort_expr - target)
-        model.Add(dev >= target - effort_expr)
-        dev_vars.append(dev)
+    # Total new weight that will be distributed (each duty goes to exactly one of
+    # its eligible soldiers).  The per-duty weight depends on the assigned
+    # soldier's per_milli, which we don't know yet; use the AVERAGE eligible
+    # per_milli as the least-biased representative for the centre μ.  (Using max
+    # would inflate μ and wrongly pull duties toward high-marginal soldiers.)
+    for di, d in enumerate(duty_list):
+        per_millis = [soldier_list[si].effort_per_milli for (dii, si) in eligible if dii == di]
+        pm = sum(per_millis) // len(per_millis) if per_millis else 0
+        total_new_weight += max(1, (pm * _block_score(d)) // div)
 
     # Hard constraint: max T duty-days in any rolling W-day window per soldier
     #
@@ -225,19 +251,55 @@ def build_model(
                 dist = reserve_dist.get((di, si), 10)
                 reserve_dist_terms.append(gamma_int * dist * var)
 
-    # ── Fairness objective (L1 minimise effort variance) ─────────────────────
+    # ── Fairness objective: L1 dispersion of count-space effort ───────────────
     #
-    # Minimise the sum of absolute deviations of projected effort scores from a
-    # free target variable.  The solver drives target to the median of projected
-    # efforts.  O(n) auxiliary variables — scales to 5 000+ soldiers.
+    # minimise   Σ_i | total_i − μ |   +   ε · reserve_proximity
     #
-    # Secondary: reserve hierarchy proximity (dist_term) acts as tiebreaker.
-    # ─────────────────────────────────────────────────────────────────────────
+    # where total_i = count_offset_i + Σ assigned weight_i(duty), and μ is FIXED
+    # to the post-run mean (a constant) so the deviation vars decouple → fast.
+    # Because every soldier contributes their own |deviation| term, L1 equalises
+    # the WHOLE distribution — including interior sub-populations (e.g. officers
+    # clustered at low effort) that a min(max−min) spread is blind to.  This is
+    # only tractable because the caller (solver.py) decomposes each run into
+    # connected components and chronological batches, so each build_model is small.
+    #
+    # SECONDARY (below L1) — prefer low-prior soldiers, then split counts evenly.
+    # RESERVE PROXIMITY (gamma_int) is the smallest tier.
+    # Tiers: L1 ≫ prior ≫ count-spread ≫ reserve proximity.
+    # ────────────────────────────────────────────────────────────────────────
 
+    alpha_int = int(settings.alpha * 1000)
     dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
 
-    if dev_vars:
-        model.Minimize(sum(dev_vars) + dist_term)
+    if eligible_total_exprs and alpha_int > 0:
+        # Tiers (each ≫ the next): L1 ≫ prior ≫ count-spread ≫ reserve proximity.
+        l1_w = 100_000_000_000  # 1e11
+        prior_w = 1_000_000     # 1e6
+        count_w = 10_000        # 1e4 — above the per-move reserve-distance term
+        n_elig = len(eligible_total_exprs)
+        mu_const = (sum(eligible_offsets) + total_new_weight) // n_elig
+
+        dev_terms: list[IntVar] = []
+        for i, total in enumerate(eligible_total_exprs):
+            dev = model.NewIntVar(0, total_ub, f"effort_dev{i}")
+            model.Add(dev >= total - mu_const)
+            model.Add(dev >= mu_const - total)
+            dev_terms.append(dev)
+        l1_term = sum(dev_terms)
+
+        prior_term = sum(prior_terms) if prior_terms else 0
+
+        count_spread: LinearExpr | int = 0
+        if len(count_vars) > 1:
+            max_count_var = model.NewIntVar(0, len(duty_list), "max_count")
+            min_count_var = model.NewIntVar(0, len(duty_list), "min_count")
+            model.AddMaxEquality(max_count_var, count_vars)
+            model.AddMinEquality(min_count_var, count_vars)
+            count_spread = max_count_var - min_count_var
+
+        model.Maximize(
+            -l1_w * l1_term - prior_w * prior_term - count_w * count_spread - dist_term
+        )
     else:
         model.Minimize(dist_term if reserve_dist_terms else 0)
 

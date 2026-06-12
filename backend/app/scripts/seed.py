@@ -8,7 +8,7 @@ Flags:
                          created empty so the algorithm can assign them).
 """
 
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 import math
 
@@ -45,9 +45,6 @@ def seed(*, force: bool = False, with_assignments: bool = False):
     with SessionLocal() as session:
         # All regular soldiers share this password.
         hashed = hash_password("1234567890")
-        # The bootstrap admin starts with must_change_password=True so the E2E
-        # "admin first login" spec can exercise the forced-change flow.
-        admin_hashed = hash_password("ChangeMeOnFirstLogin!")
 
         if clear:
             session.query(ExemptionRequest).delete()
@@ -70,8 +67,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
 
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
         if admin:
-            admin.password_hash = admin_hashed
-            admin.must_change_password = True
+            admin.password_hash = hashed
+            admin.must_change_password = False
             session.flush()
 
         if session.query(Soldier).filter(Soldier.personal_number == "2000001").first():
@@ -149,6 +146,8 @@ def seed(*, force: bool = False, with_assignments: bool = False):
 
         from datetime import timedelta
 
+        seed_today = date.today()
+
         # Mandatory service: men 32 months (2 yrs 8 mo), women 24 months (2 yrs)
         _MANDATORY_MONTHS = {"male": 32, "female": 24}
 
@@ -168,6 +167,15 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             return str(pn_counter)
 
         def make_soldier(pn: str, name: str, role: str, node_id: int, **extra):
+            # Keep intended-חובה soldiers (no discharge_date) classified as חובה
+            # even as the real-world clock advances past their hardcoded
+            # mandatory_end_date. Otherwise inferred_service_type() flips them to
+            # קבע and they become ineligible for every conscript-only duty type.
+            # enrolled_at (below) drives active_days; this only corrects service
+            # type so those soldiers stay assignable.
+            med = extra.get("mandatory_end_date")
+            if extra.get("discharge_date") is None and med is not None and med <= seed_today:
+                extra["mandatory_end_date"] = seed_today + timedelta(days=365)
             s = Soldier(
                 personal_number=pn,
                 full_name=name,
@@ -201,8 +209,6 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             discharge_date=date(2035, 1, 1),
             gender="male",
         )
-        s_admin.password_hash = admin_hashed
-        s_admin.must_change_password = True
         session.flush()
         all_soldiers.append(s_admin)
         psips.commander_id = s_admin.id
@@ -396,60 +402,97 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         all_soldiers += mador_soldiers
 
         # ── Duty types ──────────────────────────────────────────────
-        # (name, score_per_day, description, requirements, reserve_ratio, reserve_minimum)
+        # (name, score_per_day, description, requirements, reserve_ratio, reserve_minimum,
+        #  is_external, contact_name, contact_phone, start_time, end_time, instructions)
         dt_defs = [
             (
                 "שמירות",
                 Decimal("1.125"),
-                "שמירה בבסיס",
+                "שמירה בבסיס — כיסוי שער, מוצב ותצפיות פנים-בסיסיות",
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.300"),
                 3,
+                False,
+                "קצין שמירות",
+                "050-1234567",
+                time(7, 0),
+                time(7, 0),
+                "להתייצב בנקודת ריכוז שמירות ב-07:00 עם ציוד שלם. לקבל תדריך מקצין השמירה. לדווח על כל חריגה מיידית.",
             ),
             (
                 "ליווים",
                 Decimal("1.00"),
-                "ליווי אסירים/משאיות",
+                "ליווי אסירים, כלי רכב ומטענים מחוץ לבסיס",
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.200"),
                 2,
+                False,
+                "מפקד הליווי",
+                "050-2345678",
+                time(6, 0),
+                time(18, 0),
+                "להגיע לנקודת הריכוז ב-06:00 עם ציוד אישי מלא ונשק. לדווח למפקד הליווי עם ההגעה. שהייה מחוץ לבסיס לכל אורך המשמרת.",
             ),
             (
                 'עבודות רס"ר',
                 Decimal("1.00"),
-                'עבודות רס"ר שונות',
+                'עבודות רס"ר שוטפות — ניקיון, אחזקה, הפצה',
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.250"),
                 2,
+                False,
+                'רס"ר הבסיס',
+                "050-3456789",
+                time(8, 0),
+                time(16, 0),
+                'להתייצב אצל הרס"ר ב-08:00. לקבל משימות יומיות. לדווח על סיום כל משימה.',
             ),
             (
                 'אבט"ש',
                 Decimal(9) / Decimal(7),
-                "אבטחה שוטפת",
+                "אבטחה שוטפת — סיורים, בדיקות ואבטחת מתקנים",
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.350"),
                 4,
+                True,
+                "קצין ביטחון",
+                "050-4567890",
+                time(6, 0),
+                time(6, 0),
+                'להתייצב בחדר הביטחון. לקבל תדריך מקצין האבט"ש. מחייב ערנות מלאה לאורך כל המשמרת.',
             ),
             (
                 'הגנ"ש',
                 Decimal(9) / Decimal(7),
-                'הגנה"ש',
+                'הגנה"ש — הגנה על שטח ומתקנים רגישים, לקצינים בלבד',
                 {"enlisted_allowed": False},
                 Decimal("0.400"),
                 2,
+                True,
+                "קצין מבצעים",
+                "050-5678901",
+                time(7, 0),
+                time(19, 0),
+                'מחייב bahad1. להתייצב עם ציוד אישי מלא. לתאם מראש עם קצין המבצעים. אחריות על קו ההגנה.',
             ),
             (
                 "קצין תורן",
                 Decimal("1.125"),
-                "קצין תורן בבסיס",
+                "קצין תורן בבסיס — אחראי על סדר, כוח אדם ואירועים",
                 {"enlisted_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.500"),
                 1,
+                False,
+                "מפקד הבסיס",
+                "050-6789012",
+                time(8, 0),
+                time(8, 0),
+                "שמירה על סדר בבסיס לאורך 24 שעות. אחריות על דיווח אירועים חריגים. להעביר תדריך לקצין תורן מחליף.",
             ),
             (
                 "מפקד תורן",
                 Decimal("1.125"),
-                "מפקד תורן בבסיס",
+                "מפקד תורן בבסיס — פיקוד עליון על כל פעילות השמירה",
                 {
                     "enlisted_allowed": False,
                     "allowed_service_types": ["חובה"],
@@ -457,34 +500,58 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 },
                 Decimal("0.500"),
                 1,
+                False,
+                "מפקד הבסיס",
+                "050-7890123",
+                time(8, 0),
+                time(8, 0),
+                "מחייב bahad1. אחראי על מהלך כל הבסיס. לתדרך קצין תורן עם ההחלפה. יש להישאר זמין בכל עת.",
             ),
             (
                 'קצין מלווה אבט"ש',
                 Decimal(9) / Decimal(7),
-                "קצין מלווה לאבטחה",
+                'ליווי קצינאי לסיור האבט"ש, כולל יציאה מחוץ לבסיס',
                 {"enlisted_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.300"),
                 1,
+                True,
+                'קצין אבט"ש',
+                "050-8901234",
+                time(6, 0),
+                time(18, 0),
+                'ליווי פיקודי לסיור האבט"ש. ציוד מלא ונשק. לתאם עם קצין הביטחון לפני כל יציאה.',
             ),
             (
                 "אבות בית",
                 Decimal("1.00"),
-                "אבות בית",
+                "תחזוקה שוטפת של מבני הבסיס ותשתיות",
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.150"),
                 1,
+                False,
+                "אב בית ראשי",
+                "050-9012345",
+                time(7, 0),
+                time(15, 0),
+                "תחזוקה שוטפת של מבנים וציוד. לדווח על ליקויים לאב הבית הראשי. כולל עבודות ניקיון ואחזקה.",
             ),
             (
                 'עבודות רס"ר בינוי',
                 Decimal("1.00"),
-                'עבודות רס"ר בנושא בינוי',
+                'עבודות בינוי ושיפוץ בפיקוח הרס"ר',
                 {"officers_allowed": False, "allowed_service_types": ["חובה"]},
                 Decimal("0.150"),
                 1,
+                False,
+                'רס"ר בינוי',
+                "050-0123456",
+                time(7, 30),
+                time(15, 30),
+                'עבודות בינוי ושיפוץ בבסיס. יש להגיע עם ציוד עבודה מתאים. לדווח לרס"ר הבינוי על התקדמות.',
             ),
         ]
         duty_types = []
-        for name, spd, desc, reqs, rr, rmin in dt_defs:
+        for name, spd, desc, reqs, rr, rmin, is_ext, cname, cphone, stime, etime, instrs in dt_defs:
             dt = DutyType(
                 name=name,
                 score_per_day=spd,
@@ -492,6 +559,12 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 requirements=reqs,
                 reserve_ratio=rr,
                 reserve_minimum=rmin,
+                is_external=is_ext,
+                contact_name=cname,
+                contact_phone=cphone,
+                start_time=stime,
+                end_time=etime,
+                instructions=instrs,
             )
             session.add(dt)
             session.flush()
@@ -1192,6 +1265,49 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     reason=reason,
                     **extra,
                 ))
+
+        # ── Always-on marketplace demo swaps ────────────────────────────
+        # A small set of published assignments + open swap requests so the
+        # marketplace board is populated regardless of --with-assignments.
+        demo_enlisted = [
+            s for s in all_soldiers
+            if not s.is_officer and s.personal_number not in ("1000001",)
+        ][:8]
+        dt_shamirot = duty_types[0]   # שמירות  (enlisted-only)
+        dt_livoim   = duty_types[1]   # ליווים  (enlisted-only)
+        demo_reasons = [
+            "בדיקה רפואית",
+            "אירוע משפחתי",
+            "מבחן באוניברסיטה",
+            "חתונה",
+            "נסיעה מחוץ לבסיס",
+            "ימי חופש מאושרים",
+            "קורס מקצועי",
+            "בעיה אישית",
+        ]
+        for i, sol in enumerate(demo_enlisted):
+            dt_demo = dt_shamirot if i % 2 == 0 else dt_livoim
+            loc_demo = locations[i % len(locations)]
+            start_demo = today + timedelta(days=7 + i * 4)
+            end_demo   = start_demo + (timedelta(days=7) if i % 2 == 0 else timedelta(days=0))
+            da_demo = DutyAssignment(
+                soldier_id=sol.id,
+                duty_type_id=dt_demo.id,
+                duty_location_id=loc_demo.id,
+                start_date=start_demo,
+                end_date=end_demo,
+                status="published",
+                created_by=s_admin.id,
+            )
+            session.add(da_demo)
+            session.flush()
+            session.add(SwapRequest(
+                duty_assignment_id=da_demo.id,
+                duty_date=da_demo.start_date,
+                requesting_soldier_id=sol.id,
+                status="open",
+                reason=demo_reasons[i % len(demo_reasons)],
+            ))
 
         session.commit()
         import sys

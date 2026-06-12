@@ -10,7 +10,7 @@ from typing import Any
 
 _cancel_events: dict[str, threading.Event] = {}
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import (
@@ -239,8 +239,13 @@ def load_duty_blocks_from_shifts(
 
     blocks: list[DutyBlock] = []
     block_to_shift: dict[uuid.UUID, uuid.UUID] = {}
+    today = date.today()
 
     for shift in shifts:
+        effective_start = max(shift.start_date, today)
+        if effective_start > shift.end_date:
+            # Shift is entirely in the past — nothing left to assign
+            continue
         score = score_map.get(shift.duty_type_id, Decimal("1.00"))
         for _ in range(shift.required_count):
             block_id = uuid.uuid4()
@@ -248,7 +253,7 @@ def load_duty_blocks_from_shifts(
                 id=block_id,
                 duty_type_id=shift.duty_type_id,
                 duty_location_id=shift.duty_location_id,
-                start_date=shift.start_date,
+                start_date=effective_start,
                 end_date=shift.end_date,
                 score_per_day=score,
                 is_reserve=False,
@@ -263,7 +268,7 @@ def load_duty_blocks_from_shifts(
                 id=block_id,
                 duty_type_id=shift.duty_type_id,
                 duty_location_id=shift.duty_location_id,
-                start_date=shift.start_date,
+                start_date=effective_start,
                 end_date=shift.end_date,
                 score_per_day=r_score,
                 is_reserve=True,
@@ -297,6 +302,30 @@ def inject_effort_scores(
             s.effort_per_milli = int(float(data.C_over_D) / unit_score_milli * EFFORT_SCALE)
         else:
             s.effort_per_milli = 0
+
+
+def effort_history_horizon(session: Session, *, planning_start: date) -> date:
+    """Return the exclusive upper bound for the effort-history window.
+
+    Effort must reflect ALL published commitments, including assignments already
+    published for dates AFTER this planning window (schedules are routinely
+    published months ahead).  We therefore extend the window to the day after
+    the latest published assignment, so a soldier who is already booked far into
+    the future shows the corresponding effort and is deprioritised for new
+    duties.  The unpublished duties of the current run are never published yet,
+    so they are excluded automatically.
+
+    Falls back to ``planning_start`` when there is no published work at/after it
+    (the historical case where published == past).
+    """
+    latest_published_end = session.execute(
+        select(func.max(DutyAssignment.end_date)).where(
+            DutyAssignment.status == "published"
+        )
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= planning_start:
+        return latest_published_end + timedelta(days=1)
+    return planning_start
 
 
 def load_existing_assignments(
@@ -380,8 +409,8 @@ def _explanation_payload(
         }
         if dm_view:
             entry["soldier_name"] = soldier_names.get(c.soldier_id, "")
-            entry["pre_effort_score"] = c.pre_effort_score
-            entry["post_effort_score"] = c.post_effort_score
+            entry["pre_norm_score"] = c.pre_effort_score
+            entry["post_norm_score"] = c.post_effort_score
         candidates.append(entry)
     return {
         "duty_id": str(exp.duty_id),
@@ -537,12 +566,22 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     except Exception:
                         return default
 
+                def _setting_bool(key: str, default: bool) -> bool:
+                    try:
+                        return bool(get_setting(session, key))
+                    except Exception:
+                        return default
+
                 settings = SolverSettings(
                     T=int(job.settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 7))),
                     W=int(job.settings_json.get("W", _setting_int("algorithm.window_days", 14))),
                     alpha=Decimal(str(job.settings_json.get("alpha", 1.0))),
                     time_limit_seconds=int(job.settings_json.get("time_limit_seconds", 30)),
                     reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
+                    effort_resolution=_setting_int("fairness.effort_resolution", 10_000),
+                    batching_enabled=_setting_bool("algorithm.batching_enabled", True),
+                    batch_size=_setting_int("algorithm.batch_size", 50),
+                    batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
                 )
                 standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
@@ -569,11 +608,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 except Exception:
                     # Default: 2 years ago aligned to nearest quarter start
                     _reset_date = quarter_start(date(planning_start.year - 2, planning_start.month, 1))
+                # Count ALL published commitments — past and future — so duties
+                # already published months ahead raise the soldier's effort and
+                # deprioritise them for new work (see effort_history_horizon).
+                effort_horizon = effort_history_horizon(session, planning_start=planning_start)
                 effort_map = compute_effort_data(
                     session,
                     soldiers=soldiers,
-                    planning_start=planning_start,
-                    planning_end=planning_end,
+                    planning_start=effort_horizon,
+                    planning_end=effort_horizon,
                     reset_date=_reset_date,
                 )
                 inject_effort_scores(soldiers, duties, effort_map)

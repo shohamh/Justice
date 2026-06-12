@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import { TimelineEvent, getSoldierDutyHistory } from "../api/dutyHistory";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
 import { approveConstraint, rejectConstraint } from "../api/constraints";
+import { acceptProposalDirect, rejectProposalDirect } from "../api/algorithm";
 import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { listDutyTypes } from "../api/dutyConfig";
+import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
@@ -14,6 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 type FilterType =
   | "all"
   | "assignment"
+  | "algorithm_draft"
   | "cancellation"
   | "call_up"
   | "dismissal"
@@ -23,6 +25,7 @@ type FilterType =
 const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "all", i18nKey: "duty_history.filter_all" },
   { type: "assignment", i18nKey: "duty_history.filter_assignments" },
+  { type: "algorithm_draft", i18nKey: "duty_history.filter_drafts" },
   { type: "cancellation", i18nKey: "duty_history.filter_cancellations" },
   { type: "call_up", i18nKey: "duty_history.filter_call_ups" },
   { type: "dismissal", i18nKey: "duty_history.filter_dismissals" },
@@ -34,9 +37,9 @@ const TYPE_COLORS: Record<string, string> = {
   assignment: "border-indigo-500 bg-indigo-50 dark:bg-indigo-950",
   cancellation: "border-red-400 bg-red-50 dark:bg-red-950",
   call_up: "border-orange-400 bg-orange-50 dark:bg-orange-950",
-  dismissal: "border-yellow-400 bg-yellow-50",
-  exemption_request: "border-blue-400 bg-blue-50",
-  personal_constraint: "border-purple-400 bg-purple-50",
+  dismissal: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950",
+  exemption_request: "border-blue-400 bg-blue-50 dark:bg-blue-950",
+  personal_constraint: "border-purple-400 bg-purple-50 dark:bg-purple-950",
 };
 
 const DOT_COLORS: Record<string, string> = {
@@ -60,6 +63,29 @@ const STATUS_BADGE: Record<string, string> = {
   algorithm_rejected: "bg-red-100 text-red-800",
 };
 
+interface ScoreSegment {
+  days: number;
+  spd: string;
+  mult: string;
+  type: "regular" | "reserve_standby" | "reserve_called_up" | "forced_call_up" | "dismissed";
+}
+
+const SEGMENT_CHIP_COLORS: Record<ScoreSegment["type"], string> = {
+  regular: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+  reserve_standby: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  reserve_called_up: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  forced_call_up: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  dismissed: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+};
+
+const SEGMENT_LABELS: Record<ScoreSegment["type"], string> = {
+  regular: "רגיל",
+  reserve_standby: "רזרבה",
+  reserve_called_up: "הוקפץ מרזרבה",
+  forced_call_up: "הקפצה פיקודית",
+  dismissed: "שוחרר",
+};
+
 interface Props {
   soldierId: string;
   soldierName?: string;
@@ -79,6 +105,9 @@ function EventCard({
   openSwaps,
   onCover,
   onOfferSwap,
+  onAcceptDraft,
+  onRejectDraft,
+  dutyType,
   t,
 }: {
   e: TimelineEvent;
@@ -92,11 +121,23 @@ function EventCard({
   openSwaps?: SwapRequest[];
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  onAcceptDraft?: (id: string) => void;
+  onRejectDraft?: (id: string) => void;
+  dutyType?: DutyType | null;
   t: (key: string) => string;
 }) {
   const colorClass = TYPE_COLORS[e.event_type] ?? "border-gray-300 bg-gray-50 dark:bg-gray-800";
   const dotColor = DOT_COLORS[e.event_type] ?? "bg-gray-400";
   const badgeClass = e.status ? (STATUS_BADGE[e.status] ?? "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300") : null;
+  const scoreSegments: ScoreSegment[] | null = (() => {
+    try {
+      const raw = e.metadata.score_segments;
+      if (!raw) return null;
+      return JSON.parse(raw) as ScoreSegment[];
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <div
@@ -129,7 +170,12 @@ function EventCard({
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
-            {badgeClass && (
+            {e.status === "algorithm_draft" && (
+              <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 font-medium">
+                {t("duty_history.draft_badge")}
+              </span>
+            )}
+            {badgeClass && e.status !== "algorithm_draft" && (
               <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${badgeClass}`}>
                 {t(`my_requests.${e.status}`)}
               </span>
@@ -145,7 +191,7 @@ function EventCard({
           </div>
         </div>
 
-        {e.event_type === "assignment" && onOfferSwap && (
+        {e.event_type === "assignment" && e.status !== "algorithm_draft" && onOfferSwap && (
           <div className="mt-1.5" onClick={(ev) => ev.stopPropagation()}>
             <button
               onClick={(ev) => { ev.stopPropagation(); onOfferSwap(e); }}
@@ -156,7 +202,7 @@ function EventCard({
           </div>
         )}
 
-        {e.event_type === "assignment" && openSwaps && openSwaps.filter((s) => s.status === "open").map((swap) => (
+        {e.event_type === "assignment" && e.status !== "algorithm_draft" && openSwaps && openSwaps.filter((s) => s.status === "open").map((swap) => (
           <div
             key={swap.id}
             className="flex items-center gap-2 mt-1 bg-orange-50 border border-orange-200 rounded px-2 py-1 text-xs"
@@ -175,13 +221,50 @@ function EventCard({
         {isExpanded && (
           <div className="mt-2 space-y-1">
             {e.description && <p className="text-gray-600">{e.description}</p>}
+            {dutyType && (() => {
+              const hasInfo = dutyType.start_time || dutyType.end_time || dutyType.contact_name || dutyType.contact_phone || dutyType.instructions;
+              if (!hasInfo && !dutyType) return null;
+              return (
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${dutyType.is_external ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"}`}>
+                      {dutyType.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal")}
+                    </span>
+                    {(dutyType.start_time || dutyType.end_time) && (
+                      <span dir="ltr">{dutyType.start_time?.slice(0, 5) ?? "?"}–{dutyType.end_time?.slice(0, 5) ?? "?"}</span>
+                    )}
+                    {dutyType.contact_name && <span>{dutyType.contact_name}</span>}
+                    {dutyType.contact_phone && (
+                      <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-400" onClick={(ev) => ev.stopPropagation()}>{dutyType.contact_phone}</a>
+                    )}
+                  </div>
+                  {dutyType.instructions && (
+                    <p className="mt-0.5 whitespace-pre-wrap">{dutyType.instructions}</p>
+                  )}
+                </div>
+              );
+            })()}
             {e.metadata.score_total != null && (
-              <p className="text-xs text-gray-500 dark:text-gray-400" data-testid={`score-formula-${e.id}`}>
-                ניקוד:{" "}
-                {e.metadata.score_formula
-                  ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
-                  : e.metadata.score_total}
-              </p>
+              <div data-testid={`score-formula-${e.id}`}>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ניקוד:{" "}
+                  {e.metadata.score_formula
+                    ? `${e.metadata.score_formula} = ${e.metadata.score_total}`
+                    : e.metadata.score_total}
+                </p>
+                {scoreSegments && scoreSegments.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {scoreSegments.map((seg, i) => (
+                      <span
+                        key={i}
+                        className={`text-xs px-1.5 py-0.5 rounded ${SEGMENT_CHIP_COLORS[seg.type]}`}
+                      >
+                        {SEGMENT_LABELS[seg.type]} ×{seg.mult}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {e.metadata.decision_note && (
               <p className="text-gray-400 text-xs">
@@ -228,6 +311,24 @@ function EventCard({
                 )}
               </div>
             )}
+            {canManage && e.status === "algorithm_draft" && (
+              <div className="flex gap-2 mt-2">
+                <button
+                  className="text-xs text-green-600 hover:underline"
+                  onClick={(ev) => { ev.stopPropagation(); onAcceptDraft?.(e.id); }}
+                  data-testid={`accept-draft-${e.id}`}
+                >
+                  {t("approvals.approve")}
+                </button>
+                <button
+                  className="text-xs text-red-600 hover:underline"
+                  onClick={(ev) => { ev.stopPropagation(); onRejectDraft?.(e.id); }}
+                  data-testid={`reject-draft-${e.id}`}
+                >
+                  {t("approvals.reject")}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -247,6 +348,9 @@ function Timeline({
   swapsByAssignment,
   onCover,
   onOfferSwap,
+  onAcceptDraft,
+  onRejectDraft,
+  dutyTypeById,
   t,
 }: {
   events: TimelineEvent[];
@@ -260,6 +364,9 @@ function Timeline({
   swapsByAssignment?: Record<string, SwapRequest[]>;
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  onAcceptDraft?: (id: string) => void;
+  onRejectDraft?: (id: string) => void;
+  dutyTypeById: Record<string, DutyType>;
   t: (key: string) => string;
 }) {
   return (
@@ -280,6 +387,9 @@ function Timeline({
             openSwaps={swapsByAssignment?.[e.id]}
             onCover={onCover}
             onOfferSwap={onOfferSwap}
+            onAcceptDraft={onAcceptDraft}
+            onRejectDraft={onRejectDraft}
+            dutyType={e.metadata.duty_type_id ? (dutyTypeById[e.metadata.duty_type_id] ?? null) : null}
             t={t}
           />
         ))}
@@ -300,13 +410,14 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
   const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
+  const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
   const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getSoldierDutyHistory(soldierId);
+      const data = await getSoldierDutyHistory(soldierId, canManage);
       if (!signal?.aborted) setEvents(data);
     } catch (err: unknown) {
       if (signal?.aborted) return;
@@ -319,7 +430,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [soldierId, t]);
+  }, [soldierId, canManage, t]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -329,6 +440,13 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     void load(controller.signal);
     return () => controller.abort();
   }, [isActive, soldierId, load]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    listDutyTypes()
+      .then((dts) => setDutyTypeById(Object.fromEntries(dts.map((d) => [d.id, d]))))
+      .catch(() => {/* non-critical */});
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive || soldierId === user?.id) return;
@@ -413,6 +531,34 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     }
   }
 
+  async function handleAcceptDraft(id: string) {
+    try {
+      await acceptProposalDirect(id);
+      await load();
+    } catch (err: unknown) {
+      const httpStatus = (err as { response?: { status?: number } })?.response?.status;
+      if (httpStatus === 409) {
+        await load();
+      } else {
+        alert("שגיאה בביצוע הפעולה");
+      }
+    }
+  }
+
+  async function handleRejectDraft(id: string) {
+    try {
+      await rejectProposalDirect(id);
+      await load();
+    } catch (err: unknown) {
+      const httpStatus = (err as { response?: { status?: number } })?.response?.status;
+      if (httpStatus === 409) {
+        await load();
+      } else {
+        alert("שגיאה בביצוע הפעולה");
+      }
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-gray-400">{t("app.loading")}</p>;
   }
@@ -422,7 +568,12 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const filtered = filter === "all" ? events : events.filter((e) => e.event_type === filter);
+  const filtered =
+    filter === "all"
+      ? events
+      : filter === "algorithm_draft"
+        ? events.filter((e) => e.status === "algorithm_draft")
+        : events.filter((e) => e.event_type === filter);
 
   // upcoming: date >= today, sorted ascending (soonest first)
   const upcoming = filtered
@@ -447,6 +598,9 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     swapsByAssignment,
     onCover: handleOpenCoverModal,
     onOfferSwap: isOtherSoldier ? setOfferSwapEvent : undefined,
+    onAcceptDraft: handleAcceptDraft,
+    onRejectDraft: handleRejectDraft,
+    dutyTypeById,
     t,
   };
 

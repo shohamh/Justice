@@ -227,24 +227,17 @@ function FairnessTab() {
           <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-2">
             <p className="font-medium text-sm">שלב 3 — חישוב הממוצע הסופי</p>
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              סכום החלקים המשוקללים מחולק ב<strong>מכנה</strong> הכולל שני חלקים:
+              סכום החלקים המשוקללים (A) מחולק בסכום הנוכחות הכולל (W):
             </p>
             <div className="text-xs space-y-1.5">
               <div className="flex gap-2 items-start">
                 <span className="shrink-0 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded px-1 font-medium">W</span>
                 <span className="text-gray-600 dark:text-gray-300"><strong>היסטוריה כוללת</strong> — סכום הנוכחות ברבעונות העבר. 4 רבעונות מלאים = W=4.</span>
               </div>
-              <div className="flex gap-2 items-start">
-                <span className="shrink-0 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded px-1 font-medium">C</span>
-                <span className="text-gray-600 dark:text-gray-300"><strong>רבעון נוכחי — תמיד 1</strong> — מייצג סיבוב תכנון שלם שטרם בוצע. C אינו מודד כמה מהרבעון הנוכחי עבר — הוא קבוע 1 לכולם. הוא נכלל במכנה <em>בלבד</em>, כך שאין לו עדיין תרומה לעומס שנצבר.</span>
-              </div>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-xs text-center font-medium text-indigo-800 dark:text-indigo-200">
-              עומס = עומס שנצבר ÷ (W + 1)
+              עומס = A ÷ W
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              המשמעות: לפני כל סיבוב, הציון של <em>כולם</em> נמוך יותר ב-1 מחלק — ורק תורנויות חדשות יחזירו אותו לרמה הקודמת. זה מונע מוותיקים &ldquo;לנוח&rdquo; על ניקוד עבר.
-            </p>
           </div>
         </div>
 
@@ -280,10 +273,10 @@ function FairnessTab() {
                   {myBreakdown.quarters.map((q) => {
                     const unitScore = parseFloat(q.unit_score);
                     return (
-                      <tr key={q.quarter_label} className={`border-b border-green-200 dark:border-green-800 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
+                      <tr key={q.quarter_label} className={`border-b border-green-200 dark:border-green-800 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                         <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">
                           <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                          {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 font-normal not-italic">(חלקי)</span>}
+                          {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-400 font-normal not-italic">(חלקי)</span>}
                         </td>
                         <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(1)}</td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
@@ -296,28 +289,29 @@ function FairnessTab() {
                   })}
                 </tbody>
               </table>
-              {myBreakdown.quarters.some((q) => q.is_partial) && (
-                <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
-                  ⚠️ <strong>רבעון חלקי</strong> — הרבעון עדיין בתהליך; מוצגים נתונים עד אתמול בלבד. ניקוד חייל/יחידה הוא ניקוד רבעוני בלבד — לא מצטבר.
-                </p>
-              )}
+              {(() => {
+                const partialQ = myBreakdown.quarters.find((q) => q.is_partial);
+                if (!partialQ) return null;
+                const endFormatted = new Date(partialQ.quarter_end + "T00:00:00").toLocaleDateString("he-IL");
+                return (
+                  <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-400">
+                    ℹ️ <strong>רבעון חלקי</strong> — התורנות האחרונה המפורסמת מסתיימת ב-{endFormatted}, לפני סוף הרבעון. ניקוד חייל/יחידה הוא ניקוד רבעוני בלבד — לא מצטבר.
+                  </p>
+                );
+              })()}
             </div>
             {/* Derivation with real numbers */}
             {(() => {
               const A = parseFloat(myBreakdown.A_i);
               const W = parseFloat(myBreakdown.W_i);
-              const C = parseFloat(myBreakdown.C_i);
-              const D = W + C;
               const effort = parseFloat(myBreakdown.effort_score);
               return (
                 <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 text-xs">
                   {[
-                    { label: "עומס שנצבר", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
-                    { label: "היסטוריה כוללת (W)", sub: "רבעונות מלאים של היסטוריה", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
-                    { label: "רבעון נוכחי (C)", sub: "קבוע 1 — מכנה בלבד", value: C.toFixed(2), cls: "text-green-700 dark:text-green-300" },
-                    { label: "מכנה (W + C)", sub: "", value: D.toFixed(2), cls: "text-gray-700 dark:text-gray-300", border: true },
-                  ].map(({ label, sub, value, cls, border }) => (
-                    <div key={label} className={`flex items-start justify-between gap-2 ${border ? "border-t border-green-200 dark:border-green-800 pt-1" : ""}`}>
+                    { label: "עומס שנצבר (A)", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
+                    { label: "היסטוריה כוללת (W)", sub: "סכום אחוז נוכחות לכל רבעון", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
+                  ].map(({ label, sub, value, cls }) => (
+                    <div key={label} className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <span className="text-gray-700 dark:text-gray-300 font-medium">{label}</span>
                         {sub && <span className="text-gray-400 dark:text-gray-500"> — {sub}</span>}
@@ -326,9 +320,9 @@ function FairnessTab() {
                     </div>
                   ))}
                   <div className="border-t border-green-200 dark:border-green-800 pt-1">
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">עומס = עומס שנצבר ÷ מכנה</p>
-                    <p className="font-bold text-green-700 dark:text-green-300 tabular-nums">
-                      {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = {(effort * 100).toFixed(2)}%
+                    <p className="text-gray-600 dark:text-gray-400 font-medium">עומס = A ÷ W</p>
+                    <p dir="ltr" className="font-bold text-green-700 dark:text-green-300 tabular-nums text-left">
+                      {(A * 100).toFixed(2)}% ÷ {W.toFixed(2)} = {(effort * 100).toFixed(2)}%
                     </p>
                   </div>
                 </div>

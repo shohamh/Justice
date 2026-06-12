@@ -602,10 +602,10 @@ export default function TransparencyPage() {
                           const unitScore = parseFloat(q.unit_score);
                           const weightedSharePct = (parseFloat(q.weighted_share) * 100).toFixed(2);
                           return (
-                            <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}>
+                            <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                               <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
                                 <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                                {q.is_partial && <span className="mr-1 text-amber-600 dark:text-amber-400 text-xs font-normal not-italic">(חלקי)</span>}
+                                {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-400 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
@@ -619,11 +619,16 @@ export default function TransparencyPage() {
                         })}
                       </tbody>
                     </table>
-                    {effortBreakdown.quarters.some((q) => q.is_partial) && (
-                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                        ⚠️ <strong>רבעון חלקי</strong> — מציג נתונים עד אתמול בלבד. הרבעון עדיין בתהליך, ולכן הניקוד נמוך מרבעונות שלמים. הניקוד בטבלת השקיפות הראשית הוא מצטבר מאז ההצטרפות, ולא ניקוד רבעוני.
-                      </p>
-                    )}
+                    {(() => {
+                      const partialQ = effortBreakdown.quarters.find((q) => q.is_partial);
+                      if (!partialQ) return null;
+                      const endFormatted = new Date(partialQ.quarter_end + "T00:00:00").toLocaleDateString("he-IL");
+                      return (
+                        <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-400">
+                          ℹ️ <strong>רבעון חלקי</strong> — התורנות האחרונה המפורסמת מסתיימת ב-{endFormatted}, לפני סוף הרבעון. לכן הניקוד ברבעון זה נמוך מרבעונות שלמים.
+                        </p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -632,8 +637,6 @@ export default function TransparencyPage() {
               {effortBreakdown.quarters.length > 0 && (() => {
                 const A = parseFloat(effortBreakdown.A_i);
                 const W = parseFloat(effortBreakdown.W_i);
-                const C = parseFloat(effortBreakdown.C_i);
-                const D = W + C;
                 const effort = parseFloat(effortBreakdown.effort_score);
                 const qs = effortBreakdown.quarters;
 
@@ -644,7 +647,7 @@ export default function TransparencyPage() {
                     {/* Step 1: A — per-row arithmetic */}
                     <div>
                       <p className="font-medium text-indigo-700 dark:text-indigo-300 mb-1">
-                        שלב 1 — עומס שנצבר (A): לכל רבעון, ניקוד חייל ÷ ניקוד יחידה × % נוכחות
+                        שלב 1 — עומס שנצבר (A): לכל רבעון, חלק ניקוד החייל מניקוד היחידה כפול אחוז הנוכחות
                       </p>
                       <div className="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 rounded-lg overflow-hidden">
                         {qs.map((q, i) => {
@@ -660,8 +663,8 @@ export default function TransparencyPage() {
                             >
                               <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
                               {hasScore ? (
-                                <span className="tabular-nums text-gray-600 dark:text-gray-400 text-right">
-                                  {ss.toFixed(2)} ÷ {us.toFixed(2)} × {ap}%
+                                <span dir="ltr" className="tabular-nums text-gray-600 dark:text-gray-400 text-left">
+                                  {ap}% × ({ss.toFixed(2)} ÷ {us.toFixed(2)})
                                   {" = "}
                                   <strong className="text-indigo-600 dark:text-indigo-400">{ws}%</strong>
                                 </span>
@@ -680,7 +683,7 @@ export default function TransparencyPage() {
                       </div>
                     </div>
 
-                    {/* Step 2: W — sum of presences */}
+                    {/* Step 2: W — sum of presences + final formula */}
                     <div>
                       <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">
                         שלב 2 — היסטוריה כוללת (W): סכום % נוכחות לכל רבעון
@@ -700,32 +703,12 @@ export default function TransparencyPage() {
                           <span className="tabular-nums">{W.toFixed(2)}</span>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Step 3: Final formula */}
-                    <div>
-                      <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">שלב 3 — חישוב סופי</p>
-                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1.5">
-                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                          <span>C — מקדם תכנון (קבוע לכולם)</span>
-                          <span className="tabular-nums font-medium text-green-700 dark:text-green-300">{C.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                          <span>מכנה = W + C</span>
-                          <span className="tabular-nums font-medium text-gray-700 dark:text-gray-300">
-                            {W.toFixed(2)} + {C.toFixed(2)} = {D.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="border-t border-gray-200 dark:border-gray-600 pt-1.5">
-                          <p className="text-gray-500 dark:text-gray-400 mb-1">עומס = A ÷ (W + C)</p>
-                          <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
-                            {(A * 100).toFixed(2)}% ÷ {D.toFixed(2)} = <span className="text-lg">{(effort * 100).toFixed(2)}%</span>
-                          </p>
-                        </div>
+                      <div className="mt-2 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">עומס = A ÷ W</p>
+                        <p dir="ltr" className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums text-left">
+                          {(A * 100).toFixed(2)}% ÷ {W.toFixed(2)} = <span className="text-lg">{(effort * 100).toFixed(2)}%</span>
+                        </p>
                       </div>
-                      <p className="mt-2 text-gray-500 dark:text-gray-400 leading-snug">
-                        <strong>C=1</strong> מייצג סיבוב תכנון שלם שטרם בוצע — נוסף למכנה בלבד כדי שלאיש לא יהיה יתרון &ldquo;ריק&rdquo; מסיבוב חדש לפני שכולם קיבלו תורנויות.
-                      </p>
                     </div>
                   </div>
                 );

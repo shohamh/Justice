@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO } from "../api/notifications";
@@ -9,6 +9,8 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const navigate = useNavigate();
 
   function notifLink(n: NotificationDTO): string | null {
@@ -72,8 +74,22 @@ export default function NotificationBell() {
   };
 
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(!open)} className="relative text-gray-500 hover:text-indigo-600 p-1" data-testid="notification-bell">
+    <div ref={ref}>
+      <button
+        ref={buttonRef}
+        onClick={() => {
+          if (!open && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const dropdownWidth = 320;
+            const margin = 8;
+            const left = Math.max(margin, Math.min(rect.left, window.innerWidth - dropdownWidth - margin));
+            setDropdownStyle({ position: "fixed", top: rect.bottom + margin, left });
+          }
+          setOpen((o) => !o);
+        }}
+        className="relative text-gray-500 hover:text-indigo-600 p-1"
+        data-testid="notification-bell"
+      >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         </svg>
@@ -84,7 +100,7 @@ export default function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="absolute left-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border dark:border-gray-700 z-50 rtl:text-right" data-testid="notification-dropdown">
+        <div style={dropdownStyle} className="w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border dark:border-gray-700 z-50 rtl:text-right" data-testid="notification-dropdown">
           <div className="flex items-center justify-between p-3 border-b dark:border-gray-700">
             <span className="font-semibold">{t("notifications.title")}</span>
             {notifications.length > 0 && (

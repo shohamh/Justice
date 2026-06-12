@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { listDutyTypes } from "../api/dutyConfig";
+import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
 import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
@@ -25,7 +25,8 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
-  const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
+  const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
+  const [shiftDutyTypes, setShiftDutyTypes] = useState<Record<string, DutyType>>({});
   const [offerSwapTarget, setOfferSwapTarget] = useState<{
     soldierId: string;
     soldierName: string;
@@ -42,6 +43,13 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       const restDays = settings["gimalim.default_rest_days"];
       if (typeof restDays === "number") setGimelimDefaultRestDays(restDays);
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    listDutyTypes().catch(() => []).then((dts) => {
+      const byId = Object.fromEntries(dts.map((d) => [d.id, d]));
+      setShiftDutyTypes(byId);
+    });
   }, []);
 
   useEffect(() => {
@@ -72,7 +80,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
         listDutyTypes().catch(() => []),
       ]);
       setMyDuties(duties);
-      setDutyTypeNames(Object.fromEntries(dts.map((d) => [d.id, d.name])));
+      setDutyTypeById(Object.fromEntries(dts.map((d) => [d.id, d])));
     }
   }
 
@@ -105,6 +113,39 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
         </div>
+
+        {(() => {
+          const dt = shiftDutyTypes[shift.duty_type_id];
+          if (!dt) return null;
+          const hasInfo = dt.contact_name || dt.contact_phone || dt.start_time || dt.end_time || dt.instructions;
+          return (
+            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded text-sm space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-xs px-1.5 py-0.5 rounded ${dt.is_external ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"}`}>
+                  {dt.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal")}
+                </span>
+                {dt.start_time && dt.end_time && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {dt.start_time.slice(0, 5)} – {dt.end_time.slice(0, 5)}
+                  </span>
+                )}
+              </div>
+              {hasInfo && (
+                <>
+                  {(dt.contact_name || dt.contact_phone) && (
+                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                      {t("duty_config.contact_name")}: {dt.contact_name ?? "—"}
+                      {dt.contact_phone && <> | <a href={`tel:${dt.contact_phone}`} className="text-indigo-600 dark:text-indigo-400">{dt.contact_phone}</a></>}
+                    </p>
+                  )}
+                  {dt.instructions && (
+                    <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{dt.instructions}</p>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         <section className="mb-5">
           <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300 mb-2">
@@ -308,7 +349,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
           <CoverOfferModal
             swap={coverSwap}
             myDuties={myDuties}
-            dutyTypes={dutyTypeNames}
+            dutyTypes={Object.fromEntries(Object.entries(dutyTypeById).map(([id, dt]) => [id, dt.name]))}
             onClose={() => setCoverSwap(null)}
             onDone={() => { setCoverSwap(null); onRefreshNeeded(); }}
           />

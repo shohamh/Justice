@@ -36,6 +36,65 @@ function ApprovalDot({ value }: { value: boolean | null }) {
   return <span className="text-gray-400">—</span>;
 }
 
+function ApprovalBadge({ value, t }: { value: boolean | null; t: (k: string) => string }) {
+  if (value === true)
+    return <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300">{t("swaps.approval_approved")} ✓</span>;
+  if (value === false)
+    return <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300">{t("swaps.approval_rejected")} ✗</span>;
+  return <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">{t("swaps.approval_pending")}…</span>;
+}
+
+function PendingSide({
+  label, name, commanderName, approved, showCommander, t,
+}: {
+  label: string; name: string | null | undefined; commanderName: string | null | undefined;
+  approved: boolean | null; showCommander: boolean; t: (k: string) => string;
+}) {
+  return (
+    <div className="flex-1 border rounded p-3 space-y-1.5 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 min-w-0">
+      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="text-sm font-medium dark:text-gray-100 truncate">{name ?? "—"}</p>
+      {showCommander && commanderName && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {t("swaps.commander_label")}: {commanderName}
+        </p>
+      )}
+      <ApprovalBadge value={approved} t={t} />
+    </div>
+  );
+}
+
+function PendingApprovalCard({
+  swap, requireManagerApproval, t,
+}: {
+  swap: SwapRequest; requireManagerApproval: boolean; t: (k: string) => string;
+}) {
+  return (
+    <li className="border rounded-lg p-4 space-y-3 dark:border-gray-600">
+      <SwapDutyHeader swap={swap} />
+      <div className="flex gap-3 items-stretch">
+        <PendingSide
+          label={t("swaps.side_requester")}
+          name={swap.requesting_soldier_name}
+          commanderName={swap.requesting_commander_name}
+          approved={swap.requester_side_approved}
+          showCommander={requireManagerApproval}
+          t={t}
+        />
+        <div className="flex items-center text-gray-400 text-lg select-none">⇄</div>
+        <PendingSide
+          label={t("swaps.side_covering")}
+          name={swap.covering_soldier_name}
+          commanderName={swap.covering_commander_name}
+          approved={swap.covering_side_approved}
+          showCommander={requireManagerApproval}
+          t={t}
+        />
+      </div>
+    </li>
+  );
+}
+
 function SwapDutyHeader({ swap }: { swap: SwapRequest }) {
   return (
     <div className="text-sm">
@@ -145,24 +204,31 @@ export default function SwapsPage() {
   const [askSwapDuty, setAskSwapDuty] = useState<EffectiveDuty | null>(null);
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [requireManagerApproval, setRequireManagerApproval] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) return;
-    const [mine, board, incoming, duties, config] = await Promise.all([
-      listMySwaps(),
-      listBoard(),
-      listIncomingSwaps(),
-      listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
-      getSwapConfig().catch(() => ({ require_manager_approval: false })),
-    ]);
-    const { listDutyTypes } = await import("../api/dutyConfig");
-    const dts = await listDutyTypes().catch(() => [] as DutyType[]);
-    setMySwaps(mine);
-    setBoardSwaps(board);
-    setIncomingSwaps(incoming);
-    setMyDuties(duties);
-    setDutyTypes(Object.fromEntries(dts.map(d => [d.id, d.name])));
-    setRequireManagerApproval(config.require_manager_approval);
+    setLoadError(null);
+    try {
+      const [mine, board, incoming, duties, config] = await Promise.all([
+        listMySwaps(),
+        listBoard(),
+        listIncomingSwaps(),
+        listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
+        getSwapConfig().catch(() => ({ require_manager_approval: false })),
+      ]);
+      const { listDutyTypes } = await import("../api/dutyConfig");
+      const dts = await listDutyTypes().catch(() => [] as DutyType[]);
+      setMySwaps(mine);
+      setBoardSwaps(board);
+      setIncomingSwaps(incoming);
+      setMyDuties(duties);
+      setDutyTypes(Object.fromEntries(dts.map(d => [d.id, d.name])));
+      setRequireManagerApproval(config.require_manager_approval);
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setLoadError(detail ?? "שגיאה בטעינת נתוני ההחלפות");
+    }
   }, [user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -174,7 +240,11 @@ export default function SwapsPage() {
     }
   }
 
-  const tabs = [t("swaps.tab_mine"), t("swaps.tab_board"), t("swaps.tab_incoming")];
+  const pendingApproval = [...mySwaps, ...incomingSwaps]
+    .filter((s) => s.status === "pending_approval")
+    .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
+
+  const tabs = [t("swaps.tab_mine"), t("swaps.tab_board"), t("swaps.tab_incoming"), t("swaps.tab_pending")];
 
   const renderMySwapCard = (swap: SwapRequest) => (
     <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
@@ -240,6 +310,9 @@ export default function SwapsPage() {
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6" dir="rtl" data-testid="swaps-page">
         <h2 className="text-xl font-semibold mb-4 dark:text-gray-100">{t("swaps.title")}</h2>
+        {loadError && (
+          <p className="text-red-500 text-sm mb-3">{loadError}</p>
+        )}
         <TabBar tabs={tabs} active={tab} onChange={setTab} />
 
         {tab === 0 && (
@@ -282,6 +355,24 @@ export default function SwapsPage() {
           <div className="space-y-2">
             {incomingSwaps.length === 0 && <p className="text-sm text-gray-500">{t("swaps.none_incoming")}</p>}
             <ul className="space-y-2">{incomingSwaps.map(renderIncomingCard)}</ul>
+          </div>
+        )}
+
+        {tab === 3 && (
+          <div className="space-y-2">
+            {pendingApproval.length === 0 && (
+              <p className="text-sm text-gray-500">{t("swaps.none_pending")}</p>
+            )}
+            <ul className="space-y-3">
+              {pendingApproval.map((swap) => (
+                <PendingApprovalCard
+                  key={swap.id}
+                  swap={swap}
+                  requireManagerApproval={requireManagerApproval}
+                  t={t}
+                />
+              ))}
+            </ul>
           </div>
         )}
       </section>

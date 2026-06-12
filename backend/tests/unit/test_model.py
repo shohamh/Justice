@@ -8,16 +8,22 @@ from decimal import Decimal
 import pytest
 
 from app.algorithm.model import build_model
-from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
+from app.algorithm.types import EFFORT_SCALE, DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
 from ortools.sat.python.cp_model import CpSolver
 
 
 def _soldier(score: float, active_days: int = 100) -> SoldierInput:
+    cum = Decimal(str(score))
+    # The model optimises quarterly EFFORT, not cumulative_score. Mirror the
+    # historical load as effort (score_per_day × EFFORT_SCALE) with a uniform
+    # marginal so these score-based scenarios drive the effort objective.
     return SoldierInput(
         id=uuid.uuid4(),
         enrolled_at=date(2025, 1, 1),
-        cumulative_score=Decimal(str(score)),
+        cumulative_score=cum,
         active_days=active_days,
+        effort_offset=int(cum * EFFORT_SCALE / active_days),
+        effort_per_milli=EFFORT_SCALE // (active_days * 1000),
     )
 
 

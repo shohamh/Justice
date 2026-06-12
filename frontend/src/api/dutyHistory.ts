@@ -21,8 +21,10 @@ export interface TimelineEvent {
 
 export async function getSoldierDutyHistory(
   soldierId: string,
+  includeDrafts?: boolean,
 ): Promise<TimelineEvent[]> {
+  const params = includeDrafts ? "?include_drafts=true" : "";
   return (
-    await api.get<TimelineEvent[]>(`/soldiers/${soldierId}/duty-history`)
+    await api.get<TimelineEvent[]>(`/soldiers/${soldierId}/duty-history${params}`)
   ).data;
 }

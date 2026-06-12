@@ -6,10 +6,14 @@ from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, Soldier
+from app.db.models import (
+    DutyAssignment, DutyType, ExemptionDutyTypeMap, ExemptionType,
+    PersonalConstraint, Soldier, SoldierExemption,
+)
+from app.services.settings_loader import SettingNotFound, get_setting
 
 ENLISTED_RANKS = [
     "טוראי", "רבט", "סמל", "סמר", "רסל", "רסר", "רסמ", "רסב", "רנג",
@@ -121,3 +125,92 @@ def compute_eligibility_exclusions(
                 exclusions[soldier.id].add(dt.id)
 
     return exclusions
+
+
+def check_soldier_for_assignment(
+    session: Session,
+    soldier_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    *,
+    exclude_assignment_id: uuid.UUID | None = None,
+) -> tuple[bool, str | None]:
+    """Return (True, None) if soldier is eligible and available, or (False, Hebrew reason)."""
+    assignment = session.get(DutyAssignment, assignment_id)
+    if assignment is None:
+        return False, "שיבוץ לא נמצא"
+
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        return False, "חייל לא נמצא"
+
+    today = date.today()
+
+    def _setting_int(key: str, default: int) -> int:
+        try:
+            return int(get_setting(session, key))
+        except (SettingNotFound, ValueError):
+            return default
+
+    # 1. Duty type eligibility
+    dt = session.get(DutyType, assignment.duty_type_id)
+    if dt is not None:
+        raw_reqs = dt.requirements or {}
+        if raw_reqs:
+            try:
+                reqs = DutyTypeRequirements.model_validate(raw_reqs)
+                mitvahim_months = _setting_int("eligibility.mitvahim_months", 6)
+                alal_months = _setting_int("eligibility.alal_months", 3)
+                if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months,
+                                    alal_months=alal_months, today=today):
+                    return False, "אי-כשירות לסוג תורנות זה"
+            except Exception:
+                pass
+
+    # 2. Active exemptions overlapping the duty date range
+    exemptions = session.execute(
+        select(SoldierExemption).where(
+            SoldierExemption.soldier_id == soldier_id,
+            SoldierExemption.start_date <= assignment.end_date,
+            or_(
+                SoldierExemption.end_date.is_(None),
+                SoldierExemption.end_date >= assignment.start_date,
+            ),
+        )
+    ).scalars().all()
+
+    for ex in exemptions:
+        et = session.get(ExemptionType, ex.exemption_type_id)
+        if et and et.is_global:
+            return False, "פטור מסוג תורנות זו"
+        dtype_ids = session.execute(
+            select(ExemptionDutyTypeMap.duty_type_id).where(
+                ExemptionDutyTypeMap.exemption_type_id == ex.exemption_type_id
+            )
+        ).scalars().all()
+        if assignment.duty_type_id in dtype_ids:
+            return False, "פטור מסוג תורנות זו"
+
+    # 3. Approved personal constraint overlapping the duty date range
+    if session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == soldier_id,
+            PersonalConstraint.status == "approved",
+            PersonalConstraint.start_date <= assignment.end_date,
+            PersonalConstraint.end_date >= assignment.start_date,
+        )
+    ).first() is not None:
+        return False, "אילוץ אישי מאושר בתאריך זה"
+
+    # 4. Scheduling conflict — existing published assignment for this soldier on these dates
+    conflict_q = select(DutyAssignment).where(
+        DutyAssignment.soldier_id == soldier_id,
+        DutyAssignment.status == "published",
+        DutyAssignment.start_date <= assignment.end_date,
+        DutyAssignment.end_date >= assignment.start_date,
+    )
+    if exclude_assignment_id is not None:
+        conflict_q = conflict_q.where(DutyAssignment.id != exclude_assignment_id)
+    if session.execute(conflict_q).first() is not None:
+        return False, "שיבוץ קיים בתאריכים אלו"
+
+    return True, None

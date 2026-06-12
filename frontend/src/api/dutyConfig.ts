@@ -18,6 +18,12 @@ export interface DutyType {
     enlisted_allowed?: boolean;
     requires_bahad1?: boolean;
   };
+  contact_name: string | null;
+  contact_phone: string | null;
+  start_time: string | null;   // "HH:MM:SS" from API
+  end_time: string | null;     // "HH:MM:SS" from API
+  instructions: string | null;
+  is_external: boolean;
 }
 
 export interface DutyLocation {
@@ -38,10 +44,38 @@ export interface ExemptionType {
 export async function listDutyTypes(): Promise<DutyType[]> {
   return (await api.get<DutyType[]>("/duty-config/duty-types")).data;
 }
-export async function createDutyType(input: { name: string; score_per_day: string; description?: string | null; reserve_ratio?: string; reserve_minimum?: number }): Promise<DutyType> {
+export async function createDutyType(input: {
+  name: string;
+  score_per_day: string;
+  description?: string | null;
+  reserve_ratio?: string;
+  reserve_minimum?: number;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  instructions?: string | null;
+  is_external: boolean;
+}): Promise<DutyType> {
   return (await api.post<DutyType>("/duty-config/duty-types", input)).data;
 }
-export async function updateDutyType(id: string, input: Partial<{ name: string; score_per_day: string; description: string | null; active: boolean; reserve_ratio: string; reserve_minimum: number }>): Promise<DutyType> {
+export async function updateDutyType(
+  id: string,
+  input: Partial<{
+    name: string;
+    score_per_day: string;
+    description: string | null;
+    active: boolean;
+    reserve_ratio: string;
+    reserve_minimum: number;
+    contact_name: string | null;
+    contact_phone: string | null;
+    start_time: string | null;
+    end_time: string | null;
+    instructions: string | null;
+    is_external: boolean;
+  }>
+): Promise<DutyType> {
   return (await api.patch<DutyType>(`/duty-config/duty-types/${id}`, input)).data;
 }
 

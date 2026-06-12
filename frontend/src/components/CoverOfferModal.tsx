@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SwapRequest, submitCoverOffer } from "../api/swaps";
+import { SwapRequest, submitCoverOffer, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { EffectiveDuty } from "../api/assignments";
 
 interface Props {
@@ -16,6 +16,16 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
   const [mode, setMode] = useState<"free" | "trade">("free");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [coverCheck, setCoverCheck] = useState<CoverEligibilityResult | null>(null);
+  const [coverCheckLoading, setCoverCheckLoading] = useState(true);
+
+  useEffect(() => {
+    setCoverCheckLoading(true);
+    checkCoverEligibility(swap.duty_assignment_id)
+      .then(setCoverCheck)
+      .catch(() => setCoverCheck({ eligible: true, reason: null }))
+      .finally(() => setCoverCheckLoading(false));
+  }, [swap.duty_assignment_id]);
 
   function toggleDuty(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -28,9 +38,19 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
       onDone();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      if (detail?.startsWith("cover_not_eligible:")) {
+        setError(detail.slice("cover_not_eligible:".length));
+      } else {
+        setError(detail ?? "שגיאה");
+      }
     }
   }
+
+  const ineligibleReason = !coverCheckLoading && coverCheck && !coverCheck.eligible
+    ? coverCheck.reason
+    : null;
+  const canSubmit = !coverCheckLoading && !ineligibleReason &&
+    (mode === "free" || selectedIds.length > 0);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
@@ -69,6 +89,11 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
                 ))}
             </div>
           )}
+          {ineligibleReason && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded p-2">
+              {ineligibleReason}
+            </p>
+          )}
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button
@@ -81,10 +106,11 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={mode === "trade" && selectedIds.length === 0}
-              className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+              disabled={!canSubmit}
+              className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={ineligibleReason ?? undefined}
             >
-              {t("swaps.submit_offer")}
+              {coverCheckLoading ? "…" : t("swaps.submit_offer")}
             </button>
           </div>
         </div>

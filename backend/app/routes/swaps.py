@@ -10,11 +10,17 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyType, SwapRequest, Soldier
+from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapRequest, Soldier
 from app.db.session import get_session
 from app.services import swaps as svc
+from app.services.eligibility import check_soldier_for_assignment
 
 router = APIRouter(tags=["swaps"])
+
+
+class CoverEligibilityOut(BaseModel):
+    eligible: bool
+    reason: str | None
 
 
 class SwapOut(BaseModel):
@@ -37,6 +43,11 @@ class SwapOut(BaseModel):
     duty_location_id: uuid.UUID | None = None
     duty_start_date: date | None = None
     duty_end_date: date | None = None
+    warnings: list[str] = []
+    requesting_soldier_name: str | None = None
+    covering_soldier_name: str | None = None
+    requesting_commander_name: str | None = None
+    covering_commander_name: str | None = None
 
 
 class CreateSwapRequest(BaseModel):
@@ -57,13 +68,34 @@ class RejectRequest(BaseModel):
     decision_note: str | None = Field(default=None, max_length=1000)
 
 
-def _out(r: SwapRequest, session: Session | None = None) -> SwapOut:
+def _soldier_names(
+    session: Session, soldier_id: uuid.UUID | None
+) -> tuple[str | None, str | None]:
+    """Return (soldier_name, commander_name) for a soldier ID."""
+    if soldier_id is None or session is None:
+        return None, None
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        return None, None
+    commander_name: str | None = None
+    if soldier.hierarchy_node_id is not None:
+        node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+        if node is not None and node.commander_id is not None and node.commander_id != soldier_id:
+            commander = session.get(Soldier, node.commander_id)
+            if commander is not None:
+                commander_name = commander.full_name
+    return soldier.full_name, commander_name
+
+
+def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | None = None) -> SwapOut:
     duty_type_name = None
     duty_location_name = None
     duty_type_id = None
     duty_location_id = None
     duty_start_date = None
     duty_end_date = None
+    requesting_soldier_name, requesting_commander_name = _soldier_names(session, r.requesting_soldier_id)  # type: ignore[arg-type]
+    covering_soldier_name, covering_commander_name = _soldier_names(session, r.covering_soldier_id)
     if session is not None:
         assignment = session.get(DutyAssignment, r.duty_assignment_id)
         if assignment is not None:
@@ -90,6 +122,11 @@ def _out(r: SwapRequest, session: Session | None = None) -> SwapOut:
         duty_location_id=duty_location_id,
         duty_start_date=duty_start_date,
         duty_end_date=duty_end_date,
+        warnings=warnings or [],
+        requesting_soldier_name=requesting_soldier_name,
+        covering_soldier_name=covering_soldier_name,
+        requesting_commander_name=requesting_commander_name,
+        covering_commander_name=covering_commander_name,
     )
 
 
@@ -103,6 +140,19 @@ def swap_config(
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
     return {"require_manager_approval": svc._require_approval(session)}
+
+
+@router.get("/swaps/{assignment_id}/cover-eligibility", response_model=CoverEligibilityOut)
+def cover_eligibility(
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> CoverEligibilityOut:
+    assignment = session.get(DutyAssignment, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    eligible, reason = check_soldier_for_assignment(session, user.id, assignment_id)
+    return CoverEligibilityOut(eligible=eligible, reason=reason)
 
 
 @router.get("/me/swaps", response_model=list[SwapOut])
@@ -196,7 +246,7 @@ def take_free(
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
     try:
-        r = svc.take_free(
+        r, warnings = svc.take_free(
             session,
             assignment_id=body.duty_assignment_id,
             covering_soldier_id=user.id,
@@ -206,7 +256,7 @@ def take_free(
         raise _err(exc) from exc
     session.commit()
     session.refresh(r)
-    return _out(r, session)
+    return _out(r, session, warnings)
 
 
 class CoverOfferInput(BaseModel):

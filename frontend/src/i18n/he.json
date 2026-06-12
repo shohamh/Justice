@@ -1,7 +1,8 @@
 ﻿{
   "app": {
     "title": "Justice",
-    "loading": "טוען..."
+    "loading": "טוען...",
+    "close": "סגור"
   },
   "login": {
     "title": "התחברות",
@@ -112,7 +113,17 @@
     "global": "גלובלי",
     "global_exempt_desc": "פוטר מכל סוגי התורנויות",
     "medical": "פטור רפואי",
-    "delete": "מחק"
+    "delete": "מחק",
+    "contact_name": "איש קשר",
+    "contact_phone": "טלפון איש קשר",
+    "start_time": "שעת התחלה",
+    "end_time": "שעת סיום",
+    "instructions": "הנחיות",
+    "instructions_hint": "עד 300 מילים",
+    "is_external": "סוג תורנות",
+    "is_external_internal": "פנימית",
+    "is_external_external": "חיצונית",
+    "is_external_placeholder": "בחר סוג..."
   },
   "exemptions": {
     "title": "פטורים",
@@ -278,6 +289,8 @@
     "bad_date_range": "טווח תאריכים לא תקין",
     "start_date_in_past": "תאריך התחלה לא יכול להיות בעבר",
     "cap_exceeded": "חרגת ממכסת הימים המותרת",
+    "reserve_cap_exceeded": "הגעת למכסת ימי הרזרבה: {{current}} מתוך {{max}} ימים (חלון של {{window}} ימים)",
+    "reserve_cap_near": "שים לב: נשארו לך {{headroom}} ימי רזרבה בלבד מתוך {{max}} המותרים (חלון של {{window}} ימים)",
     "soldier_not_found": "חייל לא נמצא",
     "constraint_not_found": "הבקשה לא נמצאה",
     "not_pending": "הבקשה כבר טופלה",
@@ -392,6 +405,7 @@
     "discharge_date": "תאריך שחרור",
     "last_mitvahim_date": "מטווחים אחרון",
     "last_alal_date": "אל\"ל אחרון",
+    "direct_commander": "מפקד ישיר",
     "service_type": "סוג שירות",
     "service_type_hobah": "חובה",
     "service_type_keva": "קבע",
@@ -537,7 +551,15 @@
     "days": "ימים",
     "free_blocked_conflict": "לא ניתן לקחת בחינם — יש לך תורנות חופפת בתאריכים אלו",
     "must_offer_conflicting": "יש לך תורנות חופפת — ניתן להציע רק אותה להחלפה",
-    "conflict_duties_all_busy": "התורנות החופפת כבר ממתינה להחלפה אחרת"
+    "conflict_duties_all_busy": "התורנות החופפת כבר ממתינה להחלפה אחרת",
+    "tab_pending": "ממתינים לאישור",
+    "none_pending": "אין החלפות ממתינות לאישורך",
+    "side_requester": "מבקש ההחלפה",
+    "side_covering": "מכסה",
+    "approval_approved": "אישר",
+    "approval_pending": "ממתין",
+    "approval_rejected": "סירב",
+    "commander_label": "מפקד"
   },
   "command_dashboard": {
     "title": "דף מפקד",
@@ -635,6 +657,7 @@
     "filter_dismissals": "שחרורים",
     "filter_exemption_requests": "בקשות פטור",
     "filter_constraints": "אילוצים אישיים",
+    "filter_drafts": "טיוטות",
     "empty": "אין אירועים להצגה",
     "upcoming": "תורנויות עתידיות",
     "past": "היסטוריה",
@@ -647,7 +670,8 @@
     "event_exemption_request": "בקשת פטור",
     "event_constraint": "אילוץ אישי",
     "reserve": "רזרבה",
-    "called_up": "הוקפץ"
+    "called_up": "הוקפץ",
+    "draft_badge": "טיוטה"
   },
   "upcoming_duty_alert": {
     "today": "היום",

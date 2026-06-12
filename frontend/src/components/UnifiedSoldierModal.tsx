@@ -6,6 +6,7 @@ import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRa
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
+import SoldierLink from "./SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 
 interface Props {
@@ -167,6 +168,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <span dir="ltr">{soldier.phone}</span>
                 </div>
               )}
+              {soldier.direct_commander_id && soldier.direct_commander_name && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{t("soldier_profile.direct_commander")}</span>
+                  <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
+                </div>
+              )}
               {score && (
                 <div className="border-t pt-3 space-y-1">
                   <div className="flex justify-between">
@@ -209,6 +216,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     onChange={(e) => setEnrolledAt(e.target.value)}
                     data-testid="enrolled-at-input"
                   />
+                </div>
+              )}
+              {soldier.direct_commander_id && soldier.direct_commander_name && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-xs text-gray-500">{t("soldier_profile.direct_commander")}:</span>
+                  <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
                 </div>
               )}
               <div className="flex justify-end gap-2">

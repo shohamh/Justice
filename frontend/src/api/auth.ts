@@ -27,6 +27,8 @@ export interface Me {
   last_alal_date?: string | null;
   email?: string | null;
   email_verified?: boolean;
+  direct_commander_id?: string | null;
+  direct_commander_name?: string | null;
 }
 
 export interface NodeOut {

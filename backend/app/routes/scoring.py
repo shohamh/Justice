@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import openpyxl
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as svc
 
@@ -73,10 +73,8 @@ class EffortQuarterRow(BaseModel):
 class EffortBreakdownOut(BaseModel):
     quarters: list[EffortQuarterRow]
     effort_score: Decimal
-    C_over_D: Decimal
     A_i: Decimal   # Σ(share_q × active_frac_q)
     W_i: Decimal   # Σ(active_frac_q) — historical weight
-    C_i: Decimal   # current planning-window fraction
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -259,11 +257,19 @@ def effort_breakdown(
     except Exception:
         reset_date = quarter_start(date(today.year - 2, today.month, 1))
 
+    latest_published_end = session.execute(
+        select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= today:
+        planning_start = latest_published_end + timedelta(days=1)
+    else:
+        planning_start = today
+
     bd = compute_effort_breakdown(
         session,
         soldier=s,
-        planning_start=today,
-        planning_end=today,
+        planning_start=planning_start,
+        planning_end=planning_start,
         reset_date=reset_date,
     )
     return EffortBreakdownOut(
@@ -282,10 +288,8 @@ def effort_breakdown(
             for q in bd.quarters
         ],
         effort_score=bd.effort_score,
-        C_over_D=bd.C_over_D,
         A_i=bd.A_i,
         W_i=bd.W_i,
-        C_i=bd.C_i,
     )
 
 

@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -265,6 +265,125 @@ def _any_eligible(soldiers: list[SoldierInput], duties: list[DutyBlock]) -> bool
     return False
 
 
+# Effort helper: the solver optimises quarterly EFFORT
+# (post_effort = effort_offset + effort_per_milli × new-duty-score-milli).
+# A single-day duty with score_per_day=4 contributes block_milli = 4*1*1000 = 4000.
+
+def _eff_soldier(
+    sid: UUID, *, offset: int, per_milli: int, exempt_type: UUID | None = None,
+) -> SoldierInput:
+    return SoldierInput(
+        id=sid, enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"), active_days=100,  # unused by the effort objective
+        effort_offset=offset, effort_per_milli=per_milli,
+        exempted_duty_type_ids={exempt_type} if exempt_type else set(),
+    )
+
+
+def test_does_not_concentrate_duties_on_lowest_effort_soldier() -> None:
+    """Regression for the ספקטרה-4-vs-טוקסיק-2 imbalance.
+
+    Two soldiers A and B sit equal mid-pack in effort; F is the lower eligible
+    floor; a high-effort soldier (exempt from these duties) sits above. All share
+    the same marginal effort_per_milli (equal tenure — the real situation, where
+    each duty adds +40_000 effort units here).
+
+    The fair outcome is for F to catch up to A and B and then share evenly:
+    F=4, A=1, B=1 → all three converge to the same effort (240_000).
+
+    The OLD objective (min-max + a constant per-soldier history tiebreaker) instead
+    dumped ALL six duties onto F (F=6, A=0, B=0): once the pinned max and floor were
+    tied, the constant tiebreaker kept preferring the lowest soldier with no
+    diminishing return, overshooting fairness. Across runs that drift becomes 5-vs-1.
+    """
+    A, B, F, high = uuid4(), uuid4(), uuid4(), uuid4()
+    duty_type = uuid4()
+    loc = uuid4()
+
+    soldiers = [
+        _eff_soldier(A, offset=200_000, per_milli=10),
+        _eff_soldier(B, offset=200_000, per_milli=10),
+        _eff_soldier(F, offset=80_000, per_milli=10),
+        _eff_soldier(high, offset=1_000_000, per_milli=10, exempt_type=duty_type),
+    ]
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  score_per_day=Decimal("4.00"))
+        for d in range(1, 7)
+    ]
+
+    result = solve(soldiers, duties, [], SolverSettings(seed=42, time_limit_seconds=15))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 6
+
+    counts = {A: 0, B: 0, F: 0, high: 0}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+
+    assert counts[high] == 0, "exempt high-effort soldier must get nothing"
+    assert counts[F] == 4, f"F should catch up to the pack, got {counts}"
+    assert counts[A] == 1 and counts[B] == 1, f"equal soldiers must stay balanced, got {counts}"
+
+
+def test_equal_effort_soldiers_split_evenly() -> None:
+    """Two soldiers identical in effort must split new duties evenly, not have one
+    arbitrarily soak up the batch."""
+    A, B = uuid4(), uuid4()
+    duty_type = uuid4()
+    loc = uuid4()
+    soldiers = [
+        _eff_soldier(A, offset=100_000, per_milli=10),
+        _eff_soldier(B, offset=100_000, per_milli=10),
+    ]
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  score_per_day=Decimal("4.00"))
+        for d in range(1, 7)
+    ]
+    result = solve(soldiers, duties, [], SolverSettings(seed=42, time_limit_seconds=10))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    counts = {A: 0, B: 0}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+    assert counts[A] == 3 and counts[B] == 3, f"expected even 3-3 split, got {counts}"
+
+
+def test_low_marginal_effort_soldier_absorbs_more() -> None:
+    """A soldier whose effort barely moves per duty (large W_i → small
+    effort_per_milli) legitimately absorbs MORE new duties than one whose effort
+    spikes fast, because that is what equalises their post-run effort share. This
+    is fair-by-design and must NOT be forced to an equal count.
+
+    The per_milli values must be above the count-space resolution floor (a
+    score-4 duty → weight = per_milli×4000 // (EFFORT_SCALE//10000); per_milli=100
+    → weight 4, per_milli=1000 → weight 40) so the two marginals are
+    distinguishable; below the floor they'd correctly tie."""
+    steady = uuid4()   # low marginal effort (count-space weight 4 per duty)
+    spiky = uuid4()    # high marginal effort (count-space weight 40 per duty)
+    duty_type = uuid4()
+    loc = uuid4()
+    soldiers = [
+        _eff_soldier(steady, offset=0, per_milli=100),
+        _eff_soldier(spiky, offset=0, per_milli=1000),
+    ]
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  score_per_day=Decimal("4.00"))
+        for d in range(1, 7)
+    ]
+    result = solve(soldiers, duties, [], SolverSettings(seed=42, time_limit_seconds=15))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    counts = {steady: 0, spiky: 0}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+    assert counts[steady] > counts[spiky], (
+        f"low-marginal-effort soldier should absorb more to equalise effort, got {counts}"
+    )
+
+
 def test_reserve_blocks_prefer_closer_soldier() -> None:
     """With two soldiers in different hierarchy nodes, the reserve block should
     be assigned to the soldier closer to the primary candidate nodes.
@@ -319,71 +438,102 @@ def test_reserve_blocks_prefer_closer_soldier() -> None:
     assert reserve_assignment.soldier_id == s_close
 
 
-def test_effort_objective_l1_prefers_lower_effort_over_lower_score_per_day() -> None:
-    """The L1 effort objective should assign the duty to the soldier with lower
-    historical effort score (low_effort), even though the old score_per_day
-    objective would have preferred high_effort (whose score_per_day is 0).
+def test_count_balance_outranks_reserve_proximity() -> None:
+    """Reserve proximity is only a tiebreaker — it must NOT override load balance.
 
-    Setup:
-      - 1 duty: 1 day, score_per_day=1.0  →  _block_score = 1 000 milli
-      - unit_score_milli = 1 000, C_over_D = 1.0
-        → effort_per_milli = EFFORT_SCALE // 1 000 = 1 000 000
-
-      high_effort: cumulative_score=0, active_days=1000 (spd=0.000)
-                   effort_offset = 50% × EFFORT_SCALE (high historical load)
-      low_effort:  cumulative_score=5, active_days=50  (spd=0.100)
-                   effort_offset = 10% × EFFORT_SCALE (low historical load)
-
-    Old score_per_day objective:
-      assigning to high_effort → max_norm = (0+1000)/1000 = 1   ← preferred
-      assigning to low_effort  → max_norm = (5000+1000)/50 = 120
-
-    New L1 effort objective:
-      assigning to high_effort → efforts {1 500M, 100M} → total dev = 1 400M
-      assigning to low_effort  → efforts {500M, 1 100M} → total dev =   600M ← preferred
+    Two equal-effort soldiers; A is hierarchically close to the reserves (dist 0),
+    B is far (dist 10). Two reserve duties fall on different days, so both could go
+    to A. Pure proximity would pile both onto A (A=2, B=0); but balancing the load
+    must win, splitting them 1-1. (Regression for the fresh-DB 0-vs-13 imbalance,
+    where reserve proximity dominated the count tiebreaker ~1000×.)
     """
+    s_close = uuid4()
+    s_far = uuid4()
     dt = uuid4()
     loc = uuid4()
-    effort_per_milli = EFFORT_SCALE // 1000  # = 1_000_000
-
-    high_effort = uuid4()
-    low_effort = uuid4()
-
     soldiers = [
-        SoldierInput(
-            id=high_effort,
-            enrolled_at=date(2026, 1, 1),
-            cumulative_score=Decimal("0"),
-            active_days=1000,
-            effort_offset=int(0.5 * EFFORT_SCALE),
-            effort_per_milli=effort_per_milli,
-        ),
-        SoldierInput(
-            id=low_effort,
-            enrolled_at=date(2026, 1, 1),
-            cumulative_score=Decimal("5"),
-            active_days=50,
-            effort_offset=int(0.1 * EFFORT_SCALE),
-            effort_per_milli=effort_per_milli,
-        ),
+        SoldierInput(id=s_close, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=uuid4()),
+        SoldierInput(id=s_far, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=None),
     ]
-    duties = [
-        DutyBlock(
-            id=uuid4(),
-            duty_type_id=dt,
-            duty_location_id=loc,
-            start_date=date(2026, 6, 1),
-            end_date=date(2026, 6, 1),
-            score_per_day=Decimal("1.00"),
-        )
+    reserve_blocks = [
+        DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  score_per_day=Decimal("0.2"), is_reserve=True)
+        for d in (1, 2)
     ]
+    # s_close is distance 0 from both reserves, s_far is distance 10.
+    reserve_dist = {(0, 0): 0, (0, 1): 10, (1, 0): 0, (1, 1): 10}
 
-    result = solve(
-        soldiers=soldiers,
-        duties=duties,
-        existing=[],
-        settings=SolverSettings(time_limit_seconds=10),
-    )
+    result = solve(soldiers, reserve_blocks, [], SolverSettings(seed=1, time_limit_seconds=10),
+                   reserve_dist=reserve_dist)
     assert result.status in ("OPTIMAL", "FEASIBLE")
-    assert len(result.assignments) == 1
-    assert result.assignments[0].soldier_id == low_effort
+    counts = {s_close: 0, s_far: 0}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+    assert counts[s_close] == 1 and counts[s_far] == 1, (
+        f"load balance must beat reserve proximity, got {counts}"
+    )
+
+
+# ── Decomposition + batching ──────────────────────────────────────────────────
+
+
+def test_connected_components_splits_disjoint_eligibility_groups() -> None:
+    """Soldiers/duties that share no eligibility form separate components."""
+    from app.algorithm.solver import _connected_components, _eligible_pairs
+
+    type_a, type_b = uuid4(), uuid4()
+    loc = uuid4()
+    # group A: eligible for type_a only (exempt from type_b); group B: vice versa.
+    a1 = SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                      active_days=100, exempted_duty_type_ids={type_b})
+    a2 = SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                      active_days=100, exempted_duty_type_ids={type_b})
+    b1 = SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                      active_days=100, exempted_duty_type_ids={type_a})
+    soldiers = [a1, a2, b1]
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=type_a, duty_location_id=loc,
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 1), score_per_day=Decimal("1")),
+        DutyBlock(id=uuid4(), duty_type_id=type_b, duty_location_id=loc,
+                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 2), score_per_day=Decimal("1")),
+    ]
+    comps = _connected_components(len(duties), len(soldiers), _eligible_pairs(soldiers, duties))
+    # Two components: {duty_a + a1,a2} and {duty_b + b1}.
+    assert len(comps) == 2
+    sizes = sorted((len(d), len(s)) for d, s in comps)
+    assert sizes == [(1, 1), (1, 2)]
+
+
+def test_batched_solve_covers_all_and_balances_by_effort() -> None:
+    """A run larger than batch_size is decomposed/batched, still covers every duty,
+    and routes new duties toward LOW-effort soldiers (high-effort get fewer)."""
+    duty_type = uuid4()
+    loc = uuid4()
+    # 6 soldiers, equal marginal; effort_offset descending so soldier 0 is most loaded.
+    soldiers = [
+        SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, effort_offset=(5 - i) * 2_000_000, effort_per_milli=10_000)
+        for i in range(6)
+    ]
+    # 24 single-day duties over distinct days (> batch_size below).
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                  start_date=date(2026, 6, 1) + timedelta(days=d), end_date=date(2026, 6, 1) + timedelta(days=d),
+                  score_per_day=Decimal("1.00"))
+        for d in range(24)
+    ]
+    settings = SolverSettings(batching_enabled=True, batch_size=8, batch_time_limit_seconds=10, T=14, W=14)
+    result = solve(soldiers, duties, [], settings)
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 24  # full coverage across batches
+
+    counts = {s.id: 0 for s in soldiers}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+    # soldier 0 (highest effort_offset) should get no more than soldier 5 (lowest).
+    assert counts[soldiers[0].id] <= counts[soldiers[5].id], (
+        f"high-effort soldier should not get more than low-effort, got {[counts[s.id] for s in soldiers]}"
+    )

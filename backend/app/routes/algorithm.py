@@ -262,9 +262,22 @@ def _explanation_response(
         None,
     )
 
+    _CONSTRAINT_LABELS_HE: dict[str, str] = {
+        "exemption": "פטור",
+        "personal_constraint": "אילוץ אישי",
+        "overlap": "חפיפה",
+    }
+
+    def _score(c: dict) -> float | None:
+        # Support both new key (pre_norm_score) and old key (pre_effort_score) for stored records
+        v = c.get("pre_norm_score")
+        if v is None:
+            v = c.get("pre_effort_score")
+        return v
+
     # Build enriched soldier view for the redesigned explanation modal
     eligible = [c for c in candidates if not c.get("blocked")]
-    eligible_sorted = sorted(eligible, key=lambda c: (c.get("pre_norm_score") or 0))
+    eligible_sorted = sorted(eligible, key=lambda c: (_score(c) or 0))
     eligible_count = len(eligible)
     my_id = str(user.id)
     soldier_rank = next(
@@ -275,7 +288,7 @@ def _explanation_response(
         {
             "soldier_id": c["soldier_id"],
             "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-            "score": c.get("pre_norm_score"),
+            "score": _score(c),
             "reason_excluded": None,
         }
         for c in eligible_sorted
@@ -283,23 +296,26 @@ def _explanation_response(
     ][:5]
     for c in candidates:
         if c.get("blocked") and len(ranked_candidates) < 5:
+            constraints = c.get("blocking_constraints", [])
+            reason = ", ".join(_CONSTRAINT_LABELS_HE.get(k, k) for k in constraints) or "חסום"
             ranked_candidates.append({
                 "soldier_id": c["soldier_id"],
                 "full_name": c.get("soldier_name") or c["soldier_id"][:8],
-                "score": c.get("pre_norm_score"),
-                "reason_excluded": ", ".join(c.get("blocking_constraints", [])) or "חסום",
+                "score": _score(c),
+                "reason_excluded": reason,
             })
 
+    my_score = _score(my_candidate) if my_candidate else None
     return {
         "assigned": True,
-        "norm_score_before": my_candidate.get("pre_norm_score") if my_candidate else None,
+        "norm_score_before": my_score,
         "norm_score_after": my_candidate.get("post_norm_score") if my_candidate else None,
         "blocked_count": blocked_count,
         "tiebreaker_note": payload.get("tiebreaker_note"),
         "global_before": payload.get("global_before", {}),
         "global_after": payload.get("global_after", {}),
         # Enriched fields for the redesigned explanation modal
-        "score_at_assignment": my_candidate.get("pre_norm_score") if my_candidate else None,
+        "score_at_assignment": my_score,
         "eligible_count": eligible_count,
         "soldier_rank": soldier_rank,
         "constraint_count": len(my_candidate.get("blocking_constraints", [])) if my_candidate else 0,
@@ -678,6 +694,56 @@ def reject_proposal(
         before={"status": "algorithm_draft"},
         after={"status": "algorithm_rejected"},
         context={"job_id": str(job_id)},
+    )
+    session.commit()
+    return {"status": "algorithm_rejected"}
+
+
+@router.post("/proposals/{assignment_id}/accept", status_code=status.HTTP_200_OK)
+def accept_proposal_direct(
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, str]:
+    a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    if a.status != "algorithm_draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    a.status = "published"
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="algorithm.proposal.accept",
+        entity_type="duty_assignment",
+        entity_id=a.id,
+        before={"status": "algorithm_draft"},
+        after={"status": "published"},
+        context={"source": "direct"},
+    )
+    session.commit()
+    return {"status": "published"}
+
+
+@router.post("/proposals/{assignment_id}/reject", status_code=status.HTTP_200_OK)
+def reject_proposal_direct(
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, str]:
+    a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    if a.status != "algorithm_draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    a.status = "algorithm_rejected"
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="algorithm.proposal.reject",
+        entity_type="duty_assignment",
+        entity_id=a.id,
+        before={"status": "algorithm_draft"},
+        after={"status": "algorithm_rejected"},
+        context={"source": "direct"},
     )
     session.commit()
     return {"status": "algorithm_rejected"}
