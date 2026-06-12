@@ -414,6 +414,7 @@
     "update_pending": "ממתין לאישור",
     "update_approved": "אושר",
     "update_rejected": "נדחה",
+    "update_cancelled": "בוטל",
     "previous_value": "ערך נוכחי",
     "new_value": "ערך מבוקש",
     "field_updates_tab": "עדכוני פרופיל",
@@ -735,7 +736,11 @@
     "type_algorithm_job_failed": "הרצת אלגוריתם נכשלה",
     "type_enrollment_request_received": "בקשת הצטרפות התקבלה",
     "type_enrollment_approved": "הצטרפות אושרה",
-    "type_enrollment_rejected": "הצטרפות נדחתה"
+    "type_enrollment_rejected": "הצטרפות נדחתה",
+    "type_gimelim_dismissed": "שחרור גימלים",
+    "type_gimelim_reserve_called_up": "הוקפצת לרזרבה (גימלים)",
+    "type_gimelim_demoted_to_reserve": "הומרת לרזרבה (גימלים)",
+    "type_gimelim_reassigned": "שובצת מחדש (גימלים)"
   },
   "register": {
     "title": "הרשמה",

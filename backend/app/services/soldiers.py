@@ -228,6 +228,16 @@ def submit_field_update(
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise SoldierError("soldier_not_found")
+    # Cancel any existing pending update for the same field to avoid spamming commanders
+    existing = session.execute(
+        select(SoldierFieldUpdate).where(
+            SoldierFieldUpdate.soldier_id == soldier_id,
+            SoldierFieldUpdate.field_name == field_name,
+            SoldierFieldUpdate.status == "pending",
+        )
+    ).scalars().all()
+    for old in existing:
+        old.status = "cancelled"
     req = SoldierFieldUpdate(
         soldier_id=soldier_id,
         field_name=field_name,

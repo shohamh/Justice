@@ -7,9 +7,11 @@ import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { useAuth } from "../auth/AuthContext";
 
 function treeOrder(nodes: NodeDTO[]): NodeDTO[] {
+  const ids = new Set(nodes.map((n) => n.id));
   const byParent = new Map<string | null, NodeDTO[]>();
   for (const n of nodes) {
-    const key = n.parent_id ?? null;
+    // Treat node as a root if its parent isn't in this list (e.g. soldier who only gets their own node)
+    const key = n.parent_id && ids.has(n.parent_id) ? n.parent_id : null;
     byParent.set(key, [...(byParent.get(key) ?? []), n]);
   }
   const result: NodeDTO[] = [];
