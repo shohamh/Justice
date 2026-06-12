@@ -111,7 +111,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
 
 @router.get("/duty-types", response_model=list[DutyTypeOut])
 def list_duty_types(
-    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
+    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)
 ) -> list[DutyTypeOut]:
     return [_dt_out(d) for d in session.execute(select(DutyType)).scalars().all()]
 
