@@ -25,10 +25,6 @@ class SoldierInput:
     # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)
     effort_offset: int = 0      # int(effort_score × EFFORT_SCALE) — historical quarterly share
     effort_per_milli: int = 0   # int(C_over_D / unit_score_milli × EFFORT_SCALE) — per-milli contribution
-    # Count-space prior load: recent effective duty score × 5 (reserve=1, primary=5).
-    # Used by the L1 fairness objective (small eligibility groups only) to balance
-    # total load (recent + new). Set by the algorithm_bridge.
-    recent_load: int = 0
 
 
 @dataclass
