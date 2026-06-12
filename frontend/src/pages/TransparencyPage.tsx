@@ -135,12 +135,15 @@ interface SubRow {
 
 // ─── fairness card ────────────────────────────────────────────────────────────
 
-function FairnessCard({ stats }: { stats: EffortStats | null }) {
+function FairnessCard({ stats, helpText }: { stats: EffortStats | null; helpText?: string }) {
   const { t } = useTranslation();
   if (!stats) {
     return (
       <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
-        <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.effort_spread")}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+          {t("transparency.effort_spread")}
+          {helpText && <span className="cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={helpText}>(?)</span>}
+        </p>
         <p className="text-lg font-semibold text-gray-400">—</p>
       </div>
     );
@@ -157,6 +160,7 @@ function FairnessCard({ stats }: { stats: EffortStats | null }) {
       <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
         <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
         {t("transparency.effort_spread")}
+        {helpText && <span className="cursor-help text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" title={helpText}>(?)</span>}
       </p>
       <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
       <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
@@ -551,8 +555,8 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
-          {tab === 0 && <FairnessCard stats={effortStats} />}
-          {tab === 1 && <FairnessCard stats={subEffortStats} />}
+          {tab === 0 && <FairnessCard stats={effortStats} helpText={t("transparency.effort_spread_help")} />}
+          {tab === 1 && <FairnessCard stats={subEffortStats} helpText={t("transparency.effort_spread_subunits_help")} />}
         </div>
 
         {/* Filter pills (soldiers tab only) */}
