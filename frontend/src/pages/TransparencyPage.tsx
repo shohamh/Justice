@@ -8,7 +8,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
-import { computeEffortStats, getEffortColor as _getEffortColor, type EffortStats } from "../utils/effortStats";
+import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -359,14 +359,17 @@ export default function TransparencyPage() {
       cell: (r) => {
         const n = r.effort_score;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
+        const colorClass = effortStats ? getEffortColor(n, effortStats.mean, effortStats.stddev) : "";
         return (
-          <button
-            className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
-            onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
-            title="לחץ לפירוט רבעוני"
-          >
-            {label}
-          </button>
+          <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
+            <button
+              className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+              onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
+              title="לחץ לפירוט רבעוני"
+            >
+              {label}
+            </button>
+          </span>
         );
       },
       sortValue: (r) => r.effort_score,
