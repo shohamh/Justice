@@ -185,44 +185,38 @@ export function AlgorithmContent() {
                 <span className="text-gray-500 text-xs">{selectedJob.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}</span>
               </div>
               {(selectedJob.status === "pending" || selectedJob.status === "running") && (() => {
-                const msg = selectedJob.progress_message;
-                const phase = msg === "phase2" ? 2 : msg === "phase1" ? 1 : 0;
-                const pct = phase === 2 ? 75 : phase === 1 ? 35 : 5;
-                const stageLabel =
-                  phase === 2 ? t("algorithm.stage_phase2")
-                  : phase === 1 ? t("algorithm.stage_phase1")
-                  : t("algorithm.stage_pending");
+                // The backend stores real progress as JSON {pct, label} on the job
+                // (updated after every solver batch).  Fall back to an indeterminate
+                // low value if it's not set yet or in an unexpected format.
+                let pct = 2;
+                let label: string = t("algorithm.stage_pending");
+                let known = false;
+                try {
+                  if (selectedJob.progress_message) {
+                    const p = JSON.parse(selectedJob.progress_message) as { pct?: number; label?: string };
+                    if (typeof p.pct === "number") { pct = Math.max(0, Math.min(100, p.pct)); known = true; }
+                    if (typeof p.label === "string") label = p.label;
+                  }
+                } catch { /* unknown format → keep indeterminate defaults */ }
                 const elapsed = selectedJob.started_at
                   ? Math.floor((Date.now() - new Date(selectedJob.started_at).getTime()) / 1000)
                   : null;
 
                 return (
                   <div className="space-y-2">
-                    {/* Stage steps */}
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`flex items-center gap-1 font-medium ${phase >= 1 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>
-                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 1 ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-600"}`}>1</span>
-                        {t("algorithm.stage_phase1")}
-                      </span>
-                      <span className="text-gray-300 dark:text-gray-600 mx-1">←</span>
-                      <span className={`flex items-center gap-1 font-medium ${phase >= 2 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>
-                        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] ${phase >= 2 ? "bg-indigo-500" : "bg-gray-300 dark:bg-gray-600"}`}>2</span>
-                        {t("algorithm.stage_phase2")}
-                      </span>
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                    {/* Progress bar (real, batch-driven) */}
+                    <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 overflow-hidden">
                       <div
-                        className="bg-indigo-500 h-1.5 rounded-full transition-all duration-500"
+                        className={`bg-indigo-500 h-2 rounded-full transition-all duration-500 ${known ? "" : "animate-pulse"}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
 
                     {/* Status line */}
-                    <div className="flex items-center gap-3">
-                      <p className="text-gray-600 animate-pulse text-xs">
-                        {stageLabel}{elapsed !== null ? ` (${elapsed}s)` : ""}
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-gray-600 dark:text-gray-300 text-xs">
+                        <span className="font-medium tabular-nums">{pct}%</span>
+                        {" — "}{label}{elapsed !== null ? ` · ${elapsed}s` : ""}
                       </p>
                       <button
                         onClick={handleCancel}

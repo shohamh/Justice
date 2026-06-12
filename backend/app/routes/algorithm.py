@@ -89,6 +89,7 @@ class JobOut(BaseModel):
     started_at: Any
     finished_at: Any
     error_message: str | None
+    progress_message: str | None
     proposals: list[ProposalOut]
     solver_metrics: dict[str, Any]
     relaxed: list[str]
@@ -438,6 +439,7 @@ def get_job(
         started_at=job.started_at,
         finished_at=job.finished_at,
         error_message=job.error_message,
+        progress_message=job.progress_message,
         proposals=proposals,
         solver_metrics={},
         relaxed=relaxed,

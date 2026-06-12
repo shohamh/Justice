@@ -641,7 +641,30 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     hierarchy_parent=hier_parent, soldier_node=soldier_node,
                 )
 
-                result = solve(soldiers, duties, existing, settings, reserve_dist=reserve_dist, cancel_event=cancel_event)
+                # Real-time progress: the solver decomposes the run into batches and
+                # calls this back once with (0, total) then after each batch.  We map
+                # batches to 5–95 % (leaving headroom for setup and persisting) and
+                # store a {pct, label} JSON on the job for the UI to poll.
+                def _report_progress(done: int, total: int) -> None:
+                    total = max(total, 1)
+                    pct = 5 + int(90 * done / total)
+                    label = (
+                        f"פותר — אצווה {done} מתוך {total}" if done > 0
+                        else f"מתחיל לפתור — {total} אצוות"
+                    )
+                    job.progress_message = json.dumps({"pct": pct, "label": label})
+                    session.commit()
+
+                job.progress_message = json.dumps({"pct": 3, "label": "מכין נתונים…"})
+                session.commit()
+
+                result = solve(
+                    soldiers, duties, existing, settings,
+                    reserve_dist=reserve_dist, cancel_event=cancel_event,
+                    progress_cb=_report_progress,
+                )
+                job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
+                session.commit()
 
                 # Solver was interrupted by cancellation — DB already marked failed
                 if result.status == "CANCELLED":
