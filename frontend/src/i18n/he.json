@@ -251,7 +251,13 @@
     "days": "ימים",
     "adjustments": "תיקוני ניקוד",
     "exempted_count": "פטורים",
-    "exempted_count_tooltip": "{{count}} חיילים פטורים (פטור גלובלי)"
+    "exempted_count_tooltip": "{{count}} חיילים פטורים (פטור גלובלי)",
+    "effort_spread": "פיזור עומס",
+    "effort_mean": "ממוצע עומס",
+    "effort_stddev": "סטיית תקן",
+    "effort_range": "טווח",
+    "subunit_avg_effort": "ממוצע עומס",
+    "subunit_cv_effort": "פיזור (CV)"
   },
   "my_duties": {
     "title": "היומן שלי",
