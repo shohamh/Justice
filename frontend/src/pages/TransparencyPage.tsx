@@ -8,6 +8,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
+import { computeEffortStats, getEffortColor as _getEffortColor, type EffortStats } from "../utils/effortStats";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -130,6 +131,41 @@ interface SubRow {
   avg_normalised: number;
 }
 
+// ─── fairness card ────────────────────────────────────────────────────────────
+
+function FairnessCard({ stats }: { stats: EffortStats | null }) {
+  const { t } = useTranslation();
+  if (!stats) {
+    return (
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
+        <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.effort_spread")}</p>
+        <p className="text-lg font-semibold text-gray-400">—</p>
+      </div>
+    );
+  }
+  const cvPct = stats.cv * 100;
+  const cardClass = cvPct < 25
+    ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700"
+    : cvPct < 50
+      ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700"
+      : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700";
+  const dotClass = cvPct < 25 ? "bg-green-500" : cvPct < 50 ? "bg-yellow-500" : "bg-red-500";
+  return (
+    <div className={`rounded-lg p-3 border text-center ${cardClass}`}>
+      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+        <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
+        {t("transparency.effort_spread")}
+      </p>
+      <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{cvPct.toFixed(1)}%</p>
+      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+        <p>{t("transparency.effort_mean")}: {(stats.mean * 100).toFixed(1)}%</p>
+        <p>{t("transparency.effort_stddev")}: ±{(stats.stddev * 100).toFixed(1)}%</p>
+        <p>{t("transparency.effort_range")}: {(stats.min * 100).toFixed(1)}%–{(stats.max * 100).toFixed(1)}%</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function TransparencyPage() {
@@ -250,6 +286,14 @@ export default function TransparencyPage() {
   const avgNormalised = statsRows
     ? statsRows.length === 0 ? 0 : statsRows.reduce((s, r) => s + Number(r.normalised_score), 0) / statsRows.length
     : subRows.length === 0 ? 0 : subRows.reduce((s, r) => s + r.avg_normalised, 0) / subRows.length;
+
+  const effortStats: EffortStats | null = tab === 0
+    ? computeEffortStats(visibleRows.map((r) => r.effort_score).filter((v) => !isNaN(v)))
+    : null;
+
+  const subEffortStats: EffortStats | null = tab === 1
+    ? computeEffortStats((subRows as Array<{ avg_effort?: number }>).map((r) => r.avg_effort ?? NaN).filter((v) => !isNaN(v) && v > 0))
+    : null;
 
   function handleSelectNode(id: string) {
     setSelectedNodeId((prev) => (prev === id ? null : id));
@@ -454,7 +498,7 @@ export default function TransparencyPage() {
         <TabBar tabs={["חיילים", "תתי יחידות"]} active={tab} onChange={setTab} />
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" dir="rtl">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(2)}</p>
@@ -472,6 +516,8 @@ export default function TransparencyPage() {
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_normalised")}</p>
             <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgNormalised.toFixed(3)}</p>
           </div>
+          {tab === 0 && <FairnessCard stats={effortStats} />}
+          {tab === 1 && <FairnessCard stats={subEffortStats} />}
         </div>
 
         {/* Filter pills (soldiers tab only) */}
