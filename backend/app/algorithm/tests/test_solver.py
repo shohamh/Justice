@@ -692,3 +692,40 @@ def test_relax_r_ceiling_is_configurable() -> None:
     assert result_capped.status == "INFEASIBLE"
     # No relaxation steps taken (already at ceiling).
     assert result_capped.relaxed == []
+
+
+def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
+    """A reserve duty assigned in batch N must not consume T headroom in batch N+1.
+
+    Setup: 1 soldier, batch_size=1, T=1, R=3, W=14.
+      Batch 0: reserve duty on day 0  → assigned to the only soldier.
+      Batch 1: real duty on day 1     → assigned to the only soldier.
+    With correct carry-forward (is_reserve=True on the carried ExistingAssignment):
+      window [day0, day0+13] has 1 reserve + 1 real → real count = 1 ≤ T=1, total = 2 ≤ R=3 → FEASIBLE.
+    With broken carry-forward (is_reserve defaults to False):
+      the reserve is treated as real → real count = 2 > T=1 → INFEASIBLE or T relaxation needed.
+    """
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    reserve_duty = _single_day_duty(base, duty_type, is_reserve=True)           # day 0
+    real_duty = _single_day_duty(base + timedelta(days=1), duty_type, is_reserve=False)  # day 1
+
+    # batch_size=1 forces batching: reserve_duty lands in batch 0, real_duty in batch 1.
+    result = solve(
+        soldiers=soldiers,
+        duties=[reserve_duty, real_duty],
+        existing=[],
+        settings=SolverSettings(T=1, R=3, W=14, batching_enabled=True, batch_size=1,
+                                time_limit_seconds=5),
+    )
+    assert result.status in ("OPTIMAL", "FEASIBLE"), (
+        f"Expected OPTIMAL/FEASIBLE but got {result.status}; relaxed={result.relaxed}"
+    )
+    # T must never need relaxing: the reserve day should not count toward T.
+    t_relaxed = [r for r in result.relaxed if r.startswith("T→")]
+    assert not t_relaxed, (
+        f"T was relaxed ({t_relaxed}), meaning the reserve was mis-counted as real"
+    )

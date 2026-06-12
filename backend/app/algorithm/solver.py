@@ -224,6 +224,7 @@ def _decomposed_solve(
             carry_existing.append(ExistingAssignment(
                 soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
                 start_date=d.start_date, end_date=d.end_date,
+                is_reserve=d.is_reserve,
             ))
             s = soldier_by_id[a.soldier_id]
             s.effort_offset += s.effort_per_milli * _block_score(d)

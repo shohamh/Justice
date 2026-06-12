@@ -232,6 +232,7 @@ def build_model(
                 - bisect.bisect_left(sorted_existing_real, ws)
             )
 
+            # A duty overlaps window [ws, we] iff start_date ≤ we AND end_date ≥ ws.
             right = bisect.bisect_right(starts_sorted, we)
             vars_all: list[IntVar] = []
             vars_real: list[IntVar] = []
