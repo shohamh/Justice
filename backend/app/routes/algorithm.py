@@ -52,8 +52,8 @@ def _compute_candidate_rank(
 
 class SolverSettingsIn(BaseModel):
     K: int = 8
-    T: int = 7
-    R: int = 7
+    T: int = 8
+    R: int = 8
     W: int = 14
     alpha: float = 1.0
     time_limit_seconds: int = 30

@@ -12,7 +12,7 @@ interface Props {
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
-  K: 8, T: 7, R: 7, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
+  K: 8, T: 8, R: 8, W: 14, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
 };
 
 function todayStr() {
