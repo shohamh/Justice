@@ -277,7 +277,7 @@ export default function SwapsPage() {
     setBoardFilters({});
   }
 
-  const hasActiveFilters = !!(boardFilters.dateFrom || boardFilters.dateTo || boardFilters.dutyTypeId || boardFilters.nodeId || boardFilters.eligibleOnly);
+  const hasActiveFilters = !!(boardFilters.dateFrom || boardFilters.dateTo || boardFilters.dutyTypeIds?.length || boardFilters.nodeIds?.length || boardFilters.eligibleOnly);
 
   async function handleCancel(id: string) {
     try { await cancelSwap(id); await refresh(); }
@@ -424,29 +424,39 @@ export default function SwapsPage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_duty_type")}</label>
                   <select
-                    value={boardFilters.dutyTypeId ?? ""}
-                    onChange={e => applyFilters({ dutyTypeId: e.target.value || undefined })}
-                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    multiple
+                    size={Math.min(4, dutyTypeList.length || 1)}
+                    value={boardFilters.dutyTypeIds ?? []}
+                    onChange={e => {
+                      const sel = Array.from(e.target.selectedOptions).map(o => o.value);
+                      applyFilters({ dutyTypeIds: sel.length > 0 ? sel : undefined });
+                    }}
+                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-[8rem]"
                   >
-                    <option value="">{t("swaps.filter_duty_type_all")}</option>
                     {dutyTypeList.map(dt => (
                       <option key={dt.id} value={dt.id}>{dt.name}</option>
                     ))}
                   </select>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
-                  <select
-                    value={boardFilters.nodeId ?? ""}
-                    onChange={e => applyFilters({ nodeId: e.target.value || undefined })}
-                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  >
-                    <option value="">{t("swaps.filter_node_all")}</option>
-                    {hierarchyNodes.map(n => (
-                      <option key={n.id} value={n.id}>{n.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {hierarchyNodes.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
+                    <select
+                      multiple
+                      size={Math.min(4, hierarchyNodes.length)}
+                      value={boardFilters.nodeIds ?? []}
+                      onChange={e => {
+                        const sel = Array.from(e.target.selectedOptions).map(o => o.value);
+                        applyFilters({ nodeIds: sel.length > 0 ? sel : undefined });
+                      }}
+                      className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-[8rem]"
+                    >
+                      {hierarchyNodes.map(n => (
+                        <option key={n.id} value={n.id}>{n.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 text-xs cursor-pointer dark:text-gray-300">

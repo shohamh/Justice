@@ -41,19 +41,19 @@ export async function listMySwaps(): Promise<SwapRequest[]> {
 export interface BoardFilters {
   dateFrom?: string;
   dateTo?: string;
-  dutyTypeId?: string;
-  nodeId?: string;
+  dutyTypeIds?: string[];
+  nodeIds?: string[];
   eligibleOnly?: boolean;
 }
 
 export async function listBoard(filters?: BoardFilters): Promise<SwapRequest[]> {
-  const params: Record<string, string | boolean> = {};
-  if (filters?.dateFrom) params.date_from = filters.dateFrom;
-  if (filters?.dateTo) params.date_to = filters.dateTo;
-  if (filters?.dutyTypeId) params.duty_type_id = filters.dutyTypeId;
-  if (filters?.nodeId) params.node_id = filters.nodeId;
-  if (filters?.eligibleOnly) params.eligible_only = true;
-  return (await api.get<SwapRequest[]>("/swaps/board", { params })).data;
+  const p = new URLSearchParams();
+  if (filters?.dateFrom) p.set("date_from", filters.dateFrom);
+  if (filters?.dateTo) p.set("date_to", filters.dateTo);
+  for (const id of filters?.dutyTypeIds ?? []) p.append("duty_type_id", id);
+  for (const id of filters?.nodeIds ?? []) p.append("node_id", id);
+  if (filters?.eligibleOnly) p.set("eligible_only", "true");
+  return (await api.get<SwapRequest[]>("/swaps/board", { params: p })).data;
 }
 
 export async function createSwap(input: CreateSwapInput): Promise<SwapRequest> {

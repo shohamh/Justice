@@ -206,8 +206,8 @@ def list_incoming_swaps(
 def board(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
-    duty_type_id: uuid.UUID | None = Query(default=None),
-    node_id: uuid.UUID | None = Query(default=None),
+    duty_type_id: list[uuid.UUID] = Query(default=[]),
+    node_id: list[uuid.UUID] = Query(default=[]),
     eligible_only: bool = Query(default=False),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
@@ -217,20 +217,22 @@ def board(
         rows = [r for r in rows if r.duty_date >= date_from]
     if date_to is not None:
         rows = [r for r in rows if r.duty_date <= date_to]
-    if duty_type_id is not None:
+    if duty_type_id:
+        type_filter = set(duty_type_id)
         assignment_ids = {r.duty_assignment_id for r in rows}
         type_map: dict[uuid.UUID, uuid.UUID | None] = {}
         for aid in assignment_ids:
             a = session.get(DutyAssignment, aid)
             type_map[aid] = a.duty_type_id if a else None
-        rows = [r for r in rows if type_map.get(r.duty_assignment_id) == duty_type_id]
-    if node_id is not None:
+        rows = [r for r in rows if type_map.get(r.duty_assignment_id) in type_filter]
+    if node_id:
+        node_filter = set(node_id)
         soldier_ids = {r.requesting_soldier_id for r in rows}
         node_map: dict[uuid.UUID, uuid.UUID | None] = {}
         for sid in soldier_ids:
             s = session.get(Soldier, sid)
             node_map[sid] = s.hierarchy_node_id if s else None
-        rows = [r for r in rows if node_map.get(r.requesting_soldier_id) == node_id]
+        rows = [r for r in rows if node_map.get(r.requesting_soldier_id) in node_filter]
     if eligible_only:
         rows = [r for r in rows if check_soldier_for_assignment(session, user.id, r.duty_assignment_id)[0]]
     return [_out(r, session) for r in rows]
