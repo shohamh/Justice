@@ -37,8 +37,11 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -q"
+# Skip the large-scale CP-SAT tests by default — the 8 @pytest.mark.slow cases
+# (n≈100, m≈200) take ~11 min combined and dominate every run. Run them on
+# demand with `pytest -m slow`, or the whole suite with `pytest -m "slow or not slow"`.
+addopts = "-ra -q -m 'not slow'"
 asyncio_mode = "auto"
 markers = [
-  "slow: large-scale tests (n≈100, m≈200); run with: pytest -m slow",
+  "slow: large-scale CP-SAT tests (n≈100, m≈200); excluded by default, run with: pytest -m slow",
 ]
