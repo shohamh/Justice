@@ -129,6 +129,8 @@ interface SubRow {
   total_score_per_day: number;
   avg_active_days: number;
   avg_normalised: number;
+  avg_effort: number;
+  cv_effort: number | null;
 }
 
 // ─── fairness card ────────────────────────────────────────────────────────────
@@ -263,6 +265,15 @@ export default function TransparencyPage() {
             total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
             avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
             avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
+            avg_effort: (() => {
+              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+              return efforts.length > 0 ? efforts.reduce((a, b) => a + b, 0) / efforts.length : 0;
+            })(),
+            cv_effort: (() => {
+              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+              const stats = computeEffortStats(efforts);
+              return stats ? stats.cv : null;
+            })(),
           });
         }
         traverse(node.id);
@@ -292,7 +303,7 @@ export default function TransparencyPage() {
     : null;
 
   const subEffortStats: EffortStats | null = tab === 1
-    ? computeEffortStats((subRows as Array<{ avg_effort?: number }>).map((r) => r.avg_effort ?? NaN).filter((v) => !isNaN(v) && v > 0))
+    ? computeEffortStats(subRows.map((r) => r.avg_effort).filter((v) => !isNaN(v) && v > 0))
     : null;
 
   function handleSelectNode(id: string) {
@@ -431,6 +442,27 @@ export default function TransparencyPage() {
       headerTooltip: t("transparency.normalised_tooltip"),
       cell: (r) => r.avg_normalised.toFixed(3),
       sortValue: (r) => r.avg_normalised,
+    },
+    {
+      id: "avg_effort",
+      header: t("transparency.subunit_avg_effort"),
+      cell: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
+      sortValue: (r) => r.avg_effort,
+    },
+    {
+      id: "cv_effort",
+      header: t("transparency.subunit_cv_effort"),
+      cell: (r) => {
+        if (r.cv_effort === null) return "—";
+        const pct = r.cv_effort * 100;
+        const colorClass = pct < 25
+          ? "text-green-600 dark:text-green-400"
+          : pct < 50
+            ? "text-yellow-600 dark:text-yellow-400"
+            : "text-red-600 dark:text-red-400 font-medium";
+        return <span className={colorClass}>{pct.toFixed(1)}%</span>;
+      },
+      sortValue: (r) => r.cv_effort ?? -1,
     },
   ];
 
