@@ -226,13 +226,21 @@ def board(
             type_map[aid] = a.duty_type_id if a else None
         rows = [r for r in rows if type_map.get(r.duty_assignment_id) in type_filter]
     if node_id:
-        node_filter = set(node_id)
+        # Expand each selected node to include its entire subtree via path_ids
+        expanded: set[uuid.UUID] = set()
+        for nid in node_id:
+            subtree_ids = session.execute(
+                select(HierarchyNode.id).where(
+                    HierarchyNode.path_ids.any(nid)  # type: ignore[arg-type]
+                )
+            ).scalars().all()
+            expanded.update(subtree_ids)
         soldier_ids = {r.requesting_soldier_id for r in rows}
         node_map: dict[uuid.UUID, uuid.UUID | None] = {}
         for sid in soldier_ids:
             s = session.get(Soldier, sid)
             node_map[sid] = s.hierarchy_node_id if s else None
-        rows = [r for r in rows if node_map.get(r.requesting_soldier_id) in node_filter]
+        rows = [r for r in rows if node_map.get(r.requesting_soldier_id) in expanded]
     if eligible_only:
         rows = [r for r in rows if check_soldier_for_assignment(session, user.id, r.duty_assignment_id)[0]]
     return [_out(r, session) for r in rows]
