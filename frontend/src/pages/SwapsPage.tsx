@@ -6,10 +6,16 @@ import CoverOfferModal from "../components/CoverOfferModal";
 import { useAuth } from "../auth/AuthContext";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
-  listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput,
+  listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
+import { api } from "../api/client";
+
+interface HierarchyNode {
+  id: string;
+  name: string;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
@@ -198,6 +204,8 @@ export default function SwapsPage() {
   const [tab, setTab] = useState(0);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
   const [dutyTypes, setDutyTypes] = useState<Record<string, string>>({});
+  const [dutyTypeList, setDutyTypeList] = useState<DutyType[]>([]);
+  const [hierarchyNodes, setHierarchyNodes] = useState<HierarchyNode[]>([]);
   const [mySwaps, setMySwaps] = useState<SwapRequest[]>([]);
   const [boardSwaps, setBoardSwaps] = useState<SwapRequest[]>([]);
   const [incomingSwaps, setIncomingSwaps] = useState<SwapRequest[]>([]);
@@ -206,25 +214,45 @@ export default function SwapsPage() {
   const [requireManagerApproval, setRequireManagerApproval] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Board filters
+  const [boardFilters, setBoardFilters] = useState<BoardFilters>({});
+  const [boardLoading, setBoardLoading] = useState(false);
+
+  const refreshBoard = useCallback(async (filters: BoardFilters) => {
+    setBoardLoading(true);
+    try {
+      const board = await listBoard(filters);
+      setBoardSwaps(board);
+    } finally {
+      setBoardLoading(false);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!user) return;
     setLoadError(null);
     try {
       const [mine, board, incoming, duties, config] = await Promise.all([
         listMySwaps(),
-        listBoard(),
+        listBoard({}),
         listIncomingSwaps(),
         listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
         getSwapConfig().catch(() => ({ require_manager_approval: false })),
       ]);
       const { listDutyTypes } = await import("../api/dutyConfig");
-      const dts = await listDutyTypes().catch(() => [] as DutyType[]);
+      const [dts, nodes] = await Promise.all([
+        listDutyTypes().catch(() => [] as DutyType[]),
+        api.get<HierarchyNode[]>("/hierarchy/tree").then(r => r.data).catch(() => [] as HierarchyNode[]),
+      ]);
       setMySwaps(mine);
       setBoardSwaps(board);
       setIncomingSwaps(incoming);
       setMyDuties(duties);
       setDutyTypes(Object.fromEntries(dts.map(d => [d.id, d.name])));
+      setDutyTypeList(dts);
+      setHierarchyNodes(nodes);
       setRequireManagerApproval(config.require_manager_approval);
+      setBoardFilters({});
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setLoadError(detail ?? "שגיאה בטעינת נתוני ההחלפות");
@@ -232,6 +260,24 @@ export default function SwapsPage() {
   }, [user]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // Re-fetch only the board when filters change (skip initial mount handled by refresh)
+  const [filtersInitialized, setFiltersInitialized] = useState(false);
+  useEffect(() => {
+    if (!filtersInitialized) { setFiltersInitialized(true); return; }
+    void refreshBoard(boardFilters);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardFilters]);
+
+  function applyFilters(updates: Partial<BoardFilters>) {
+    setBoardFilters(prev => ({ ...prev, ...updates }));
+  }
+
+  function clearFilters() {
+    setBoardFilters({});
+  }
+
+  const hasActiveFilters = !!(boardFilters.dateFrom || boardFilters.dateTo || boardFilters.dutyTypeId || boardFilters.nodeId || boardFilters.eligibleOnly);
 
   async function handleCancel(id: string) {
     try { await cancelSwap(id); await refresh(); }
@@ -278,6 +324,14 @@ export default function SwapsPage() {
           {t(statusKey(swap.status))}
         </span>
       </div>
+      {swap.requesting_soldier_name && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {swap.requesting_soldier_name}
+          {swap.requesting_soldier_node_name && (
+            <span className="mr-1 text-gray-400 dark:text-gray-500"> · {swap.requesting_soldier_node_name}</span>
+          )}
+        </p>
+      )}
       {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
       {swap.status === "open" && (
         <button type="button" onClick={() => setCoverSwap(swap)}
@@ -345,9 +399,83 @@ export default function SwapsPage() {
         )}
 
         {tab === 1 && (
-          <div className="space-y-2">
-            {boardSwaps.length === 0 && <p className="text-sm text-gray-500">{t("swaps.none_board")}</p>}
-            <ul className="space-y-2">{boardSwaps.map(renderBoardCard)}</ul>
+          <div className="space-y-3">
+            {/* Filter panel */}
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-3 space-y-2 border dark:border-gray-600">
+              <div className="flex flex-wrap gap-2 items-end">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_from")}</label>
+                  <input
+                    type="date"
+                    value={boardFilters.dateFrom ?? ""}
+                    onChange={e => applyFilters({ dateFrom: e.target.value || undefined })}
+                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_to")}</label>
+                  <input
+                    type="date"
+                    value={boardFilters.dateTo ?? ""}
+                    onChange={e => applyFilters({ dateTo: e.target.value || undefined })}
+                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_duty_type")}</label>
+                  <select
+                    value={boardFilters.dutyTypeId ?? ""}
+                    onChange={e => applyFilters({ dutyTypeId: e.target.value || undefined })}
+                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  >
+                    <option value="">{t("swaps.filter_duty_type_all")}</option>
+                    {dutyTypeList.map(dt => (
+                      <option key={dt.id} value={dt.id}>{dt.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
+                  <select
+                    value={boardFilters.nodeId ?? ""}
+                    onChange={e => applyFilters({ nodeId: e.target.value || undefined })}
+                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  >
+                    <option value="">{t("swaps.filter_node_all")}</option>
+                    {hierarchyNodes.map(n => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-xs cursor-pointer dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={boardFilters.eligibleOnly ?? false}
+                    onChange={e => applyFilters({ eligibleOnly: e.target.checked || undefined })}
+                  />
+                  {t("swaps.filter_eligible_only")}
+                </label>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    {t("swaps.filter_clear")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {boardLoading ? (
+              <p className="text-sm text-gray-400">{t("app.loading")}</p>
+            ) : boardSwaps.length === 0 ? (
+              <p className="text-sm text-gray-500">{t("swaps.none_board")}</p>
+            ) : (
+              <ul className="space-y-2">{boardSwaps.map(renderBoardCard)}</ul>
+            )}
           </div>
         )}
 

@@ -560,7 +560,15 @@
     "approval_approved": "אישר",
     "approval_pending": "ממתין",
     "approval_rejected": "סירב",
-    "commander_label": "מפקד"
+    "commander_label": "מפקד",
+    "filter_date_from": "מתאריך",
+    "filter_date_to": "עד תאריך",
+    "filter_duty_type": "סוג תורנות",
+    "filter_duty_type_all": "כל הסוגים",
+    "filter_node": "יחידה מציעה",
+    "filter_node_all": "כל היחידות",
+    "filter_eligible_only": "רק תורנויות שאני כשיר ופנוי",
+    "filter_clear": "נקה סינון"
   },
   "command_dashboard": {
     "title": "דף מפקד",

@@ -25,6 +25,7 @@ export interface SwapRequest {
   covering_soldier_name?: string | null;
   requesting_commander_name?: string | null;
   covering_commander_name?: string | null;
+  requesting_soldier_node_name?: string | null;
 }
 
 export interface CreateSwapInput {
@@ -37,8 +38,22 @@ export async function listMySwaps(): Promise<SwapRequest[]> {
   return (await api.get<SwapRequest[]>("/me/swaps")).data;
 }
 
-export async function listBoard(): Promise<SwapRequest[]> {
-  return (await api.get<SwapRequest[]>("/swaps/board")).data;
+export interface BoardFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  dutyTypeId?: string;
+  nodeId?: string;
+  eligibleOnly?: boolean;
+}
+
+export async function listBoard(filters?: BoardFilters): Promise<SwapRequest[]> {
+  const params: Record<string, string | boolean> = {};
+  if (filters?.dateFrom) params.date_from = filters.dateFrom;
+  if (filters?.dateTo) params.date_to = filters.dateTo;
+  if (filters?.dutyTypeId) params.duty_type_id = filters.dutyTypeId;
+  if (filters?.nodeId) params.node_id = filters.nodeId;
+  if (filters?.eligibleOnly) params.eligible_only = true;
+  return (await api.get<SwapRequest[]>("/swaps/board", { params })).data;
 }
 
 export async function createSwap(input: CreateSwapInput): Promise<SwapRequest> {

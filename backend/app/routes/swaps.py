@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -48,6 +48,7 @@ class SwapOut(BaseModel):
     covering_soldier_name: str | None = None
     requesting_commander_name: str | None = None
     covering_commander_name: str | None = None
+    requesting_soldier_node_name: str | None = None
 
 
 class CreateSwapRequest(BaseModel):
@@ -96,6 +97,13 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
     duty_end_date = None
     requesting_soldier_name, requesting_commander_name = _soldier_names(session, r.requesting_soldier_id)  # type: ignore[arg-type]
     covering_soldier_name, covering_commander_name = _soldier_names(session, r.covering_soldier_id)
+    requesting_soldier_node_name: str | None = None
+    if session is not None and r.requesting_soldier_id is not None:
+        req_soldier = session.get(Soldier, r.requesting_soldier_id)
+        if req_soldier is not None and req_soldier.hierarchy_node_id is not None:
+            node = session.get(HierarchyNode, req_soldier.hierarchy_node_id)
+            if node is not None:
+                requesting_soldier_node_name = node.name
     if session is not None:
         assignment = session.get(DutyAssignment, r.duty_assignment_id)
         if assignment is not None:
@@ -127,6 +135,7 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
         covering_soldier_name=covering_soldier_name,
         requesting_commander_name=requesting_commander_name,
         covering_commander_name=covering_commander_name,
+        requesting_soldier_node_name=requesting_soldier_node_name,
     )
 
 
@@ -195,10 +204,36 @@ def list_incoming_swaps(
 
 @router.get("/swaps/board", response_model=list[SwapOut])
 def board(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    duty_type_id: uuid.UUID | None = Query(default=None),
+    node_id: uuid.UUID | None = Query(default=None),
+    eligible_only: bool = Query(default=False),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
-    return [_out(r, session) for r in svc.list_open_board(session, for_soldier_id=user.id)]
+    rows = svc.list_open_board(session, for_soldier_id=user.id)
+    if date_from is not None:
+        rows = [r for r in rows if r.duty_date >= date_from]
+    if date_to is not None:
+        rows = [r for r in rows if r.duty_date <= date_to]
+    if duty_type_id is not None:
+        assignment_ids = {r.duty_assignment_id for r in rows}
+        type_map: dict[uuid.UUID, uuid.UUID | None] = {}
+        for aid in assignment_ids:
+            a = session.get(DutyAssignment, aid)
+            type_map[aid] = a.duty_type_id if a else None
+        rows = [r for r in rows if type_map.get(r.duty_assignment_id) == duty_type_id]
+    if node_id is not None:
+        soldier_ids = {r.requesting_soldier_id for r in rows}
+        node_map: dict[uuid.UUID, uuid.UUID | None] = {}
+        for sid in soldier_ids:
+            s = session.get(Soldier, sid)
+            node_map[sid] = s.hierarchy_node_id if s else None
+        rows = [r for r in rows if node_map.get(r.requesting_soldier_id) == node_id]
+    if eligible_only:
+        rows = [r for r in rows if check_soldier_for_assignment(session, user.id, r.duty_assignment_id)[0]]
+    return [_out(r, session) for r in rows]
 
 
 @router.get("/swaps/for-assignment/{assignment_id}", response_model=list[SwapOut])
