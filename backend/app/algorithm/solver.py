@@ -275,17 +275,16 @@ def _infeasibility_relaxation_chain(
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> SolverResult:
-    # Copy so we can relax T without touching the caller's settings (and keep all
-    # other fields, e.g. effort_resolution, intact).
+    # Copy so we can relax T/R without touching the caller's settings.
     current = dataclasses.replace(settings)
     relaxed: list[str] = []
 
-    # Relax the density cap T toward W (= no real density limit, since a soldier
-    # can do at most W duty-days in a W-day window).  Most batches solve at the
-    # configured T (density stays hard); only genuinely tight ones (e.g. around
-    # weekly spikes) soften.  Relax in geometric jumps (\u2248 +50% of the remaining
-    # gap) so a tight batch needs only a few re-solves, not W\u2212T of them.
-    max_t = max(current.T, current.W)
+    # Two-stage density relaxation. R (total, incl. reserve) loosens first in
+    # hops of 2 up to 11, absorbing reserve overload before real-duty fairness
+    # is touched. Then T (real only) loosens in hops of 2 up to 9. The invariant
+    # T <= R holds throughout: R reaches 11 before T leaves 7.
+    R_MAX = 11
+    T_MAX = 9
 
     while True:
         solver, x, status = _solve_with_settings(soldiers, duties, existing, current, reserve_dist, cancel_event=cancel_event)
@@ -296,8 +295,12 @@ def _infeasibility_relaxation_chain(
             return SolverResult(assignments=[], status="CANCELLED", seed=(current.seed if current.seed is not None else DEFAULT_SOLVER_SEED), relaxed=relaxed)
 
         if status_name == "INFEASIBLE":
-            if current.T < max_t:
-                current.T = min(max_t, current.T + max(1, (max_t - current.T + 1) // 2))
+            if current.R < R_MAX:
+                current.R = min(R_MAX, current.R + 2)
+                relaxed.append(f"R\u2192{current.R}")
+                continue
+            if current.T < T_MAX:
+                current.T = min(T_MAX, current.T + 2)
                 relaxed.append(f"T\u2192{current.T}")
                 continue
             return SolverResult(

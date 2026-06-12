@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -558,3 +559,108 @@ def test_batched_solve_covers_all_and_balances_by_effort() -> None:
     assert counts[soldiers[0].id] <= counts[soldiers[5].id], (
         f"high-effort soldier should not get more than low-effort, got {[counts[s.id] for s in soldiers]}"
     )
+
+
+# ── T/R split-cap tests ───────────────────────────────────────────────────────
+
+
+def _single_day_duty(dt: date, duty_type: uuid.UUID, *, is_reserve: bool) -> DutyBlock:
+    return DutyBlock(
+        id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
+        start_date=dt, end_date=dt, score_per_day=Decimal("1.00"),
+        is_reserve=is_reserve,
+    )
+
+
+def test_window_caps_split_reserve_and_real() -> None:
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    real = [_single_day_duty(base + timedelta(days=i), duty_type, is_reserve=False)
+            for i in range(3)]
+    reserve = [_single_day_duty(base + timedelta(days=3 + i), duty_type, is_reserve=True)
+               for i in range(3)]
+    duties = real + reserve  # 6 duties, all within a 14-day window
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+
+    # T=2, R=5: must cover all 6, but 6 > R=5 → INFEASIBLE.
+    model, _ = build_model(soldiers=soldiers, duties=duties, existing=[],
+                           settings=SolverSettings(T=2, R=5, W=14))
+    assert solver.Solve(model) == cp_model.INFEASIBLE
+
+    # T=2, R=6: total fits under R, but only 2 of the 3 real duties may be taken...
+    # coverage still forces all 3 real → infeasible on T=2.
+    model2, _ = build_model(soldiers=soldiers, duties=duties, existing=[],
+                            settings=SolverSettings(T=2, R=6, W=14))
+    assert solver.Solve(model2) == cp_model.INFEASIBLE
+
+    # T=3, R=6: 3 real (== T) + 3 reserve (total 6 == R) → feasible.
+    model3, x3 = build_model(soldiers=soldiers, duties=duties, existing=[],
+                             settings=SolverSettings(T=3, R=6, W=14))
+    assert solver.Solve(model3) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assigned_real = sum(
+        solver.Value(x3[(di, 0)])
+        for di, d in enumerate(duties) if not d.is_reserve
+    )
+    assert assigned_real == 3
+
+
+def test_relaxation_relaxes_R_before_T() -> None:
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
+                  start_date=base + timedelta(days=i), end_date=base + timedelta(days=i),
+                  score_per_day=Decimal("1.00"), is_reserve=False)
+        for i in range(8)  # 8 real duty-days in a 14-day window
+    ]
+    result = solve(soldiers, duties, [],
+                   SolverSettings(T=7, R=7, W=14, time_limit_seconds=5))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    r_idx = next((i for i, r in enumerate(result.relaxed) if r.startswith("R")), None)
+    t_idx = next((i for i, r in enumerate(result.relaxed) if r.startswith("T")), None)
+    assert r_idx is not None, f"expected R relaxation, got {result.relaxed}"
+    assert t_idx is not None, f"expected T relaxation, got {result.relaxed}"
+    assert r_idx < t_idx, f"R must relax before T, got {result.relaxed}"
+    assert "R→9" in result.relaxed
+    assert "T→9" in result.relaxed
+
+
+def test_existing_reserve_counts_toward_R_not_T() -> None:
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    # Two existing PUBLISHED RESERVE duty-days in the window.
+    existing = [
+        ExistingAssignment(soldier_id=soldier_id, duty_type_id=duty_type,
+                           start_date=base, end_date=base, is_reserve=True),
+        ExistingAssignment(soldier_id=soldier_id, duty_type_id=duty_type,
+                           start_date=base + timedelta(days=1),
+                           end_date=base + timedelta(days=1), is_reserve=True),
+    ]
+    # One NEW REAL duty in the same window.
+    duties = [_single_day_duty(base + timedelta(days=2), duty_type, is_reserve=False)]
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+
+    # T=1 satisfied (1 real ≤ 1, existing reserves don't count toward T),
+    # but R=2 violated (2 reserve + 1 real = 3 > 2) → INFEASIBLE.
+    model, _ = build_model(soldiers=soldiers, duties=duties, existing=existing,
+                           settings=SolverSettings(T=1, R=2, W=14))
+    assert solver.Solve(model) == cp_model.INFEASIBLE
+
+    # R=3 gives headroom for the total → FEASIBLE, real duty assigned.
+    model2, x2 = build_model(soldiers=soldiers, duties=duties, existing=existing,
+                             settings=SolverSettings(T=1, R=3, W=14))
+    assert solver.Solve(model2) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert solver.Value(x2[(0, 0)]) == 1

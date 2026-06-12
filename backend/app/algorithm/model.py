@@ -58,6 +58,7 @@ def build_model(
     soldier_list = list(soldiers)
     W = settings.W
     T = settings.T
+    R = settings.R
 
     # Build lookup maps
     exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {}
@@ -179,31 +180,34 @@ def build_model(
         pm = sum(per_millis) // len(per_millis) if per_millis else 0
         total_new_weight += max(1, (pm * _block_score(d)) // div)
 
-    # Hard constraint: max T duty-days in any rolling W-day window per soldier
-    #
-    # Inner loop uses binary search (bisect) so per-window duty lookup is
-    # O(log m + matches) instead of O(m).  Overall complexity drops from
-    # O(n × date_range × m) to O(n × date_range × log m), which makes
-    # large instances (n≈100, m≈200) feasible.
-    existing_by_soldier = {
+    # Hard constraints: T (non-reserve duty-days) and R (all duty-days) per rolling
+    # W-day window per soldier.  T <= R enforces the invariant; reserve days consume
+    # R headroom but not T.  Inner loop uses binary search (bisect) so per-window
+    # duty lookup is O(log m + matches) instead of O(m).
+    existing_all_by_soldier = {
         s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
+    }
+    existing_real_by_soldier = {
+        s.id: _existing_dates_by_soldier(
+            [e for e in existing if not e.is_reserve], s.id
+        )
+        for s in soldier_list
     }
 
     for si, s in enumerate(soldier_list):
         si_duties = soldier_duties.get(si, [])
-        existing_dates = existing_by_soldier.get(s.id, set())
+        existing_all = existing_all_by_soldier.get(s.id, set())
+        existing_real = existing_real_by_soldier.get(s.id, set())
 
-        if not si_duties and not existing_dates:
+        if not si_duties and not existing_all:
             continue
 
         # Sort eligible duties by start_date for binary-search window lookup.
-        # A duty overlaps window [ws, we] iff start_date ≤ we AND end_date ≥ ws.
         si_duties_sorted = sorted(si_duties, key=lambda di: duty_list[di].start_date)
         starts_sorted: list[date] = [duty_list[di].start_date for di in si_duties_sorted]
         ends_sorted: list[date] = [duty_list[di].end_date for di in si_duties_sorted]
 
-        # Date range: span of all eligible duty dates plus any existing dates
-        all_relevant: set[date] = set(existing_dates)
+        all_relevant: set[date] = set(existing_all)
         for di in si_duties:
             all_relevant.add(duty_list[di].start_date)
             all_relevant.add(duty_list[di].end_date)
@@ -212,34 +216,41 @@ def build_model(
 
         min_d = min(all_relevant)
         max_d = max(all_relevant)
-        sorted_existing = sorted(existing_dates)
+        sorted_existing_all = sorted(existing_all)
+        sorted_existing_real = sorted(existing_real)
 
         ws = min_d
         while ws <= max_d:
             we = ws + timedelta(days=W - 1)
 
-            # Count pre-fixed existing duty-days in this window
-            existing_fixed = (
-                bisect.bisect_right(sorted_existing, we)
-                - bisect.bisect_left(sorted_existing, ws)
+            existing_all_fixed = (
+                bisect.bisect_right(sorted_existing_all, we)
+                - bisect.bisect_left(sorted_existing_all, ws)
+            )
+            existing_real_fixed = (
+                bisect.bisect_right(sorted_existing_real, we)
+                - bisect.bisect_left(sorted_existing_real, ws)
             )
 
-            # Find variable duties overlapping [ws, we] via binary search:
-            #   start_date ≤ we  →  right = bisect_right(starts, we)
-            #   end_date ≥ ws   →  linear scan only the filtered prefix
-            # For short-duration duties the filtered list is tiny.
             right = bisect.bisect_right(starts_sorted, we)
-            var_for_window: list[IntVar] = [
-                x[(si_duties_sorted[i], si)]
-                for i in range(right)
-                if ends_sorted[i] >= ws
-            ]
+            vars_all: list[IntVar] = []
+            vars_real: list[IntVar] = []
+            for i in range(right):
+                if ends_sorted[i] < ws:
+                    continue
+                di = si_duties_sorted[i]
+                var = x[(di, si)]
+                vars_all.append(var)
+                if not duty_list[di].is_reserve:
+                    vars_real.append(var)
 
-            if not var_for_window:
-                ws += timedelta(days=1)
-                continue
+            # R cap: all duty-days (reserve + real) in the window.
+            if vars_all or existing_all_fixed:
+                model.Add(existing_all_fixed + sum(vars_all) <= R)
+            # T cap: non-reserve duty-days only.
+            if vars_real or existing_real_fixed:
+                model.Add(existing_real_fixed + sum(vars_real) <= T)
 
-            model.Add(existing_fixed + sum(var_for_window) <= T)
             ws += timedelta(days=1)
 
     # Soft objective: hierarchy proximity for reserve blocks
