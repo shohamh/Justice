@@ -19,9 +19,12 @@ _HIDDEN_KEYS = {"system.holding_node_id"}
 
 _DENSITY_DEFAULTS = {
     "algorithm.max_duties_per_window": 8,
-    "algorithm.max_total_duties_per_window": 8,
+    "algorithm.max_total_duties_per_window": 15,
+    "algorithm.window_t": 14,
+    "algorithm.window_r": 28,
+    "algorithm.batch_window_days": 28,
     "algorithm.relax_t_ceiling": 10,
-    "algorithm.relax_r_ceiling": 12,
+    "algorithm.relax_r_ceiling": 20,
 }
 
 

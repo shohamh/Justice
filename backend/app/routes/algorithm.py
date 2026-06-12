@@ -53,8 +53,9 @@ def _compute_candidate_rank(
 class SolverSettingsIn(BaseModel):
     K: int = 8
     T: int = 8
-    R: int = 8
-    W: int = 14
+    Wt: int = 14
+    R: int = 15
+    Wr: int = 28
     alpha: float = 1.0
     time_limit_seconds: int = 30
 
@@ -117,8 +118,9 @@ class JobListOut(BaseModel):
 
 class AlgorithmDefaultsOut(BaseModel):
     T: int
+    Wt: int
     R: int
-    W: int
+    Wr: int
 
 
 class DraftPreviewItem(BaseModel):
@@ -393,7 +395,7 @@ def get_algorithm_defaults(
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
     from app.services.algorithm_bridge import resolve_solver_settings
     s = resolve_solver_settings(session, {})
-    return AlgorithmDefaultsOut(T=s.T, R=s.R, W=s.W)
+    return AlgorithmDefaultsOut(T=s.T, Wt=s.Wt, R=s.R, Wr=s.Wr)
 
 
 @router.get("/jobs", response_model=JobListOut)

@@ -69,7 +69,8 @@ def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
     body = resp.json()
     assert body["T"] == 8
     assert body["R"] == 10
-    assert body["W"] == 14
+    assert body["Wt"] == 14
+    assert body["Wr"] == 28
 
 
 def test_create_job_rejects_T_greater_than_R(client, admin_session):
@@ -82,7 +83,7 @@ def test_create_job_rejects_T_greater_than_R(client, admin_session):
         json={
             "shift_ids": [str(shift.id)],
             "mode": "shadow",
-            "settings": {"T": 9, "R": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 5},
+            "settings": {"T": 9, "R": 7, "Wt": 14, "Wr": 28, "alpha": 1.0, "time_limit_seconds": 5},
         },
         headers=auth_headers(dm),
     )
