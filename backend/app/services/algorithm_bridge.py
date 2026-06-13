@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import (
@@ -249,8 +249,28 @@ def load_duty_blocks_from_shifts(
         if effective_start > shift.end_date:
             # Shift is entirely in the past — nothing left to assign
             continue
+        # Only generate blocks for UNFILLED slots. Subtract assignments that already
+        # occupy this shift (published or pending draft) so re-running a fully-assigned
+        # schedule is a no-op instead of regenerating slots and competing against its own
+        # published assignments (which saturates the soldiers and yields ~0 new coverage).
+        counts = session.execute(
+            select(
+                func.count(DutyAssignment.id).label("total"),
+                func.coalesce(
+                    func.sum(case((DutyAssignment.is_reserve.is_(True), 1), else_=0)), 0
+                ).label("reserve"),
+            ).where(
+                DutyAssignment.duty_shift_id == shift.id,
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        ).one()
+        filled_total = counts.total or 0
+        filled_reserve = counts.reserve or 0
+        filled_primary = filled_total - filled_reserve
+
         score = score_map.get(shift.duty_type_id, Decimal("1.00"))
-        for _ in range(shift.required_count):
+        primary_needed = max(0, shift.required_count - filled_primary)
+        for _ in range(primary_needed):
             block_id = uuid.uuid4()
             blocks.append(DutyBlock(
                 id=block_id,
@@ -264,8 +284,9 @@ def load_duty_blocks_from_shifts(
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
+        reserve_needed = max(0, r_count - filled_reserve)
         r_score = score * standby_multiplier
-        for _ in range(r_count):
+        for _ in range(reserve_needed):
             block_id = uuid.uuid4()
             blocks.append(DutyBlock(
                 id=block_id,

@@ -8,16 +8,58 @@ import pytest
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
+    DutyShift,
     DutyType,
     PersonalConstraint,
 )
 from app.services.algorithm_bridge import (
     build_hierarchy_maps,
     load_duty_blocks,
+    load_duty_blocks_from_shifts,
     load_existing_assignments,
     load_soldier_inputs,
 )
 from tests.helpers import create_node, create_soldier
+
+
+def _published(session, shift, dt, loc, soldier, *, is_reserve=False, status="published"):
+    a = DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=shift.start_date, end_date=shift.end_date,
+        status=status, is_reserve=is_reserve, duty_shift_id=shift.id,
+    )
+    session.add(a)
+    session.flush()
+    return a
+
+
+def test_load_duty_blocks_from_shifts_skips_already_filled_slots(admin_session):
+    """A re-run must only generate blocks for UNFILLED slots — not regenerate
+    primary/reserve slots that already have a published or draft assignment."""
+    dt = _duty_type(admin_session, name="שמירה_fill")
+    loc = _location(admin_session, name="שער_fill")
+    s = create_soldier(admin_session, personal_number="fill_soldier_1", role="soldier")
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 7, 1), end_date=date(2027, 7, 1), required_count=3,
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+
+    # No assignments yet -> full required_count of primary blocks.
+    blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    assert sum(1 for b in blocks if not b.is_reserve) == 3
+
+    # 2 of 3 primary slots published -> only 1 primary block should be generated.
+    _published(admin_session, shift, dt, loc, s)
+    _published(admin_session, shift, dt, loc, s)
+    blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    assert sum(1 for b in blocks if not b.is_reserve) == 1
+
+    # A pending draft counts as filling too -> all 3 primary slots occupied -> 0 primary blocks.
+    _published(admin_session, shift, dt, loc, s, status="algorithm_draft")
+    blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    assert sum(1 for b in blocks if not b.is_reserve) == 0
 
 
 def _duty_type(session, name="שמירה", score="1.00") -> DutyType:
