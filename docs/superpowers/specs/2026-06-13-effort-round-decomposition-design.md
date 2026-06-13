@@ -197,20 +197,26 @@ JSON shape as the `INFEASIBLE` path), so the UI shows *why* instead of silence.
 
 Inputs: job `f9ec194e`, 449 duty-blocks (primary + reserve), 118 soldiers,
 planning window 2026-06-14 → 07-16. `existing=[]` (proposals were published after
-the original run). All three modes run from identical effort-scored soldier inputs.
-`effort_rounds` uses `_solve_soft_coverage` (two-stage coverage-then-fairness) which
-requires more time per batch than calendar's `_infeasibility_relaxation_chain`; a
-300 s per-batch limit was used for effort_rounds, 30 s for calendar, 30 s for none.
+the original run). All three modes run from identical effort-scored soldier inputs,
+at the **default** settings (`time_limit_seconds=30`, `batch_time_limit_seconds=10`).
 
 | mode | covered / total | assign-count spread | wall time | status | relaxed |
 |---|---|---|---|---|---|
 | `calendar` | 402 / 449 | 14 | 72 s | FEASIBLE | R→17, R→19, R→20, T→10 |
-| `effort_rounds` | 449 / 449 | 11 | 655 s | OPTIMAL | — |
-| `none` (unbatched) | 449 / 449 | 11 | 37 s | FEASIBLE | — |
+| `effort_rounds` | 449 / 449 | 11 | **69 s** | OPTIMAL | — |
+| `none` (unbatched) | 449 / 449 | 11 | 39 s | FEASIBLE | — |
 
 `effort_rounds` covers all 449 duties (vs. 402 for calendar, 47 dropped) and
-produces a fairer result (spread 11 vs. 14), with zero density-cap relaxation;
-calendar must relax R to 20 and T to 10 to salvage most of the stranded batch, and
-still leaves 47 unassigned. The longer wall time for effort_rounds reflects its
-harder per-batch model (coverage maximization before fairness); production
-`batch_time_limit_seconds` should be set to ≥ 60 s for large runs.
+produces a fairer result (spread 11 vs. 14), with zero density-cap relaxation.
+
+**Performance note (Phase 0).** An earlier implementation ran the two-stage
+`_solve_soft_coverage` for every group/relaxation step and took **655 s** (and at the
+default 10 s batch limit it returned `CANCELLED` — useless in production). Profiling
+showed each soft solve burned its entire time budget proving the L1 fairness optimum.
+Since the real components are fully coverable at base caps, `_effort_round_solve` now
+tries a single **hard-coverage** solve per component first (Phase 0); the soft rounds
+only engage for genuinely over-capacity or intractable components. This brought the
+run to **69 s at the default settings** (2 CP-SAT solves, one per component, vs. 6+
+before) with identical coverage and fairness — and removed the CANCELLED failure
+mode. The remaining gap to whole-solve (`none`, 39 s) is just that effort_rounds
+solves each connected component separately.
