@@ -47,19 +47,22 @@ def solve(
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.
 
-    When ``settings.batching_enabled`` the run is decomposed into independent
-    eligibility components and chronological batches, each solved on its own so
-    the L1 fairness objective stays tractable (see ``_decomposed_solve``).
-    Otherwise the whole problem is solved in one model.
+    When ``settings.batching_enabled`` the run is decomposed according to
+    ``settings.decomposition``: ``"effort_rounds"`` (default) chunks soldiers into
+    disjoint effort-sorted rounds per eligibility component (``_effort_round_solve``);
+    ``"calendar"`` splits into chronological date-window batches (``_decomposed_solve``).
+    ``"none"`` or ``batching_enabled=False`` solves the whole problem in one model.
 
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
     and after each batch completes, so callers can report real progress.
     """
-    if settings.batching_enabled:
-        return _decomposed_solve(
-            soldiers, duties, existing, settings, reserve_dist,
-            cancel_event=cancel_event, progress_cb=progress_cb,
-        )
+    if settings.decomposition == "effort_rounds" and settings.batching_enabled:
+        return _effort_round_solve(soldiers, duties, existing, settings, reserve_dist,
+                                   cancel_event=cancel_event, progress_cb=progress_cb)
+    if settings.decomposition == "calendar" and settings.batching_enabled:
+        return _decomposed_solve(soldiers, duties, existing, settings, reserve_dist,
+                                 cancel_event=cancel_event, progress_cb=progress_cb)
+    # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
     if progress_cb:
         progress_cb(0, 1)
     result = _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
@@ -377,12 +380,37 @@ def _effort_round_solve(
     soldier_by_id = {s.id: s for s in work}
     duty_by_id = {d.id: d for d in duties}
 
+    # Index maps for reserve_dist remapping (global→local within any sub-problem).
+    global_duty_idx: dict[object, int] = {d.id: i for i, d in enumerate(duties)}
+    global_sol_idx: dict[object, int] = {s.id: i for i, s in enumerate(work)}
+
     base_settings = dataclasses.replace(
         settings, time_limit_seconds=settings.batch_time_limit_seconds
     )
 
     pairs = _eligible_pairs(work, duties)
     components = _connected_components(len(duties), len(work), pairs)
+
+    def _remap_rd(
+        sub_soldiers: Sequence[SoldierInput],
+        sub_duties: Sequence[DutyBlock],
+    ) -> dict[tuple[int, int], int] | None:
+        """Remap global reserve_dist indices to a sub-problem's local indices."""
+        if reserve_dist is None:
+            return None
+        out: dict[tuple[int, int], int] = {}
+        for local_di, d in enumerate(sub_duties):
+            gdi = global_duty_idx.get(d.id)
+            if gdi is None:
+                continue
+            for local_si, s in enumerate(sub_soldiers):
+                gsi = global_sol_idx.get(s.id)
+                if gsi is None:
+                    continue
+                v = reserve_dist.get((gdi, gsi))
+                if v is not None:
+                    out[(local_di, local_si)] = v
+        return out or None
 
     n_components = len(components)
     if progress_cb:
@@ -431,12 +459,8 @@ def _effort_round_solve(
             if not residual:
                 break
             group = group_pool[gi:gi + rsc]
-            # TODO(reserve_dist): effort-rounds passes reserve_dist=None, so the reserve
-            # hierarchy-proximity soft objective is not applied here. _decomposed_solve shows
-            # how to remap global->local indices per sub-problem; wire it in if the ER-6
-            # benchmark shows degraded reserve placement.
             res = _solve_soft_coverage(
-                group, residual, carry, base_settings, reserve_dist=None,
+                group, residual, carry, base_settings, reserve_dist=_remap_rd(group, residual),
                 cancel_event=cancel_event,
             )
             if res.status == "CANCELLED":
@@ -450,7 +474,7 @@ def _effort_round_solve(
             current = dataclasses.replace(base_settings)
             while residual:
                 res = _solve_soft_coverage(
-                    full_pool, residual, carry, current, reserve_dist=None,
+                    full_pool, residual, carry, current, reserve_dist=_remap_rd(full_pool, residual),
                     cancel_event=cancel_event,
                 )
                 if res.status == "CANCELLED":
@@ -474,7 +498,7 @@ def _effort_round_solve(
                 relax_r_ceiling=settings.Wr, relax_t_ceiling=settings.Wt,
             )
             res = _solve_soft_coverage(
-                full_pool, residual, carry, unbounded, reserve_dist=None,
+                full_pool, residual, carry, unbounded, reserve_dist=_remap_rd(full_pool, residual),
                 cancel_event=cancel_event,
             )
             if res.status == "CANCELLED":

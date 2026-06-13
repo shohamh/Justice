@@ -689,6 +689,31 @@ def test_existing_reserve_counts_toward_R_not_T() -> None:
     assert solver.Value(x2[(0, 0)]) == 1
 
 
+def test_effort_rounds_covers_what_calendar_drops() -> None:
+    # Adversarial instance: 35 duties over 35 days, 6 soldiers, T=2/Wt=14.
+    # Calendar batcher splits at day 28 → batch1 (28 duties) is INFEASIBLE at hard T=2 caps
+    # (6 soldiers * 2 duties/14-day-window * 2 windows = 24 < 28) even after graduated
+    # relaxation (relax_t_ceiling=2 caps T at 2). Calendar contributes 0 from batch1.
+    # Effort-rounds uses soft coverage in phase 1 (partial assignments at T=2 caps) then
+    # phase-3 last-resort (T=Wt=14) which covers all remaining duties.
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100)
+                for _ in range(6)]
+    base = date(2026, 6, 1)
+    duties = [_single_day_duty(base + timedelta(days=i), dt, is_reserve=False) for i in range(35)]
+    # Calendar: tight ceiling so graduated relaxation cannot escape T=2
+    cal = solve(soldiers, duties, [], SolverSettings(decomposition="calendar", batch_window_days=28,
+                Wt=14, Wr=28, T=2, R=2, relax_t_ceiling=2, relax_r_ceiling=2,
+                batch_time_limit_seconds=10, time_limit_seconds=10))
+    # Effort-rounds: default ceilings so phase-3 last-resort can recover the full 35
+    er  = solve(soldiers, duties, [], SolverSettings(decomposition="effort_rounds", round_soldier_count=50,
+                Wt=14, Wr=28, T=2, R=2,
+                batch_time_limit_seconds=10, time_limit_seconds=10))
+    assert len(cal.assignments) < 35, f"calendar should drop duties, got {len(cal.assignments)}"
+    assert len(er.assignments) >= len(cal.assignments)
+    assert len(er.assignments) == 35
+
+
 def test_relax_r_ceiling_is_configurable() -> None:
     """A low relax_r_ceiling caps how far R is relaxed, leaving the problem INFEASIBLE."""
     soldier_id = uuid4()
@@ -703,15 +728,19 @@ def test_relax_r_ceiling_is_configurable() -> None:
     # With default ceilings (R=11, T=9) the chain relaxes and finds a solution
     # (T relaxes to 9 which covers all 10 duties... wait, T=9 < 10 so still INFEASIBLE).
     # So: use 5 duties (needs T≥5). Default T_MAX=9 covers it.
+    # Use batching_enabled=False to exercise _infeasibility_relaxation_chain directly;
+    # the effort-rounds path has a phase-3 last-resort that bypasses density ceilings by design.
     duties5 = duties[:5]
-    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14))
+    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14,
+                                                                 batching_enabled=False))
     assert result_default.status in ("OPTIMAL", "FEASIBLE")
     assert "T→5" in result_default.relaxed  # relaxed T from 3 to 5
 
     # With relax_t_ceiling=3 the chain cannot relax beyond T=3 → INFEASIBLE.
     result_capped = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14,
                                                                 relax_r_ceiling=3,
-                                                                relax_t_ceiling=3))
+                                                                relax_t_ceiling=3,
+                                                                batching_enabled=False))
     assert result_capped.status == "INFEASIBLE"
     # No relaxation steps taken (already at ceiling).
     assert result_capped.relaxed == []
