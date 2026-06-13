@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+import time
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 
@@ -10,11 +11,18 @@ from ortools.sat.python.cp_model import CpSolver, IntVar
 from app.algorithm.model import _block_score, _duty_dates, build_model
 from app.algorithm.types import (
     Assignment,
+    AssignmentExplanation,
+    BatchResult,
+    BatchShiftFill,
     DutyBlock,
     ExistingAssignment,
+    ExplanationData,
+    ReserveEntry,
+    ReserveLink,
     SoldierInput,
     SolverResult,
     SolverSettings,
+    EFFORT_SCALE,
 )
 
 # Default CP-SAT random seed used whenever a caller doesn't specify one, so
@@ -182,15 +190,14 @@ def _decomposed_solve(
     components = _connected_components(len(duties), len(work), pairs)
 
     # Pre-compute the full batch plan so we can report total progress upfront.
-    plan: list[tuple[list[int], list[int]]] = []  # (soldier_idxs, batch_duty_idxs)
-    for duty_idxs, soldier_idxs in components:
+    plan: list[tuple[int, list[int], list[int]]] = []  # (component_index, soldier_idxs, batch_duty_idxs)
+    for comp_idx, (duty_idxs, soldier_idxs) in enumerate(components):
         if not soldier_idxs:
-            continue  # duties with no eligible soldier → left unassigned (infeasible component)
-        # Chronological order so duties that couple via the T/Wt and R/Wr windows batch together.
+            continue
         duty_idxs = sorted(duty_idxs, key=lambda di: (duties[di].start_date, str(duties[di].id)))
         for batch in _calendar_window_batches(duty_idxs, duties, settings.batch_window_days):
             if batch:
-                plan.append((soldier_idxs, batch))
+                plan.append((comp_idx, soldier_idxs, batch))
 
     total = len(plan)
     if progress_cb:
@@ -200,11 +207,12 @@ def _decomposed_solve(
         settings, time_limit_seconds=settings.batch_time_limit_seconds
     )
 
+    batch_results: list[BatchResult] = []
     all_assignments: list[Assignment] = []
     relaxed: list[str] = []
     carry_existing: list[ExistingAssignment] = list(existing)
 
-    for done, (soldier_idxs, batch) in enumerate(plan, start=1):
+    for done, (comp_idx, soldier_idxs, batch) in enumerate(plan, start=1):
         sub_soldiers = [work[si] for si in soldier_idxs]
         sub_duties = [duties[di] for di in batch]
         # Remap reserve_dist (global indices) to this sub-problem's local indices.
@@ -217,14 +225,43 @@ def _decomposed_solve(
                     if v is not None:
                         sub_rd[(local_di, i)] = v
 
+        t0 = time.monotonic()
         res = _infeasibility_relaxation_chain(
             sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
             cancel_event=cancel_event,
         )
+        wall_time = time.monotonic() - t0
+
         if res.status == "CANCELLED":
             return res
         relaxed.extend(res.relaxed)
         all_assignments.extend(res.assignments)
+
+        # Collect batch diagnostics. Store block.id in BatchShiftFill.shift_id as a
+        # temporary stand-in — the bridge replaces these with real DutyShift UUIDs.
+        assigned_duty_ids = {a.duty_id for a in res.assignments}
+        shifts_fill = [
+            BatchShiftFill(
+                shift_id=duties[di].id,
+                required_count=1,
+                assigned_count=1 if duties[di].id in assigned_duty_ids else 0,
+            )
+            for di in batch
+        ]
+        batch_results.append(BatchResult(
+            batch_index=done - 1,
+            component_index=comp_idx,
+            date_from=min(duties[di].start_date for di in batch),
+            date_to=max(duties[di].end_date for di in batch),
+            duty_count=len(batch),
+            soldier_count=len(soldier_idxs),
+            assigned_count=len(res.assignments),
+            unassigned_count=len(batch) - len(res.assignments),
+            outcome=res.status,
+            relaxations=list(res.relaxed),
+            wall_time_seconds=round(wall_time, 3),
+            shifts=shifts_fill,
+        ))
 
         # Feed-forward: later batches see these as fixed (density) and as effort.
         for a in res.assignments:
@@ -250,6 +287,7 @@ def _decomposed_solve(
         status=status,
         seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
         relaxed=relaxed,
+        batch_results=batch_results,
     )
 
 
