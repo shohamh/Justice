@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, Text, text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
@@ -258,6 +258,9 @@ class DutyAssignment(Base):
     )
     is_reserve: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
+    )
+    batch_index: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
     )
     called_up_from: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     called_up_to: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
@@ -553,6 +556,9 @@ class AlgorithmJob(Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     progress_message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    batch_results: Mapped[list[Any] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
