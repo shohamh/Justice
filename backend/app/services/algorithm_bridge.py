@@ -434,6 +434,7 @@ def persist_results(
     hierarchy_parent: dict[uuid.UUID, uuid.UUID | None] | None = None,
     hierarchy_children: dict[uuid.UUID, list[uuid.UUID]] | None = None,
     soldier_node: dict[uuid.UUID, uuid.UUID] | None = None,
+    duty_to_batch: dict[uuid.UUID, int] | None = None,
 ) -> None:
     """Insert algorithm_draft assignments, explanations (primary only), and reserve links."""
     from app.algorithm.reserve import link_reserves
@@ -463,6 +464,8 @@ def persist_results(
             is_reserve=block.is_reserve,
         )
         da.id = uuid.uuid4()
+        if duty_to_batch:
+            da.batch_index = duty_to_batch.get(a.duty_id)
         session.add(da)
         created.append((da, a.duty_id))
 
@@ -577,6 +580,43 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
         round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 50))),
     )
+
+
+def _postprocess_batch_results(
+    batch_results: list,
+    block_to_shift: dict[uuid.UUID, uuid.UUID],
+) -> list:
+    """Replace per-block BatchShiftFill entries with per-shift aggregates.
+
+    The solver stores block.id in BatchShiftFill.shift_id as a temporary stand-in.
+    This function groups by real shift UUID and sums required/assigned counts.
+    Returns a new list of BatchResult with aggregated shifts.
+    """
+    import dataclasses
+    from app.algorithm.types import BatchResult, BatchShiftFill
+
+    processed = []
+    for br in batch_results:
+        shift_required: dict[uuid.UUID, int] = {}
+        shift_assigned: dict[uuid.UUID, int] = {}
+        for sf in br.shifts:
+            if sf.shift_id is None:
+                continue
+            # sf.shift_id is a block UUID; look up the real DutyShift UUID
+            real_shift_id = block_to_shift.get(sf.shift_id, sf.shift_id)
+            shift_required[real_shift_id] = shift_required.get(real_shift_id, 0) + sf.required_count
+            shift_assigned[real_shift_id] = shift_assigned.get(real_shift_id, 0) + sf.assigned_count
+
+        aggregated_shifts = [
+            BatchShiftFill(
+                shift_id=sid,
+                required_count=req,
+                assigned_count=shift_assigned.get(sid, 0),
+            )
+            for sid, req in shift_required.items()
+        ]
+        processed.append(dataclasses.replace(br, shifts=aggregated_shifts))
+    return processed
 
 
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
@@ -718,6 +758,43 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.commit()
                     return
 
+                # Post-process batch_results: replace block UUIDs with real DutyShift UUIDs
+                processed_batch_results = _postprocess_batch_results(
+                    result.batch_results, block_to_shift_map
+                )
+
+                # Serialise batch_results to JSONB-compatible list of dicts
+                def _br_to_dict(br) -> dict:
+                    return {
+                        "batch_index": br.batch_index,
+                        "component_index": br.component_index,
+                        "date_from": br.date_from.isoformat(),
+                        "date_to": br.date_to.isoformat(),
+                        "duty_count": br.duty_count,
+                        "soldier_count": br.soldier_count,
+                        "assigned_count": br.assigned_count,
+                        "unassigned_count": br.unassigned_count,
+                        "outcome": br.outcome,
+                        "relaxations": br.relaxations,
+                        "wall_time_seconds": br.wall_time_seconds,
+                        "shifts": [
+                            {
+                                "shift_id": str(sf.shift_id) if sf.shift_id else None,
+                                "required_count": sf.required_count,
+                                "assigned_count": sf.assigned_count,
+                            }
+                            for sf in br.shifts
+                        ],
+                    }
+                job.batch_results = [_br_to_dict(br) for br in processed_batch_results]
+
+                # Build duty_id (block UUID) → batch_index map for stamping on DutyAssignment rows
+                duty_to_batch: dict[uuid.UUID, int] = {}
+                for br in result.batch_results:
+                    for sf in br.shifts:
+                        if sf.shift_id is not None:
+                            duty_to_batch[sf.shift_id] = br.batch_index
+
                 explanation_data = build_explanations(
                     soldiers=soldiers,
                     duties=duties,
@@ -744,6 +821,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     hierarchy_parent=hier_parent,
                     hierarchy_children=hier_children,
                     soldier_node=soldier_node,
+                    duty_to_batch=duty_to_batch,
                 )
 
                 # Check if job was cancelled while the solver was running
