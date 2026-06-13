@@ -85,8 +85,7 @@ export function AlgorithmContent() {
   }, [selectedJobId]);
 
   function handleJobSubmitted(jobId: string) {
-    setShowRunForm(false);
-    setRerunOverrides(null);
+    handleCloseRunForm();
     setSelectedJobId(jobId);
     void loadJobs();
   }
