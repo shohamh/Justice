@@ -78,6 +78,35 @@ class SolverSettings:
     batching_enabled: bool = True
     batch_window_days: int = 28
     batch_time_limit_seconds: int = 10
+    # Decomposition strategy: "effort_rounds" (default) | "calendar" | "none".
+    decomposition: str = "effort_rounds"
+    # Disjoint Phase-1 group size for effort-round decomposition.
+    round_soldier_count: int = 50
+
+
+@dataclass
+class BatchShiftFill:
+    """Per-shift fill summary within one batch."""
+    shift_id: uuid.UUID | None  # None until bridge fills it from block_to_shift
+    required_count: int
+    assigned_count: int
+
+
+@dataclass
+class BatchResult:
+    """Diagnostic record for one calendar-window batch."""
+    batch_index: int          # global sequential index across all components
+    component_index: int      # which connected component
+    date_from: date
+    date_to: date
+    duty_count: int           # total duty slots in batch
+    soldier_count: int
+    assigned_count: int
+    unassigned_count: int
+    outcome: str              # "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "CANCELLED"
+    relaxations: list[str]    # e.g. ["R→17", "R→19"]
+    wall_time_seconds: float
+    shifts: list[BatchShiftFill] = field(default_factory=list)
 
 
 @dataclass
@@ -96,6 +125,7 @@ class SolverResult:
     seed: int = 0
     solver_metrics: dict[str, Any] = field(default_factory=dict)
     relaxed: list[str] = field(default_factory=list)
+    batch_results: list[BatchResult] = field(default_factory=list)
 
 
 @dataclass

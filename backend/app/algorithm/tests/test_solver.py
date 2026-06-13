@@ -22,6 +22,13 @@ from app.algorithm.types import (
 )
 
 
+def test_settings_have_decomposition_fields() -> None:
+    s = SolverSettings()
+    assert s.decomposition == "effort_rounds"
+    assert s.round_soldier_count == 50
+    assert SolverSettings(decomposition="calendar").decomposition == "calendar"
+
+
 def test_build_model_basic() -> None:
     soldier_id = uuid4()
     duty_id = uuid4()
@@ -768,3 +775,52 @@ def test_calendar_window_batches_groups_by_start_date():
     assert len(batches) == 2
     assert batches[0] == [0, 1, 2]
     assert batches[1] == [3, 4]
+
+
+def test_decomposed_solve_returns_batch_results() -> None:
+    """_decomposed_solve collects BatchResult with correct counts per batch."""
+    from app.algorithm.types import BatchResult
+
+    soldier_ids = [uuid4() for _ in range(3)]
+    duty_type_id = uuid4()
+    duty_location_id = uuid4()
+    soldiers = [
+        SoldierInput(
+            id=sid,
+            enrolled_at=date(2026, 1, 1),
+            cumulative_score=Decimal("0"),
+            active_days=200,
+        )
+        for sid in soldier_ids
+    ]
+    # Two duties far apart → two calendar batches (window=28 days)
+    duties = [
+        DutyBlock(
+            id=uuid4(),
+            duty_type_id=duty_type_id,
+            duty_location_id=duty_location_id,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            score_per_day=Decimal("1.00"),
+        ),
+        DutyBlock(
+            id=uuid4(),
+            duty_type_id=duty_type_id,
+            duty_location_id=duty_location_id,
+            start_date=date(2026, 7, 15),
+            end_date=date(2026, 7, 15),
+            score_per_day=Decimal("1.00"),
+        ),
+    ]
+    s = SolverSettings(batch_window_days=28)
+    result = solve(soldiers, duties, [], s)
+
+    assert len(result.batch_results) >= 2, "expected at least 2 batches for duties 44 days apart"
+    for br in result.batch_results:
+        assert isinstance(br, BatchResult)
+        assert br.duty_count >= 1
+        assert br.soldier_count >= 1
+        assert br.outcome in ("OPTIMAL", "FEASIBLE", "INFEASIBLE", "CANCELLED")
+        assert br.wall_time_seconds >= 0.0
+    total_assigned = sum(br.assigned_count for br in result.batch_results)
+    assert total_assigned == len(result.assignments)

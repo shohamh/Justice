@@ -40,3 +40,15 @@ def test_resolve_solver_settings_falls_back_to_hardcoded_defaults(admin_session)
     assert s.Wr == 28
     assert s.relax_t_ceiling == 10
     assert s.relax_r_ceiling == 20
+
+
+def test_resolve_solver_settings_decomposition_default(admin_session):
+    s = resolve_solver_settings(admin_session, {})
+    assert s.decomposition == "effort_rounds"
+    assert s.round_soldier_count == 50
+
+
+def test_resolve_solver_settings_decomposition_override(admin_session):
+    s = resolve_solver_settings(admin_session, {"decomposition": "calendar", "round_soldier_count": 30})
+    assert s.decomposition == "calendar"
+    assert s.round_soldier_count == 30
