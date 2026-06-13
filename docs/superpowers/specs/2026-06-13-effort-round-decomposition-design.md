@@ -65,17 +65,20 @@ as fixed density + effort load), shrink the residual, advance to the next group.
 After all groups, every soldier has had exactly **one base-cap turn** and the
 residual is small.
 
-**Phase 2 — full pool, graduated relaxation.**
+**Phase 2 — full pool, graduated relaxation up to the ceilings.**
 Solve the remaining residual against the **entire component pool** (all groups), with
 soft coverage, using the existing graduated relaxation chain: start at **base** (this
 absorbs any spare base capacity from under-filled later groups for free), then step
-one constraint at a time (`R→17→19→20`, then `T→10`).
+one constraint at a time (`R` up to `relax_r_ceiling`, then `T` up to `relax_t_ceiling`).
 
-**Phase 3 — last resort.**
-If anything still remains, relax **beyond the ceilings** to guarantee coverage. This
-is **flagged** in the result (`SolverResult.relaxed` gets a sentinel, e.g.
-`"LAST_RESORT"`) and surfaced in diagnostics. Coverage is never silently dropped
-(decision: option (b)).
+**The relaxation ceilings are an absolute bound.** There is **no** further "last
+resort" pass that exceeds them. Whatever cannot be placed within the ceilings is left
+**unassigned** and **reported** (see partial-job diagnostics below) — coverage is not
+forced at the expense of the rest-window protection. This makes the ceilings the
+single, honest control over how much density may be relaxed: setting
+`relax_t_ceiling = T` and `relax_r_ceiling = R` disables relaxation entirely, and any
+shortfall is surfaced to the planner rather than silently absorbed by overworking
+soldiers beyond the configured limit.
 
 ### Why the "no relaxation on a soldier's first round" rule needs no per-soldier caps
 
@@ -146,19 +149,21 @@ round_soldier_count: int = 50          # disjoint Phase-1 group size
 
 ### Partial-job diagnostics ([algorithm_bridge.py](../../../backend/app/services/algorithm_bridge.py))
 
-When a `done` job is **incomplete** (`assigned < len(duties)`) OR Phase-3 last-resort
-fired, run `diagnose_infeasibility` and store the reasons + the unassigned shift list
-+ the last-resort flag on the job (same JSON shape as the `INFEASIBLE` path), so the
-UI shows *why* instead of silence.
+When a `done` job is **incomplete** (`assigned < len(duties)` — now an expected
+outcome when demand exceeds what fits within the relaxation ceilings), run
+`diagnose_infeasibility` and store the reasons + the unassigned count on the job (same
+JSON shape as the `INFEASIBLE` path), so the UI shows *why* instead of silence.
 
 ## Verification
 
 - **Unit (TDD):**
   - soft coverage leaves a genuinely-unplaceable duty unassigned instead of going
     `INFEASIBLE`; hard mode unchanged.
-  - an adversarial fixture the calendar batcher drops, effort-rounds covers fully.
+  - an adversarial fixture the calendar batcher drops, effort-rounds covers fully
+    **within the relaxation ceilings** (no ceiling-breaking).
   - a component with ≤ `round_soldier_count` soldiers runs exactly one Phase-1 round.
-  - Phase-3 last-resort sets the flag and still covers.
+  - an over-capacity instance leaves the excess unassigned (does NOT exceed the
+    ceilings) and the result is reported as partial.
 - **Real-data benchmark harness** (script, not committed to prod) on `job f9ec194e`
   inputs comparing `{calendar, effort_rounds, none}`: **coverage** (expect
   effort_rounds = 410/410), **effort spread** (fairness), and **solve time**.
@@ -167,8 +172,11 @@ UI shows *why* instead of silence.
 
 ## Decisions (locked)
 
-1. Coverage guarantee: **(b)** Phase-3 relaxes beyond ceilings to guarantee coverage,
-   flagged — never silent.
+1. Coverage is **not** forced. The relaxation ceilings (`relax_t_ceiling`,
+   `relax_r_ceiling`) are an **absolute bound** — there is no last-resort pass that
+   exceeds them. Anything that cannot fit within the ceilings is left unassigned and
+   **reported** (partial-job diagnostics), never silently dropped. (This supersedes an
+   earlier "relax beyond ceilings to guarantee coverage" decision.)
 2. **Effort-rounds is the default** decomposition. Small components (≤ group size)
    collapse to a single whole-solve round automatically.
 3. **Fixed `round_soldier_count = 50`** soldiers per Phase-1 group.
