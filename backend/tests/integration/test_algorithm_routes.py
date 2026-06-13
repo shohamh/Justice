@@ -529,6 +529,73 @@ def test_bulk_accept_proposals_ignores_non_draft(client, admin_session):
     assert resp.json()["accepted"] == 1
 
 
+def test_partial_job_reports_reasons(client, admin_session):
+    """A done job where required_count > eligible soldiers → partial → reasons non-empty."""
+    dm, node = _setup_dm(admin_session, "partial_dm_001")
+
+    # Create a duty type + location
+    from decimal import Decimal
+    dt = DutyType(name="שמירה_partial", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="שער_partial")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+
+    # Create exactly ONE eligible soldier
+    create_soldier(admin_session, personal_number="partial_soldier_001", role="soldier")
+
+    # Shift A: required_count=3 on a far-future day — only 2 soldiers exist (DM + partial_soldier_001)
+    # → at most 2 can be assigned → at least 1 slot unfilled → partial
+    from datetime import date, timedelta
+    far = date.today() + timedelta(days=400)
+    oversubscribed = DutyShift(
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=far,
+        end_date=far,
+        required_count=3,
+    )
+    admin_session.add(oversubscribed)
+
+    # Shift B: required_count=1 on a different far-future day — soldier CAN fill this
+    # Ensures the job ends "done" (some assignments) rather than "failed" (fully INFEASIBLE)
+    far2 = far + timedelta(days=30)
+    fillable = DutyShift(
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=far2,
+        end_date=far2,
+        required_count=1,
+    )
+    admin_session.add(fillable)
+    admin_session.commit()
+
+    create_resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(oversubscribed.id), str(fillable.id)],
+            "mode": "shadow",
+            "settings": {"T": 8, "R": 15, "Wt": 14, "Wr": 28, "alpha": 1.0, "time_limit_seconds": 15},
+        },
+        headers=auth_headers(dm),
+    )
+    assert create_resp.status_code == 202, create_resp.text
+    job_id = create_resp.json()["id"]
+
+    final = None
+    for _ in range(30):
+        poll = client.get(f"/api/algorithm/jobs/{job_id}", headers=auth_headers(dm))
+        assert poll.status_code == 200
+        if poll.json()["status"] in ("done", "failed"):
+            final = poll.json()
+            break
+        time.sleep(1)
+
+    assert final is not None, "job never completed"
+    assert final["status"] == "done", f"expected done, got: {final['status']}, error: {final.get('error_message')}"
+    assert len(final["reasons"]) > 0, f"expected non-empty reasons for partial job, got: {final['reasons']}"
+
+
 def test_bulk_accept_proposals_soldier_forbidden(client, admin_session):
     soldier = create_soldier(admin_session, personal_number="ba_soldier_001")
 

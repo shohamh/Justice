@@ -835,6 +835,23 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.rollback()
                     return
 
+                # Attach diagnostic reasons when the result is partial (some duties unassigned)
+                assigned_ct = len(result.assignments)
+                if assigned_ct < len(duties):
+                    from app.algorithm.diagnose import diagnose_infeasibility
+                    dt_names = {
+                        dt.id: dt.name
+                        for dt in session.execute(select(DutyType)).scalars().all()
+                    }
+                    reasons = diagnose_infeasibility(soldiers, duties, existing, dt_names)
+                    job.error_message = json.dumps({
+                        "status": "PARTIAL",
+                        "assigned": assigned_ct,
+                        "total": len(duties),
+                        "relaxed": result.relaxed,
+                        "reasons": reasons,
+                    })
+
                 job.status = "done"
                 job.finished_at = datetime.now(tz=UTC)
 

@@ -281,7 +281,12 @@ def test_hypothesis_property(hyp_soldiers: list[SoldierInput], hyp_duties: list[
     settings = SolverSettings(time_limit_seconds=10)
     result = solve(hyp_soldiers, hyp_duties, [], settings)
     if result.status in ("OPTIMAL", "FEASIBLE"):
-        assert len(result.assignments) == len(hyp_duties)
+        # Coverage is best-effort: an over-subscribed instance (e.g. two same-day
+        # duties with only one eligible soldier) can return FEASIBLE with some duties
+        # left unassigned. Assert the validity of what WAS assigned — not completeness.
+        assert len(result.assignments) <= len(hyp_duties)
+        assigned_duty_ids = [a.duty_id for a in result.assignments]
+        assert len(assigned_duty_ids) == len(set(assigned_duty_ids))  # each duty at most once
         duty_map = {d.id: d for d in hyp_duties}
         soldier_map = {s.id: s for s in hyp_soldiers}
         for a in result.assignments:
@@ -583,6 +588,20 @@ def _single_day_duty(dt: date, duty_type: uuid.UUID, *, is_reserve: bool) -> Dut
     )
 
 
+def test_soft_coverage_covers_max_without_infeasible() -> None:
+    s_id = uuid4(); dt = uuid4()
+    soldiers = [SoldierInput(id=s_id, enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100)]
+    day = date(2026, 6, 1)
+    duties = [_single_day_duty(day, dt, is_reserve=False), _single_day_duty(day, dt, is_reserve=False)]
+    from app.algorithm.solver import _solve_soft_coverage
+    hard = build_model(soldiers=soldiers, duties=duties, existing=[], settings=SolverSettings())
+    solver = cp_model.CpSolver(); solver.parameters.max_time_in_seconds = 5
+    assert solver.Solve(hard[0]) == cp_model.INFEASIBLE
+    res = _solve_soft_coverage(soldiers, duties, [], SolverSettings(time_limit_seconds=5), reserve_dist=None)
+    assert res.status in ("OPTIMAL", "FEASIBLE")
+    assert len(res.assignments) == 1
+
+
 def test_window_caps_split_reserve_and_real() -> None:
     soldier_id = uuid4()
     duty_type = uuid4()
@@ -677,6 +696,72 @@ def test_existing_reserve_counts_toward_R_not_T() -> None:
     assert solver.Value(x2[(0, 0)]) == 1
 
 
+def test_effort_rounds_covers_what_calendar_drops() -> None:
+    # Demonstrates that effort-rounds fully covers a continuous/dense schedule
+    # within generous default relaxation ceilings, and covers at least as much as
+    # the calendar decomposition.
+    # Instance: 12 duties over 12 days, 6 soldiers, generous T/R caps.
+    # With round_soldier_count=50 all soldiers are in one group (Phase 1 covers all).
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100)
+                for _ in range(6)]
+    base = date(2026, 6, 1)
+    duties = [_single_day_duty(base + timedelta(days=i), dt, is_reserve=False) for i in range(12)]
+    cal = solve(soldiers, duties, [], SolverSettings(decomposition="calendar", batch_window_days=14,
+                Wt=14, Wr=28, T=8, R=15,
+                batch_time_limit_seconds=10, time_limit_seconds=10))
+    er  = solve(soldiers, duties, [], SolverSettings(decomposition="effort_rounds", round_soldier_count=50,
+                Wt=14, Wr=28, T=8, R=15,
+                batch_time_limit_seconds=10, time_limit_seconds=10))
+    assert er.status in ("OPTIMAL", "FEASIBLE")
+    assert len(er.assignments) == len(duties), (
+        f"effort-rounds should fully cover all {len(duties)} duties, got {len(er.assignments)}"
+    )
+    assert len(er.assignments) >= len(cal.assignments), (
+        f"effort-rounds should cover at least as much as calendar: {len(er.assignments)} < {len(cal.assignments)}"
+    )
+    assert "LAST_RESORT" not in er.relaxed, f"unexpected LAST_RESORT in er.relaxed: {er.relaxed}"
+
+
+def test_effort_rounds_respects_ceilings_leaves_partial() -> None:
+    # Over-capacity instance: 1 soldier, 2 single-day duties on consecutive days
+    # within the same density window (Wt=2, Wr=2), with ceilings == base caps so
+    # NO relaxation is allowed (relax_t_ceiling=1, relax_r_ceiling=1).
+    # Only 1 of 2 duties can be assigned; the second must be left unassigned.
+    dt = uuid4()
+    soldier_id = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    duties = [
+        _single_day_duty(base, dt, is_reserve=False),              # day 0
+        _single_day_duty(base + timedelta(days=1), dt, is_reserve=False),  # day 1
+    ]
+    # T=1, Wt=2: at most 1 duty-day in any 2-day window; relax ceilings == T=1 so no relaxation allowed.
+    result = solve(
+        soldiers, duties, [],
+        SolverSettings(
+            T=1, Wt=2, R=1, Wr=2,
+            relax_t_ceiling=1, relax_r_ceiling=1,
+            round_soldier_count=50,
+            batch_time_limit_seconds=10,
+            time_limit_seconds=10,
+        ),
+    )
+    assert result.status in ("OPTIMAL", "FEASIBLE"), (
+        f"expected OPTIMAL or FEASIBLE for partial coverage, got {result.status}"
+    )
+    assert len(result.assignments) == 1, (
+        f"only 1 of 2 duties should be assigned within the ceiling, got {len(result.assignments)}"
+    )
+    assert "LAST_RESORT" not in result.relaxed, (
+        f"LAST_RESORT must not appear after removal: {result.relaxed}"
+    )
+    # The solver must not assign both duties to the same soldier on different days
+    # when T=1 in a 2-day window — only one assignment is valid.
+    assigned_soldier_ids = {a.soldier_id for a in result.assignments}
+    assert assigned_soldier_ids == {soldier_id}
+
+
 def test_relax_r_ceiling_is_configurable() -> None:
     """A low relax_r_ceiling caps how far R is relaxed, leaving the problem INFEASIBLE."""
     soldier_id = uuid4()
@@ -691,15 +776,19 @@ def test_relax_r_ceiling_is_configurable() -> None:
     # With default ceilings (R=11, T=9) the chain relaxes and finds a solution
     # (T relaxes to 9 which covers all 10 duties... wait, T=9 < 10 so still INFEASIBLE).
     # So: use 5 duties (needs T≥5). Default T_MAX=9 covers it.
+    # Use batching_enabled=False to exercise _infeasibility_relaxation_chain directly;
+    # the effort-rounds path respects relaxation ceilings absolutely (no last-resort).
     duties5 = duties[:5]
-    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14))
+    result_default = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14,
+                                                                 batching_enabled=False))
     assert result_default.status in ("OPTIMAL", "FEASIBLE")
     assert "T→5" in result_default.relaxed  # relaxed T from 3 to 5
 
     # With relax_t_ceiling=3 the chain cannot relax beyond T=3 → INFEASIBLE.
     result_capped = solve(soldiers, duties5, [], SolverSettings(T=3, R=3, Wt=14, Wr=14,
                                                                 relax_r_ceiling=3,
-                                                                relax_t_ceiling=3))
+                                                                relax_t_ceiling=3,
+                                                                batching_enabled=False))
     assert result_capped.status == "INFEASIBLE"
     # No relaxation steps taken (already at ceiling).
     assert result_capped.relaxed == []
@@ -740,6 +829,13 @@ def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
     assert not t_relaxed, (
         f"T was relaxed ({t_relaxed}), meaning the reserve was mis-counted as real"
     )
+
+
+def test_settings_have_decomposition_fields() -> None:
+    s = SolverSettings()
+    assert s.decomposition == "effort_rounds"
+    assert s.round_soldier_count == 50
+    assert SolverSettings(decomposition="calendar").decomposition == "calendar"
 
 
 def test_calendar_window_batches_groups_by_start_date():
@@ -812,7 +908,7 @@ def test_decomposed_solve_returns_batch_results() -> None:
             score_per_day=Decimal("1.00"),
         ),
     ]
-    s = SolverSettings(batch_window_days=28)
+    s = SolverSettings(batch_window_days=28, decomposition="calendar")
     result = solve(soldiers, duties, [], s)
 
     assert len(result.batch_results) >= 2, "expected at least 2 batches for duties 44 days apart"
@@ -824,3 +920,27 @@ def test_decomposed_solve_returns_batch_results() -> None:
         assert br.wall_time_seconds >= 0.0
     total_assigned = sum(br.assigned_count for br in result.batch_results)
     assert total_assigned == len(result.assignments)
+
+
+def _line_duties(base, dt, n, is_reserve=False):
+    return [_single_day_duty(base + timedelta(days=i), dt, is_reserve=is_reserve) for i in range(n)]
+
+
+def test_effort_rounds_small_component_single_round() -> None:
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100) for _ in range(5)]
+    duties = _line_duties(date(2026,6,1), dt, 5)
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(soldiers, duties, [], SolverSettings(round_soldier_count=50, batch_time_limit_seconds=10), reserve_dist=None, cancel_event=None)
+    assert res.status in ("OPTIMAL", "FEASIBLE")
+    assert len(res.assignments) == 5
+    assert all(not r.startswith("LAST_RESORT") for r in res.relaxed)
+
+
+def test_effort_rounds_two_groups_cover_all() -> None:
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal(str(i)), active_days=100) for i in range(4)]
+    duties = _line_duties(date(2026,6,1), dt, 8)
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(soldiers, duties, [], SolverSettings(round_soldier_count=2, batch_time_limit_seconds=10), reserve_dist=None, cancel_event=None)
+    assert len(res.assignments) == 8
