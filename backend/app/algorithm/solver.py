@@ -11,18 +11,13 @@ from ortools.sat.python.cp_model import CpSolver, IntVar
 from app.algorithm.model import _block_score, _duty_dates, build_model
 from app.algorithm.types import (
     Assignment,
-    AssignmentExplanation,
     BatchResult,
     BatchShiftFill,
     DutyBlock,
     ExistingAssignment,
-    ExplanationData,
-    ReserveEntry,
-    ReserveLink,
     SoldierInput,
     SolverResult,
     SolverSettings,
-    EFFORT_SCALE,
 )
 
 # Default CP-SAT random seed used whenever a caller doesn't specify one, so
