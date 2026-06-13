@@ -17,6 +17,7 @@ export function AlgorithmContent() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<AlgorithmJob | null>(null);
   const [showRunForm, setShowRunForm] = useState(false);
+  const [rerunOverrides, setRerunOverrides] = useState<Record<string, number> | null>(null);
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
 
@@ -85,8 +86,19 @@ export function AlgorithmContent() {
 
   function handleJobSubmitted(jobId: string) {
     setShowRunForm(false);
+    setRerunOverrides(null);
     setSelectedJobId(jobId);
     void loadJobs();
+  }
+
+  function handleRerun(overrides: Record<string, number>) {
+    setRerunOverrides(overrides);
+    setShowRunForm(true);
+  }
+
+  function handleCloseRunForm() {
+    setShowRunForm(false);
+    setRerunOverrides(null);
   }
 
   async function handleCancel() {
@@ -242,6 +254,7 @@ export function AlgorithmContent() {
                 soldiers={soldiers}
                 dutyTypes={dutyTypes}
                 onProposalUpdate={setSelectedJob}
+                onRerun={handleRerun}
               />
             )}
           </div>
@@ -251,16 +264,17 @@ export function AlgorithmContent() {
       {/* New run drawer */}
       {showRunForm && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setShowRunForm(false)} />
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={handleCloseRunForm} />
           <div className="fixed inset-y-0 right-0 w-96 bg-white dark:bg-gray-800 z-50 shadow-xl overflow-y-auto">
             <div className="p-6 space-y-4">
               <div className="flex justify-between items-center">
                 <h2 className="font-semibold">{t("algorithm.new_run")}</h2>
-                <button onClick={() => setShowRunForm(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+                <button onClick={handleCloseRunForm} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
               </div>
               <AlgorithmRunForm
                 dutyTypes={dutyTypes}
                 onJobSubmitted={handleJobSubmitted}
+                initialOverrides={rerunOverrides ?? undefined}
               />
             </div>
           </div>

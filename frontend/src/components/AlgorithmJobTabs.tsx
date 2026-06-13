@@ -4,6 +4,7 @@ import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import BatchesTab from "./BatchesTab";
+import IssuesTab from "./IssuesTab";
 
 interface Props {
   job: AlgorithmJob;
@@ -16,15 +17,19 @@ interface Props {
 
 type Tab = "proposals" | "batches" | "issues";
 
-export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun: _onRerun }: Props) {
+export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
   const [tab, setTab] = useState<Tab>("proposals");
 
   const shiftNames: Record<string, string> = {};
 
+  const hasAnyUnfilled = job.batch_results.some(br => br.unassigned_count > 0);
+  const hasInfeasible = job.batch_results.some(br => br.outcome === "INFEASIBLE");
+  const hasIssues = hasAnyUnfilled || hasInfeasible || job.status === "failed";
+
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: "proposals", label: "הצעות" },
     { id: "batches", label: "אצוות" },
-    { id: "issues", label: "בעיות" },
+    { id: "issues", label: "בעיות", badge: hasIssues ? "!" : undefined },
   ];
 
   return (
@@ -66,9 +71,12 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
       )}
 
       {tab === "issues" && (
-        <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8" dir="rtl">
-          בעיות — בקרוב
-        </div>
+        <IssuesTab
+          job={job}
+          dutyTypes={dutyTypes}
+          shiftNames={shiftNames}
+          onRerun={onRerun}
+        />
       )}
     </div>
   );

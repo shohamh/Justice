@@ -9,6 +9,7 @@ import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 interface Props {
   dutyTypes: DutyType[];
   onJobSubmitted: (jobId: string) => void;
+  initialOverrides?: Record<string, number>;
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
@@ -31,7 +32,7 @@ const FILL_COLORS: Record<string, string> = {
   full: "text-green-600 dark:text-green-400",
 };
 
-export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
+export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOverrides }: Props) {
   const { t } = useTranslation();
   const [dateFrom, setDateFrom] = useState(todayStr);
   const [dateTo, setDateTo] = useState(thirtyDaysStr);
@@ -66,6 +67,13 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted }: Props) {
       .then(d => setSettings(s => ({ ...s, T: d.T, Wt: d.Wt, R: d.R, Wr: d.Wr })))
       .catch(() => { /* keep hardcoded defaults if unavailable */ });
   }, []);
+
+  useEffect(() => {
+    if (initialOverrides && Object.keys(initialOverrides).length > 0) {
+      setSettings(s => ({ ...s, ...initialOverrides }));
+      setShowSettings(true);
+    }
+  }, [initialOverrides]);
 
   function toggleShift(id: string) {
     setSelectedShiftIds(prev =>
