@@ -708,8 +708,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 )
 
                 if not duties:
-                    job.status = "failed"
-                    job.error_message = "no_shifts_selected"
+                    # Every selected shift is already fully staffed (published or
+                    # pending draft) — there is nothing to assign. Finish cleanly
+                    # rather than failing, and surface a clear reason for the UI.
+                    job.status = "done"
+                    job.progress_message = json.dumps({"pct": 100, "label": "הושלם"})
+                    job.error_message = json.dumps({
+                        "status": "NOTHING_TO_ASSIGN",
+                        "reasons": ["כל המשמרות שנבחרו כבר מאוישות במלואן — אין מה לשבץ."],
+                    })
                     job.finished_at = datetime.now(tz=UTC)
                     session.commit()
                     return
