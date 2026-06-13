@@ -378,3 +378,109 @@ def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[
         .all()
     )
     return {"per_type": per_type, "adjustments": list(adjustments)}
+
+
+def _effort_stats(values: list[float]) -> dict[str, Any] | None:
+    """mean / stddev / cv / min / max for a list of effort scores (population stddev)."""
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / len(values)
+    sd = var ** 0.5
+    return {
+        "mean": mean, "stddev": sd, "cv": (sd / mean if mean else 0.0),
+        "min": min(values), "max": max(values), "count": len(values),
+    }
+
+
+def _build_fairness_components(
+    eligible_types: dict[uuid.UUID, set[uuid.UUID]],
+    type_names: dict[uuid.UUID, str],
+    effort_by_id: dict[uuid.UUID, float],
+    name_by_id: dict[uuid.UUID, str],
+) -> dict[str, Any]:
+    """Group soldiers into connected components of the soldier↔duty-type eligibility
+    graph: two soldiers connect if they share a doable duty type (transitively).
+    Soldiers eligible for no active type go in the 'exempt_from_all' bucket. Each
+    component reports the duty types that connect it and its effort spread (פיזור)."""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    exempt_all: list[uuid.UUID] = []
+    for sid, elig in eligible_types.items():
+        if not elig:
+            exempt_all.append(sid)
+            continue
+        snode = f"s:{sid}"
+        find(snode)
+        for tid in elig:
+            union(snode, f"t:{tid}")
+
+    groups: dict[str, dict[str, Any]] = {}
+    for sid, elig in eligible_types.items():
+        if not elig:
+            continue
+        g = groups.setdefault(find(f"s:{sid}"), {"soldiers": [], "type_ids": set()})
+        g["soldiers"].append(sid)
+        g["type_ids"].update(elig)
+
+    def soldier_obj(sid: uuid.UUID) -> dict[str, Any]:
+        return {"soldier_id": sid, "full_name": name_by_id.get(sid, ""),
+                "effort_score": effort_by_id.get(sid, 0.0)}
+
+    components = []
+    for g in groups.values():
+        effs = [effort_by_id.get(sid, 0.0) for sid in g["soldiers"]]
+        components.append({
+            "duty_type_names": sorted(type_names[tid] for tid in g["type_ids"] if tid in type_names),
+            "soldier_count": len(g["soldiers"]),
+            "effort": _effort_stats(effs),
+            "soldiers": sorted((soldier_obj(s) for s in g["soldiers"]),
+                               key=lambda o: o["effort_score"], reverse=True),
+        })
+    components.sort(key=lambda c: c["soldier_count"], reverse=True)
+
+    return {
+        "exempt_from_all": {
+            "count": len(exempt_all),
+            "soldiers": sorted((soldier_obj(s) for s in exempt_all),
+                               key=lambda o: o["full_name"]),
+        },
+        "components": components,
+    }
+
+
+def fairness_components(session: Session) -> dict[str, Any]:
+    """Effort spread (פיזור) split by connected components of soldiers who share
+    duty-type eligibility, plus the soldiers exempt from every active duty type."""
+    from app.services.algorithm_bridge import load_soldier_inputs
+
+    rows = transparency_rows(session)
+    effort_by_id = {r["soldier_id"]: float(r["effort_score"]) for r in rows}
+    name_by_id = {r["soldier_id"]: r["full_name"] for r in rows}
+
+    active_type_ids = _active_duty_type_ids(session)
+    type_names = {
+        dt.id: dt.name
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_(active_type_ids))
+        ).scalars().all()
+    }
+    inputs = load_soldier_inputs(session, as_of=date.today())
+    eligible_types = {
+        si.id: (active_type_ids - set(si.exempted_duty_type_ids)) for si in inputs
+    }
+    return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id)

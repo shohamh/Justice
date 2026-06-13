@@ -45,6 +45,25 @@ export interface EffortBreakdown {
 export async function getTransparency(): Promise<TransparencyRow[]> {
   return (await api.get<TransparencyRow[]>(`/scoring/transparency`)).data;
 }
+
+export interface FairnessEffort {
+  mean: number; stddev: number; cv: number; min: number; max: number; count: number;
+}
+export interface FairnessSoldier { soldier_id: string; full_name: string; effort_score: number; }
+export interface FairnessComponent {
+  duty_type_names: string[];
+  soldier_count: number;
+  effort: FairnessEffort | null;
+  soldiers: FairnessSoldier[];
+}
+export interface FairnessComponents {
+  exempt_from_all: { count: number; soldiers: FairnessSoldier[] };
+  components: FairnessComponent[];
+}
+
+export async function getFairnessComponents(): Promise<FairnessComponents> {
+  return (await api.get<FairnessComponents>(`/scoring/fairness-components`)).data;
+}
 export async function getBreakdown(soldierId: string): Promise<Breakdown> {
   return (await api.get<Breakdown>(`/scoring/soldiers/${soldierId}`)).data;
 }

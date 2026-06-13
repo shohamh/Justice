@@ -100,6 +100,16 @@ def transparency(
     return [TransparencyRow(**row) for row in svc.transparency_rows(session)]
 
 
+@router.get("/fairness-components")
+def fairness_components(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict:
+    """Effort spread (פיזור) split per connected component of soldiers who share
+    duty-type eligibility, plus the count of soldiers exempt from every duty."""
+    return svc.fairness_components(session)
+
+
 def _dfs_order(nodes_by_parent: dict[uuid.UUID | None, list[HierarchyNode]], parent_id: uuid.UUID | None = None) -> list[uuid.UUID]:
     result: list[uuid.UUID] = []
     for node in nodes_by_parent.get(parent_id, []):

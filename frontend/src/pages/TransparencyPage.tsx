@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { Breakdown, EffortBreakdown, TransparencyRow, getBreakdown, getEffortBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
+import { EffortBreakdown, TransparencyRow, getEffortBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
+import FairnessComponentsCard from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 
@@ -268,8 +269,6 @@ export default function TransparencyPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [rows, setRows] = useState<TransparencyRow[]>([]);
-  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [effortBreakdown, setEffortBreakdown] = useState<EffortBreakdown | null>(null);
   const [effortBreakdownSoldierName, setEffortBreakdownSoldierName] = useState<string | null>(null);
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
@@ -281,11 +280,6 @@ export default function TransparencyPage() {
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
-
-  async function toggleOwn() {
-    if (!breakdownOpen && user) setBreakdown(await getBreakdown(user.id));
-    setBreakdownOpen((o) => !o);
-  }
 
   async function openEffortBreakdown(soldierId: string, soldierName: string) {
     setEffortBreakdownSoldierName(soldierName);
@@ -420,9 +414,7 @@ export default function TransparencyPage() {
     },
     {
       id: "name", header: t("transparency.name"),
-      cell: (r) => r.soldier_id === user?.id
-        ? <button className="text-indigo-600 dark:text-indigo-400" onClick={toggleOwn} data-testid="own-row-toggle">{r.full_name}</button>
-        : <SoldierLink id={r.soldier_id} name={r.full_name} />,
+      cell: (r) => <SoldierLink id={r.soldier_id} name={r.full_name} />,
       sortValue: (r) => r.full_name, filterValue: (r) => r.full_name,
     },
     {
@@ -448,13 +440,25 @@ export default function TransparencyPage() {
     { id: "cumulative", header: t("transparency.cumulative"), cell: (r) => r.cumulative_score, sortValue: (r) => Number(r.cumulative_score) },
     {
       id: "score_per_day", header: t("transparency.score_per_day"),
-      headerTooltip: `${t("transparency.score_per_day_modal_title")}\n\n${t("transparency.score_per_day_modal_body")}`,
+      headerTooltip: (
+        <div className="space-y-3" dir="rtl">
+          <p className="font-semibold">{t("transparency.score_per_day_modal_title")}</p>
+          <BlockMath math="\text{ניקוד ליום} = \dfrac{\text{ניקוד מצטבר}}{\text{ימים פעילים}}" />
+          <p className="text-xs text-gray-600 dark:text-gray-400">זהו קירוב של אחוז הזמן שאתה בתורנויות. כיוון שתורנויות מסוימות מקבלות ניקוד גבוה מ-1 ליום, הערך יכול לעלות מעל 1. כשהממוצע ביחידה עולה על 0.3, מצב התורנויות ביחידה די חמור.</p>
+        </div>
+      ),
       cell: (r) => { const n = Number(r.score_per_day); return isNaN(n) ? r.score_per_day : n.toFixed(3); },
       sortValue: (r) => Number(r.score_per_day),
     },
     {
       id: "normalised", header: t("transparency.normalised"),
-      headerTooltip: t("transparency.normalised_tooltip"),
+      headerTooltip: (
+        <div className="space-y-3" dir="rtl">
+          <p>הניקוד המנורמל מחושב לפי הניקוד ליום שלך ביחס לממוצע היחידה.</p>
+          <BlockMath math="\text{ניקוד מנורמל} = \dfrac{\text{ניקוד ליום שלך}}{\text{ממוצע ניקוד ליום ביחידה}}" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">ניקוד 1.0 = בדיוק כמו הממוצע. מעל 1.0 = עשית יותר מהממוצע. מתחת 1.0 = עשית פחות.</p>
+        </div>
+      ),
       cell: (r) => { const n = Number(r.normalised_score); return isNaN(n) ? r.normalised_score : n.toFixed(3); },
       sortValue: (r) => Number(r.normalised_score),
     },
@@ -533,7 +537,13 @@ export default function TransparencyPage() {
     },
     {
       id: "avg_normalised", header: t("transparency.normalised"),
-      headerTooltip: t("transparency.normalised_tooltip"),
+      headerTooltip: (
+        <div className="space-y-3" dir="rtl">
+          <p>הניקוד המנורמל מחושב לפי הניקוד ליום שלך ביחס לממוצע היחידה.</p>
+          <BlockMath math="\text{ניקוד מנורמל} = \dfrac{\text{ניקוד ליום שלך}}{\text{ממוצע ניקוד ליום ביחידה}}" />
+          <p className="text-xs text-gray-500 dark:text-gray-400">ניקוד 1.0 = בדיוק כמו הממוצע. מעל 1.0 = עשית יותר מהממוצע. מתחת 1.0 = עשית פחות.</p>
+        </div>
+      ),
       cell: (r) => r.avg_normalised.toFixed(3),
       sortValue: (r) => r.avg_normalised,
     },
@@ -649,6 +659,8 @@ export default function TransparencyPage() {
           {tab === 1 && <FairnessCard stats={subEffortStats} helpVariant="subunits" />}
         </div>
 
+        {tab === 0 && <FairnessComponentsCard />}
+
         {/* Filter pills (soldiers tab only) */}
         {tab === 0 && (
           <div className="flex flex-wrap gap-3 items-center" dir="rtl">
@@ -684,20 +696,6 @@ export default function TransparencyPage() {
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               testId="transparency-table"
             />
-            {breakdownOpen && breakdown && (
-              <div data-testid="own-breakdown" className="border-t pt-3 text-sm">
-                <h3 className="font-medium">{t("transparency.my_breakdown")}</h3>
-                <ul>
-                  {breakdown.per_type.map((pt) => (
-                    <li key={pt.duty_type_id}>{pt.duty_type_name ?? pt.duty_type_id}: {pt.days} {t("transparency.days")} — {pt.score}</li>
-                  ))}
-                </ul>
-                <h4 className="font-medium mt-2">{t("transparency.adjustments")}</h4>
-                <ul>
-                  {breakdown.adjustments.map((a) => <li key={a.id}>{a.delta} — {a.reason}</li>)}
-                </ul>
-              </div>
-            )}
           </>
         )}
 
@@ -758,7 +756,7 @@ export default function TransparencyPage() {
                           <th className="text-right py-1 pb-2 font-medium px-3">% נוכחות</th>
                           <th
                             className="text-right py-1 pb-2 font-medium px-3 cursor-help underline decoration-dotted"
-                            title="חלק החייל מניקוד היחידה (ניקוד חייל ÷ ניקוד יחידה), לפני תיקון נוכחות."
+                            title="חלק החייל מניקוד היחידה (ניקוד חייל / ניקוד יחידה), לפני תיקון נוכחות."
                           >
                             חלק בנטל
                           </th>
@@ -838,9 +836,8 @@ export default function TransparencyPage() {
                             >
                               <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
                               {hasScore ? (
-                                <span dir="ltr" className="tabular-nums text-gray-600 dark:text-gray-400 text-left">
-                                  {ap}% × ({ss.toFixed(2)} ÷ {us.toFixed(2)})
-                                  {" = "}
+                                <span className="tabular-nums text-gray-600 dark:text-gray-400">
+                                  <InlineMath math={`${ap}\\% \\times \\dfrac{${ss.toFixed(2)}}{${us.toFixed(2)}} = `} />
                                   <strong className="text-indigo-600 dark:text-indigo-400">{ws}%</strong>
                                 </span>
                               ) : (
@@ -879,9 +876,9 @@ export default function TransparencyPage() {
                         </div>
                       </div>
                       <div className="mt-2 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">עומס = A ÷ W</p>
-                        <p dir="ltr" className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums text-left">
-                          {(A * 100).toFixed(2)}% ÷ {W.toFixed(2)} = <span className="text-lg">{(effort * 100).toFixed(2)}%</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
+                        <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
+                          <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(2)}} = ${(effort * 100).toFixed(2)}\\%`} />
                         </p>
                       </div>
                     </div>
