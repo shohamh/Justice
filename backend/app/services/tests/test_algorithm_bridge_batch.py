@@ -3,7 +3,8 @@ import uuid
 from datetime import date
 
 from app.algorithm.types import (
-    Assignment, BatchResult, BatchShiftFill, SolverResult,
+    BatchResult,
+    BatchShiftFill,
 )
 from app.services.algorithm_bridge import _postprocess_batch_results
 

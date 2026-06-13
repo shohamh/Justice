@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import threading
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-
-_cancel_events: dict[str, threading.Event] = {}
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import (
-    Assignment,
     AssignmentExplanation as AlgoExplanation,
+)
+from app.algorithm.types import (
+    BatchShiftFill,
     DutyBlock,
     ExistingAssignment,
     ExplanationData,
@@ -40,6 +41,8 @@ from app.db.models import (
 )
 from app.services import scoring as scoring_svc
 from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_data, quarter_start
+
+_cancel_events: dict[str, threading.Event] = {}
 
 
 def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
@@ -520,9 +523,10 @@ def persist_results(
             ))
 
 
-def _count_proposals_for_job(session: "Session", job: "AlgorithmJob") -> int:
+def _count_proposals_for_job(session: Session, job: AlgorithmJob) -> int:
     """Count proposals created for a job via the audit log."""
     from sqlalchemy import func
+
     from app.db.models import AuditLog
     return session.execute(
         select(func.count()).select_from(AuditLog).where(
@@ -592,9 +596,6 @@ def _postprocess_batch_results(
     This function groups by real shift UUID and sums required/assigned counts.
     Returns a new list of BatchResult with aggregated shifts.
     """
-    import dataclasses
-    from app.algorithm.types import BatchResult, BatchShiftFill
-
     processed = []
     for br in batch_results:
         shift_required: dict[uuid.UUID, int] = {}
@@ -619,6 +620,31 @@ def _postprocess_batch_results(
     return processed
 
 
+def _br_to_dict(br) -> dict:
+    """Serialise a BatchResult to a JSONB-compatible dict."""
+    return {
+        "batch_index": br.batch_index,
+        "component_index": br.component_index,
+        "date_from": br.date_from.isoformat(),
+        "date_to": br.date_to.isoformat(),
+        "duty_count": br.duty_count,
+        "soldier_count": br.soldier_count,
+        "assigned_count": br.assigned_count,
+        "unassigned_count": br.unassigned_count,
+        "outcome": br.outcome,
+        "relaxations": br.relaxations,
+        "wall_time_seconds": br.wall_time_seconds,
+        "shifts": [
+            {
+                "shift_id": str(sf.shift_id) if sf.shift_id else None,
+                "required_count": sf.required_count,
+                "assigned_count": sf.assigned_count,
+            }
+            for sf in br.shifts
+        ],
+    }
+
+
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     from app.algorithm.explain import build_explanations
@@ -641,7 +667,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 return
 
             job.status = "running"
-            job.started_at = datetime.now(tz=timezone.utc)
+            job.started_at = datetime.now(tz=UTC)
             session.commit()
 
             try:
@@ -663,7 +689,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 if not duties:
                     job.status = "failed"
                     job.error_message = "no_shifts_selected"
-                    job.finished_at = datetime.now(tz=timezone.utc)
+                    job.finished_at = datetime.now(tz=UTC)
                     session.commit()
                     return
 
@@ -700,7 +726,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 if not soldiers:
                     job.status = "failed"
                     job.error_message = "no_soldiers_or_duties"
-                    job.finished_at = datetime.now(tz=timezone.utc)
+                    job.finished_at = datetime.now(tz=UTC)
                     session.commit()
                     return
 
@@ -754,7 +780,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "status": "INFEASIBLE",
                         "reasons": reasons,
                     })
-                    job.finished_at = datetime.now(tz=timezone.utc)
+                    job.finished_at = datetime.now(tz=UTC)
                     session.commit()
                     return
 
@@ -764,28 +790,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 )
 
                 # Serialise batch_results to JSONB-compatible list of dicts
-                def _br_to_dict(br) -> dict:
-                    return {
-                        "batch_index": br.batch_index,
-                        "component_index": br.component_index,
-                        "date_from": br.date_from.isoformat(),
-                        "date_to": br.date_to.isoformat(),
-                        "duty_count": br.duty_count,
-                        "soldier_count": br.soldier_count,
-                        "assigned_count": br.assigned_count,
-                        "unassigned_count": br.unassigned_count,
-                        "outcome": br.outcome,
-                        "relaxations": br.relaxations,
-                        "wall_time_seconds": br.wall_time_seconds,
-                        "shifts": [
-                            {
-                                "shift_id": str(sf.shift_id) if sf.shift_id else None,
-                                "required_count": sf.required_count,
-                                "assigned_count": sf.assigned_count,
-                            }
-                            for sf in br.shifts
-                        ],
-                    }
                 job.batch_results = [_br_to_dict(br) for br in processed_batch_results]
 
                 # Build duty_id (block UUID) → batch_index map for stamping on DutyAssignment rows
@@ -832,7 +836,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     return
 
                 job.status = "done"
-                job.finished_at = datetime.now(tz=timezone.utc)
+                job.finished_at = datetime.now(tz=UTC)
 
                 if job.created_by:
                     from app.db.models import NotificationType
@@ -856,7 +860,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     if err_job is not None:
                         err_job.status = "failed"
                         err_job.error_message = str(exc)
-                        err_job.finished_at = datetime.now(tz=timezone.utc)
+                        err_job.finished_at = datetime.now(tz=UTC)
 
                         if err_job.created_by:
                             from app.db.models import NotificationType
