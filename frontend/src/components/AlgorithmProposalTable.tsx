@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
 import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
@@ -169,6 +169,10 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     : [];
   const [batchFilter, setBatchFilter] = useState<number | null>(null);
 
+  useEffect(() => {
+    setBatchFilter(null);
+  }, [jobId]);
+
   const filteredProposals = batchFilter != null
     ? job.proposals.filter(p => p.batch_index === batchFilter)
     : job.proposals;
@@ -209,7 +213,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       id: "batch",
       header: "אצווה",
       cell: (p: ProposalRow) => p.batch_index != null
-        ? <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-mono">B{p.batch_index}</span>
+        ? <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-mono">B{(p.batch_index ?? 0) + 1}</span>
         : <span className="text-gray-400">—</span>,
     }] as ColDef<ProposalRow>[] : []),
     {

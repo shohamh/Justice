@@ -19,16 +19,12 @@ type Tab = "proposals" | "batches" | "issues";
 export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun: _onRerun }: Props) {
   const [tab, setTab] = useState<Tab>("proposals");
 
-  const hasAnyUnfilled = job.batch_results.some(br => br.unassigned_count > 0);
-  const hasInfeasible = job.batch_results.some(br => br.outcome === "INFEASIBLE");
-  const hasIssues = hasAnyUnfilled || hasInfeasible || job.status === "failed";
-
   const shiftNames: Record<string, string> = {};
 
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: "proposals", label: "הצעות" },
     { id: "batches", label: "אצוות" },
-    { id: "issues", label: "בעיות", badge: hasIssues ? "!" : undefined },
+    { id: "issues", label: "בעיות" },
   ];
 
   return (

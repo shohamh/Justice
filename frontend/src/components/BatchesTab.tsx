@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { BatchResult } from "../api/algorithm";
 
 interface Props {
@@ -63,9 +63,8 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
               </thead>
               <tbody>
                 {batches.map(br => (
-                  <>
+                  <React.Fragment key={br.batch_index}>
                     <tr
-                      key={br.batch_index}
                       className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
                       onClick={() => setExpandedBatch(expandedBatch === br.batch_index ? null : br.batch_index)}
                     >
@@ -86,13 +85,13 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
                           : <span className="text-gray-400">—</span>
                         }
                       </td>
-                      <td className="px-3 py-2 text-center text-gray-500">{br.wall_time_seconds}s</td>
+                      <td className="px-3 py-2 text-center text-gray-500">{br.wall_time_seconds.toFixed(1)}s</td>
                       <td className="px-3 py-2 text-center text-gray-400">
                         {br.shifts.length > 0 ? (expandedBatch === br.batch_index ? "▲" : "▼") : ""}
                       </td>
                     </tr>
                     {expandedBatch === br.batch_index && br.shifts.length > 0 && (
-                      <tr key={`${br.batch_index}-detail`}>
+                      <tr>
                         <td colSpan={8} className="bg-gray-50 dark:bg-gray-900/30 px-4 py-3">
                           <table className="w-full text-xs">
                             <thead>
@@ -123,7 +122,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
