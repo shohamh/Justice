@@ -735,6 +735,13 @@ def test_batched_reserve_carryforward_counts_toward_R_not_T() -> None:
     )
 
 
+def test_settings_have_decomposition_fields() -> None:
+    s = SolverSettings()
+    assert s.decomposition == "effort_rounds"
+    assert s.round_soldier_count == 50
+    assert SolverSettings(decomposition="calendar").decomposition == "calendar"
+
+
 def test_calendar_window_batches_groups_by_start_date():
     """Calendar window batching must group duties whose start_date falls within
     [window_start, window_start + batch_window_days), advancing the window start

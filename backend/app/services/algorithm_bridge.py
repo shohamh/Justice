@@ -554,6 +554,12 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         except Exception:
             return default
 
+    def _setting_str(key: str, default: str) -> str:
+        try:
+            return str(get_setting(session, key))
+        except Exception:
+            return default
+
     return SolverSettings(
         T=int(settings_json.get("T", _setting_int("algorithm.max_duties_per_window", 8))),
         R=int(settings_json.get("R", _setting_int("algorithm.max_total_duties_per_window", 15))),
@@ -568,6 +574,8 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
         relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
         relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
+        decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
+        round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 50))),
     )
 
 

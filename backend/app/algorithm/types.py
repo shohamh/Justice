@@ -78,6 +78,10 @@ class SolverSettings:
     batching_enabled: bool = True
     batch_window_days: int = 28
     batch_time_limit_seconds: int = 10
+    # Decomposition strategy: "effort_rounds" (default) | "calendar" | "none".
+    decomposition: str = "effort_rounds"
+    # Disjoint Phase-1 group size for effort-round decomposition.
+    round_soldier_count: int = 50
 
 
 @dataclass
