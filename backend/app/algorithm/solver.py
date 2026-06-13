@@ -325,11 +325,21 @@ def _solve_soft_coverage(
     if cancel_event is not None:
         threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
     st1 = solver.Solve(model)
+    if cancel_event is not None and cancel_event.is_set():
+        return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
     if solver.StatusName(st1) not in ("OPTIMAL", "FEASIBLE"):
-        return SolverResult(
-            assignments=[], status="CANCELLED", seed=seed, relaxed=[],
-        )
+        # No coverage found this attempt (timeout/UNKNOWN, not a real cancel).
+        # Let the caller defer the residual instead of aborting the whole run.
+        return SolverResult(assignments=[], status="FEASIBLE", seed=seed, relaxed=[])
     best = int(round(solver.ObjectiveValue()))
+
+    # Capture stage-1 assignment now: stage 2 re-solves the same solver and
+    # will overwrite these variable values.
+    stage1_assignments = [
+        Assignment(duty_id=duties[di].id, soldier_id=soldiers[si].id)
+        for (di, si), v in x.items()
+        if solver.Value(v)
+    ]
 
     # Stage 2: pin coverage to the optimum, then optimize fairness.
     if x:
@@ -338,17 +348,20 @@ def _solve_soft_coverage(
     if cancel_event is not None:
         threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
     st2 = solver.Solve(model)
-    if solver.StatusName(st2) not in ("OPTIMAL", "FEASIBLE"):
+    if cancel_event is not None and cancel_event.is_set():
         return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
-    status = solver.StatusName(st2)
-
-    assignments = [
-        Assignment(duty_id=duties[di].id, soldier_id=soldiers[si].id)
-        for (di, si), v in x.items()
-        if solver.Value(v)
-    ]
+    if solver.StatusName(st2) in ("OPTIMAL", "FEASIBLE"):
+        # Stage 2 found a fairer assignment at the same coverage.
+        assignments = [
+            Assignment(duty_id=duties[di].id, soldier_id=soldiers[si].id)
+            for (di, si), v in x.items()
+            if solver.Value(v)
+        ]
+    else:
+        # Stage 2 timed out / UNKNOWN (not cancelled): keep stage-1 coverage.
+        assignments = stage1_assignments
     assignments.sort(key=lambda a: a.duty_id)
-    return SolverResult(assignments=assignments, status=status, seed=seed, relaxed=[])
+    return SolverResult(assignments=assignments, status="FEASIBLE", seed=seed, relaxed=[])
 
 
 def _solve_with_settings(
@@ -485,6 +498,39 @@ def _effort_round_solve(
                 all_assignments.append(a)
             covered = {a.duty_id for a in result.assignments}
             residual[:] = [d for d in residual if d.id not in covered]
+
+        # ── Phase 0: single hard-coverage solve of the WHOLE component ────────
+        # If the component is fully coverable at base caps, a single hard `==1`
+        # solve assigns every duty fast — far cheaper than the soft rounds. Uses
+        # the FULL time budget (settings, not base_settings). On INFEASIBLE or
+        # timeout we absorb nothing and fall through to the soft rounds.
+        solver0, x0, st0 = _solve_with_settings(
+            full_pool, residual, carry, settings,
+            reserve_dist=_remap_rd(full_pool, residual),
+            cancel_event=cancel_event,
+        )
+        if cancel_event is not None and cancel_event.is_set():
+            return SolverResult(
+                assignments=[], status="CANCELLED",
+                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                relaxed=relaxed,
+            )
+        if solver0.StatusName(st0) in ("OPTIMAL", "FEASIBLE"):
+            # Hard ==1 means every component duty is assigned.
+            phase0 = [
+                Assignment(duty_id=residual[di].id, soldier_id=full_pool[si].id)
+                for (di, si), v in x0.items()
+                if solver0.Value(v)
+            ]
+            _absorb(SolverResult(
+                assignments=phase0, status=solver0.StatusName(st0),
+                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                relaxed=[],
+            ))
+            if progress_cb:
+                progress_cb(done, n_components)
+            continue
+        # INFEASIBLE / UNKNOWN / timeout: absorb nothing, run the soft rounds.
 
         # ── Phase 1: disjoint effort-sorted rounds at hard BASE caps ──────────
         group_pool = sorted(full_pool, key=lambda s: (s.effort_offset, str(s.id)))

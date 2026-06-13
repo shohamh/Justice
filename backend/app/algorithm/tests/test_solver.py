@@ -937,6 +937,39 @@ def test_effort_rounds_small_component_single_round() -> None:
     assert all(not r.startswith("LAST_RESORT") for r in res.relaxed)
 
 
+def test_effort_rounds_soft_path_two_groups_relaxes_to_full() -> None:
+    # Exercises the soft Phase-1 (multi-group) + Phase-2 relaxation path that the
+    # Phase-0 hard fast-path bypasses for fully-coverable components.
+    # 2 soldiers, round_soldier_count=1 → 2 disjoint groups.
+    # 6 real duties on 6 consecutive days, all in one 14-day density window.
+    # Base T=2: each soldier covers ≤2 real/window → ≤4 covered at base caps,
+    # so Phase 0 (hard ==1 over all 6) is INFEASIBLE → soft rounds run.
+    # Phase 2 relaxes T up to 3 → 2 soldiers × 3 = 6 → full coverage.
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1),
+                             cumulative_score=Decimal(str(i)), active_days=100)
+                for i in range(2)]
+    duties = _line_duties(date(2026,6,1), dt, 6)
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(
+        soldiers, duties, [],
+        SolverSettings(
+            decomposition="effort_rounds", round_soldier_count=1,
+            T=2, Wt=14, R=6, Wr=14,
+            relax_t_ceiling=3, relax_r_ceiling=6,
+            batch_time_limit_seconds=10, time_limit_seconds=10,
+        ),
+        reserve_dist=None, cancel_event=None,
+    )
+    assert res.status in ("OPTIMAL", "FEASIBLE")
+    assert len(res.assignments) == 6, (
+        f"should fully cover all 6 after Phase-2 relaxation, got {len(res.assignments)}"
+    )
+    assert any(r.startswith("T→") for r in res.relaxed), (
+        f"expected the soft Phase-2 relaxation path to run, relaxed={res.relaxed}"
+    )
+
+
 def test_effort_rounds_two_groups_cover_all() -> None:
     dt = uuid4()
     soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal(str(i)), active_days=100) for i in range(4)]
