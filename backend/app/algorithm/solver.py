@@ -372,8 +372,9 @@ def _effort_round_solve(
     Phase 1: chunk the component's soldiers (sorted by initial effort_offset
     ascending) into disjoint groups of ``round_soldier_count`` and cover as much
     as possible at hard BASE caps, group by group. Phase 2: bring the full
-    component pool back and run graduated R/T relaxation on the residual. Phase 3
-    (last resort): solve once with caps == window length (no density limit).
+    component pool back and run graduated R/T relaxation on the residual up to
+    the configured ceilings. Any duties still unassigned after Phase 2 are left
+    unassigned — relaxation ceilings are an absolute bound.
     """
     # Work on copies so effort carry-forward doesn't mutate the caller's objects.
     work = [dataclasses.replace(s) for s in soldiers]
@@ -489,25 +490,6 @@ def _effort_round_solve(
                 if label is None:
                     break
                 relaxed.append(label)
-
-        # ── Phase 3: last resort — caps == window length (no density limit) ───
-        if residual:
-            unbounded = dataclasses.replace(
-                base_settings,
-                R=settings.Wr, T=settings.Wt,
-                relax_r_ceiling=settings.Wr, relax_t_ceiling=settings.Wt,
-            )
-            res = _solve_soft_coverage(
-                full_pool, residual, carry, unbounded, reserve_dist=_remap_rd(full_pool, residual),
-                cancel_event=cancel_event,
-            )
-            if res.status == "CANCELLED":
-                return SolverResult(
-                    assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
-                )
-            if res.assignments:
-                relaxed.append("LAST_RESORT")
-                _absorb(res)
 
         if progress_cb:
             progress_cb(done, n_components)

@@ -753,10 +753,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.rollback()
                     return
 
-                # Attach diagnostic reasons when the result is partial or used LAST_RESORT relaxation
+                # Attach diagnostic reasons when the result is partial (some duties unassigned)
                 assigned_ct = len(result.assignments)
-                last_resort = any(r == "LAST_RESORT" for r in result.relaxed)
-                if assigned_ct < len(duties) or last_resort:
+                if assigned_ct < len(duties):
                     from app.algorithm.diagnose import diagnose_infeasibility
                     dt_names = {
                         dt.id: dt.name
@@ -767,7 +766,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "status": "PARTIAL",
                         "assigned": assigned_ct,
                         "total": len(duties),
-                        "last_resort": last_resort,
                         "relaxed": result.relaxed,
                         "reasons": reasons,
                     })
