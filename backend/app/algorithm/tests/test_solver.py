@@ -777,6 +777,7 @@ def test_calendar_window_batches_groups_by_start_date():
     assert batches[1] == [3, 4]
 
 
+@pytest.mark.xfail(reason="batch_results populated by solver in Task 3", strict=True)
 def test_decomposed_solve_returns_batch_results() -> None:
     """_decomposed_solve collects BatchResult with correct counts per batch."""
     from app.algorithm.types import BatchResult
