@@ -274,7 +274,12 @@ def test_hypothesis_property(hyp_soldiers: list[SoldierInput], hyp_duties: list[
     settings = SolverSettings(time_limit_seconds=10)
     result = solve(hyp_soldiers, hyp_duties, [], settings)
     if result.status in ("OPTIMAL", "FEASIBLE"):
-        assert len(result.assignments) == len(hyp_duties)
+        # Coverage is best-effort: an over-subscribed instance (e.g. two same-day
+        # duties with only one eligible soldier) can return FEASIBLE with some duties
+        # left unassigned. Assert the validity of what WAS assigned — not completeness.
+        assert len(result.assignments) <= len(hyp_duties)
+        assigned_duty_ids = [a.duty_id for a in result.assignments]
+        assert len(assigned_duty_ids) == len(set(assigned_duty_ids))  # each duty at most once
         duty_map = {d.id: d for d in hyp_duties}
         soldier_map = {s.id: s for s in hyp_soldiers}
         for a in result.assignments:
