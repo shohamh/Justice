@@ -552,3 +552,44 @@ def test_bulk_accept_proposals_soldier_forbidden(client, admin_session):
         headers=auth_headers(soldier),
     )
     assert resp.status_code == 403
+
+
+def test_get_job_returns_batch_results(client, admin_session):
+    """GET /algorithm/jobs/{id} returns batch_results list."""
+    dm_node = create_node(admin_session, level="branch", name="branch_gbr_001")
+    dm = create_soldier(admin_session, personal_number="gbr_dm_001", role="duty_manager", hierarchy_node_id=dm_node.id)
+
+    job = AlgorithmJob(
+        planning_start=date(2026, 6, 1),
+        planning_end=date(2026, 6, 30),
+        shift_ids=[],
+        settings_json={},
+        mode="shadow",
+        status="done",
+        created_by=dm.id,
+        batch_results=[{
+            "batch_index": 0,
+            "component_index": 0,
+            "date_from": "2026-06-01",
+            "date_to": "2026-06-30",
+            "duty_count": 2,
+            "soldier_count": 5,
+            "assigned_count": 2,
+            "unassigned_count": 0,
+            "outcome": "OPTIMAL",
+            "relaxations": [],
+            "wall_time_seconds": 0.5,
+            "shifts": [],
+        }],
+    )
+    admin_session.add(job)
+    admin_session.commit()
+    admin_session.refresh(job)
+
+    resp = client.get(f"/api/algorithm/jobs/{job.id}", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "batch_results" in body
+    assert len(body["batch_results"]) == 1
+    assert body["batch_results"][0]["outcome"] == "OPTIMAL"
+    assert body["batch_results"][0]["assigned_count"] == 2

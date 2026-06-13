@@ -80,6 +80,7 @@ class ProposalOut(BaseModel):
     duty_shift_id: uuid.UUID | None = None
     candidate_rank: int | None = None
     candidate_pool_size: int | None = None
+    batch_index: int | None = None
 
 
 class JobOut(BaseModel):
@@ -96,6 +97,7 @@ class JobOut(BaseModel):
     solver_metrics: dict[str, Any]
     relaxed: list[str]
     reasons: list[str]
+    batch_results: list[dict] = Field(default_factory=list)
 
 
 class JobSummaryOut(BaseModel):
@@ -239,6 +241,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
             duty_shift_id=a.duty_shift_id,
             candidate_rank=candidate_rank,
             candidate_pool_size=candidate_pool_size,
+            batch_index=a.batch_index,
         ))
     return proposals
 
@@ -466,6 +469,7 @@ def get_job(
         solver_metrics={},
         relaxed=relaxed,
         reasons=reasons,
+        batch_results=job.batch_results or [],
     )
 
 
