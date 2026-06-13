@@ -7,7 +7,12 @@ from datetime import timedelta
 
 from ortools.sat.python.cp_model import CpSolver, IntVar
 
-from app.algorithm.model import _block_score, _duty_dates, build_model
+from app.algorithm.model import (
+    _block_score,
+    _duty_dates,
+    build_fairness_objective,
+    build_model,
+)
 from app.algorithm.types import (
     Assignment,
     DutyBlock,
@@ -251,6 +256,63 @@ def _decomposed_solve(
         seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
         relaxed=relaxed,
     )
+
+
+def _solve_soft_coverage(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None,
+    cancel_event: threading.Event | None = None,
+) -> SolverResult:
+    """Stage 1 maximize coverage; stage 2 fix coverage and optimize fairness.
+
+    Coverage is soft (<=1) so unplaceable duties are left unselected (deferred
+    by the caller). Two-stage lexicographic on a single model avoids stacking a
+    coverage tier above the 1e11 L1 weight (which risks int64 overflow).
+    """
+    model, x, terms = build_model(
+        soldiers, duties, existing, settings, reserve_dist,
+        coverage="soft", with_obj_terms=True,
+    )
+    covered = sum(x.values()) if x else 0
+    solver = CpSolver()
+    solver.parameters.max_time_in_seconds = settings.time_limit_seconds
+    seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
+    solver.parameters.random_seed = seed
+    solver.parameters.num_search_workers = 8
+
+    # Stage 1: maximize number of covered duties. Replaces the fairness
+    # objective that build_model installed.
+    model.Maximize(covered)
+    if cancel_event is not None:
+        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
+    st1 = solver.Solve(model)
+    if solver.StatusName(st1) not in ("OPTIMAL", "FEASIBLE"):
+        return SolverResult(
+            assignments=[], status="CANCELLED", seed=seed, relaxed=[],
+        )
+    best = int(round(solver.ObjectiveValue()))
+
+    # Stage 2: pin coverage to the optimum, then optimize fairness.
+    if x:
+        model.Add(covered >= best)
+    build_fairness_objective(model, x, duties, settings, reserve_dist, terms)
+    if cancel_event is not None:
+        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
+    st2 = solver.Solve(model)
+    if solver.StatusName(st2) not in ("OPTIMAL", "FEASIBLE"):
+        return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
+    status = solver.StatusName(st2)
+
+    assignments = [
+        Assignment(duty_id=duties[di].id, soldier_id=soldiers[si].id)
+        for (di, si), v in x.items()
+        if solver.Value(v)
+    ]
+    assignments.sort(key=lambda a: a.duty_id)
+    return SolverResult(assignments=assignments, status=status, seed=seed, relaxed=[])
 
 
 def _solve_with_settings(

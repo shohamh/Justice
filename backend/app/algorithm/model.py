@@ -4,8 +4,10 @@ import bisect
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Literal, overload
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
@@ -46,13 +48,143 @@ def _existing_dates_by_soldier(
     return result
 
 
+@dataclass
+class FairnessTerms:
+    """Count-space inputs to the fairness objective, computed in ``build_model``.
+
+    Carried so the soft-coverage lexicographic solve can re-apply the fairness
+    objective after its stage-1 coverage maximization replaces it, without
+    rebuilding (and duplicating) the count-space decision variables.
+    """
+
+    eligible_total_exprs: list = field(default_factory=list)
+    eligible_offsets: list[int] = field(default_factory=list)
+    total_new_weight: int = 0
+    prior_terms: list = field(default_factory=list)
+    count_vars: list[IntVar] = field(default_factory=list)
+    total_ub: int = 0
+
+
+def build_fairness_objective(
+    model: CpModel,
+    x: dict[tuple[int, int], IntVar],
+    duty_list: Sequence[DutyBlock],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None,
+    terms: FairnessTerms,
+) -> None:
+    """Apply the L1 fairness objective (+ reserve proximity) to ``model``.
+
+    Extracted from ``build_model`` so both the hard-coverage path and the
+    soft-coverage lexicographic solve share one objective definition. All the
+    count-space pieces it needs (deviation inputs, prior/spread terms) are
+    passed in precomputed via ``terms`` so the resulting model is byte-identical
+    to the pre-extraction inline version.
+    """
+    eligible_total_exprs = terms.eligible_total_exprs
+    eligible_offsets = terms.eligible_offsets
+    total_new_weight = terms.total_new_weight
+    prior_terms = terms.prior_terms
+    count_vars = terms.count_vars
+    total_ub = terms.total_ub
+    # Soft objective: hierarchy proximity for reserve blocks
+    reserve_dist_terms: list = []
+    if reserve_dist is not None:
+        gamma_int = int(settings.reserve_hierarchy_weight * 1000)
+        for (di, si), var in x.items():
+            if duty_list[di].is_reserve:
+                dist = reserve_dist.get((di, si), 10)
+                reserve_dist_terms.append(gamma_int * dist * var)
+
+    # ── Fairness objective: L1 dispersion of count-space effort ───────────────
+    #
+    # minimise   Σ_i | total_i − μ |   +   ε · reserve_proximity
+    #
+    # where total_i = count_offset_i + Σ assigned weight_i(duty), and μ is FIXED
+    # to the post-run mean (a constant) so the deviation vars decouple → fast.
+    # Because every soldier contributes their own |deviation| term, L1 equalises
+    # the WHOLE distribution — including interior sub-populations (e.g. officers
+    # clustered at low effort) that a min(max−min) spread is blind to.  This is
+    # only tractable because the caller (solver.py) decomposes each run into
+    # connected components and chronological batches, so each build_model is small.
+    #
+    # SECONDARY (below L1) — prefer low-prior soldiers, then split counts evenly.
+    # RESERVE PROXIMITY (gamma_int) is the smallest tier.
+    # Tiers: L1 ≫ prior ≫ count-spread ≫ reserve proximity.
+    # ────────────────────────────────────────────────────────────────────────
+
+    alpha_int = int(settings.alpha * 1000)
+    dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
+
+    if eligible_total_exprs and alpha_int > 0:
+        # Tiers (each ≫ the next): L1 ≫ prior ≫ count-spread ≫ reserve proximity.
+        l1_w = 100_000_000_000  # 1e11
+        prior_w = 1_000_000     # 1e6
+        count_w = 10_000        # 1e4 — above the per-move reserve-distance term
+        n_elig = len(eligible_total_exprs)
+        mu_const = (sum(eligible_offsets) + total_new_weight) // n_elig
+
+        dev_terms: list[IntVar] = []
+        for i, total in enumerate(eligible_total_exprs):
+            dev = model.NewIntVar(0, total_ub, f"effort_dev{i}")
+            model.Add(dev >= total - mu_const)
+            model.Add(dev >= mu_const - total)
+            dev_terms.append(dev)
+        l1_term = sum(dev_terms)
+
+        prior_term = sum(prior_terms) if prior_terms else 0
+
+        count_spread: LinearExpr | int = 0
+        if len(count_vars) > 1:
+            max_count_var = model.NewIntVar(0, len(duty_list), "max_count")
+            min_count_var = model.NewIntVar(0, len(duty_list), "min_count")
+            model.AddMaxEquality(max_count_var, count_vars)
+            model.AddMinEquality(min_count_var, count_vars)
+            count_spread = max_count_var - min_count_var
+
+        model.Maximize(
+            -l1_w * l1_term - prior_w * prior_term - count_w * count_spread - dist_term
+        )
+    else:
+        model.Minimize(dist_term if reserve_dist_terms else 0)
+
+
+@overload
+def build_model(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = ...,
+    coverage: Literal["hard", "soft"] = ...,
+    with_obj_terms: Literal[False] = ...,
+) -> tuple[CpModel, dict[tuple[int, int], IntVar]]: ...
+
+
+@overload
+def build_model(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = ...,
+    coverage: Literal["hard", "soft"] = ...,
+    with_obj_terms: Literal[True] = ...,
+) -> tuple[CpModel, dict[tuple[int, int], IntVar], FairnessTerms]: ...
+
+
 def build_model(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
     existing: Sequence[ExistingAssignment],
     settings: SolverSettings,
     reserve_dist: dict[tuple[int, int], int] | None = None,
-) -> tuple[CpModel, dict[tuple[int, int], IntVar]]:
+    coverage: Literal["hard", "soft"] = "hard",
+    with_obj_terms: bool = False,
+) -> (
+    tuple[CpModel, dict[tuple[int, int], IntVar]]
+    | tuple[CpModel, dict[tuple[int, int], IntVar], FairnessTerms]
+):
     model = CpModel()
     duty_list = list(duties)
     soldier_list = list(soldiers)
@@ -97,10 +229,17 @@ def build_model(
     for di, si in eligible:
         x[(di, si)] = model.NewBoolVar(f"x_d{di}_s{si}")
 
-    # Hard constraint 1: Coverage — every duty assigned to exactly one soldier
+    # Coverage constraint. Hard: every duty assigned to exactly one soldier
+    # (model infeasible if any duty is unplaceable). Soft: each duty assigned to
+    # at most one soldier, so unplaceable duties are simply left unselected and
+    # the caller can defer them.
     for di in range(len(duty_list)):
         vars_for_d = [x[(di, si)] for (dii, si) in eligible if dii == di]
-        model.Add(sum(vars_for_d) == 1)
+        if coverage == "soft":
+            if vars_for_d:
+                model.Add(sum(vars_for_d) <= 1)
+        else:
+            model.Add(sum(vars_for_d) == 1)
 
     # Hard constraint 2: No overlap — a soldier cannot be assigned two duties covering the same day
     all_dates_set: set[date] = set()
@@ -259,65 +398,16 @@ def build_model(
                 model.Add(existing_all_fixed + sum(vars_all) <= R)
             ws += timedelta(days=1)
 
-    # Soft objective: hierarchy proximity for reserve blocks
-    reserve_dist_terms: list = []
-    if reserve_dist is not None:
-        gamma_int = int(settings.reserve_hierarchy_weight * 1000)
-        for (di, si), var in x.items():
-            if duty_list[di].is_reserve:
-                dist = reserve_dist.get((di, si), 10)
-                reserve_dist_terms.append(gamma_int * dist * var)
+    terms = FairnessTerms(
+        eligible_total_exprs=eligible_total_exprs,
+        eligible_offsets=eligible_offsets,
+        total_new_weight=total_new_weight,
+        prior_terms=prior_terms,
+        count_vars=count_vars,
+        total_ub=total_ub,
+    )
+    build_fairness_objective(model, x, duty_list, settings, reserve_dist, terms)
 
-    # ── Fairness objective: L1 dispersion of count-space effort ───────────────
-    #
-    # minimise   Σ_i | total_i − μ |   +   ε · reserve_proximity
-    #
-    # where total_i = count_offset_i + Σ assigned weight_i(duty), and μ is FIXED
-    # to the post-run mean (a constant) so the deviation vars decouple → fast.
-    # Because every soldier contributes their own |deviation| term, L1 equalises
-    # the WHOLE distribution — including interior sub-populations (e.g. officers
-    # clustered at low effort) that a min(max−min) spread is blind to.  This is
-    # only tractable because the caller (solver.py) decomposes each run into
-    # connected components and chronological batches, so each build_model is small.
-    #
-    # SECONDARY (below L1) — prefer low-prior soldiers, then split counts evenly.
-    # RESERVE PROXIMITY (gamma_int) is the smallest tier.
-    # Tiers: L1 ≫ prior ≫ count-spread ≫ reserve proximity.
-    # ────────────────────────────────────────────────────────────────────────
-
-    alpha_int = int(settings.alpha * 1000)
-    dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
-
-    if eligible_total_exprs and alpha_int > 0:
-        # Tiers (each ≫ the next): L1 ≫ prior ≫ count-spread ≫ reserve proximity.
-        l1_w = 100_000_000_000  # 1e11
-        prior_w = 1_000_000     # 1e6
-        count_w = 10_000        # 1e4 — above the per-move reserve-distance term
-        n_elig = len(eligible_total_exprs)
-        mu_const = (sum(eligible_offsets) + total_new_weight) // n_elig
-
-        dev_terms: list[IntVar] = []
-        for i, total in enumerate(eligible_total_exprs):
-            dev = model.NewIntVar(0, total_ub, f"effort_dev{i}")
-            model.Add(dev >= total - mu_const)
-            model.Add(dev >= mu_const - total)
-            dev_terms.append(dev)
-        l1_term = sum(dev_terms)
-
-        prior_term = sum(prior_terms) if prior_terms else 0
-
-        count_spread: LinearExpr | int = 0
-        if len(count_vars) > 1:
-            max_count_var = model.NewIntVar(0, len(duty_list), "max_count")
-            min_count_var = model.NewIntVar(0, len(duty_list), "min_count")
-            model.AddMaxEquality(max_count_var, count_vars)
-            model.AddMinEquality(min_count_var, count_vars)
-            count_spread = max_count_var - min_count_var
-
-        model.Maximize(
-            -l1_w * l1_term - prior_w * prior_term - count_w * count_spread - dist_term
-        )
-    else:
-        model.Minimize(dist_term if reserve_dist_terms else 0)
-
+    if with_obj_terms:
+        return model, x, terms
     return model, x

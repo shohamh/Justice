@@ -576,6 +576,20 @@ def _single_day_duty(dt: date, duty_type: uuid.UUID, *, is_reserve: bool) -> Dut
     )
 
 
+def test_soft_coverage_covers_max_without_infeasible() -> None:
+    s_id = uuid4(); dt = uuid4()
+    soldiers = [SoldierInput(id=s_id, enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100)]
+    day = date(2026, 6, 1)
+    duties = [_single_day_duty(day, dt, is_reserve=False), _single_day_duty(day, dt, is_reserve=False)]
+    from app.algorithm.solver import _solve_soft_coverage
+    hard = build_model(soldiers=soldiers, duties=duties, existing=[], settings=SolverSettings())
+    solver = cp_model.CpSolver(); solver.parameters.max_time_in_seconds = 5
+    assert solver.Solve(hard[0]) == cp_model.INFEASIBLE
+    res = _solve_soft_coverage(soldiers, duties, [], SolverSettings(time_limit_seconds=5), reserve_dist=None)
+    assert res.status in ("OPTIMAL", "FEASIBLE")
+    assert len(res.assignments) == 1
+
+
 def test_window_caps_split_reserve_and_real() -> None:
     soldier_id = uuid4()
     duty_type = uuid4()
