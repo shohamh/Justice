@@ -4,8 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import Layout from "../components/Layout";
 import AlgorithmRunForm from "../components/AlgorithmRunForm";
-import AlgorithmProposalTable from "../components/AlgorithmProposalTable";
-import FailurePanel from "../components/FailurePanel";
+import AlgorithmJobTabs from "../components/AlgorithmJobTabs";
 import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
@@ -230,25 +229,19 @@ export function AlgorithmContent() {
               })()}
             </div>
 
-            {/* Failed state */}
-            {selectedJob.status === "failed" && (
-              selectedJob.error_message === "cancelled_by_user"
-                ? <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>
-                : <FailurePanel
-                    relaxed={selectedJob.relaxed}
-                    reasons={selectedJob.reasons}
-                  />
+            {/* Cancelled jobs show a simple message */}
+            {selectedJob.status === "failed" && selectedJob.error_message === "cancelled_by_user" && (
+              <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>
             )}
 
-            {/* Proposals table */}
-            {selectedJob.status === "done" && (
-              <AlgorithmProposalTable
+            {/* Done jobs and non-cancelled failed jobs get the full tab view */}
+            {(selectedJob.status === "done" || (selectedJob.status === "failed" && selectedJob.error_message !== "cancelled_by_user")) && (
+              <AlgorithmJobTabs
                 job={selectedJob}
                 jobId={selectedJobId!}
                 soldiers={soldiers}
                 dutyTypes={dutyTypes}
                 onProposalUpdate={setSelectedJob}
-                isDraft={selectedJob.proposals.some(p => p.status === "algorithm_draft")}
               />
             )}
           </div>

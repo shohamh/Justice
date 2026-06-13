@@ -24,6 +24,27 @@ export interface CreateJobRequest {
   settings: SolverSettings;
 }
 
+export interface BatchShiftFill {
+  shift_id: string | null;
+  required_count: number;
+  assigned_count: number;
+}
+
+export interface BatchResult {
+  batch_index: number;
+  component_index: number;
+  date_from: string;
+  date_to: string;
+  duty_count: number;
+  soldier_count: number;
+  assigned_count: number;
+  unassigned_count: number;
+  outcome: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "CANCELLED";
+  relaxations: string[];
+  wall_time_seconds: number;
+  shifts: BatchShiftFill[];
+}
+
 export interface ProposalRow {
   assignment_id: string;
   soldier_id: string;
@@ -38,6 +59,7 @@ export interface ProposalRow {
   duty_shift_id: string | null;
   candidate_rank: number | null;
   candidate_pool_size: number | null;
+  batch_index: number | null;
 }
 
 export interface AlgorithmJob {
@@ -54,6 +76,7 @@ export interface AlgorithmJob {
   solver_metrics: Record<string, number>;
   relaxed: string[];
   reasons: string[];
+  batch_results: BatchResult[];
 }
 
 export interface JobSummaryOut {

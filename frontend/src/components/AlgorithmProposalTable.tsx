@@ -163,7 +163,17 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     return map;
   }, [job.proposals]);
 
-  const pendingProposals = job.proposals.filter(isPending);
+  const hasBatches = job.proposals.some(p => p.batch_index != null);
+  const batchIndices = hasBatches
+    ? [...new Set(job.proposals.map(p => p.batch_index).filter((b): b is number => b != null))].sort((a, b) => a - b)
+    : [];
+  const [batchFilter, setBatchFilter] = useState<number | null>(null);
+
+  const filteredProposals = batchFilter != null
+    ? job.proposals.filter(p => p.batch_index === batchFilter)
+    : job.proposals;
+
+  const pendingProposals = filteredProposals.filter(isPending);
   const allPendingSelected = pendingProposals.length > 0 && pendingProposals.every(p => selectedIds.has(p.assignment_id));
 
   function toggleSelectAll() {
@@ -195,6 +205,13 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     { id: "score_before", header: t("algorithm.col_score_before"), cell: (p) => p.norm_score_before?.toFixed(3) ?? "—", sortValue: (p) => p.norm_score_before ?? null },
     { id: "score_after", header: t("algorithm.col_score_after"), cell: (p) => p.norm_score_after?.toFixed(3) ?? "—", sortValue: (p) => p.norm_score_after ?? null },
     { id: "batch_rank", header: t("algorithm.col_batch_rank"), cell: (p) => batchRankMap.get(p.assignment_id)?.toString() ?? "—", sortValue: (p) => batchRankMap.get(p.assignment_id) ?? null },
+    ...(hasBatches ? [{
+      id: "batch",
+      header: "אצווה",
+      cell: (p: ProposalRow) => p.batch_index != null
+        ? <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-mono">B{p.batch_index}</span>
+        : <span className="text-gray-400">—</span>,
+    }] as ColDef<ProposalRow>[] : []),
     {
       id: "slot_rank",
       header: t("algorithm.col_slot_rank"),
@@ -240,6 +257,18 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       ) : (
         <>
           <div className="flex items-center gap-3 text-sm flex-wrap">
+            {hasBatches && (
+              <select
+                value={batchFilter ?? ""}
+                onChange={e => setBatchFilter(e.target.value === "" ? null : Number(e.target.value))}
+                className="text-xs border dark:border-gray-600 rounded px-2 py-1 dark:bg-gray-700 dark:text-gray-100"
+              >
+                <option value="">כל האצוות</option>
+                {batchIndices.map(bi => (
+                  <option key={bi} value={bi}>אצווה {bi + 1}</option>
+                ))}
+              </select>
+            )}
             <button type="button" onClick={toggleSelectAll} className="text-blue-600 dark:text-blue-400 hover:underline">
               {allPendingSelected ? "בטל בחירה הכל" : "בחר הכל"}
             </button>
@@ -266,7 +295,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           </div>
           <DataTable
             columns={cols}
-            data={job.proposals}
+            data={filteredProposals}
             filterPlaceholder={t("table.filter_placeholder")}
             rowClassName={(p) =>
               p.status === "published" ? "bg-green-50 dark:bg-green-950" : p.status === "algorithm_rejected" ? "bg-gray-100 dark:bg-gray-700 opacity-50" : ""
