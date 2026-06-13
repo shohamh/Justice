@@ -192,3 +192,25 @@ JSON shape as the `INFEASIBLE` path), so the UI shows *why* instead of silence.
   scheme is a heuristic; the benchmark validates it empirically.
 - Widening soldier eligibility for high-volume duty types (a real fairness lever
   surfaced during investigation) is a separate, configuration-level concern.
+
+## Benchmark results (job f9ec194e)
+
+Inputs: job `f9ec194e`, 449 duty-blocks (primary + reserve), 118 soldiers,
+planning window 2026-06-14 → 07-16. `existing=[]` (proposals were published after
+the original run). All three modes run from identical effort-scored soldier inputs.
+`effort_rounds` uses `_solve_soft_coverage` (two-stage coverage-then-fairness) which
+requires more time per batch than calendar's `_infeasibility_relaxation_chain`; a
+300 s per-batch limit was used for effort_rounds, 30 s for calendar, 30 s for none.
+
+| mode | covered / total | assign-count spread | wall time | status | relaxed |
+|---|---|---|---|---|---|
+| `calendar` | 402 / 449 | 14 | 72 s | FEASIBLE | R→17, R→19, R→20, T→10 |
+| `effort_rounds` | 449 / 449 | 11 | 655 s | OPTIMAL | — |
+| `none` (unbatched) | 449 / 449 | 11 | 37 s | FEASIBLE | — |
+
+`effort_rounds` covers all 449 duties (vs. 402 for calendar, 47 dropped) and
+produces a fairer result (spread 11 vs. 14), with zero density-cap relaxation;
+calendar must relax R to 20 and T to 10 to salvage most of the stranded batch, and
+still leaves 47 unassigned. The longer wall time for effort_rounds reflects its
+harder per-batch model (coverage maximization before fairness); production
+`batch_time_limit_seconds` should be set to ≥ 60 s for large runs.
