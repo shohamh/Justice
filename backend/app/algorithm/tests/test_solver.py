@@ -794,3 +794,27 @@ def test_calendar_window_batches_groups_by_start_date():
     assert len(batches) == 2
     assert batches[0] == [0, 1, 2]
     assert batches[1] == [3, 4]
+
+
+def _line_duties(base, dt, n, is_reserve=False):
+    return [_single_day_duty(base + timedelta(days=i), dt, is_reserve=is_reserve) for i in range(n)]
+
+
+def test_effort_rounds_small_component_single_round() -> None:
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal("0"), active_days=100) for _ in range(5)]
+    duties = _line_duties(date(2026,6,1), dt, 5)
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(soldiers, duties, [], SolverSettings(round_soldier_count=50, batch_time_limit_seconds=10), reserve_dist=None, cancel_event=None)
+    assert res.status in ("OPTIMAL", "FEASIBLE")
+    assert len(res.assignments) == 5
+    assert all(not r.startswith("LAST_RESORT") for r in res.relaxed)
+
+
+def test_effort_rounds_two_groups_cover_all() -> None:
+    dt = uuid4()
+    soldiers = [SoldierInput(id=uuid4(), enrolled_at=date(2026,1,1), cumulative_score=Decimal(str(i)), active_days=100) for i in range(4)]
+    duties = _line_duties(date(2026,6,1), dt, 8)
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(soldiers, duties, [], SolverSettings(round_soldier_count=2, batch_time_limit_seconds=10), reserve_dist=None, cancel_event=None)
+    assert len(res.assignments) == 8

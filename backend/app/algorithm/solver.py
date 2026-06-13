@@ -338,6 +338,169 @@ def _solve_with_settings(
     return solver, x, status
 
 
+def _relax_step(current: SolverSettings) -> str | None:
+    """Apply one graduated density-relaxation step in place; return its label.
+
+    R (total, incl. reserve) loosens first in hops of 2 up to relax_r_ceiling,
+    then T (real only) loosens in hops of 2 up to relax_t_ceiling. Mutates
+    ``current`` and returns the ``"R→k"``/``"T→k"`` label, or None when both
+    ceilings are exhausted.
+    """
+    if current.R < current.relax_r_ceiling:
+        current.R = min(current.relax_r_ceiling, current.R + 2)
+        return f"R→{current.R}"
+    if current.T < current.relax_t_ceiling:
+        current.T = min(current.relax_t_ceiling, current.T + 2)
+        return f"T→{current.T}"
+    return None
+
+
+def _effort_round_solve(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None = None,
+    cancel_event: threading.Event | None = None,
+    progress_cb: ProgressCb | None = None,
+) -> SolverResult:
+    """Two-phase effort-round decomposition, per connected component.
+
+    Phase 1: chunk the component's soldiers (sorted by initial effort_offset
+    ascending) into disjoint groups of ``round_soldier_count`` and cover as much
+    as possible at hard BASE caps, group by group. Phase 2: bring the full
+    component pool back and run graduated R/T relaxation on the residual. Phase 3
+    (last resort): solve once with caps == window length (no density limit).
+    """
+    # Work on copies so effort carry-forward doesn't mutate the caller's objects.
+    work = [dataclasses.replace(s) for s in soldiers]
+    soldier_by_id = {s.id: s for s in work}
+    duty_by_id = {d.id: d for d in duties}
+
+    base_settings = dataclasses.replace(
+        settings, time_limit_seconds=settings.batch_time_limit_seconds
+    )
+
+    pairs = _eligible_pairs(work, duties)
+    components = _connected_components(len(duties), len(work), pairs)
+
+    n_components = len(components)
+    if progress_cb:
+        progress_cb(0, n_components)
+
+    all_assignments: list[Assignment] = []
+    relaxed: list[str] = []
+    # Effort/density carry-forward shared across components and rounds.
+    carry: list[ExistingAssignment] = list(existing)
+
+    for done, (duty_idxs, soldier_idxs) in enumerate(components, start=1):
+        if cancel_event is not None and cancel_event.is_set():
+            return SolverResult(
+                assignments=[], status="CANCELLED",
+                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                relaxed=relaxed,
+            )
+
+        if not soldier_idxs:
+            # Duties with no eligible soldier — left unassigned.
+            if progress_cb:
+                progress_cb(done, n_components)
+            continue
+
+        full_pool = [work[si] for si in soldier_idxs]
+        residual = [duties[di] for di in duty_idxs]
+
+        def _absorb(result: SolverResult) -> None:
+            for a in result.assignments:
+                d = duty_by_id[a.duty_id]
+                carry.append(ExistingAssignment(
+                    soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
+                    start_date=d.start_date, end_date=d.end_date,
+                    is_reserve=d.is_reserve,
+                ))
+                s = soldier_by_id[a.soldier_id]
+                s.effort_offset += s.effort_per_milli * _block_score(d)
+                all_assignments.append(a)
+            covered = {a.duty_id for a in result.assignments}
+            residual[:] = [d for d in residual if d.id not in covered]
+
+        # ── Phase 1: disjoint effort-sorted rounds at hard BASE caps ──────────
+        group_pool = sorted(full_pool, key=lambda s: (s.effort_offset, str(s.id)))
+        rsc = max(1, settings.round_soldier_count)
+        for gi in range(0, len(group_pool), rsc):
+            if not residual:
+                break
+            group = group_pool[gi:gi + rsc]
+            # TODO(reserve_dist): effort-rounds passes reserve_dist=None, so the reserve
+            # hierarchy-proximity soft objective is not applied here. _decomposed_solve shows
+            # how to remap global->local indices per sub-problem; wire it in if the ER-6
+            # benchmark shows degraded reserve placement.
+            res = _solve_soft_coverage(
+                group, residual, carry, base_settings, reserve_dist=None,
+                cancel_event=cancel_event,
+            )
+            if res.status == "CANCELLED":
+                return SolverResult(
+                    assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
+                )
+            _absorb(res)
+
+        # ── Phase 2: full pool + graduated relaxation on residual ─────────────
+        if residual:
+            current = dataclasses.replace(base_settings)
+            while residual:
+                res = _solve_soft_coverage(
+                    full_pool, residual, carry, current, reserve_dist=None,
+                    cancel_event=cancel_event,
+                )
+                if res.status == "CANCELLED":
+                    return SolverResult(
+                        assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
+                    )
+                if res.assignments:
+                    _absorb(res)
+                    if not residual:
+                        break
+                label = _relax_step(current)
+                if label is None:
+                    break
+                relaxed.append(label)
+
+        # ── Phase 3: last resort — caps == window length (no density limit) ───
+        if residual:
+            unbounded = dataclasses.replace(
+                base_settings,
+                R=settings.Wr, T=settings.Wt,
+                relax_r_ceiling=settings.Wr, relax_t_ceiling=settings.Wt,
+            )
+            res = _solve_soft_coverage(
+                full_pool, residual, carry, unbounded, reserve_dist=None,
+                cancel_event=cancel_event,
+            )
+            if res.status == "CANCELLED":
+                return SolverResult(
+                    assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
+                )
+            if res.assignments:
+                relaxed.append("LAST_RESORT")
+                _absorb(res)
+
+        if progress_cb:
+            progress_cb(done, n_components)
+
+    all_assignments.sort(key=lambda a: a.duty_id)
+    assigned_ids = {a.duty_id for a in all_assignments}
+    status = "OPTIMAL" if len(assigned_ids) == len(duties) else "FEASIBLE"
+    if not all_assignments and duties:
+        status = "INFEASIBLE"
+    return SolverResult(
+        assignments=all_assignments,
+        status=status,
+        seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+        relaxed=relaxed,
+    )
+
+
 def _infeasibility_relaxation_chain(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
@@ -363,13 +526,9 @@ def _infeasibility_relaxation_chain(
             return SolverResult(assignments=[], status="CANCELLED", seed=(current.seed if current.seed is not None else DEFAULT_SOLVER_SEED), relaxed=relaxed)
 
         if status_name == "INFEASIBLE":
-            if current.R < current.relax_r_ceiling:
-                current.R = min(current.relax_r_ceiling, current.R + 2)
-                relaxed.append(f"R\u2192{current.R}")
-                continue
-            if current.T < current.relax_t_ceiling:
-                current.T = min(current.relax_t_ceiling, current.T + 2)
-                relaxed.append(f"T\u2192{current.T}")
+            label = _relax_step(current)
+            if label is not None:
+                relaxed.append(label)
                 continue
             return SolverResult(
                 assignments=[], status="INFEASIBLE",
