@@ -95,7 +95,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   function soldierNode(id: string | null): React.ReactNode {
     if (!id) return "—";
     const a = assigneeById[id];
-    if (!a) return id.slice(0, 8);
+    if (!a) return "—";
     return <SoldierLink id={a.soldierId} name={a.name} />;
   }
 
