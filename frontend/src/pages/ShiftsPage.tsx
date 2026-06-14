@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
-import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, bulkDeleteShifts, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
+import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, bulkClearAssignments, bulkDeleteShifts, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -13,20 +13,33 @@ const FILL_COLORS: Record<string, string> = {
   full: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
 };
 
+type BulkAction = "clear" | "delete" | null;
+
+function Spinner() {
+  return (
+    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+    </svg>
+  );
+}
+
 function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [preview, setPreview] = useState<BulkDeletePreview | null>(null);
   const [loading, setLoading] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState<BulkAction>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ deleted_shifts: number; deleted_assignments: number } | null>(null);
+  const [resultMsg, setResultMsg] = useState<string | null>(null);
+
+  function resetResult() { setPreview(null); setResultMsg(null); setError(null); }
 
   async function handlePreview() {
     if (!from || !to) return;
     setLoading(true);
     setError(null);
-    setResult(null);
+    setResultMsg(null);
     try {
       setPreview(await getBulkDeletePreview(from, to));
     } catch {
@@ -36,20 +49,37 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
     }
   }
 
-  async function handleDelete() {
-    if (!preview) return;
+  async function handleClearAssignments() {
+    if (!preview || preview.assignment_count === 0) return;
+    if (!window.confirm(`לנקות ${preview.assignment_count} שיבוצים מ-${preview.shift_count} משמרות? המשמרות עצמן יישארו.`)) return;
+    setBusy("clear");
+    setError(null);
+    try {
+      const r = await bulkClearAssignments(from, to);
+      setResultMsg(`נוקו ${r.cleared_assignments} שיבוצים. המשמרות נשמרו.`);
+      setPreview(null);
+      onDeleted();
+    } catch {
+      setError("שגיאה בניקוי שיבוצים");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDeleteShifts() {
+    if (!preview || preview.shift_count === 0) return;
     if (!window.confirm(`למחוק ${preview.shift_count} משמרות ו-${preview.assignment_count} שיבוצים לצמיתות?`)) return;
-    setDeleting(true);
+    setBusy("delete");
     setError(null);
     try {
       const r = await bulkDeleteShifts(from, to);
-      setResult(r);
+      setResultMsg(`נמחקו ${r.deleted_shifts} משמרות ו-${r.deleted_assignments} שיבוצים.`);
       setPreview(null);
       onDeleted();
     } catch {
       setError("שגיאה במחיקה");
     } finally {
-      setDeleting(false);
+      setBusy(null);
     }
   }
 
@@ -57,10 +87,7 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4 border-2 border-red-200 dark:border-red-900" dir="rtl">
-      <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">מחיקת משמרות לפי טווח תאריכים</h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        מחיקה תסיר את המשמרות יחד עם כל השיבוצים, הקפצות, שחרורים והחלפות הקשורים אליהן.
-      </p>
+      <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">ניקוי / מחיקה לפי טווח תאריכים</h2>
 
       <div className="flex flex-wrap gap-4 items-end text-sm">
         <label className="flex items-center gap-2">
@@ -68,7 +95,7 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
           <input
             type="date"
             value={from}
-            onChange={e => { setFrom(e.target.value); setPreview(null); setResult(null); }}
+            onChange={e => { setFrom(e.target.value); resetResult(); }}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
@@ -77,7 +104,7 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
           <input
             type="date"
             value={to}
-            onChange={e => { setTo(e.target.value); setPreview(null); setResult(null); }}
+            onChange={e => { setTo(e.target.value); resetResult(); }}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
@@ -93,14 +120,15 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      {result && (
+      {resultMsg && (
         <div className="text-sm text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950 rounded p-3">
-          נמחקו {result.deleted_shifts} משמרות ו-{result.deleted_assignments} שיבוצים.
+          {resultMsg}
         </div>
       )}
 
       {preview && (
         <div className="space-y-3">
+          {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-sm">
             {[
               { label: "משמרות", value: preview.shift_count, color: "text-red-700 dark:text-red-400" },
@@ -110,20 +138,21 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-gray-50 dark:bg-gray-700 rounded p-3">
                 <div className={`text-2xl font-bold ${color}`}>{value}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label} יימחקו</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</div>
               </div>
             ))}
           </div>
 
+          {/* Shift list */}
           {preview.shifts.length > 0 && (
-            <div className="max-h-64 overflow-y-auto border dark:border-gray-600 rounded">
+            <div className="max-h-56 overflow-y-auto border dark:border-gray-600 rounded">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                   <tr>
                     <th className="text-right p-2 font-medium">סוג תורנות</th>
                     <th className="text-right p-2 font-medium">מיקום</th>
-                    <th className="text-right p-2 font-medium">תאריך התחלה</th>
-                    <th className="text-right p-2 font-medium">תאריך סיום</th>
+                    <th className="text-right p-2 font-medium">התחלה</th>
+                    <th className="text-right p-2 font-medium">סיום</th>
                     <th className="text-right p-2 font-medium">נדרש</th>
                   </tr>
                 </thead>
@@ -145,20 +174,29 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
           {preview.shift_count === 0 ? (
             <p className="text-sm text-gray-500">אין משמרות בטווח זה.</p>
           ) : (
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 disabled:opacity-40 flex items-center gap-2"
-            >
-              {deleting && (
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-              )}
-              {deleting ? "מוחק..." : `מחק הכל (${preview.shift_count} משמרות)`}
-            </button>
+            <div className="flex flex-wrap gap-3 pt-1">
+              {/* Clear assignments only */}
+              <button
+                type="button"
+                onClick={handleClearAssignments}
+                disabled={!!busy || preview.assignment_count === 0}
+                className="bg-orange-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-orange-600 disabled:opacity-40 flex items-center gap-2"
+              >
+                {busy === "clear" && <Spinner />}
+                {busy === "clear" ? "מנקה..." : `נקה שיבוצים בלבד (${preview.assignment_count})`}
+              </button>
+
+              {/* Delete shifts + everything */}
+              <button
+                type="button"
+                onClick={handleDeleteShifts}
+                disabled={!!busy}
+                className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 disabled:opacity-40 flex items-center gap-2"
+              >
+                {busy === "delete" && <Spinner />}
+                {busy === "delete" ? "מוחק..." : `מחק משמרות ושיבוצים (${preview.shift_count})`}
+              </button>
+            </div>
           )}
         </div>
       )}

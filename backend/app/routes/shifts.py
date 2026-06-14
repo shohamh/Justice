@@ -320,6 +320,32 @@ def bulk_delete_shifts(
     return {"deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)}
 
 
+@router.delete("/bulk-clear-assignments", status_code=status.HTTP_200_OK)
+def bulk_clear_assignments(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    """Delete all assignments (and their cascading data) for shifts in range, keeping the shifts."""
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    shift_ids = [s.id for s in _shifts_in_range(session, date_from, date_to)]
+    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
+
+    if assignment_ids:
+        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        ))
+        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    session.commit()
+    return {"cleared_assignments": len(assignment_ids)}
+
+
 @router.delete("/{shift_id}/assignments", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def clear_shift_assignments(
     shift_id: uuid.UUID,

@@ -82,3 +82,7 @@ export async function getBulkDeletePreview(dateFrom: string, dateTo: string): Pr
 export async function bulkDeleteShifts(dateFrom: string, dateTo: string): Promise<{ deleted_shifts: number; deleted_assignments: number }> {
   return (await api.delete<{ deleted_shifts: number; deleted_assignments: number }>("/shifts/bulk-delete", { params: { date_from: dateFrom, date_to: dateTo } })).data;
 }
+
+export async function bulkClearAssignments(dateFrom: string, dateTo: string): Promise<{ cleared_assignments: number }> {
+  return (await api.delete<{ cleared_assignments: number }>("/shifts/bulk-clear-assignments", { params: { date_from: dateFrom, date_to: dateTo } })).data;
+}
