@@ -158,10 +158,29 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <span>{soldier.rank}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t("team.node")}</span>
-                <span>{nodes.find((n) => n.id === soldier.hierarchy_node_id)?.name ?? "—"}</span>
-              </div>
+              {(() => {
+                const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+                const soldierNode = soldier.hierarchy_node_id ? nodeMap.get(soldier.hierarchy_node_id) : null;
+                const chain = soldierNode ? soldierNode.path_ids.map((id) => nodeMap.get(id)?.name ?? id) : null;
+                return (
+                  <div className="space-y-0.5">
+                    <span className="text-gray-500 dark:text-gray-400">{t("team.hierarchy")}</span>
+                    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs mt-0.5">
+                      {chain
+                        ? chain.map((name, i) => (
+                            <span key={i} className="flex items-center gap-x-1">
+                              {i > 0 && <span className="text-gray-300 dark:text-gray-600">›</span>}
+                              <span className={i === chain.length - 1 ? "font-medium text-gray-800 dark:text-gray-200" : "text-gray-500 dark:text-gray-400"}>
+                                {name}
+                              </span>
+                            </span>
+                          ))
+                        : <span>—</span>
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
               {soldier.phone && (
                 <div className="flex justify-between">
                   <span className="text-gray-500">{t("team.phone")}</span>
@@ -204,6 +223,27 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
                 </select>
               </label>
+              {(() => {
+                const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+                const selectedNode = hierarchyNodeId ? nodeMap.get(hierarchyNodeId) : null;
+                const chain = selectedNode
+                  ? selectedNode.path_ids.map((id) => nodeMap.get(id)?.name).filter(Boolean) as string[]
+                  : null;
+                if (!chain || chain.length === 0) return null;
+                return (
+                  <div className="space-y-0.5">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t("team.hierarchy")}</span>
+                    <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-xs">
+                      {chain.map((name, i) => (
+                        <span key={i} className="flex items-center gap-x-1">
+                          {i > 0 && <span className="text-gray-300 dark:text-gray-600">›</span>}
+                          <span className={i === chain.length - 1 ? "font-medium text-gray-800 dark:text-gray-200" : "text-gray-500 dark:text-gray-400"}>{name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               {canManage && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

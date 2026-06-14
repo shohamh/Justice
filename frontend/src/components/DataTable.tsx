@@ -12,7 +12,7 @@ import {
 export interface ColDef<T> {
   id: string;
   header: string;
-  headerTooltip?: string;
+  headerTooltip?: React.ReactNode;
   cell: (row: T) => React.ReactNode;
   sortValue?: (row: T) => string | number | null | undefined;
   filterValue?: (row: T) => string;
@@ -26,6 +26,7 @@ interface DataTableProps<T> {
   filterPlaceholder?: string;
   className?: string;
   rowClassName?: (row: T) => string;
+  rowStyle?: (row: T) => React.CSSProperties;
   emptyMessage?: string;
   testId?: string;
   rowTestId?: (row: T) => string;
@@ -151,13 +152,14 @@ export function DataTable<T>({
   filterPlaceholder = "סנן...",
   className,
   rowClassName,
+  rowStyle,
   emptyMessage = "—",
   testId,
   rowTestId,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
-  const [tooltipModal, setTooltipModal] = useState<string | null>(null);
+  const [tooltipModal, setTooltipModal] = useState<React.ReactNode | null>(null);
   // colId → selected values (empty Set = all / no filter)
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
 
@@ -180,7 +182,7 @@ export function DataTable<T>({
       columns.map((col) => ({
         id: col.id,
         header: col.header,
-        meta: { tooltip: col.headerTooltip } as { tooltip?: string },
+        meta: { tooltip: col.headerTooltip } as { tooltip?: React.ReactNode },
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
@@ -245,10 +247,10 @@ export function DataTable<T>({
                   >
                     <span className="inline-flex items-center gap-1">
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      {(header.column.columnDef.meta as { tooltip?: string })?.tooltip && (
+                      {(header.column.columnDef.meta as { tooltip?: React.ReactNode })?.tooltip && (
                         <button
                           type="button"
-                          onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: string }).tooltip!)}
+                          onClick={() => setTooltipModal((header.column.columnDef.meta as { tooltip?: React.ReactNode }).tooltip!)}
                           className="text-gray-400 hover:text-gray-600 text-xs border border-gray-300 rounded-full w-3.5 h-3.5 inline-flex items-center justify-center cursor-pointer"
                         >
                           ?
@@ -285,6 +287,7 @@ export function DataTable<T>({
               <tr
                 key={row.id}
                 className={rowClassName ? rowClassName(row.original) : undefined}
+                style={rowStyle ? rowStyle(row.original) : undefined}
                 data-testid={rowTestId ? rowTestId(row.original) : undefined}
               >
                 {row.getVisibleCells().map((cell) => (
@@ -302,7 +305,7 @@ export function DataTable<T>({
       {tooltipModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipModal(null)}>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm whitespace-pre-line">{tooltipModal}</p>
+            <div className="text-sm">{tooltipModal}</div>
             <div className="mt-4 text-left">
               <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipModal(null)}>סגור</button>
             </div>
