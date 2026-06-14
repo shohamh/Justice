@@ -661,6 +661,9 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             session.add(pc)
 
         # ── Soldier exemptions ──────────────────────────────────────
+        # All exemptions must start on or before today so load_soldier_inputs
+        # (which checks start_date <= as_of) treats them as active.
+        # Types cycle deterministically to keep seeding stable across runs.
         exemption_reasons = [
             "פטור זמני עקב ניתוח",
             "פטור עקב מילואים",
@@ -671,14 +674,15 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "פטור עקב קורס מקצועי",
             "פטור זמני - החלמה",
         ]
-        non_global_types = [et for et in exemption_types if not et.is_global]
+        # Cycle through the 5 non-global exemption types (indices 0-4)
+        _exemption_cycle = [exemption_types[i % 5] for i in range(12)]
         for i, s in enumerate(all_soldiers[:12]):
-            offset = i % 30
+            days_ago = i % 7  # started 0-6 days ago → already active
             se = SoldierExemption(
                 soldier_id=s.id,
-                exemption_type_id=choice(non_global_types).id,
-                start_date=today + timedelta(days=offset),
-                end_date=today + timedelta(days=offset + randint(3, 14)),
+                exemption_type_id=_exemption_cycle[i].id,
+                start_date=today - timedelta(days=days_ago),
+                end_date=today + timedelta(days=14),
                 reason=exemption_reasons[i % len(exemption_reasons)],
                 granted_by=s_admin.id,
             )
@@ -693,6 +697,22 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                 start_date=today - timedelta(days=10),
                 end_date=today + timedelta(days=20),
                 reason="פטור כללי זמני",
+                granted_by=s_admin.id,
+            )
+        )
+
+        # Grant ספקטרה 8 an active פטור שמירות so the eligibility
+        # distribution pie chart shows variance within the ספקטרה group.
+        # mador_soldiers layout: אינפרה 0-14, פלאש 15-29, ספקטרה 30-44.
+        # "ספקטרה 8" = the soldier named "ספקטרה 8" (i+1=8 → i=7) → index 37.
+        spektra_8 = mador_soldiers[37]
+        session.add(
+            SoldierExemption(
+                soldier_id=spektra_8.id,
+                exemption_type_id=exemption_types[0].id,  # פטור שמירות
+                start_date=today - timedelta(days=30),
+                end_date=today + timedelta(days=60),
+                reason="פטור שמירות",
                 granted_by=s_admin.id,
             )
         )
@@ -778,14 +798,23 @@ def seed(*, force: bool = False, with_assignments: bool = False):
         er_approved = ExemptionRequest(
             soldier_id=all_soldiers[-8].id,
             exemption_type_id=exemption_types[0].id,
-            start_date=today + timedelta(days=5),
-            end_date=today + timedelta(days=10),
+            start_date=today - timedelta(days=5),
+            end_date=today + timedelta(days=5),
             reason="פטור לשמירות - אושר",
             status="approved",
             decided_by=s_admin.id,
             decision_note="מאושר לשבוע",
         )
         session.add(er_approved)
+        # Mirror the approved request as an actual SoldierExemption so the exemptions tab shows it.
+        session.add(SoldierExemption(
+            soldier_id=all_soldiers[-8].id,
+            exemption_type_id=exemption_types[0].id,
+            start_date=today - timedelta(days=5),
+            end_date=today + timedelta(days=5),
+            reason="פטור לשמירות - אושר",
+            granted_by=s_admin.id,
+        ))
 
         er_rejected = ExemptionRequest(
             soldier_id=all_soldiers[-9].id,
@@ -1266,15 +1295,18 @@ def seed(*, force: bool = False, with_assignments: bool = False):
                     **extra,
                 ))
 
-        # ── Always-on marketplace demo swaps ────────────────────────────
-        # A small set of published assignments + open swap requests so the
-        # marketplace board is populated regardless of --with-assignments.
+        # ── Always-on marketplace demo swaps ──────────────────────────────────────────────────
+        # Use real DutyShifts so duty_shift_id is populated and the shift
+        # detail panel can be opened from the marketplace board.
+        _enlisted_type_ids = {duty_types[0].id, duty_types[1].id}
+        _demo_shifts = [
+            s for s in shifts_created
+            if s.duty_type_id in _enlisted_type_ids and s.start_date >= today
+        ][:8]
         demo_enlisted = [
             s for s in all_soldiers
             if not s.is_officer and s.personal_number not in ("1000001",)
-        ][:8]
-        dt_shamirot = duty_types[0]   # שמירות  (enlisted-only)
-        dt_livoim   = duty_types[1]   # ליווים  (enlisted-only)
+        ][-len(_demo_shifts):]
         demo_reasons = [
             "בדיקה רפואית",
             "אירוע משפחתי",
@@ -1285,17 +1317,14 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "קורס מקצועי",
             "בעיה אישית",
         ]
-        for i, sol in enumerate(demo_enlisted):
-            dt_demo = dt_shamirot if i % 2 == 0 else dt_livoim
-            loc_demo = locations[i % len(locations)]
-            start_demo = today + timedelta(days=7 + i * 4)
-            end_demo   = start_demo + (timedelta(days=7) if i % 2 == 0 else timedelta(days=0))
+        for i, (sol, shift) in enumerate(zip(demo_enlisted, _demo_shifts)):
             da_demo = DutyAssignment(
                 soldier_id=sol.id,
-                duty_type_id=dt_demo.id,
-                duty_location_id=loc_demo.id,
-                start_date=start_demo,
-                end_date=end_demo,
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                duty_shift_id=shift.id,
                 status="published",
                 created_by=s_admin.id,
             )
