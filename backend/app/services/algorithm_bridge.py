@@ -286,7 +286,9 @@ def load_duty_blocks_from_shifts(
     Returns (all_blocks, block_to_shift_map). Reserve blocks have
     is_reserve=True and score_per_day scaled by standby_multiplier.
     """
-    shifts = session.execute(select(DutyShift).where(DutyShift.id.in_(shift_ids))).scalars().all()
+    shifts = session.execute(
+        select(DutyShift).where(DutyShift.id.in_(shift_ids), DutyShift.status == "active")
+    ).scalars().all()
 
     type_ids = {s.duty_type_id for s in shifts}
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
@@ -961,6 +963,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 job.result_metadata = {
                     "fairness_before": stats_before,
                     "fairness_after": stats_after,
+                    "outcome": result.status,
+                    "objective_value": result.objective_value,
+                    "solver_metrics": result.solver_metrics,
                 }
                 job.status = "done"
                 job.finished_at = datetime.now(tz=UTC)
@@ -1006,3 +1011,108 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         err_session.commit()
     finally:
         _cancel_events.pop(str(job_id), None)
+
+
+def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
+    """Reconstruct solver inputs from a stored job and return as a JSON-serializable dict."""
+    from app.services.settings_loader import get_setting
+
+    settings = resolve_solver_settings(session, job.settings_json)
+
+    def _setting_decimal(key: str, default: str) -> Decimal:
+        try:
+            return Decimal(str(get_setting(session, key)))
+        except Exception:
+            return Decimal(default)
+
+    standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
+
+    shift_ids = [uuid.UUID(s) for s in job.shift_ids]
+    duties, block_to_shift_map = load_duty_blocks_from_shifts(
+        session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
+    )
+
+    if duties:
+        planning_start = min(d.start_date for d in duties)
+        planning_end = max(d.end_date for d in duties)
+    else:
+        planning_start = job.planning_start
+        planning_end = job.planning_end
+
+    soldiers = load_soldier_inputs(session, as_of=planning_start)
+
+    try:
+        _reset_raw = get_setting(session, "fairness.reset_date")
+        _reset_date = date.fromisoformat(str(_reset_raw))
+    except Exception:
+        _reset_date = quarter_start(date(planning_start.year - 2, planning_start.month, 1))
+
+    effort_horizon = effort_history_horizon(session, planning_start=planning_start)
+    effort_map = compute_effort_data(
+        session,
+        soldiers=soldiers,
+        planning_start=effort_horizon,
+        planning_end=effort_horizon,
+        reset_date=_reset_date,
+    )
+    effort_range = inject_effort_scores(soldiers, duties, effort_map)
+    settings.effort_range_min, settings.effort_range_max = effort_range
+
+    existing = load_existing_assignments(
+        session,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        W=settings.Wr,
+    )
+
+    def _soldier_dict(s: SoldierInput) -> dict:
+        return {
+            "id": str(s.id),
+            "enrolled_at": s.enrolled_at.isoformat(),
+            "cumulative_score": float(s.cumulative_score),
+            "active_days": s.active_days,
+            "hierarchy_node_id": str(s.hierarchy_node_id) if s.hierarchy_node_id else None,
+            "approved_constraint_dates": [
+                [a.isoformat(), b.isoformat()] for a, b in s.approved_constraint_dates
+            ],
+            "exempted_duty_type_ids": [str(e) for e in s.exempted_duty_type_ids],
+            "effort_offset": s.effort_offset,
+            "effort_per_milli": s.effort_per_milli,
+        }
+
+    def _duty_dict(d: DutyBlock) -> dict:
+        return {
+            "id": str(d.id),
+            "duty_type_id": str(d.duty_type_id),
+            "duty_location_id": str(d.duty_location_id),
+            "start_date": d.start_date.isoformat(),
+            "end_date": d.end_date.isoformat(),
+            "score_per_day": float(d.score_per_day),
+            "is_reserve": d.is_reserve,
+            "eligible_node_ids": [str(n) for n in d.eligible_node_ids] if d.eligible_node_ids else None,
+            "shift_id": str(block_to_shift_map[d.id]) if d.id in block_to_shift_map else None,
+        }
+
+    def _existing_dict(e: ExistingAssignment) -> dict:
+        return {
+            "soldier_id": str(e.soldier_id),
+            "duty_type_id": str(e.duty_type_id),
+            "start_date": e.start_date.isoformat(),
+            "end_date": e.end_date.isoformat(),
+            "is_reserve": e.is_reserve,
+        }
+
+    settings_dict = dataclasses.asdict(settings)
+    settings_dict["alpha"] = float(settings_dict["alpha"])
+    settings_dict["reserve_hierarchy_weight"] = float(settings_dict["reserve_hierarchy_weight"])
+
+    return {
+        "job_id": str(job.id),
+        "planning_start": planning_start.isoformat(),
+        "planning_end": planning_end.isoformat(),
+        "exported_at": datetime.now(tz=UTC).isoformat(),
+        "settings": settings_dict,
+        "soldiers": [_soldier_dict(s) for s in soldiers],
+        "duties": [_duty_dict(d) for d in duties],
+        "existing_assignments": [_existing_dict(e) for e in existing],
+    }

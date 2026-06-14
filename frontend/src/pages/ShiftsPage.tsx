@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
-import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, bulkClearAssignments, bulkDeleteShifts, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
+import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -239,8 +239,19 @@ export function ShiftsContent() {
     await refresh();
   }
 
+  async function handleCancel(shift: DutyShift) {
+    if (!window.confirm(t("shifts.confirm_cancel"))) return;
+    await cancelShift(shift.id);
+    await refresh();
+  }
+
+  async function handleActivate(shift: DutyShift) {
+    await activateShift(shift.id);
+    await refresh();
+  }
+
   async function handleDelete(shift: DutyShift) {
-    if (!window.confirm(t("shifts.confirm_delete"))) return;
+    if (!window.confirm(t("shifts.confirm_delete_permanent"))) return;
     try {
       await deleteShift(shift.id);
       await refresh();
@@ -340,7 +351,7 @@ export function ShiftsContent() {
               sortValue: (s) => s.reserve_assigned_count ?? 0,
             },
             {
-              id: "status",
+              id: "fill_status",
               header: t("shifts.status"),
               cell: (s) => (
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${FILL_COLORS[s.fill_status]}`}>
@@ -351,10 +362,19 @@ export function ShiftsContent() {
               filterValue: (s) => t(`shifts.fill_${s.fill_status}`),
             },
             {
+              id: "shift_status",
+              header: t("shifts.shift_status"),
+              cell: (s) => s.status === "cancelled"
+                ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{t("shifts.cancelled")}</span>
+                : null,
+              sortValue: (s) => s.status,
+              filterValue: (s) => s.status === "cancelled" ? t("shifts.cancelled") : t("shifts.active"),
+            },
+            {
               id: "actions",
               header: t("shifts.actions"),
               cell: (s) => (
-                <span className="space-x-2 space-x-reverse">
+                <span className="flex flex-wrap gap-x-2 gap-y-1 items-center">
                   <button
                     type="button"
                     onClick={() => setEditShift(s)}
@@ -362,19 +382,39 @@ export function ShiftsContent() {
                   >
                     {t("shifts.edit")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleClearAssignments(s)}
-                    className="text-orange-600 text-xs hover:underline disabled:opacity-40"
-                    disabled={s.assigned_count === 0}
-                  >
-                    {t("shifts.clear_assignments")}
-                  </button>
+                  {s.status === "cancelled" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleActivate(s)}
+                      className="text-green-600 dark:text-green-400 text-xs hover:underline"
+                    >
+                      {t("shifts.activate")}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleClearAssignments(s)}
+                        className="text-orange-600 text-xs hover:underline disabled:opacity-40"
+                        disabled={s.assigned_count === 0}
+                      >
+                        {t("shifts.clear_assignments")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCancel(s)}
+                        className="text-yellow-600 dark:text-yellow-500 text-xs hover:underline"
+                      >
+                        {t("shifts.cancel")}
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDelete(s)}
-                    className="text-red-600 text-xs hover:underline"
+                    className="text-gray-400 dark:text-gray-500 text-xs hover:text-red-600 dark:hover:text-red-400 hover:underline"
                     disabled={s.assigned_count > 0}
+                    title={t("shifts.delete_tooltip")}
                   >
                     {t("shifts.delete")}
                   </button>
@@ -386,6 +426,7 @@ export function ShiftsContent() {
             <DataTable
               columns={shiftCols}
               data={shifts}
+              rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
               filterPlaceholder={t("table.filter_placeholder")}
               emptyMessage="אין משמרות"
             />

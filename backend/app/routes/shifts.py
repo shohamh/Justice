@@ -29,6 +29,7 @@ class ShiftOut(BaseModel):
     assigned_count: int
     reserve_assigned_count: int
     fill_status: str
+    status: str = "active"
     reserve_count_override: int | None = None
     calculated_reserve_count: int | None = None
 
@@ -73,6 +74,7 @@ def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
         fill_status=s.fill_status,
         reserve_count_override=s.reserve_count_override,
         calculated_reserve_count=calculated,
+        status=s.status,
     )
 
 
@@ -162,6 +164,34 @@ def update_shift(
         )
     except svc.ShiftError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return _out(svc.get_shift_fill(session, shift_id=shift_id), session)
+
+
+@router.post("/{shift_id}/cancel", response_model=ShiftOut)
+def cancel_shift(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ShiftOut:
+    """Soft-cancel a shift. It stays in the DB but is excluded from the algorithm."""
+    shift = _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+    shift.status = "cancelled"
+    session.commit()
+    return _out(svc.get_shift_fill(session, shift_id=shift_id), session)
+
+
+@router.post("/{shift_id}/activate", response_model=ShiftOut)
+def activate_shift(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ShiftOut:
+    """Re-activate a previously cancelled shift."""
+    shift = _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+    shift.status = "active"
     session.commit()
     return _out(svc.get_shift_fill(session, shift_id=shift_id), session)
 

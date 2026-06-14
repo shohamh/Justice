@@ -11,6 +11,7 @@ export interface DutyShift {
   assigned_count: number;
   reserve_assigned_count: number;
   fill_status: "empty" | "partial" | "full";
+  status: "active" | "cancelled";
   reserve_count_override?: number | null;
   calculated_reserve_count?: number | null;
 }
@@ -55,6 +56,14 @@ export async function deleteShift(id: string): Promise<void> {
 
 export async function clearShiftAssignments(id: string): Promise<void> {
   await api.delete(`/shifts/${id}/assignments`);
+}
+
+export async function cancelShift(id: string): Promise<DutyShift> {
+  return (await api.post<DutyShift>(`/shifts/${id}/cancel`)).data;
+}
+
+export async function activateShift(id: string): Promise<DutyShift> {
+  return (await api.post<DutyShift>(`/shifts/${id}/activate`)).data;
 }
 
 export interface BulkDeletePreviewShift {

@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, Text, text
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
@@ -330,6 +330,9 @@ class DutyShift(Base):
     )
     eligible_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=True, default=None
+    )
+    status: Mapped[str] = mapped_column(
+        String, server_default=text("'active'"), default="active"
     )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None

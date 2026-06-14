@@ -31,6 +31,7 @@ class ShiftWithFill:
     assigned_count: int
     reserve_assigned_count: int
     fill_status: str  # 'empty' | 'partial' | 'full'
+    status: str = "active"  # 'active' | 'cancelled'
     reserve_count_override: int | None = None
 
 
@@ -72,6 +73,7 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         assigned_count=primary,
         reserve_assigned_count=reserve,
         fill_status=_fill_status(primary, shift.required_count),
+        status=shift.status,
         reserve_count_override=shift.reserve_count_override,
     )
 
@@ -252,6 +254,7 @@ def list_shifts(
             assigned_count=primary_assigned,
             reserve_assigned_count=reserve_assigned,
             fill_status=_fill_status(primary_assigned, shift.required_count),
+            status=shift.status,
             reserve_count_override=shift.reserve_count_override,
         ))
     return result
