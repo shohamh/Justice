@@ -187,6 +187,10 @@ export async function bulkAcceptProposals(jobId: string, assignmentIds: string[]
   return (await api.post<{ accepted: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-accept`, { assignment_ids: assignmentIds })).data;
 }
 
+export async function bulkRejectProposals(jobId: string, assignmentIds: string[]): Promise<{ rejected: number }> {
+  return (await api.post<{ rejected: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-reject`, { assignment_ids: assignmentIds })).data;
+}
+
 export async function rejectProposal(jobId: string, assignmentId: string): Promise<void> {
   await api.post(`/algorithm/jobs/${jobId}/proposals/${assignmentId}/reject`);
 }

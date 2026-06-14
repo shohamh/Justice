@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
-import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
+import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import { DataTable, type ColDef } from "./DataTable";
@@ -29,6 +29,8 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const [resetDraftsLoading, setResetDraftsLoading] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
 
   function apiErrorMsg(e: unknown): string {
     if (axios.isAxiosError(e)) {
@@ -113,6 +115,32 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       setApproveError(apiErrorMsg(e));
     } finally {
       setApproving(false);
+    }
+  }
+
+  async function handleRejectSelected() {
+    const toReject = selectedIds.size > 0
+      ? job.proposals.filter(p => selectedIds.has(p.assignment_id) && isPending(p))
+      : pendingProposals;
+    if (toReject.length === 0) return;
+    const count = toReject.length;
+    if (!window.confirm(`בטל ${count} טיוטות?`)) return;
+    setRejecting(true);
+    setRejectError(null);
+    try {
+      await bulkRejectProposals(jobId, toReject.map(p => p.assignment_id));
+      const rejectedIds = new Set(toReject.map(p => p.assignment_id));
+      onProposalUpdate({
+        ...job,
+        proposals: job.proposals.map(p =>
+          rejectedIds.has(p.assignment_id) && isPending(p) ? { ...p, status: "algorithm_rejected" } : p
+        ),
+      });
+      setSelectedIds(new Set());
+    } catch (e) {
+      setRejectError(apiErrorMsg(e));
+    } finally {
+      setRejecting(false);
     }
   }
 
@@ -293,8 +321,28 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
                 return approving ? `מפרסם... (${count})` : `אשר ופרסם (הפוך לרשמי) (${count})`;
               })()}
             </button>
+            <button
+              type="button"
+              onClick={handleRejectSelected}
+              disabled={pendingProposals.length === 0 || rejecting}
+              className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {rejecting && (
+                <svg className="animate-spin h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              )}
+              {(() => {
+                const count = selectedIds.size > 0 ? selectedIds.size : pendingProposals.length;
+                return rejecting ? `מבטל... (${count})` : `בטל טיוטות (${count})`;
+              })()}
+            </button>
             {approveError && (
               <span className="text-xs text-red-600 dark:text-red-400">{approveError}</span>
+            )}
+            {rejectError && (
+              <span className="text-xs text-red-600 dark:text-red-400">{rejectError}</span>
             )}
           </div>
           <DataTable

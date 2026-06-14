@@ -163,9 +163,52 @@ def _load_assignment(session: Session, assignment_id: uuid.UUID) -> DutyAssignme
     return a
 
 
+def _assignment_ids_for_job(session: Session, job_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = session.execute(
+        select(AuditLog.entity_id).where(
+            AuditLog.action == "algorithm.proposal.create",
+            AuditLog.context["job_id"].astext == str(job_id),
+        )
+    ).scalars().all()
+    return [eid for eid in rows if eid is not None]
+
+
+def _maybe_publish_job(session: Session, job_id: uuid.UUID) -> None:
+    """Set job status to 'published' when no algorithm_draft proposals remain."""
+    from sqlalchemy import func
+    assignment_ids = _assignment_ids_for_job(session, job_id)
+    if not assignment_ids:
+        return
+    remaining = session.execute(
+        select(func.count()).select_from(DutyAssignment).where(
+            DutyAssignment.id.in_(assignment_ids),
+            DutyAssignment.status == "algorithm_draft",
+        )
+    ).scalar_one()
+    if remaining == 0:
+        job = session.get(AlgorithmJob, job_id)
+        if job and job.status == "done":
+            job.status = "published"
+
+
+def _job_id_for_assignment(session: Session, assignment_id: uuid.UUID) -> uuid.UUID | None:
+    row = session.execute(
+        select(AuditLog.context["job_id"].astext).where(
+            AuditLog.action == "algorithm.proposal.create",
+            AuditLog.entity_id == assignment_id,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    try:
+        return uuid.UUID(row)
+    except (ValueError, AttributeError):
+        return None
+
+
 def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]:
     """Load proposals created for this job, identified via the audit log."""
-    if job.status != "done":
+    if job.status not in ("done", "published"):
         return []
 
     from app.db.models import AuditLog
@@ -649,6 +692,7 @@ def accept_proposal(
         after={"status": "published"},
         context={"job_id": str(job_id)},
     )
+    _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "published"}
 
@@ -696,8 +740,51 @@ def bulk_accept_proposals(
             ])
         )
 
+    _maybe_publish_job(session, job_id)
     session.commit()
     return {"accepted": len(accepted_ids)}
+
+
+@router.post("/jobs/{job_id}/proposals/bulk-reject", status_code=status.HTTP_200_OK)
+def bulk_reject_proposals(
+    job_id: uuid.UUID,
+    body: BulkAcceptRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    _load_job(session, job_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    result = session.execute(
+        update(DutyAssignment)
+        .where(
+            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.status == "algorithm_draft",
+        )
+        .values(status="algorithm_rejected")
+        .returning(DutyAssignment.id)
+    )
+    rejected_ids = [row[0] for row in result]
+
+    if rejected_ids:
+        session.execute(
+            insert(AuditLog).values([
+                {
+                    "actor_id": user.id,
+                    "action": "algorithm.proposal.bulk_reject",
+                    "entity_type": "duty_assignment",
+                    "entity_id": rid,
+                    "before": {"status": "algorithm_draft"},
+                    "after": {"status": "algorithm_rejected"},
+                    "context": {"job_id": str(job_id)},
+                }
+                for rid in rejected_ids
+            ])
+        )
+
+    _maybe_publish_job(session, job_id)
+    session.commit()
+    return {"rejected": len(rejected_ids)}
 
 
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/reject", status_code=status.HTTP_200_OK)
@@ -723,6 +810,7 @@ def reject_proposal(
         after={"status": "algorithm_rejected"},
         context={"job_id": str(job_id)},
     )
+    _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "algorithm_rejected"}
 
@@ -733,6 +821,7 @@ def accept_proposal_direct(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, str]:
+    job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
     if a.status != "algorithm_draft":
@@ -748,6 +837,8 @@ def accept_proposal_direct(
         after={"status": "published"},
         context={"source": "direct"},
     )
+    if job_id is not None:
+        _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "published"}
 
@@ -758,6 +849,7 @@ def reject_proposal_direct(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, str]:
+    job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
     if a.status != "algorithm_draft":
@@ -773,5 +865,7 @@ def reject_proposal_direct(
         after={"status": "algorithm_rejected"},
         context={"source": "direct"},
     )
+    if job_id is not None:
+        _maybe_publish_job(session, job_id)
     session.commit()
     return {"status": "algorithm_rejected"}
