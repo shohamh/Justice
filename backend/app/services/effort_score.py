@@ -99,9 +99,7 @@ def _compute_effort_data(
                 s_score = quarter_soldier_scores.get(q_start, {}).get(soldier.id, Decimal("0"))
                 share_q = s_score / unit_score
                 A_i += share_q * active_frac
-
-            # Count the quarter in W_i regardless of whether unit had duties
-            W_i += active_frac
+                W_i += active_frac
 
         effective_W = W_i if W_i > Decimal("0") else Decimal("1")
         effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
@@ -323,7 +321,7 @@ def compute_effort_breakdown(
 
         if unit_score > 0:
             A_i += weighted_share
-        W_i += active_frac
+            W_i += active_frac
 
         true_q_end = quarter_end(q_start_d)
         # Past quarters may be clipped (partial); future quarters are full calendar quarters
