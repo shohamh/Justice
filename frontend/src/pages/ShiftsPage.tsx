@@ -267,9 +267,9 @@ export function ShiftsContent() {
   return (
     <>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={handleClearAll}
@@ -287,7 +287,7 @@ export function ShiftsContent() {
           </div>
         </div>
 
-        <div className="flex gap-4 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
           <label className="flex items-center gap-2">
             {t("shifts.filter_from")}
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
