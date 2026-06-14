@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift } from "../api/shifts";
-import { DutyType, DutyLocation } from "../api/dutyConfig";
+import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -11,16 +11,35 @@ interface Props {
   onClose: () => void;
 }
 
-export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved, onClose }: Props) {
+export default function ShiftFormModal({ dutyTypes, locations: initialLocations, existing, onSaved, onClose }: Props) {
   const { t } = useTranslation();
+  const [locations, setLocations] = useState<DutyLocation[]>(initialLocations);
   const [dtId, setDtId] = useState(existing?.duty_type_id ?? dutyTypes[0]?.id ?? "");
-  const [locId, setLocId] = useState(existing?.duty_location_id ?? locations[0]?.id ?? "");
+  const [locId, setLocId] = useState(existing?.duty_location_id ?? initialLocations[0]?.id ?? "");
   const [startDate, setStartDate] = useState(existing?.start_date ?? "");
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   const [count, setCount] = useState(existing?.required_count ?? 1);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [reserveOverride, setReserveOverride] = useState(existing?.reserve_count_override?.toString() ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [addingLocation, setAddingLocation] = useState(false);
+  const [newLocName, setNewLocName] = useState("");
+  const [locSaving, setLocSaving] = useState(false);
+
+  async function handleAddLocation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newLocName.trim()) return;
+    setLocSaving(true);
+    try {
+      const created = await createLocation({ name: newLocName.trim() });
+      setLocations(prev => [...prev, created]);
+      setLocId(created.id);
+      setNewLocName("");
+      setAddingLocation(false);
+    } finally {
+      setLocSaving(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,12 +88,38 @@ export default function ShiftFormModal({ dutyTypes, locations, existing, onSaved
                   {dutyTypes.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </label>
-              <label className="block text-sm">
-                {t("shifts.location")}
-                <select value={locId} onChange={e => setLocId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                  {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-              </label>
+              <div className="block text-sm">
+                <div className="flex items-center justify-between mb-1">
+                  <span>{t("shifts.location")}</span>
+                  {!addingLocation && (
+                    <button type="button" onClick={() => setAddingLocation(true)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                      + {t("shifts.add_location")}
+                    </button>
+                  )}
+                </div>
+                {addingLocation ? (
+                  <form onSubmit={handleAddLocation} className="flex gap-1">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newLocName}
+                      onChange={e => setNewLocName(e.target.value)}
+                      placeholder={t("shifts.location_name")}
+                      className="flex-1 border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    />
+                    <button type="submit" disabled={locSaving || !newLocName.trim()} className="px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:opacity-50">
+                      {t("shifts.save")}
+                    </button>
+                    <button type="button" onClick={() => { setAddingLocation(false); setNewLocName(""); }} className="px-2 py-1 text-xs border dark:border-gray-600 dark:text-gray-300 rounded">
+                      {t("shifts.dismiss")}
+                    </button>
+                  </form>
+                ) : (
+                  <select value={locId} onChange={e => setLocId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                )}
+              </div>
             </>
           )}
           <label className="block text-sm">

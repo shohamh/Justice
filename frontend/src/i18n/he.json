@@ -480,7 +480,12 @@
     "delete": "מחק",
     "delete_tooltip": "מחיקה קבועה — נדיר. לביטול בלבד יש להשתמש ב׳בטל משמרת׳.",
     "actions": "פעולות",
-    "save": "שמור"
+    "save": "שמור",
+    "add_location": "מיקום חדש",
+    "location_name": "שם מיקום",
+    "dismiss": "ביטול",
+    "search_shifts": "חיפוש משמרות...",
+    "filter_duty_type": "סוג תורנות"
   },
   "table": {
     "filter_placeholder": "סנן..."

@@ -45,6 +45,8 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterDutyTypeId, setFilterDutyTypeId] = useState("");
 
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
   const shiftLabel = (shift: DutyShift) =>
@@ -115,22 +117,42 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
 
       {availableShifts.length > 0 && (
         <div>
-          <div className="flex items-center gap-3 mb-1">
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
             <p className="font-medium">בחר משמרות להרצה</p>
             <button type="button" onClick={() => setSelectedShiftIds(availableShifts.map(s => s.id))} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">בחר הכל</button>
             <button type="button" onClick={() => setSelectedShiftIds([])} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">בטל בחירה</button>
           </div>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={t("shifts.search_shifts")}
+              className="flex-1 border rounded p-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            />
+            <select
+              value={filterDutyTypeId}
+              onChange={e => setFilterDutyTypeId(e.target.value)}
+              className="border rounded p-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            >
+              <option value="">כל הסוגים</option>
+              {dutyTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
+            </select>
+          </div>
           <div className="space-y-1 max-h-48 overflow-y-auto border dark:border-gray-600 rounded p-2">
-            {availableShifts.map(shift => (
-              <label key={shift.id} className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={selectedShiftIds.includes(shift.id)}
-                  onChange={() => toggleShift(shift.id)}
-                />
-                <span className={FILL_COLORS[shift.fill_status]}>{shiftLabel(shift)}</span>
-              </label>
-            ))}
+            {availableShifts
+              .filter(s => !filterDutyTypeId || s.duty_type_id === filterDutyTypeId)
+              .filter(s => !search || shiftLabel(s).includes(search))
+              .map(shift => (
+                <label key={shift.id} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={selectedShiftIds.includes(shift.id)}
+                    onChange={() => toggleShift(shift.id)}
+                  />
+                  <span className={FILL_COLORS[shift.fill_status]}>{shiftLabel(shift)}</span>
+                </label>
+              ))}
           </div>
         </div>
       )}
