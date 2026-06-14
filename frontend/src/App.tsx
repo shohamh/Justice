@@ -22,8 +22,9 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
-import AssignmentPage from "./pages/planning/AssignmentPage";
+import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
 import ConfigPage from "./pages/planning/ConfigPage";
+import TemplatesPage from "./pages/planning/TemplatesPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import HakpazaPage from "./pages/HakpazaPage";
 import ImportPage from "./pages/ImportPage";
@@ -68,19 +69,21 @@ export default function App() {
             <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
             <Route path="/command-dashboard" element={<AppGate><CommandDashboardPage /></AppGate>} />
             <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
-            {/* New tabbed planning pages */}
-            <Route path="/planning/assignment" element={<AppGate><AssignmentPage /></AppGate>} />
+            {/* Planning pages */}
+            <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
             <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
-            {/* New admin settings page */}
+            <Route path="/planning/templates" element={<AppGate><TemplatesPage /></AppGate>} />
+            {/* Admin */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
             <Route path="/import" element={<AppGate><ImportPage /></AppGate>} />
             {/* Redirects from old routes */}
-            <Route path="/duty-management" element={<Navigate to="/planning/assignment?tab=0" replace />} />
-            <Route path="/algorithm" element={<Navigate to="/planning/assignment?tab=1" replace />} />
-            <Route path="/duty-config" element={<Navigate to="/planning/config?tab=0" replace />} />
-            <Route path="/shifts" element={<Navigate to="/planning/config?tab=1" replace />} />
-            <Route path="/shift-templates" element={<Navigate to="/planning/config?tab=2" replace />} />
+            <Route path="/planning/assignment" element={<Navigate to="/planning/shifts?tab=1" replace />} />
+            <Route path="/duty-management" element={<Navigate to="/planning/shifts?tab=1" replace />} />
+            <Route path="/algorithm" element={<Navigate to="/planning/shifts?tab=2" replace />} />
+            <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
+            <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
+            <Route path="/shift-templates" element={<Navigate to="/planning/templates" replace />} />
             <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
             <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
           </Route>
