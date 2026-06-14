@@ -245,6 +245,34 @@ callofduty2/
 
 ---
 
+## Installing Python dependencies offline
+
+If you need to install the backend on a machine with no internet access, use uv's
+wheel-download workflow.
+
+**Step 1 — on an internet-connected machine** (same OS / Python version as the target):
+
+```powershell
+cd backend
+uv export --frozen --no-dev -o requirements-vendor.txt
+uv pip download -r requirements-vendor.txt --dest vendor/
+```
+
+This writes every required wheel into `backend/vendor/`. Zip it up and copy the
+whole `backend/` directory (including `uv.lock` and `vendor/`) to the offline machine.
+
+**Step 2 — on the offline machine**:
+
+```powershell
+cd backend
+uv venv
+uv pip install --no-index --find-links vendor/ -r requirements-vendor.txt
+```
+
+`vendor/` is in `.gitignore` — don't commit the wheels.
+
+---
+
 ## Roadmap
 
 - **v1 — Foundation** ✅: data model, auth, manual workflows, scoring, audit.
