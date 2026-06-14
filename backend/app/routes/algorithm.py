@@ -98,6 +98,7 @@ class JobOut(BaseModel):
     relaxed: list[str]
     reasons: list[str]
     batch_results: list[dict] = Field(default_factory=list)
+    result_metadata: dict[str, Any] | None = None
 
 
 class JobSummaryOut(BaseModel):
@@ -498,6 +499,7 @@ def get_job(
 
     proposals = _proposals_for_job(session, job)
     relaxed, reasons = _parse_failure(job.error_message)
+    meta = job.result_metadata or {}
     return JobOut(
         id=job.id,
         status=job.status,
@@ -509,10 +511,31 @@ def get_job(
         error_message=job.error_message,
         progress_message=job.progress_message,
         proposals=proposals,
-        solver_metrics={},
+        solver_metrics=meta.get("solver_metrics") or {},
         relaxed=relaxed,
         reasons=reasons,
         batch_results=job.batch_results or [],
+        result_metadata=job.result_metadata,
+    )
+
+
+@router.get("/jobs/{job_id}/export-inputs")
+def export_job_inputs(
+    job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Any:
+    """Return a JSON dump of solver inputs for this job, suitable for offline replay."""
+    from fastapi.responses import JSONResponse
+    from app.services.algorithm_bridge import export_solver_inputs
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    job = _load_job(session, job_id)
+    data = export_solver_inputs(job, session)
+    return JSONResponse(
+        content=data,
+        headers={
+            "Content-Disposition": f'attachment; filename="solver_dump_{job_id}.json"',
+        },
     )
 
 

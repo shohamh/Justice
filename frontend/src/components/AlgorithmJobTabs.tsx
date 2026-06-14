@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlgorithmJob } from "../api/algorithm";
+import { api } from "../api/client";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
@@ -16,6 +17,16 @@ interface Props {
 }
 
 type Tab = "proposals" | "batches" | "issues";
+
+async function downloadSolverInputs(jobId: string) {
+  const resp = await api.get(`/algorithm/jobs/${jobId}/export-inputs`, { responseType: "blob" });
+  const url = URL.createObjectURL(resp.data as Blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `solver_dump_${jobId}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
   const [tab, setTab] = useState<Tab>("proposals");
@@ -34,10 +45,42 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
 
   const meta = job.result_metadata;
 
+  const outcomeLabel: Record<string, string> = {
+    OPTIMAL: "אופטימלי ✓",
+    FEASIBLE: "כדאי (לא מוכח אופטימלי)",
+    INFEASIBLE: "לא פתיר",
+    CANCELLED: "בוטל",
+  };
+  const outcomeClass: Record<string, string> = {
+    OPTIMAL: "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700",
+    FEASIBLE: "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700",
+    INFEASIBLE: "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700",
+    CANCELLED: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600",
+  };
+
   return (
     <div className="space-y-3">
       {meta?.fairness_before && (
         <div className="space-y-2" dir="rtl">
+          {meta.outcome && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={`inline-flex items-center px-2.5 py-1 rounded border text-xs font-semibold ${outcomeClass[meta.outcome] ?? outcomeClass.FEASIBLE}`}>
+                {outcomeLabel[meta.outcome] ?? meta.outcome}
+              </span>
+              {meta.solver_metrics?.wall_time != null && (
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  זמן: {meta.solver_metrics.wall_time.toFixed(1)}s
+                  {meta.solver_metrics.conflicts != null && ` | conflicts: ${meta.solver_metrics.conflicts}`}
+                </span>
+              )}
+              <button
+                onClick={() => downloadSolverInputs(jobId)}
+                className="mr-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                ⬇ ייצוא קלטי solver
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-50 dark:bg-gray-700 rounded p-3 border border-gray-200 dark:border-gray-600 text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">CV לפני (count-space)</p>
@@ -62,6 +105,16 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
             <p className="text-xs text-gray-500 dark:text-gray-400 text-right">
               count-space: ממוצע {meta.fairness_after.mean} | סטיית תקן {meta.fairness_after.stddev} | טווח {meta.fairness_after.min}–{meta.fairness_after.max}
             </p>
+          )}
+          {!meta.outcome && job.status === "done" && (
+            <div className="flex justify-end">
+              <button
+                onClick={() => downloadSolverInputs(jobId)}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                ⬇ ייצוא קלטי solver
+              </button>
+            </div>
           )}
         </div>
       )}

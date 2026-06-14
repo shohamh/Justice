@@ -465,6 +465,7 @@ def _effort_round_solve(
 
     all_assignments: list[Assignment] = []
     relaxed: list[str] = []
+    batch_results: list[BatchResult] = []
     # Effort/density carry-forward shared across components and rounds.
     carry: list[ExistingAssignment] = list(existing)
 
@@ -474,13 +475,34 @@ def _effort_round_solve(
                 assignments=[], status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed,
+                batch_results=batch_results,
             )
+
+        component_duties = [duties[di] for di in duty_idxs]
 
         if not soldier_idxs:
             # Duties with no eligible soldier — left unassigned.
+            if component_duties:
+                batch_results.append(BatchResult(
+                    batch_index=len(batch_results),
+                    component_index=done - 1,
+                    date_from=min(d.start_date for d in component_duties),
+                    date_to=max(d.end_date for d in component_duties),
+                    duty_count=len(component_duties),
+                    soldier_count=0,
+                    assigned_count=0,
+                    unassigned_count=len(component_duties),
+                    outcome="INFEASIBLE",
+                    relaxations=[],
+                    wall_time_seconds=0.0,
+                ))
             if progress_cb:
                 progress_cb(done, n_components)
             continue
+
+        t0 = time.monotonic()
+        assignments_before = len(all_assignments)
+        component_relaxed: list[str] = []
 
         full_pool = [work[si] for si in soldier_idxs]
         residual = [duties[di] for di in duty_idxs]
@@ -527,6 +549,20 @@ def _effort_round_solve(
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=[],
             ))
+            assigned_here = len(all_assignments) - assignments_before
+            batch_results.append(BatchResult(
+                batch_index=len(batch_results),
+                component_index=done - 1,
+                date_from=min(d.start_date for d in component_duties),
+                date_to=max(d.end_date for d in component_duties),
+                duty_count=len(component_duties),
+                soldier_count=len(full_pool),
+                assigned_count=assigned_here,
+                unassigned_count=len(component_duties) - assigned_here,
+                outcome=solver0.StatusName(st0),
+                relaxations=[],
+                wall_time_seconds=round(time.monotonic() - t0, 3),
+            ))
             if progress_cb:
                 progress_cb(done, n_components)
             continue
@@ -560,6 +596,7 @@ def _effort_round_solve(
                 if res.status == "CANCELLED":
                     return SolverResult(
                         assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
+                        batch_results=batch_results,
                     )
                 if res.assignments:
                     _absorb(res)
@@ -568,7 +605,30 @@ def _effort_round_solve(
                 label = _relax_step(current)
                 if label is None:
                     break
-                relaxed.append(label)
+                component_relaxed.append(label)
+
+        assigned_here = len(all_assignments) - assignments_before
+        total_here = len(component_duties)
+        if assigned_here == 0 and total_here > 0:
+            comp_outcome = "INFEASIBLE"
+        elif assigned_here < total_here:
+            comp_outcome = "FEASIBLE"
+        else:
+            comp_outcome = "OPTIMAL"
+        batch_results.append(BatchResult(
+            batch_index=len(batch_results),
+            component_index=done - 1,
+            date_from=min(d.start_date for d in component_duties),
+            date_to=max(d.end_date for d in component_duties),
+            duty_count=total_here,
+            soldier_count=len(full_pool),
+            assigned_count=assigned_here,
+            unassigned_count=total_here - assigned_here,
+            outcome=comp_outcome,
+            relaxations=component_relaxed,
+            wall_time_seconds=round(time.monotonic() - t0, 3),
+        ))
+        relaxed.extend(component_relaxed)
 
         if progress_cb:
             progress_cb(done, n_components)
@@ -583,6 +643,7 @@ def _effort_round_solve(
         status=status,
         seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
         relaxed=relaxed,
+        batch_results=batch_results,
     )
 
 

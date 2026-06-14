@@ -86,7 +86,13 @@ export interface AlgorithmJob {
   relaxed: string[];
   reasons: string[];
   batch_results: BatchResult[];
-  result_metadata: { fairness_before: CountSpaceStats; fairness_after: CountSpaceStats } | null;
+  result_metadata: {
+    fairness_before: CountSpaceStats;
+    fairness_after: CountSpaceStats;
+    outcome?: "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "CANCELLED";
+    objective_value?: number | null;
+    solver_metrics?: { wall_time?: number; conflicts?: number; branches?: number };
+  } | null;
 }
 
 export interface JobSummaryOut {
