@@ -62,6 +62,15 @@ export interface ProposalRow {
   batch_index: number | null;
 }
 
+export interface CountSpaceStats {
+  cv: number | null;
+  mean: number | null;
+  stddev: number | null;
+  min: number | null;
+  max: number | null;
+  n: number;
+}
+
 export interface AlgorithmJob {
   id: string;
   status: "pending" | "running" | "done" | "failed";
@@ -77,6 +86,7 @@ export interface AlgorithmJob {
   relaxed: string[];
   reasons: string[];
   batch_results: BatchResult[];
+  result_metadata: { fairness_before: CountSpaceStats; fairness_after: CountSpaceStats } | null;
 }
 
 export interface JobSummaryOut {
