@@ -30,7 +30,7 @@ export default function PendingApprovalsWidget({
       <ul className="space-y-2 text-sm">
         {pendingEnrollments.length > 0 && (
           <li>
-            <Link to="/approvals?tab=enrollments" className="flex items-center justify-between hover:text-indigo-600">
+            <Link to="/approvals?tab=enrollment" className="flex items-center justify-between hover:text-indigo-600">
               <span>בקשות הצטרפות</span>
               <CountChip n={pendingEnrollments.length} />
             </Link>
@@ -38,7 +38,7 @@ export default function PendingApprovalsWidget({
         )}
         {pendingSwaps.length > 0 && (
           <li>
-            <Link to="/swaps" className="flex items-center justify-between hover:text-indigo-600">
+            <Link to="/swaps?tab=pending" className="flex items-center justify-between hover:text-indigo-600">
               <span>בקשות החלפה</span>
               <CountChip n={pendingSwaps.length} />
             </Link>
@@ -62,7 +62,7 @@ export default function PendingApprovalsWidget({
         )}
         {pendingFieldUpdates > 0 && (
           <li>
-            <Link to="/approvals?tab=field-updates" className="flex items-center justify-between hover:text-indigo-600">
+            <Link to="/approvals?tab=field_updates" className="flex items-center justify-between hover:text-indigo-600">
               <span>עדכוני פרופיל</span>
               <CountChip n={pendingFieldUpdates} />
             </Link>
