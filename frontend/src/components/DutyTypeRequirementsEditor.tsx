@@ -35,7 +35,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
       {/* Gender */}
       <div>
         <p className="font-medium">{t("eligibility.allowed_genders")}</p>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {["male", "female"].map(g => (
             <label key={g} className="flex items-center gap-1">
               <input
@@ -85,7 +85,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
       {/* Service type */}
       <div>
         <p className="font-medium">{t("eligibility.allowed_service_types")}</p>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {["חובה", "קבע"].map(s => (
             <label key={s} className="flex items-center gap-1">
               <input

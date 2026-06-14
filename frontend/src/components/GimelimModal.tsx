@@ -315,7 +315,7 @@ export default function GimelimModal({
               </div>
             )}
 
-            <div className="flex justify-between gap-2 pt-1">
+            <div className="flex flex-wrap justify-between gap-2 pt-1">
               <button
                 onClick={() => { setStep("form"); setPreview(null); }}
                 className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 transition-colors"

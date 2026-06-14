@@ -262,7 +262,7 @@ export default function HakpazaPage() {
                 הבקשה תישלח לאישור מנהל תורניות. עד אז השיבוץ המקורי נשאר בתוקף.
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 className="border border-gray-300 px-4 py-2 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={() => setStep(3)}

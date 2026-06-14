@@ -139,7 +139,7 @@ function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; r
   const { t } = useTranslation();
   if (!requireManagerApproval || swap.status !== "pending_approval") return null;
   return (
-    <div className="text-xs text-gray-500 dark:text-gray-400 flex gap-3 mt-1">
+    <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap gap-3 mt-1">
       <span>{t("swaps.requester_approval")}: <ApprovalDot value={swap.requester_side_approved} /></span>
       <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
     </div>

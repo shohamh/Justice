@@ -184,7 +184,7 @@ export default function ApprovalsPage() {
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
 
-        <div className="flex gap-4 border-b dark:border-gray-600">
+        <div className="flex flex-wrap gap-x-4 border-b dark:border-gray-600">
           <button
             className={`pb-2 text-sm ${tab === "constraints" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
             onClick={() => setTab("constraints")}
