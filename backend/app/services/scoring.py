@@ -136,6 +136,7 @@ def effective_duty_spans(
                             "duty_location_id": a.duty_location_id,
                             "start_date": run_start,
                             "end_date": run_end,
+                            "shift_id": a.duty_shift_id,
                         }
                     )
                 cur = eff
@@ -151,6 +152,7 @@ def effective_duty_spans(
                     "duty_location_id": a.duty_location_id,
                     "start_date": run_start,
                     "end_date": run_end,
+                    "shift_id": a.duty_shift_id,
                 }
             )
     result: list[dict[str, Any]] = []

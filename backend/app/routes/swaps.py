@@ -43,6 +43,7 @@ class SwapOut(BaseModel):
     duty_location_id: uuid.UUID | None = None
     duty_start_date: date | None = None
     duty_end_date: date | None = None
+    duty_shift_id: uuid.UUID | None = None
     warnings: list[str] = []
     requesting_soldier_name: str | None = None
     covering_soldier_name: str | None = None
@@ -104,6 +105,7 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
             node = session.get(HierarchyNode, req_soldier.hierarchy_node_id)
             if node is not None:
                 requesting_soldier_node_name = node.name
+    duty_shift_id = None
     if session is not None:
         assignment = session.get(DutyAssignment, r.duty_assignment_id)
         if assignment is not None:
@@ -111,6 +113,7 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
             duty_location_id = assignment.duty_location_id
             duty_start_date = assignment.start_date
             duty_end_date = assignment.end_date
+            duty_shift_id = assignment.duty_shift_id
             dt = session.get(DutyType, assignment.duty_type_id)
             loc = session.get(DutyLocation, assignment.duty_location_id)
             duty_type_name = dt.name if dt else None
@@ -130,6 +133,7 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
         duty_location_id=duty_location_id,
         duty_start_date=duty_start_date,
         duty_end_date=duty_end_date,
+        duty_shift_id=duty_shift_id,
         warnings=warnings or [],
         requesting_soldier_name=requesting_soldier_name,
         covering_soldier_name=covering_soldier_name,
