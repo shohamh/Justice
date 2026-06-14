@@ -8,6 +8,7 @@ export interface TimelineEvent {
     | "cancellation"
     | "call_up"
     | "dismissal"
+    | "exemption"
     | "exemption_request"
     | "personal_constraint";
   date: string;

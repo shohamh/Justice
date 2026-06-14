@@ -16,9 +16,11 @@ from app.db.models import (
     DutyDismissal,
     DutyLocation,
     DutyType,
+    ExemptionDutyTypeMap,
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    SoldierExemption,
 )
 
 
@@ -318,13 +320,27 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
             )
 
     # --- ExemptionRequest events ---
-    exemption_type_cache: dict[uuid.UUID, str] = {}
+    exemption_type_cache: dict[uuid.UUID, ExemptionType] = {}
 
-    def _exemption_type_name(et_id: uuid.UUID) -> str:
+    def _exemption_type(et_id: uuid.UUID) -> ExemptionType | None:
         if et_id not in exemption_type_cache:
             et = session.get(ExemptionType, et_id)
-            exemption_type_cache[et_id] = et.name if et else str(et_id)
-        return exemption_type_cache[et_id]
+            if et is not None:
+                exemption_type_cache[et_id] = et
+        return exemption_type_cache.get(et_id)
+
+    exemption_duty_type_cache: dict[uuid.UUID, list[str]] = {}
+
+    def _exempted_duty_type_names(et_id: uuid.UUID) -> list[str]:
+        if et_id not in exemption_duty_type_cache:
+            rows = session.execute(
+                select(DutyType.name)
+                .join(ExemptionDutyTypeMap, ExemptionDutyTypeMap.duty_type_id == DutyType.id)
+                .where(ExemptionDutyTypeMap.exemption_type_id == et_id)
+                .order_by(DutyType.name)
+            ).scalars().all()
+            exemption_duty_type_cache[et_id] = list(rows)
+        return exemption_duty_type_cache[et_id]
 
     exemption_requests = list(
         session.execute(
@@ -332,7 +348,9 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
         ).scalars().all()
     )
     for er in exemption_requests:
-        et_name = _exemption_type_name(er.exemption_type_id)
+        et = _exemption_type(er.exemption_type_id)
+        et_name = et.name if et else str(er.exemption_type_id)
+        duty_type_names = _exempted_duty_type_names(er.exemption_type_id)
         events.append(
             TimelineEvent(
                 id=er.id,
@@ -345,8 +363,36 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
                 metadata={
                     "exemption_type_name": et_name,
                     "decision_note": er.decision_note,
+                    "exempted_duty_types": json.dumps(duty_type_names, ensure_ascii=False) if duty_type_names else None,
                 },
                 created_at=er.created_at.isoformat(),
+            )
+        )
+
+    # --- SoldierExemption events (directly granted, not via a request) ---
+    soldier_exemptions = list(
+        session.execute(
+            select(SoldierExemption).where(SoldierExemption.soldier_id == soldier_id)
+        ).scalars().all()
+    )
+    for se in soldier_exemptions:
+        et = _exemption_type(se.exemption_type_id)
+        et_name = et.name if et else str(se.exemption_type_id)
+        duty_type_names = _exempted_duty_type_names(se.exemption_type_id)
+        events.append(
+            TimelineEvent(
+                id=se.id,
+                event_type="exemption",
+                date=se.start_date.isoformat(),
+                end_date=_isodate(se.end_date),
+                title=f"פטור: {et_name}",
+                description=se.reason,
+                status=None,
+                metadata={
+                    "exemption_type_name": et_name,
+                    "exempted_duty_types": json.dumps(duty_type_names, ensure_ascii=False) if duty_type_names else None,
+                },
+                created_at=se.granted_at.isoformat(),
             )
         )
 
