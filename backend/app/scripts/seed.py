@@ -1,12 +1,24 @@
 """Seed the database with realistic test data.
 
-Usage: python -m app.scripts.seed [--clear] [--with-assignments]
+Usage: python -m app.scripts.seed [--clear] [--with-assignments] [--db-url URL]
 
 Flags:
   --clear / --force      Drop and re-create all seed data.
   --with-assignments     Also pre-fill shift assignments (default: shifts are
                          created empty so the algorithm can assign them).
+  --db-url URL           Override DATABASE_URL (useful when running outside
+                         Docker where the host is 'localhost' not 'db').
 """
+
+# Must happen before any app import that touches the DB engine.
+import os as _os, sys as _sys
+for _i, _a in enumerate(_sys.argv):
+    if _a.startswith("--db-url="):
+        _os.environ["DATABASE_URL"] = _a.split("=", 1)[1]
+        break
+    if _a == "--db-url" and _i + 1 < len(_sys.argv):
+        _os.environ["DATABASE_URL"] = _sys.argv[_i + 1]
+        break
 
 from datetime import date, time
 from decimal import Decimal
