@@ -1,36 +1,24 @@
-import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Layout from "../../components/Layout";
-import TabBar from "../../components/TabBar";
 import { ShiftsContent } from "../ShiftsPage";
-import { DutyManagementContent } from "../DutyManagementPage";
-import { AlgorithmContent } from "../AlgorithmPage";
+import { ShiftTemplatesContent } from "../ShiftTemplatesPage";
 
 export default function ShiftsManagementPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const raw = Number(searchParams.get("tab") ?? "0");
-  const activeTab = raw >= 0 && raw <= 2 ? raw : 0;
-
-  const setTab = (i: number) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("tab", String(i));
-    if (i !== 2) next.delete("jobId");
-    setSearchParams(next, { replace: true });
-  };
-
-  const tabs = [
-    t("nav.shifts_tab_shifts"),
-    t("nav.shifts_tab_manual"),
-    t("nav.shifts_tab_algorithm"),
-  ];
 
   return (
     <Layout>
-      <TabBar tabs={tabs} active={activeTab} onChange={setTab} />
-      {activeTab === 0 && <ShiftsContent />}
-      {activeTab === 1 && <DutyManagementContent />}
-      {activeTab === 2 && <AlgorithmContent />}
+      <div className="space-y-6">
+        <details className="border dark:border-gray-600 rounded-lg">
+          <summary className="cursor-pointer px-4 py-3 font-medium text-sm select-none hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg">
+            {t("nav.planning_templates")}
+          </summary>
+          <div className="px-4 pb-4 pt-2">
+            <ShiftTemplatesContent />
+          </div>
+        </details>
+        <ShiftsContent />
+      </div>
     </Layout>
   );
 }

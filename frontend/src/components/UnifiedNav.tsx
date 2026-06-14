@@ -110,8 +110,8 @@ export default function UnifiedNav() {
 
   const planningItems = [
     { label: t("nav.planning_shifts"), to: "/planning/shifts", testId: "nav-shifts-management" },
+    { label: t("nav.planning_assignment"), to: "/planning/assignment", testId: "nav-assignment" },
     { label: t("nav.planning_config"), to: "/planning/config", testId: "nav-duty-config" },
-    { label: t("nav.planning_templates"), to: "/planning/templates", testId: "nav-shift-templates" },
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
   ];
 
