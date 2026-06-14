@@ -89,6 +89,7 @@ export function SoldierModalProvider({ children }: { children: ReactNode }) {
       )}
       {modal && (
         <UnifiedSoldierModal
+          key={modal.soldier.id}
           soldier={modal.soldier}
           score={modal.score}
           nodes={modal.nodes}

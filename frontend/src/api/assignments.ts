@@ -18,6 +18,7 @@ export interface EffectiveDuty {
   duty_location_id: string;
   start_date: string;
   end_date: string;
+  shift_id?: string | null;
 }
 
 export async function listAssignments(soldierId: string, params?: { date_from?: string; date_to?: string }): Promise<Assignment[]> {

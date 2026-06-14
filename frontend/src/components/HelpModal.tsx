@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 
@@ -208,11 +209,13 @@ function FairnessTab() {
         <div className="space-y-2 text-indigo-700 dark:text-indigo-300">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1">
             <p className="font-medium text-sm">שלב 1 — חלק רבעוני</p>
-            <div className="flex items-center justify-center gap-2 text-xs flex-wrap">
-              <div className="bg-indigo-100 dark:bg-indigo-900 rounded px-2 py-1 font-medium">ניקוד החייל ברבעון</div>
-              <div className="text-gray-500 font-bold">÷</div>
-              <div className="bg-purple-100 dark:bg-purple-900 rounded px-2 py-1 font-medium">ניקוד כלל היחידה ברבעון</div>
-              <div className="text-gray-500 font-bold">=</div>
+            <div className="flex items-center justify-center gap-3 text-xs">
+              <div className="flex flex-col items-center">
+                <div className="bg-indigo-100 dark:bg-indigo-900 rounded px-2 py-1 font-medium text-center">ניקוד החייל ברבעון</div>
+                <div className="w-full h-px bg-gray-400 my-1" />
+                <div className="bg-purple-100 dark:bg-purple-900 rounded px-2 py-1 font-medium text-center">ניקוד כלל היחידה ברבעון</div>
+              </div>
+              <div className="text-gray-500 font-bold text-base">=</div>
               <div className="bg-green-100 dark:bg-green-900 rounded px-2 py-1 font-medium">חלק%</div>
             </div>
           </div>
@@ -220,7 +223,7 @@ function FairnessTab() {
           <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700 space-y-1">
             <p className="font-medium text-sm">שלב 2 — ממוצע משוקלל לפי נוכחות</p>
             <p className="text-xs text-gray-600 dark:text-gray-300">
-              רבעונים בהם שירתת פחות ימים (הצטרפת באמצע, חופשה ממושכת) מקבלים משקל פחות בממוצע. רבעון שלם = משקל מלא.
+              רבעונים בהם שירתת פחות ימים (הצטרפת באמצע, חופשה ממושכת) מקבלים משקל פחות בממוצע. רבעון שלם = משקל מלא. רבעונות שבהם לא הייתה שום פעילות ביחידה אינם נספרים כלל — הם לא תורמים לא ל-A ולא ל-W.
             </p>
           </div>
 
@@ -232,11 +235,11 @@ function FairnessTab() {
             <div className="text-xs space-y-1.5">
               <div className="flex gap-2 items-start">
                 <span className="shrink-0 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded px-1 font-medium">W</span>
-                <span className="text-gray-600 dark:text-gray-300"><strong>היסטוריה כוללת</strong> — סכום הנוכחות ברבעונות העבר. 4 רבעונות מלאים = W=4.</span>
+                <span className="text-gray-600 dark:text-gray-300"><strong>היסטוריה כוללת</strong> — סכום הנוכחות ברבעונות שבהם הייתה פעילות ביחידה. 4 רבעונות מלאים עם תורנויות = W=4. רבעונות ריקים מדולגים.</span>
               </div>
             </div>
-            <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-xs text-center font-medium text-indigo-800 dark:text-indigo-200">
-              עומס = A ÷ W
+            <div className="bg-indigo-50 dark:bg-indigo-900 rounded p-2 text-indigo-800 dark:text-indigo-200">
+              <BlockMath math="\text{עומס} = \dfrac{A}{W}" />
             </div>
           </div>
         </div>
@@ -309,7 +312,7 @@ function FairnessTab() {
                 <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 text-xs">
                   {[
                     { label: "עומס שנצבר (A)", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
-                    { label: "היסטוריה כוללת (W)", sub: "סכום אחוז נוכחות לכל רבעון", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
+                    { label: "היסטוריה כוללת (W)", sub: "סכום % נוכחות לרבעונות עם תורנויות", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
                   ].map(({ label, sub, value, cls }) => (
                     <div key={label} className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -320,9 +323,9 @@ function FairnessTab() {
                     </div>
                   ))}
                   <div className="border-t border-green-200 dark:border-green-800 pt-1">
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">עומס = A ÷ W</p>
-                    <p dir="ltr" className="font-bold text-green-700 dark:text-green-300 tabular-nums text-left">
-                      {(A * 100).toFixed(2)}% ÷ {W.toFixed(2)} = {(effort * 100).toFixed(2)}%
+                    <p className="text-gray-600 dark:text-gray-400 font-medium"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
+                    <p className="font-bold text-green-700 dark:text-green-300 tabular-nums">
+                      <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(2)}} = ${(effort * 100).toFixed(2)}\\%`} />
                     </p>
                   </div>
                 </div>
@@ -457,11 +460,11 @@ function DeepDiveTab() {
             </thead>
             <tbody className="text-gray-700 dark:text-gray-300">
               {[
-                { sym: "shareq", name: "חלק רבעוני", def: "ניקוד החייל ברבעון q ÷ ניקוד כלל היחידה ברבעון q. מספר בין 0 ל-1." },
+                { sym: "shareq", name: "חלק רבעוני", def: <><InlineMath math="\dfrac{\text{ניקוד החייל ברבעון } q}{\text{ניקוד כלל היחידה ברבעון } q}" /> — מספר בין 0 ל-1.</> },
                 { sym: "active_fracq", name: "שבר נוכחות", def: "חלק הרבעון שבו החייל היה פעיל (0–1). רבעון מלא = 1." },
-                { sym: "A", name: "עומס שנצבר", def: "Σ(shareq × active_fracq) על כל הרבעונים ההיסטוריים. ממוצע משוקלל של החלקים." },
-                { sym: "W", name: "היסטוריה כוללת", def: "Σ(active_fracq) על הרבעונים ההיסטוריים. סכום משקלי הנוכחות." },
-                { sym: "effort_score", name: "עומס רבעוני", def: "A / W — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל." },
+                { sym: "A", name: "עומס שנצבר", def: <><InlineMath math="\sum_q (\text{share}_q \times \text{active\_frac}_q)" /> על כל הרבעונים ההיסטוריים.</> },
+                { sym: "W", name: "היסטוריה כוללת", def: <><InlineMath math="\sum_{q:\,\text{unit}>0} \text{active\_frac}_q" /> — סכום משקלי הנוכחות, <strong>רק ברבעונות שבהם הייתה פעילות ביחידה</strong>. רבעונות ריקים מדוללים את הממוצע ומעוותים את ההשוואה.</> },
+                { sym: "effort_score", name: "עומס רבעוני", def: <><InlineMath math="\dfrac{A}{W}" /> — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל.</> },
               ].map(({ sym, name, def }) => (
                 <tr key={sym} className="border-b border-gray-100 dark:border-gray-700">
                   <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{sym}</td>
@@ -560,9 +563,9 @@ function DeepDiveTab() {
           לאחר שיבוץ:
         </p>
 
-        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre">{`projected_effort[i] =
-    effort_offset[i]
-  + effort_per_milli[i] × Σ( block_score(d) × x[d,i] )`}</pre>
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200">
+          <BlockMath math="\begin{aligned}\text{projected\_effort}[i] &= \text{effort\_offset}[i] \\ &\quad + \text{effort\_per\_milli}[i] \times \sum_d \bigl(\text{block\_score}(d) \times x_{d,i}\bigr)\end{aligned}" />
+        </div>
 
         <div className="space-y-2 text-xs text-gray-700 dark:text-gray-300">
           {[
@@ -610,7 +613,9 @@ function DeepDiveTab() {
         <div className="grid grid-cols-1 gap-2 text-xs">
           <div className="bg-orange-50 dark:bg-orange-950 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
             <p className="font-semibold text-orange-800 dark:text-orange-200 mb-1">L2 — סכום ריבועי סטיות</p>
-            <p className="font-mono text-orange-700 dark:text-orange-300 mb-1">Σ (projected_effort[i] − μ)²</p>
+            <div className="text-orange-700 dark:text-orange-300 mb-1">
+              <BlockMath math="\sum_i \bigl(\text{projected\_effort}[i] - \mu\bigr)^2" />
+            </div>
             <p className="text-orange-700 dark:text-orange-300">
               ריבוע הסטייה מעניש קשות על חריגים. ערך חריג אחד יכול לדחוף את כל השיבוצים
               בניסיון להקטין אותו — גם כשזה לא הוגן לשאר.
@@ -618,7 +623,9 @@ function DeepDiveTab() {
           </div>
           <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800">
             <p className="font-semibold text-green-800 dark:text-green-200 mb-1">L1 — סכום סטיות מוחלטות ✓</p>
-            <p className="font-mono text-green-700 dark:text-green-300 mb-1">Σ |projected_effort[i] − μ|</p>
+            <div className="text-green-700 dark:text-green-300 mb-1">
+              <BlockMath math="\sum_i \bigl|\text{projected\_effort}[i] - \mu\bigr|" />
+            </div>
             <p className="text-green-700 dark:text-green-300">
               כל סטייה נספרת באותו משקל, ללא קנס על חריגים. עמיד בפני ותיקים עם היסטוריה גבוהה מאוד.
             </p>
@@ -642,20 +649,18 @@ function DeepDiveTab() {
           לכל חייל נוצר משתנה עזר <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">dev[i]</code> עם שני אילוצים:
         </p>
 
-        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre">{`dev[i] ≥  projected_effort[i] − μ
-dev[i] ≥  μ − projected_effort[i]`}</pre>
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200">
+          <BlockMath math="\begin{aligned}\text{dev}[i] &\geq \text{projected\_effort}[i] - \mu \\ \text{dev}[i] &\geq \mu - \text{projected\_effort}[i]\end{aligned}" />
+        </div>
 
         <p className="text-gray-700 dark:text-gray-300 text-xs">
           שני האילוצים האלה כופים ש-<code>dev[i] = |projected_effort[i] − μ|</code>.
           פונקציית המטרה היא <strong>ממוזגת</strong> מארבעה רכיבים עם משקולות היררכיים:
         </p>
 
-        <pre className="font-mono text-xs bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-indigo-700 dark:text-indigo-300 font-bold leading-relaxed whitespace-pre">{`Maximize(
-  −1×10¹¹ × Σ dev[i]       ← L1: איזון עומסים  (דומיננטי)
-  −1×10⁶  × prior_term     ← המשכיות היסטורית
-  −1×10⁴  × count_spread   ← פיזור מספר תורנויות
-  −dist_term               ← קנס מרחק רזרבה
-)`}</pre>
+        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-indigo-700 dark:text-indigo-300">
+          <BlockMath math="\text{Maximize}\!\left(\begin{array}{l} {-}10^{11} \times \displaystyle\sum_i \text{dev}[i] \\[6pt] {-}10^{6} \times \text{prior\_term} \\[6pt] {-}10^{4} \times \text{count\_spread} \\[6pt] {-}\text{dist\_term} \end{array}\right)" />
+        </div>
 
         <div className="space-y-1.5 text-xs text-gray-700 dark:text-gray-300">
           {[

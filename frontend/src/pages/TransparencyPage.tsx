@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { EffortBreakdown, TransparencyRow, getEffortBreakdown, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
+import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
-import FairnessComponentsCard from "../components/FairnessComponentsCard";
+import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 
@@ -115,6 +116,17 @@ function FilterPills<T extends string>({
       ))}
     </div>
   );
+}
+
+// ─── soldier group info (from fairness components) ───────────────────────────
+
+interface SoldierGroupInfo {
+  compIndex: number;      // 0-based component index; -1 = exempt from all
+  rank: number;           // 1 = lowest effort (assigned first); 0 for exempt
+  groupSize: number;
+  groupMean: number | null;
+  groupCV: number | null;
+  dutyTypeNames: string[];
 }
 
 // ─── sub-hierarchy row type ───────────────────────────────────────────────────
@@ -274,12 +286,26 @@ export default function TransparencyPage() {
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [tab, setTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const TAB_KEYS = ["soldiers", "sub_units"] as const;
+  type TabKey = typeof TAB_KEYS[number];
+  const rawKey = searchParams.get("tab") as TabKey | null;
+  const tab = rawKey === "sub_units" ? 1 : 0;
+
+  function setTab(next: number) {
+    setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "soldiers"); return prev; }, { replace: true });
+  }
+  const [showDebug, setShowDebug] = useState(false);
   const [officerFilter, setOfficerFilter] = useState<OfficerFilter>("all");
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
+  const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
+  const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
+  const [fairnessComponents, setFairnessComponents] = useState<FairnessComponents | null>(null);
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
+  useEffect(() => { void getFairnessComponents().then(setFairnessComponents).catch(() => {}); }, []);
 
   async function openEffortBreakdown(soldierId: string, soldierName: string) {
     setEffortBreakdownSoldierName(soldierName);
@@ -306,10 +332,44 @@ export default function TransparencyPage() {
     return new Set(flatNodes.filter((n) => n.path_ids.includes(selectedNodeId)).map((n) => n.id));
   }, [selectedNodeId, flatNodes]);
 
+  const soldierGroupMap = useMemo((): Map<string, SoldierGroupInfo> => {
+    const map = new Map<string, SoldierGroupInfo>();
+    if (!fairnessComponents) return map;
+    fairnessComponents.components.forEach((comp, compIndex) => {
+      const sorted = [...comp.soldiers].sort((a, b) => a.effort_score - b.effort_score);
+      sorted.forEach((s, i) => {
+        map.set(s.soldier_id, {
+          compIndex,
+          rank: i + 1,
+          groupSize: comp.soldier_count,
+          groupMean: comp.effort?.mean ?? null,
+          groupCV: comp.effort?.cv ?? null,
+          dutyTypeNames: comp.duty_type_names,
+        });
+      });
+    });
+    fairnessComponents.exempt_from_all.soldiers.forEach((s) => {
+      map.set(s.soldier_id, {
+        compIndex: -1,
+        rank: 0,
+        groupSize: fairnessComponents.exempt_from_all.count,
+        groupMean: null,
+        groupCV: null,
+        dutyTypeNames: [],
+      });
+    });
+    return map;
+  }, [fairnessComponents]);
+
   const visibleRows = useMemo(() => {
     let filtered = subtreeIds
       ? rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id))
       : rows;
+    if (activeGroupKeys.size > 0) {
+      const ids = new Set<string>();
+      for (const key of activeGroupKeys) for (const id of groupSoldiersMap.get(key) ?? []) ids.add(id);
+      filtered = filtered.filter((r) => ids.has(r.soldier_id));
+    }
     if (officerFilter === "officer") filtered = filtered.filter((r) => r.is_officer);
     if (officerFilter === "enlisted") filtered = filtered.filter((r) => !r.is_officer);
     if (serviceFilter !== "all") filtered = filtered.filter((r) => r.service_type === serviceFilter);
@@ -318,8 +378,20 @@ export default function TransparencyPage() {
       ...r,
       _row_num: i + 1,
       _rank_order: r.rank ? (RANK_ORDER[r.rank] ?? 999) : 999,
+      _group: soldierGroupMap.get(r.soldier_id),
     }));
-  }, [rows, subtreeIds, officerFilter, serviceFilter]);
+  }, [rows, subtreeIds, officerFilter, serviceFilter, activeGroupKeys, groupSoldiersMap, soldierGroupMap]);
+
+  // ── auto-range bounds (approximated from all rows — real run also adds per-milli headroom) ──
+  const effortRange = useMemo(() => {
+    const offsets = rows.map((r) => r.effort_offset_raw).filter((v) => v > 0);
+    if (offsets.length === 0) return null;
+    const min = Math.min(...offsets);
+    const max = Math.max(...offsets);
+    const size = Math.max(1, max - min);
+    const precisionPct = (size / 1_000_000_000 / 1000) * 100; // range / EFFORT_SCALE / resolution × 100
+    return { min, max, size, precisionPct };
+  }, [rows]);
 
   // ── sub-hierarchy tab: build children map from parent_id (API returns flat list) ──
   const subRows = useMemo((): SubRow[] => {
@@ -404,8 +476,22 @@ export default function TransparencyPage() {
     setTreeOpen(false);
   }
 
+  function handleGroupToggle(soldierIds: string[], key: GroupKey) {
+    setGroupSoldiersMap((prev) => new Map(prev).set(key, soldierIds));
+    setActiveGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setTab(0);
+  }
+
+  function clearGroupFilter() {
+    setActiveGroupKeys(new Set());
+  }
+
   // ── soldiers columns ──
-  type NumberedRow = TransparencyRow & { _row_num: number; _rank_order: number };
+  type NumberedRow = TransparencyRow & { _row_num: number; _rank_order: number; _group?: SoldierGroupInfo };
   const soldierCols: ColDef<NumberedRow>[] = [
     {
       id: "num", header: "#",
@@ -483,6 +569,99 @@ export default function TransparencyPage() {
       },
       sortValue: (r) => r.effort_score,
     },
+    {
+      id: "group_rank",
+      header: "מקום בקבוצה",
+      headerTooltip: (
+        <div className="space-y-2" dir="rtl">
+          <p className="font-semibold">מקום בקבוצת הכשירות</p>
+          <p>מקום 1 = עומס הנמוך ביותר בקבוצה = האלגוריתם יקצה לו תורנות ראשון כדי לאזן.</p>
+          <p className="text-xs text-gray-400">הכותרת מציגה מקום/גודל-קבוצה. ריחוף על תא מציג את סוגי התורנות של הקבוצה.</p>
+        </div>
+      ),
+      cell: (r: NumberedRow) => {
+        const g = r._group;
+        if (!g || g.compIndex === -1) return <span className="text-gray-400 text-xs">פטור</span>;
+        if (g.groupSize < 2) return <span className="text-gray-400 text-xs">—</span>;
+        const isTop = g.rank <= 3;
+        const isBottom = g.rank >= g.groupSize - 2;
+        const cls = isTop
+          ? "text-indigo-600 dark:text-indigo-400 font-semibold"
+          : isBottom
+            ? "text-gray-400"
+            : "text-gray-700 dark:text-gray-300";
+        return (
+          <span className={`tabular-nums ${cls}`} title={g.dutyTypeNames.join("، ")}>
+            {g.rank}/{g.groupSize}
+            {isTop && <span className="mr-1 text-indigo-400 dark:text-indigo-500 text-[10px]">▲</span>}
+          </span>
+        );
+      },
+      sortValue: (r: NumberedRow) => r._group?.rank ?? 9999,
+    } as ColDef<NumberedRow>,
+    {
+      id: "group_dev",
+      header: "עודף עומס",
+      headerTooltip: (
+        <div className="space-y-2" dir="rtl">
+          <p className="font-semibold">עודף עומס יחסית לממוצע הקבוצה</p>
+          <p><span className="text-red-500 font-medium">אדום חיובי</span> = נשא עומס מעל הממוצע → האלגוריתם מגן עליו מהקצאות.</p>
+          <p><span className="text-green-600 font-medium">ירוק שלילי</span> = מתחת לממוצע → האלגוריתם ייתן לו עדיפות בהקצאה הבאה.</p>
+        </div>
+      ),
+      cell: (r: NumberedRow) => {
+        const mean = r._group?.groupMean;
+        if (mean == null || isNaN(r.effort_score) || r._group?.compIndex === -1) return <span className="text-gray-400">—</span>;
+        const dev = r.effort_score - mean;
+        const sign = dev >= 0 ? "+" : "";
+        const cls = dev > 0.005
+          ? "text-red-600 dark:text-red-400"
+          : dev < -0.005
+            ? "text-green-700 dark:text-green-400"
+            : "text-gray-500";
+        return <span className={`tabular-nums ${cls}`}>{sign}{(dev * 100).toFixed(2)}%</span>;
+      },
+      sortValue: (r: NumberedRow) => {
+        const mean = r._group?.groupMean;
+        return mean != null && !isNaN(r.effort_score) ? r.effort_score - mean : 9999;
+      },
+    } as ColDef<NumberedRow>,
+    ...(showDebug ? [
+      {
+        id: "c_over_d",
+        header: "C/D (1/Wᵢ)",
+        headerTooltip: "C_over_D = 1/Wᵢ — משקל הכנסת תורנות חדשה לעומס. חייל חדש → גבוה; ותיק → נמוך.",
+        cell: (r: NumberedRow) => r.c_over_d.toFixed(4),
+        sortValue: (r: NumberedRow) => r.c_over_d,
+      },
+      {
+        id: "effort_offset_raw",
+        header: "effort_offset (×10⁹)",
+        headerTooltip: "int(effort_score × 10⁹) — ה-offset ההיסטורי שמוזרק למודל ה-CP-SAT.",
+        cell: (r: NumberedRow) => r.effort_offset_raw.toLocaleString(),
+        sortValue: (r: NumberedRow) => r.effort_offset_raw,
+      },
+      {
+        id: "count_offset",
+        header: "count_offset",
+        headerTooltip: "הערך שה-CP-SAT מבצע עליו אופטימיזציה: (effort_offset − range_min) × 1000 ÷ range_size. כל החיילים ממופים ל-[0, 1000] כך שכל 1000 הטיקים נופלים בטווח הפעיל. ערך ≈ מוצג כאן — הריצה האמיתית מוסיפה headroom לצבירה.",
+        cell: (r: NumberedRow) => {
+          if (!effortRange || effortRange.size <= 0) return <span className="text-gray-400">—</span>;
+          const val = Math.max(0, Math.min(1000, Math.round((r.effort_offset_raw - effortRange.min) * 1000 / effortRange.size)));
+          const frac = val / 1000;
+          const barColor = frac < 0.33 ? "#10b981" : frac < 0.67 ? "#f59e0b" : "#ef4444";
+          return (
+            <span className="flex items-center gap-1.5">
+              <span className="tabular-nums font-mono text-xs w-8 shrink-0">{val}</span>
+              <span className="flex-1 bg-gray-200 dark:bg-gray-700 rounded h-1.5 overflow-hidden" style={{ minWidth: 40 }}>
+                <span className="h-full block rounded" style={{ width: `${Math.max(2, val / 10)}%`, background: barColor }} />
+              </span>
+            </span>
+          );
+        },
+        sortValue: (r: NumberedRow) => effortRange ? (r.effort_offset_raw - effortRange.min) * 1000 / effortRange.size : 0,
+      },
+    ] as ColDef<NumberedRow>[] : []),
   ];
 
   // ── sub-hierarchy columns ──
@@ -616,12 +795,23 @@ export default function TransparencyPage() {
           </div>
 
           {tab === 0 && (
-            <button
-              className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={() => void downloadTransparencyExport(selectedNodeId)}
-            >
-              📥 ייצוא לאקסל
-            </button>
+            <div className="flex items-center gap-2">
+              {user?.role === "admin" && (
+                <button
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${showDebug ? "bg-amber-100 dark:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200" : "border-gray-300 dark:border-gray-600 text-gray-500 hover:border-amber-400"}`}
+                  onClick={() => setShowDebug(d => !d)}
+                  title="הצג ערכי count-space לדיבאג הוגנות"
+                >
+                  🔧 מצב דיבאג
+                </button>
+              )}
+              <button
+                className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
+                onClick={() => void downloadTransparencyExport(selectedNodeId)}
+              >
+                📥 ייצוא לאקסל
+              </button>
+            </div>
           )}
           {tab === 1 && (
             <button
@@ -659,11 +849,50 @@ export default function TransparencyPage() {
           {tab === 1 && <FairnessCard stats={subEffortStats} helpVariant="subunits" />}
         </div>
 
-        {tab === 0 && <FairnessComponentsCard />}
+        {tab === 0 && (
+          <FairnessComponentsCard
+            activeGroupKeys={activeGroupKeys}
+            onGroupToggle={handleGroupToggle}
+            onClearGroups={clearGroupFilter}
+          />
+        )}
+
+        {showDebug && tab === 0 && (
+          <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2 space-y-1" dir="rtl">
+            <p><strong>מצב דיבאג count-space (ערכי CP-SAT):</strong></p>
+            <p><strong>C/D</strong> = 1/Wᵢ — משקל תורנות חדשה בחישוב עומס: חייל חדש → C/D גבוה (כל תורנות &ldquo;שוקלת&rdquo; יותר). ותיק → C/D נמוך.</p>
+            <p><strong>effort_offset</strong> = int(עומס_רבעוני × 10⁹) — הערך ההיסטורי שמוזרק למודל ה-CP-SAT כנקודת התחלה לחישוב ההוגנות.</p>
+            <p><strong>ה-μ</strong> שהאלגוריתם מכוון אליו = (Σ effort_offset + total_new_weight) / n_eligible — מחושב per-run על-פי הכשירויות הספציפיות של כל ריצה.</p>
+            <p className="text-amber-600 dark:text-amber-400">האלגוריתם ממזער את שונות ה-effort בתוך כל קבוצת כשירות. חיילים עם effort נמוך מהממוצע יקבלו עדיפות בהקצאה הבאה.</p>
+            {effortRange ? (
+              <p><strong>Auto-range:</strong> min={effortRange.min.toLocaleString()} | max={effortRange.max.toLocaleString()} | range={effortRange.size.toLocaleString()} — דיוק לטיק: ~{effortRange.precisionPct.toFixed(4)}%</p>
+            ) : (
+              <p className="text-gray-400">Auto-range: אין נתוני effort_offset</p>
+            )}
+            <p><strong>count_offset</strong> = (effort_offset − range_min) × 1000 ÷ range_size — הערך ב-[0,1000] שה-CP-SAT מבצע עליו אופטימיזציה (ראה עמודה בטבלה)</p>
+          </div>
+        )}
 
         {/* Filter pills (soldiers tab only) */}
         {tab === 0 && (
           <div className="flex flex-wrap gap-3 items-center" dir="rtl">
+            {activeGroupKeys.size > 0 && (
+              <>
+                {[...activeGroupKeys].map((key) => (
+                  <div key={key} className="flex items-center gap-1">
+                    <span className={`text-sm px-2 py-1 rounded-full border font-medium ${
+                      key === "exempt"
+                        ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 border-orange-400"
+                        : "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border-indigo-400"
+                    }`}>
+                      {key === "exempt" ? "פטורים / לא כשירים" : `קבוצה ${parseInt(key.replace("comp_", "")) + 1}`}
+                    </span>
+                    <button className="text-xs text-gray-400 hover:text-red-500 px-1" onClick={() => handleGroupToggle(groupSoldiersMap.get(key) ?? [], key)}>✕</button>
+                  </div>
+                ))}
+                <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 hidden sm:block" />
+              </>
+            )}
             <FilterPills<OfficerFilter>
               value={officerFilter}
               onChange={setOfficerFilter}
@@ -694,6 +923,12 @@ export default function TransparencyPage() {
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
+              rowStyle={(r) => {
+                const g = r._group;
+                if (!g || g.compIndex < 0) return {};
+                const color = COMPONENT_COLORS[g.compIndex % COMPONENT_COLORS.length];
+                return { borderRight: `3px solid ${color}` };
+              }}
               testId="transparency-table"
             />
           </>
@@ -855,13 +1090,13 @@ export default function TransparencyPage() {
                       </div>
                     </div>
 
-                    {/* Step 2: W — sum of presences + final formula */}
+                    {/* Step 2: W — sum of presences (duty-quarters only) + final formula */}
                     <div>
                       <p className="font-medium text-amber-700 dark:text-amber-300 mb-1">
-                        שלב 2 — היסטוריה כוללת (W): סכום % נוכחות לכל רבעון
+                        שלב 2 — היסטוריה כוללת (W): סכום % נוכחות לרבעונות עם תורנויות בלבד
                       </p>
                       <div className="bg-white dark:bg-gray-800 border border-amber-100 dark:border-amber-900 rounded-lg overflow-hidden">
-                        {qs.map((q, i) => (
+                        {qs.filter((q) => parseFloat(q.unit_score) > 0).map((q, i) => (
                           <div
                             key={q.quarter_label}
                             className={`flex justify-between px-2 py-1.5 text-gray-600 dark:text-gray-400 ${i > 0 ? "border-t border-gray-100 dark:border-gray-700" : ""}`}
@@ -870,6 +1105,11 @@ export default function TransparencyPage() {
                             <span className="tabular-nums">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</span>
                           </div>
                         ))}
+                        {qs.some((q) => parseFloat(q.unit_score) === 0) && (
+                          <div className="px-2 py-1.5 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 italic">
+                            רבעונות ריקים (ללא תורנויות ביחידה) אינם נספרים ב-W
+                          </div>
+                        )}
                         <div className="border-t border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-1.5 flex justify-between font-semibold text-amber-700 dark:text-amber-300">
                           <span>סכום = W</span>
                           <span className="tabular-nums">{W.toFixed(2)}</span>

@@ -1,18 +1,29 @@
+import { APP_ENV } from "../version";
+
 interface Props {
   size?: "sm" | "md" | "lg";
 }
 
 const SIZE_MAP = {
-  sm: { svgSize: 28, textClass: "text-xl" },
-  md: { svgSize: 36, textClass: "text-2xl" },
-  lg: { svgSize: 52, textClass: "text-4xl" },
+  sm: { svgSize: 28, textClass: "text-xl",  badgeClass: "text-[8px] px-0.5 py-px" },
+  md: { svgSize: 36, textClass: "text-2xl", badgeClass: "text-[9px] px-0.5 py-px" },
+  lg: { svgSize: 52, textClass: "text-4xl", badgeClass: "text-[10px] px-1 py-px" },
+};
+
+const BADGE_COLORS: Record<string, string> = {
+  alpha:   "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-700",
+  beta:    "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700",
+  stable:  "bg-green-100 text-green-700 border-green-300 dark:bg-green-950 dark:text-green-300 dark:border-green-700",
+  staging: "bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-700",
+  dev:     "bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-500",
+  prod:    "bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-700",
 };
 
 export default function JusticeLogo({ size = "md" }: Props) {
-  const { svgSize, textClass } = SIZE_MAP[size];
+  const { svgSize, textClass, badgeClass } = SIZE_MAP[size];
 
   return (
-    <div className="flex items-center gap-3" data-testid="justice-logo">
+    <div className="flex items-start gap-3" data-testid="justice-logo">
       <svg
         width={svgSize}
         height={svgSize}
@@ -40,12 +51,22 @@ export default function JusticeLogo({ size = "md" }: Props) {
         {/* Center pivot circle */}
         <circle cx="26" cy="14" r="2.5" fill="#7c3aed" stroke="#a78bfa" strokeWidth="1" />
       </svg>
-      <span
-        className={`font-cinzel font-semibold tracking-widest text-indigo-700 dark:text-indigo-300 ${textClass}`}
-        data-testid="justice-logo-text"
-      >
-        Justice
-      </span>
+      <div className="flex flex-col items-start">
+        <span
+          className={`font-cinzel font-semibold tracking-widest text-indigo-700 dark:text-indigo-300 ${textClass}`}
+          data-testid="justice-logo-text"
+        >
+          Justice
+        </span>
+        {APP_ENV && (
+          <span
+            className={`font-sans font-semibold uppercase tracking-wide border rounded ${badgeClass} ${BADGE_COLORS[APP_ENV.variant]}`}
+            data-testid="env-badge"
+          >
+            {APP_ENV.label}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

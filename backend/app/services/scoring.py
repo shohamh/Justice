@@ -136,6 +136,7 @@ def effective_duty_spans(
                             "duty_location_id": a.duty_location_id,
                             "start_date": run_start,
                             "end_date": run_end,
+                            "shift_id": a.duty_shift_id,
                         }
                     )
                 cur = eff
@@ -151,6 +152,7 @@ def effective_duty_spans(
                     "duty_location_id": a.duty_location_id,
                     "start_date": run_start,
                     "end_date": run_end,
+                    "shift_id": a.duty_shift_id,
                 }
             )
     result: list[dict[str, Any]] = []
@@ -323,6 +325,8 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         effort_data = effort_map.get(s.id)
         effort_score = float(effort_data.effort_score) if effort_data else 0.0
+        c_over_d = float(effort_data.C_over_D) if effort_data else 0.0
+        effort_offset_raw = effort_data.effort_offset if effort_data else 0
         rows.append(
             {
                 "soldier_id": s.id,
@@ -339,6 +343,8 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
                 "score_per_day": cum / Decimal(ad),
                 "is_globally_exempted": s.id in exempted_ids,
                 "effort_score": effort_score,
+                "c_over_d": c_over_d,
+                "effort_offset_raw": effort_offset_raw,
             }
         )
     if rows:
@@ -398,6 +404,7 @@ def _build_fairness_components(
     type_names: dict[uuid.UUID, str],
     effort_by_id: dict[uuid.UUID, float],
     name_by_id: dict[uuid.UUID, str],
+    soldier_eligible_types: dict[uuid.UUID, set[uuid.UUID]] | None = None,
 ) -> dict[str, Any]:
     """Group soldiers into connected components of the soldier↔duty-type eligibility
     graph: two soldiers connect if they share a doable duty type (transitively).
@@ -437,18 +444,23 @@ def _build_fairness_components(
         g["soldiers"].append(sid)
         g["type_ids"].update(elig)
 
-    def soldier_obj(sid: uuid.UUID) -> dict[str, Any]:
+    elig = soldier_eligible_types or eligible_types
+
+    def soldier_obj(sid: uuid.UUID, component_type_ids: set[uuid.UUID] | None = None) -> dict[str, Any]:
+        eligible_count = len(elig.get(sid, set()) & component_type_ids) if component_type_ids is not None else 0
         return {"soldier_id": sid, "full_name": name_by_id.get(sid, ""),
-                "effort_score": effort_by_id.get(sid, 0.0)}
+                "effort_score": effort_by_id.get(sid, 0.0),
+                "eligible_type_count": eligible_count}
 
     components = []
     for g in groups.values():
         effs = [effort_by_id.get(sid, 0.0) for sid in g["soldiers"]]
+        comp_type_ids: set[uuid.UUID] = g["type_ids"]
         components.append({
-            "duty_type_names": sorted(type_names[tid] for tid in g["type_ids"] if tid in type_names),
+            "duty_type_names": sorted(type_names[tid] for tid in comp_type_ids if tid in type_names),
             "soldier_count": len(g["soldiers"]),
             "effort": _effort_stats(effs),
-            "soldiers": sorted((soldier_obj(s) for s in g["soldiers"]),
+            "soldiers": sorted((soldier_obj(s, comp_type_ids) for s in g["soldiers"]),
                                key=lambda o: o["effort_score"], reverse=True),
         })
     components.sort(key=lambda c: c["soldier_count"], reverse=True)
@@ -483,4 +495,4 @@ def fairness_components(session: Session) -> dict[str, Any]:
     eligible_types = {
         si.id: (active_type_ids - set(si.exempted_duty_type_ids)) for si in inputs
     }
-    return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id)
+    return _build_fairness_components(eligible_types, type_names, effort_by_id, name_by_id, soldier_eligible_types=eligible_types)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import bisect
+import dataclasses
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
@@ -262,23 +263,48 @@ def build_model(
     #
     # We optimise quarterly EFFORT (the metric shown on the transparency page and
     # in app/algorithm/explain.py), but expressed as small integers so the L1
-    # objective below stays tractable:
+    # objective below stays tractable.
     #
-    #   DIV            = EFFORT_SCALE // effort_resolution      (K = resolution)
-    #   count_offset_i = effort_offset_i // DIV                 (prior effort, a constant)
-    #   weight_i(duty) = max(1, effort_per_milli_i × block_score(duty) // DIV)
-    #   total_i        = count_offset_i + Σ_{assigned} weight_i(duty)
+    # Auto-range mode (effort_range_max > effort_range_min):
+    #   Maps [range_min, range_max] → [0, resolution] so every tick corresponds to
+    #   actual spread rather than wasting ticks on the unused [0, 100%] axis.
+    #   count_offset_i = clamp((effort_offset_i − range_min) × K / range_size, 0, K)
+    #   weight_i(duty) = max(1, effort_per_milli_i × block_score(duty) × K / range_size)
+    #   total_ub       = 2K + |duties| + 1   (offset ≤ K, Σweights ≤ K by construction)
     #
-    # effort_offset / effort_per_milli are injected by the bridge over the FULL
-    # duty set (so per_milli is not inflated by a small subset).  Scaling by 1/DIV
-    # only rounds away effort differences below 1/K — everything else (the W and
-    # unit-score normalisation) stays baked in.  A reserve's block_score is already
-    # standby_multiplier× its primary, so its weight is the same fraction; the
-    # max(1, …) floor keeps a reserve worth ≥ 1 unit.
-    div = max(1, EFFORT_SCALE // settings.effort_resolution)
-    # Upper bound on count-space total: offset (≤ EFFORT_SCALE/DIV) plus the marginal
-    # (sums to ≤ EFFORT_SCALE/DIV); pad for the per-duty floor rounding.
-    total_ub = 4 * (EFFORT_SCALE // div) + len(duty_list) + 1
+    # Fallback (range_size == 0): auto-derive from soldier_list (covers tests that
+    # bypass the bridge; the bridge always pre-computes and stamps the range).
+    resolution = settings.effort_resolution
+    range_size = settings.effort_range_max - settings.effort_range_min
+    if range_size <= 0:
+        # Derive from the soldiers visible in this model call.
+        _active = [s for s in soldier_list if s.effort_per_milli > 0]
+        if _active:
+            _total_bs = sum(_block_score(d) for d in duty_list)
+            _rmin = min(s.effort_offset for s in _active)
+            _rmax = max(s.effort_offset for s in _active) + max(s.effort_per_milli for s in _active) * _total_bs
+            range_size = max(1, _rmax - _rmin)
+            settings = dataclasses.replace(settings, effort_range_min=_rmin, effort_range_max=_rmax)
+
+    if range_size > 0:
+        range_min = settings.effort_range_min
+
+        def _count_off(s: SoldierInput) -> int:
+            return max(0, min(resolution, (s.effort_offset - range_min) * resolution // range_size))
+
+        def _weight(s: SoldierInput, score_milli: int) -> int:
+            return max(1, s.effort_per_milli * score_milli * resolution // range_size)
+
+        total_ub = 2 * resolution + len(duty_list) + 1
+    else:
+        # All soldiers have effort_per_milli == 0 — pure covering problem, no fairness.
+        def _count_off(s: SoldierInput) -> int:  # type: ignore[misc]
+            return 0
+
+        def _weight(s: SoldierInput, score_milli: int) -> int:  # type: ignore[misc]
+            return 1
+
+        total_ub = len(duty_list) + 1
 
     # We optimise over *eligible* soldiers only (those that can receive ≥1 duty).
     eligible_total_exprs: list[LinearExpr] = []  # count_offset + new weight per soldier
@@ -296,9 +322,9 @@ def build_model(
         if not duties_for_s:
             continue
 
-        count_offset = s.effort_offset // div
+        count_offset = _count_off(s)
         new_weight = sum(
-            max(1, (s.effort_per_milli * _block_score(duty_list[di])) // div) * x[(di, si)]
+            _weight(s, _block_score(duty_list[di])) * x[(di, si)]
             for di in duties_for_s
         )
         eligible_total_exprs.append(count_offset + new_weight)
@@ -318,7 +344,11 @@ def build_model(
     for di, d in enumerate(duty_list):
         per_millis = [soldier_list[si].effort_per_milli for (dii, si) in eligible if dii == di]
         pm = sum(per_millis) // len(per_millis) if per_millis else 0
-        total_new_weight += max(1, (pm * _block_score(d)) // div)
+        bs = _block_score(d)
+        if range_size > 0:
+            total_new_weight += max(1, pm * bs * resolution // range_size)
+        else:
+            total_new_weight += 1  # pure covering: all weights = 1
 
     # Hard constraints: T (non-reserve duty-days) and R (all duty-days) per rolling
     # W-day window per soldier.  T <= R enforces the invariant; reserve days consume

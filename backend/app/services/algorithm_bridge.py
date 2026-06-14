@@ -45,6 +45,58 @@ from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_d
 _cancel_events: dict[str, threading.Event] = {}
 
 
+def _count_space_stats(
+    soldiers: list[SoldierInput],
+    assignments: list,
+    duties: list[DutyBlock],
+    effort_resolution: int = 1_000,
+    effort_range_min: int = 0,
+    effort_range_max: int = 0,
+) -> dict[str, Any]:
+    """Compute count-space effort CV for the whole soldier pool."""
+    from app.algorithm.model import _block_score
+    range_size = effort_range_max - effort_range_min
+    use_range = range_size > 0
+    div = max(1, EFFORT_SCALE // effort_resolution)
+    duty_map = {d.id: d for d in duties}
+    soldier_duties: dict[uuid.UUID, list[DutyBlock]] = {s.id: [] for s in soldiers}
+    for a in assignments:
+        d = duty_map.get(a.duty_id)
+        if d:
+            soldier_duties[a.soldier_id].append(d)
+
+    totals: list[float] = []
+    for s in soldiers:
+        if use_range:
+            offset = max(0, min(effort_resolution, (s.effort_offset - effort_range_min) * effort_resolution // range_size))
+            weight = sum(
+                max(1, s.effort_per_milli * _block_score(d) * effort_resolution // range_size)
+                for d in soldier_duties.get(s.id, [])
+            )
+        else:
+            offset = s.effort_offset // div
+            weight = sum(
+                max(1, (s.effort_per_milli * _block_score(d)) // div)
+                for d in soldier_duties.get(s.id, [])
+            )
+        totals.append(float(offset + weight))
+
+    if not totals:
+        return {"cv": None, "mean": None, "stddev": None, "min": None, "max": None, "n": 0}
+    mean = sum(totals) / len(totals)
+    variance = sum((t - mean) ** 2 for t in totals) / len(totals)
+    stddev = math.sqrt(variance)
+    cv = stddev / mean if mean > 0 else 0.0
+    return {
+        "cv": round(cv, 4),
+        "mean": round(mean, 2),
+        "stddev": round(stddev, 2),
+        "min": round(min(totals), 2),
+        "max": round(max(totals), 2),
+        "n": len(totals),
+    }
+
+
 def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     """Load every active soldier as a SoldierInput for the algorithm."""
     soldiers = (
@@ -307,11 +359,14 @@ def inject_effort_scores(
     soldiers: list[SoldierInput],
     duty_blocks: list[DutyBlock],
     effort_map: dict[uuid.UUID, EffortData],
-) -> None:
+) -> tuple[int, int]:
     """Set effort_offset and effort_per_milli on each SoldierInput in-place.
 
     effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
     where unit_score_milli = sum of block_score(b) for all blocks in the planning window.
+
+    Returns (effort_range_min, effort_range_max) — tight bounds covering every possible
+    effort_offset value throughout the entire run (including worst-case accumulation).
     """
     unit_score_milli = sum(
         int(float(b.score_per_day) * ((b.end_date - b.start_date).days + 1) * 1000)
@@ -326,6 +381,21 @@ def inject_effort_scores(
             s.effort_per_milli = int(float(data.C_over_D) / unit_score_milli * EFFORT_SCALE)
         else:
             s.effort_per_milli = 0
+
+    # Compute [range_min, range_max] for auto-range count-space encoding.
+    # Excludes soldiers with no effort participation (per_milli == 0).
+    active = [s for s in soldiers if s.effort_per_milli > 0]
+    if not active:
+        return (0, EFFORT_SCALE)
+
+    range_min = min(s.effort_offset for s in active)
+    # Worst case: highest-per_milli soldier is assigned every single duty in this run.
+    max_accumulation = max(s.effort_per_milli for s in active) * unit_score_milli
+    range_max = max(s.effort_offset for s in active) + max_accumulation
+    # Ensure range is always strictly positive so division is safe.
+    if range_max <= range_min:
+        range_max = range_min + max(1, max_accumulation)
+    return (range_min, range_max)
 
 
 def effort_history_horizon(session: Session, *, planning_start: date) -> date:
@@ -594,16 +664,16 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         Wt=int(settings_json.get("Wt", settings_json.get("W", _setting_int("algorithm.window_t", 14)))),
         Wr=int(settings_json.get("Wr", settings_json.get("W", _setting_int("algorithm.window_r", 28)))),
         alpha=Decimal(str(settings_json.get("alpha", 1.0))),
-        time_limit_seconds=int(settings_json.get("time_limit_seconds", 30)),
+        time_limit_seconds=int(settings_json.get("time_limit_seconds", 60)),
         reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
-        effort_resolution=_setting_int("fairness.effort_resolution", 10_000),
+        effort_resolution=_setting_int("fairness.effort_resolution", 1_000),
         batching_enabled=_setting_bool("algorithm.batching_enabled", True),
         batch_window_days=_setting_int("algorithm.batch_window_days", 28),
-        batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 10),
+        batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 60),
         relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
         relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
         decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
-        round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 50))),
+        round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 20))),
     )
 
 
@@ -743,7 +813,10 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     planning_end=effort_horizon,
                     reset_date=_reset_date,
                 )
-                inject_effort_scores(soldiers, duties, effort_map)
+                effort_range = inject_effort_scores(soldiers, duties, effort_map)
+                settings.effort_range_min, settings.effort_range_max = effort_range
+                stats_before = _count_space_stats(soldiers, [], duties, settings.effort_resolution,
+                                                  settings.effort_range_min, settings.effort_range_max)
                 existing = load_existing_assignments(
                     session,
                     planning_start=planning_start,
@@ -808,6 +881,8 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "status": "INFEASIBLE",
                         "reasons": reasons,
                     })
+                    processed = _postprocess_batch_results(result.batch_results, block_to_shift_map)
+                    job.batch_results = [_br_to_dict(br) for br in processed]
                     job.finished_at = datetime.now(tz=UTC)
                     session.commit()
                     return
@@ -827,12 +902,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         if sf.shift_id is not None:
                             duty_to_batch[sf.shift_id] = br.batch_index
 
+                stats_after = _count_space_stats(soldiers, result.assignments, duties, settings.effort_resolution,
+                                                 settings.effort_range_min, settings.effort_range_max)
+
                 explanation_data = build_explanations(
                     soldiers=soldiers,
                     duties=duties,
                     assignments=result.assignments,
-                    global_before={},
-                    global_after={},
+                    global_before=stats_before,
+                    global_after=stats_after,
                     solver_seed=result.seed,
                 )
 
@@ -880,6 +958,10 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "reasons": reasons,
                     })
 
+                job.result_metadata = {
+                    "fairness_before": stats_before,
+                    "fairness_after": stats_after,
+                }
                 job.status = "done"
                 job.finished_at = datetime.now(tz=UTC)
 

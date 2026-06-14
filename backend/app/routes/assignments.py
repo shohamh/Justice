@@ -57,6 +57,7 @@ class EffectiveDutyOut(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
+    shift_id: uuid.UUID | None = None
 
 
 def _out(a: DutyAssignment) -> AssignmentOut:

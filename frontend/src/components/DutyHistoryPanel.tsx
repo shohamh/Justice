@@ -19,6 +19,7 @@ type FilterType =
   | "cancellation"
   | "call_up"
   | "dismissal"
+  | "exemption"
   | "exemption_request"
   | "personal_constraint";
 
@@ -29,6 +30,7 @@ const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "cancellation", i18nKey: "duty_history.filter_cancellations" },
   { type: "call_up", i18nKey: "duty_history.filter_call_ups" },
   { type: "dismissal", i18nKey: "duty_history.filter_dismissals" },
+  { type: "exemption", i18nKey: "duty_history.filter_exemptions" },
   { type: "exemption_request", i18nKey: "duty_history.filter_exemption_requests" },
   { type: "personal_constraint", i18nKey: "duty_history.filter_constraints" },
 ];
@@ -38,6 +40,7 @@ const TYPE_COLORS: Record<string, string> = {
   cancellation: "border-red-400 bg-red-50 dark:bg-red-950",
   call_up: "border-orange-400 bg-orange-50 dark:bg-orange-950",
   dismissal: "border-yellow-400 bg-yellow-50 dark:bg-yellow-950",
+  exemption: "border-teal-400 bg-teal-50 dark:bg-teal-950",
   exemption_request: "border-blue-400 bg-blue-50 dark:bg-blue-950",
   personal_constraint: "border-purple-400 bg-purple-50 dark:bg-purple-950",
 };
@@ -47,6 +50,7 @@ const DOT_COLORS: Record<string, string> = {
   cancellation: "bg-red-400",
   call_up: "bg-orange-400",
   dismissal: "bg-yellow-400",
+  exemption: "bg-teal-400",
   exemption_request: "bg-blue-400",
   personal_constraint: "bg-purple-400",
 };
@@ -221,6 +225,19 @@ function EventCard({
         {isExpanded && (
           <div className="mt-2 space-y-1">
             {e.description && <p className="text-gray-600">{e.description}</p>}
+            {(e.event_type === "exemption_request" || e.event_type === "exemption") && (() => {
+              const raw = e.metadata.exempted_duty_types;
+              if (!raw) return null;
+              let names: string[] = [];
+              try { names = JSON.parse(raw) as string[]; } catch { return null; }
+              if (names.length === 0) return null;
+              return (
+                <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                  <span className="font-medium">{t("exemptions.exempts_from")}:</span>{" "}
+                  <span>{names.join("، ")}</span>
+                </div>
+              );
+            })()}
             {dutyType && (() => {
               const hasInfo = dutyType.start_time || dutyType.end_time || dutyType.contact_name || dutyType.contact_phone || dutyType.instructions;
               if (!hasInfo && !dutyType) return null;

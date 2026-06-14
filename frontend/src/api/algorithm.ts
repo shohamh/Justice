@@ -62,6 +62,15 @@ export interface ProposalRow {
   batch_index: number | null;
 }
 
+export interface CountSpaceStats {
+  cv: number | null;
+  mean: number | null;
+  stddev: number | null;
+  min: number | null;
+  max: number | null;
+  n: number;
+}
+
 export interface AlgorithmJob {
   id: string;
   status: "pending" | "running" | "done" | "failed";
@@ -77,6 +86,7 @@ export interface AlgorithmJob {
   relaxed: string[];
   reasons: string[];
   batch_results: BatchResult[];
+  result_metadata: { fairness_before: CountSpaceStats; fairness_after: CountSpaceStats } | null;
 }
 
 export interface JobSummaryOut {
@@ -175,6 +185,10 @@ export async function acceptProposal(jobId: string, assignmentId: string): Promi
 
 export async function bulkAcceptProposals(jobId: string, assignmentIds: string[]): Promise<{ accepted: number }> {
   return (await api.post<{ accepted: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-accept`, { assignment_ids: assignmentIds })).data;
+}
+
+export async function bulkRejectProposals(jobId: string, assignmentIds: string[]): Promise<{ rejected: number }> {
+  return (await api.post<{ rejected: number }>(`/algorithm/jobs/${jobId}/proposals/bulk-reject`, { assignment_ids: assignmentIds })).data;
 }
 
 export async function rejectProposal(jobId: string, assignmentId: string): Promise<void> {

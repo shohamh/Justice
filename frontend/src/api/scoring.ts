@@ -16,6 +16,8 @@ export interface TransparencyRow {
   normalised_score: string;
   is_globally_exempted: boolean;
   effort_score: number;
+  c_over_d: number;
+  effort_offset_raw: number;
 }
 
 export interface Breakdown {
@@ -49,7 +51,7 @@ export async function getTransparency(): Promise<TransparencyRow[]> {
 export interface FairnessEffort {
   mean: number; stddev: number; cv: number; min: number; max: number; count: number;
 }
-export interface FairnessSoldier { soldier_id: string; full_name: string; effort_score: number; }
+export interface FairnessSoldier { soldier_id: string; full_name: string; effort_score: number; eligible_type_count: number; }
 export interface FairnessComponent {
   duty_type_names: string[];
   soldier_count: number;

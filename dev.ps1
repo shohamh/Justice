@@ -24,9 +24,26 @@ Get-Content "$root\.env" | Where-Object { $_ -match '^[A-Z_]+=.+$' } | ForEach-O
 $localDbUrl    = $envVars['DATABASE_URL'] -replace '@db:', '@localhost:'
 $localAdminUrl = $envVars['DB_ADMIN_URL']  -replace '@db:', '@localhost:'
 
+# ── Helper: kill whatever process is listening on a TCP port ─────────────────
+function Stop-PortProcess([int]$Port) {
+    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    if ($conn) {
+        $conn | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object {
+            Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+        }
+        return $true
+    }
+    return $false
+}
+
 # ── Stop Docker app containers so their ports are free ────────────────────────
 Write-Host "[dev] Stopping Docker app containers (keeping DB)..." -ForegroundColor Yellow
 try { docker compose stop backend frontend telegram-bot *>$null } catch {}
+
+# ── Kill any native processes still holding dev ports ────────────────────────
+Write-Host "[dev] Freeing ports 8000 and 5173..." -ForegroundColor Yellow
+if (Stop-PortProcess 8000) { Write-Host "[dev]   killed process on :8000" -ForegroundColor DarkYellow }
+if (Stop-PortProcess 5173) { Write-Host "[dev]   killed process on :5173" -ForegroundColor DarkYellow }
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
 Write-Host "[dev] Starting DB container..." -ForegroundColor Cyan
@@ -78,6 +95,17 @@ $cmds.Add("cd /d `"$root\frontend`" && pnpm dev")
 if (-not $NoBot) {
     $names.Add("bot");  $colors.Add("magenta")
     $cmds.Add("cd /d `"$root\backend`" && uv run python -m bot.main")
+}
+
+# ── Kill any stale bot processes ─────────────────────────────────────────────
+if (-not $NoBot) {
+    $botProcs = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+        Where-Object { $_.CommandLine -match 'bot\.main' }
+    if ($botProcs) {
+        Write-Host "[dev] Killing $($botProcs.Count) stale bot process(es)..." -ForegroundColor Yellow
+        $botProcs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    }
 }
 
 # ── Launch ────────────────────────────────────────────────────────────────────

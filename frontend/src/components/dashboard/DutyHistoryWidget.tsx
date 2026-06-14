@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow } from "../../api/scoring";
 import { formatDateRange } from "../../utils/formatDate";
@@ -19,7 +19,6 @@ function avg(rows: TransparencyRow[], key: keyof TransparencyRow): number {
 }
 
 export default function DutyHistoryWidget({ duties, typeNames, locationNames, myRow, allRows }: Props) {
-  const { t } = useTranslation();
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const today = new Date().toISOString().split("T")[0];
   const past = duties
@@ -30,10 +29,13 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
   const avgScore = avg(allRows, "cumulative_score").toFixed(2);
   const avgNorm = avg(allRows, "normalised_score").toFixed(3);
 
-  const normTooltip = useMemo(() => {
-    const avgCumFmt = avg(allRows, "cumulative_score").toFixed(3);
-    return t("transparency.normalised_tooltip", { avgCumulative: avgCumFmt, avgActiveDays });
-  }, [t, allRows, avgActiveDays]);
+  const normTooltip = useMemo(() => (
+    <div className="space-y-3" dir="rtl">
+      <p>הניקוד המנורמל מחושב לפי הניקוד ליום שלך ביחס לממוצע היחידה.</p>
+      <BlockMath math="\text{ניקוד מנורמל} = \dfrac{\text{ניקוד ליום שלך}}{\text{ממוצע ניקוד ליום ביחידה}}" />
+      <p className="text-xs text-gray-500 dark:text-gray-400">ניקוד 1.0 = בדיוק כמו הממוצע. מעל 1.0 = עשית יותר מהממוצע. מתחת 1.0 = עשית פחות.</p>
+    </div>
+  ), []);
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-4" dir="rtl">
@@ -101,7 +103,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
       {tooltipOpen && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setTooltipOpen(false)}>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md mx-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm whitespace-pre-line">{normTooltip}</p>
+            <div className="text-sm">{normTooltip}</div>
             <div className="mt-4 text-left">
               <button type="button" className="bg-indigo-600 text-white px-3 py-1 rounded text-sm" onClick={() => setTooltipOpen(false)}>סגור</button>
             </div>

@@ -245,8 +245,8 @@ export function AlgorithmContent() {
               <p className="text-sm text-gray-500">{t("algorithm.cancelled")}</p>
             )}
 
-            {/* Done jobs and non-cancelled failed jobs get the full tab view */}
-            {(selectedJob.status === "done" || (selectedJob.status === "failed" && selectedJob.error_message !== "cancelled_by_user")) && (
+            {/* Done/published jobs and non-cancelled failed jobs get the full tab view */}
+            {(selectedJob.status === "done" || selectedJob.status === "published" || (selectedJob.status === "failed" && selectedJob.error_message !== "cancelled_by_user")) && (
               <AlgorithmJobTabs
                 job={selectedJob}
                 jobId={selectedJobId!}

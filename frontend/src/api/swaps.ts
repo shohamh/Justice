@@ -20,6 +20,7 @@ export interface SwapRequest {
   duty_location_id: string | null;
   duty_start_date: string | null;
   duty_end_date: string | null;
+  duty_shift_id: string | null;
   warnings?: string[];
   requesting_soldier_name?: string | null;
   covering_soldier_name?: string | null;

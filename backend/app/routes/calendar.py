@@ -13,7 +13,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import scoring as scoring_svc
-from app.services.calendar_shifts import get_calendar_shifts
+from app.services.calendar_shifts import get_calendar_shifts, get_single_shift
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -92,6 +92,18 @@ def _swap_count_for_shift(session: Session, shift_id: uuid.UUID) -> int:
             SwapRequest.status == "open",
         )
     ).scalar_one()
+
+
+@router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)
+def get_shift_detail(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> CalendarShiftOut:
+    raw = get_single_shift(session, shift_id=shift_id)
+    if raw is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return CalendarShiftOut(**raw, swap_request_count=_swap_count_for_shift(session, shift_id))
 
 
 @router.get("/unit", response_model=list[CalRow])

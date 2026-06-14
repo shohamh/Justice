@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -51,9 +52,17 @@ function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
   return map;
 }
 
+const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment"];
+
 export default function ApprovalsPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("constraints");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") as Tab | null;
+  const tab: Tab = rawTab && VALID_TABS.includes(rawTab) ? rawTab : "constraints";
+
+  function setTab(next: Tab) {
+    setSearchParams((prev) => { prev.set("tab", next); return prev; }, { replace: true });
+  }
   const [items, setItems] = useState<PersonalConstraint[]>([]);
   const [erItems, setErItems] = useState<ExemptionRequest[]>([]);
   const [fuItems, setFuItems] = useState<FieldUpdateDTO[]>([]);

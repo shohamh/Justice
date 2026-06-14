@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
+import ShiftDetailPanel from "../components/ShiftDetailPanel";
 import { useAuth } from "../auth/AuthContext";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
@@ -10,6 +12,7 @@ import {
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
+import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { api } from "../api/client";
 
 interface HierarchyNode {
@@ -71,13 +74,13 @@ function PendingSide({
 }
 
 function PendingApprovalCard({
-  swap, requireManagerApproval, t,
+  swap, requireManagerApproval, onShiftClick, t,
 }: {
-  swap: SwapRequest; requireManagerApproval: boolean; t: (k: string) => string;
+  swap: SwapRequest; requireManagerApproval: boolean; onShiftClick?: () => void; t: (k: string) => string;
 }) {
   return (
     <li className="border rounded-lg p-4 space-y-3 dark:border-gray-600">
-      <SwapDutyHeader swap={swap} />
+      <SwapDutyHeader swap={swap} onShiftClick={onShiftClick} />
       <div className="flex gap-3 items-stretch">
         <PendingSide
           label={t("swaps.side_requester")}
@@ -101,22 +104,35 @@ function PendingApprovalCard({
   );
 }
 
-function SwapDutyHeader({ swap }: { swap: SwapRequest }) {
-  return (
-    <div className="text-sm">
+function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClick?: () => void }) {
+  const dateLabel = swap.duty_start_date && swap.duty_end_date && swap.duty_start_date !== swap.duty_end_date
+    ? `${swap.duty_start_date} → ${swap.duty_end_date}`
+    : (swap.duty_start_date ?? swap.duty_date);
+
+  const inner = (
+    <>
       {swap.duty_type_name && (
         <span className="font-semibold dark:text-gray-100">{swap.duty_type_name}</span>
       )}
       {swap.duty_location_name && (
         <span className="text-gray-500 dark:text-gray-400 mr-1"> — {swap.duty_location_name}</span>
       )}
-      <span className="text-xs text-gray-400 dark:text-gray-500 mr-2" dir="ltr">
-        {swap.duty_start_date && swap.duty_end_date && swap.duty_start_date !== swap.duty_end_date
-          ? `${swap.duty_start_date} → ${swap.duty_end_date}`
-          : (swap.duty_start_date ?? swap.duty_date)}
-      </span>
-    </div>
+      <span className="text-xs text-gray-400 dark:text-gray-500 mr-2" dir="ltr">{dateLabel}</span>
+    </>
   );
+
+  if (onShiftClick) {
+    return (
+      <button
+        type="button"
+        onClick={onShiftClick}
+        className="text-sm text-right hover:underline decoration-dotted underline-offset-2 cursor-pointer"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className="text-sm">{inner}</div>;
 }
 
 function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; requireManagerApproval: boolean }) {
@@ -201,7 +217,16 @@ function AskSwapModal({
 export default function SwapsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [tab, setTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const TAB_KEYS = ["mine", "board", "incoming", "pending"] as const;
+  type TabKey = typeof TAB_KEYS[number];
+  const rawKey = searchParams.get("tab") as TabKey | null;
+  const tab = TAB_KEYS.includes(rawKey as TabKey) ? TAB_KEYS.indexOf(rawKey as TabKey) : 0;
+
+  function setTab(next: number) {
+    setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "mine"); return prev; }, { replace: true });
+  }
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
   const [dutyTypes, setDutyTypes] = useState<Record<string, string>>({});
   const [dutyTypeList, setDutyTypeList] = useState<DutyType[]>([]);
@@ -213,6 +238,17 @@ export default function SwapsPage() {
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [requireManagerApproval, setRequireManagerApproval] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
+
+  async function handleShiftClick(shiftId: string | null) {
+    if (!shiftId) return;
+    try {
+      const shift = await getCalendarShift(shiftId);
+      setSelectedShift(shift);
+    } catch {
+      // shift not found or no permission — silently ignore
+    }
+  }
 
   // Board filters
   const [boardFilters, setBoardFilters] = useState<BoardFilters>({});
@@ -295,7 +331,7 @@ export default function SwapsPage() {
   const renderMySwapCard = (swap: SwapRequest) => (
     <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
       <div className="flex items-start justify-between gap-2">
-        <SwapDutyHeader swap={swap} />
+        <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
         <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
           {t(statusKey(swap.status))}
         </span>
@@ -319,7 +355,7 @@ export default function SwapsPage() {
   const renderBoardCard = (swap: SwapRequest) => (
     <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
       <div className="flex items-start justify-between gap-2">
-        <SwapDutyHeader swap={swap} />
+        <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
         <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
           {t(statusKey(swap.status))}
         </span>
@@ -346,7 +382,7 @@ export default function SwapsPage() {
     <li key={swap.id}
       className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
       <div className="flex items-start justify-between gap-2">
-        <SwapDutyHeader swap={swap} />
+        <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
         <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
           {t(statusKey(swap.status))}
         </span>
@@ -507,6 +543,7 @@ export default function SwapsPage() {
                   key={swap.id}
                   swap={swap}
                   requireManagerApproval={requireManagerApproval}
+                  onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined}
                   t={t}
                 />
               ))}
@@ -531,6 +568,14 @@ export default function SwapsPage() {
           dutyTypes={dutyTypes}
           onClose={() => setCoverSwap(null)}
           onDone={async () => { setCoverSwap(null); await refresh(); }}
+        />
+      )}
+
+      {selectedShift && (
+        <ShiftDetailPanel
+          shift={selectedShift}
+          onClose={() => setSelectedShift(null)}
+          onRefreshNeeded={() => { setSelectedShift(null); void refresh(); }}
         />
       )}
     </Layout>

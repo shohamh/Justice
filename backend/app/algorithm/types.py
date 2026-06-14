@@ -65,11 +65,15 @@ class SolverSettings:
     R: int = 15
     Wr: int = 28
     alpha: Decimal = Decimal("1.0")
-    time_limit_seconds: int = 30
+    time_limit_seconds: int = 60
     seed: int | None = None
     reserve_hierarchy_weight: Decimal = Decimal("0.5")
-    # Fairness L1 in count-space: effort × effort_resolution, rounded to integers.
-    effort_resolution: int = 10_000
+    # Fairness L1 in count-space: auto-range maps [effort_range_min, effort_range_max]
+    # to [0, effort_resolution] so all resolution ticks fall in the active zone.
+    # effort_range_min/max are computed by inject_effort_scores and stamped before solve.
+    effort_resolution: int = 1_000
+    effort_range_min: int = 0   # min effort_offset across soldiers (EFFORT_SCALE units)
+    effort_range_max: int = 0   # max possible effort_offset including worst-case accumulation
     # Infeasibility relaxation ceilings: R relaxes first up to relax_r_ceiling,
     # then T relaxes up to relax_t_ceiling. Invariant: relax_t_ceiling <= relax_r_ceiling.
     relax_r_ceiling: int = 20
@@ -77,11 +81,11 @@ class SolverSettings:
     # Decomposition + chronological calendar-window batching.
     batching_enabled: bool = True
     batch_window_days: int = 28
-    batch_time_limit_seconds: int = 10
+    batch_time_limit_seconds: int = 60
     # Decomposition strategy: "effort_rounds" (default) | "calendar" | "none".
     decomposition: str = "effort_rounds"
     # Disjoint Phase-1 group size for effort-round decomposition.
-    round_soldier_count: int = 50
+    round_soldier_count: int = 20
 
 
 @dataclass

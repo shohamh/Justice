@@ -17,6 +17,15 @@ export default function NotificationBell() {
     if (n.reference_type === "algorithm_job" && n.reference_id) {
       return `/algorithm?jobId=${n.reference_id}`;
     }
+    if (n.reference_type === "swap_request") {
+      return n.type === "swap_offer" ? "/swaps?tab=incoming" : "/swaps?tab=mine";
+    }
+    if (n.reference_type === "personal_constraint" || n.reference_type === "exemption_request") {
+      return "/my-requests";
+    }
+    if (n.reference_type === "duty_assignment") {
+      return "/";
+    }
     return null;
   }
 

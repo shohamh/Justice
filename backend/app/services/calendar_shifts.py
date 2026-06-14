@@ -168,6 +168,42 @@ def get_calendar_shifts(
 
         assignees_by_shift[a.duty_shift_id].append(entry)
 
+    # Include reserve assignments whose soldiers are outside the queried subtree.
+    # Without this, their assignment_id appears in a primary's reserve_assignment_id
+    # but is missing from assignees, causing the frontend to show a raw UUID.
+    linked_reserve_ids = {lk.reserve_assignment_id for lk in links}
+    already_loaded_ids = {a.id for a in assignments}
+    missing_reserve_ids = linked_reserve_ids - already_loaded_ids
+    if missing_reserve_ids:
+        extra_assigns = (
+            session.execute(
+                select(DutyAssignment).where(DutyAssignment.id.in_(missing_reserve_ids))
+            )
+            .scalars()
+            .all()
+        )
+        extra_soldier_ids = {a.soldier_id for a in extra_assigns} - set(soldiers_in_subtree)
+        extra_soldiers: dict[uuid.UUID, str] = {}
+        if extra_soldier_ids:
+            for s in (
+                session.execute(select(Soldier).where(Soldier.id.in_(extra_soldier_ids)))
+                .scalars()
+                .all()
+            ):
+                extra_soldiers[s.id] = s.full_name
+        for a in extra_assigns:
+            name = soldiers_in_subtree.get(a.soldier_id, ("", None))[0] or extra_soldiers.get(a.soldier_id, "")
+            assignees_by_shift.setdefault(a.duty_shift_id, []).append({
+                "assignment_id": a.id,
+                "soldier_id": a.soldier_id,
+                "soldier_name": name,
+                "hierarchy_label": None,
+                "is_reserve": True,
+                "called_up_from": a.called_up_from,
+                "called_up_to": a.called_up_to,
+                "primary_assignment_ids": reserve_to_primaries.get(a.id, []),
+            })
+
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
@@ -198,3 +234,129 @@ def get_calendar_shifts(
         )
 
     return result
+
+
+def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any] | None:
+    """Return a CalendarShift-shaped dict for a single shift (no node-scope filter)."""
+    shift = session.get(DutyShift, shift_id)
+    if shift is None:
+        return None
+
+    dt_map: dict[uuid.UUID, tuple[str, str]] = {}
+    for dt in session.execute(select(DutyType)).scalars().all():
+        h = hash(dt.id) % 360
+        dt_map[dt.id] = (dt.name, f"hsl({h}, 65%, 55%)")
+
+    loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
+
+    all_nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
+
+    def _leaf_label(node_id: uuid.UUID | None) -> str | None:
+        if node_id is None:
+            return None
+        leaf = all_nodes.get(node_id)
+        if leaf is None:
+            return None
+        parent = all_nodes.get(leaf.parent_id) if leaf.parent_id else None
+        return f"{parent.name} / {leaf.name}" if parent else leaf.name
+
+    assignments = (
+        session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
+    base = {
+        "id": shift.id,
+        "duty_type_id": shift.duty_type_id,
+        "duty_type_name": dt_name,
+        "duty_type_color": dt_color,
+        "duty_location_name": loc_map.get(shift.duty_location_id, ""),
+        "start_date": shift.start_date,
+        "end_date": shift.end_date,
+        "required_count": shift.required_count,
+    }
+
+    if not assignments:
+        return {**base, "assigned_count": 0, "fill_status": "empty", "reserve_count": 0, "assignees": []}
+
+    primary_ids = [a.id for a in assignments if not a.is_reserve]
+
+    links: list[DutyReserveLink] = []
+    if primary_ids:
+        links = (
+            session.execute(
+                select(DutyReserveLink).where(DutyReserveLink.primary_assignment_id.in_(primary_ids))
+            )
+            .scalars()
+            .all()
+        )
+
+    primary_to_link = {lk.primary_assignment_id: lk for lk in links}
+    reserve_to_primaries: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for lk in links:
+        reserve_to_primaries.setdefault(lk.reserve_assignment_id, []).append(lk.primary_assignment_id)
+
+    dismissals_by_primary: dict[uuid.UUID, list[DutyDismissal]] = {}
+    if primary_ids:
+        for d in (
+            session.execute(
+                select(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(primary_ids))
+            )
+            .scalars()
+            .all()
+        ):
+            dismissals_by_primary.setdefault(d.duty_assignment_id, []).append(d)
+
+    soldier_ids = {a.soldier_id for a in assignments}
+    soldiers = {
+        s.id: s
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(soldier_ids))).scalars().all()
+    }
+
+    assignees = []
+    for a in assignments:
+        sol = soldiers.get(a.soldier_id)
+        entry: dict = {
+            "assignment_id": a.id,
+            "soldier_id": a.soldier_id,
+            "soldier_name": sol.full_name if sol else "",
+            "hierarchy_label": _leaf_label(sol.hierarchy_node_id if sol else None),
+            "is_reserve": a.is_reserve,
+            "dismissals": [],
+            "reserve_assignment_id": None,
+            "reserve_hierarchy_distance": None,
+            "called_up_from": None,
+            "called_up_to": None,
+            "primary_assignment_ids": [],
+        }
+        if a.is_reserve:
+            entry["called_up_from"] = a.called_up_from
+            entry["called_up_to"] = a.called_up_to
+            entry["primary_assignment_ids"] = reserve_to_primaries.get(a.id, [])
+        else:
+            link = primary_to_link.get(a.id)
+            entry["dismissals"] = [
+                {
+                    "id": d.id,
+                    "dismissed_from": d.dismissed_from,
+                    "dismissed_to": d.dismissed_to,
+                    "reason": d.reason,
+                }
+                for d in dismissals_by_primary.get(a.id, [])
+            ]
+            entry["reserve_assignment_id"] = link.reserve_assignment_id if link else None
+            entry["reserve_hierarchy_distance"] = link.hierarchy_distance if link else None
+        assignees.append(entry)
+
+    primary_count = sum(1 for e in assignees if not e["is_reserve"])
+    reserve_count = sum(1 for e in assignees if e["is_reserve"] and not e.get("called_up_from"))
+    fill = "full" if primary_count >= shift.required_count else ("partial" if primary_count > 0 else "empty")
+
+    return {**base, "assigned_count": primary_count, "fill_status": fill, "reserve_count": reserve_count, "assignees": assignees}

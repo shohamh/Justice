@@ -71,3 +71,7 @@ export async function getCalendarShifts(
 ): Promise<CalendarShiftsResponse> {
   return (await api.get<CalendarShiftsResponse>("/calendar/shifts", { params: { node_id: nodeId, ...params } })).data;
 }
+
+export async function getCalendarShift(shiftId: string): Promise<CalendarShift> {
+  return (await api.get<CalendarShift>(`/calendar/shifts/${shiftId}`)).data;
+}

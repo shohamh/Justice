@@ -78,7 +78,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
       {!showCreateForm ? (
         <>
           <input
-            className="border rounded p-1 w-full"
+            className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -93,7 +93,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
               {results.map((s) => (
                 <li
                   key={s.id}
-                  className="px-2 py-1 hover:bg-indigo-50 cursor-pointer text-sm"
+                  className="px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-900 cursor-pointer text-sm dark:text-gray-100"
                   onClick={() => handleSelect(s)}
                   data-testid={`soldier-search-result-${s.personal_number}`}
                 >
@@ -116,16 +116,16 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
           )}
         </>
       ) : (
-        <div className="space-y-2 border rounded p-2 mt-1" data-testid="soldier-create-form">
+        <div className="space-y-2 border rounded p-2 mt-1 dark:border-gray-600 dark:bg-gray-800" data-testid="soldier-create-form">
           <input
-            className="border rounded p-1 w-full"
+            className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
             value={newPn}
             onChange={(e) => setNewPn(e.target.value)}
             placeholder={t("team.personal_number")}
             data-testid="soldier-create-pn"
           />
           <input
-            className="border rounded p-1 w-full"
+            className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("team.full_name")}

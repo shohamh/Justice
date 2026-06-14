@@ -32,8 +32,39 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
     { id: "issues", label: "בעיות", badge: hasIssues ? "!" : undefined },
   ];
 
+  const meta = job.result_metadata;
+
   return (
     <div className="space-y-3">
+      {meta?.fairness_before && (
+        <div className="space-y-2" dir="rtl">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 dark:bg-gray-700 rounded p-3 border border-gray-200 dark:border-gray-600 text-center">
+              <p className="text-xs text-gray-500 dark:text-gray-400">CV לפני (count-space)</p>
+              <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                {meta.fairness_before.cv != null ? (meta.fairness_before.cv * 100).toFixed(1) + "%" : "—"}
+              </p>
+            </div>
+            <div className={`rounded p-3 border text-center ${
+              (meta.fairness_after?.cv ?? 1) < 0.25
+                ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700"
+                : (meta.fairness_after?.cv ?? 1) < 0.5
+                  ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700"
+                  : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700"
+            }`}>
+              <p className="text-xs text-gray-500 dark:text-gray-400">CV אחרי (count-space)</p>
+              <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                {meta.fairness_after?.cv != null ? (meta.fairness_after.cv * 100).toFixed(1) + "%" : "—"}
+              </p>
+            </div>
+          </div>
+          {meta.fairness_after && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 text-right">
+              count-space: ממוצע {meta.fairness_after.mean} | סטיית תקן {meta.fairness_after.stddev} | טווח {meta.fairness_after.min}–{meta.fairness_after.max}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex gap-1 border-b dark:border-gray-600" dir="rtl">
         {tabs.map(t => (
           <button
