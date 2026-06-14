@@ -107,7 +107,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
               </div>
               {(() => {
                 const dist = eligibilityDistribution(c.soldiers);
-                if (dist.length <= 1) return null;
+                if (dist.length === 0) return null;
                 return (
                   <div className="mt-2 flex items-center gap-3">
                     <div style={{ width: 56, height: 56 }}>
