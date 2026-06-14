@@ -71,7 +71,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
         {/* Header */}
         <div
           className="px-5 pt-5 pb-4"
-          style={dutyType?.color ? { borderTop: `4px solid ${dutyType.color}` } : undefined}
+          style={undefined}
         >
           <div className="flex justify-between items-start">
             <div>

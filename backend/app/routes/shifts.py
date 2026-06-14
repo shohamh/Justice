@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyShift, Soldier
+from sqlalchemy import delete as sa_delete, func
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import shifts as svc
 
@@ -211,6 +212,112 @@ def list_shift_assignments(
         )
         for a in rows
     ]
+
+
+class BulkDeletePreview(BaseModel):
+    shift_count: int
+    assignment_count: int
+    swap_count: int
+    dismissal_count: int
+    reserve_link_count: int
+    shifts: list[dict]
+
+
+def _shifts_in_range(session: Session, date_from: date, date_to: date) -> list[DutyShift]:
+    return session.execute(
+        select(DutyShift).where(
+            DutyShift.start_date >= date_from,
+            DutyShift.start_date <= date_to,
+        ).order_by(DutyShift.start_date)
+    ).scalars().all()
+
+
+def _assignment_ids_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    if not shift_ids:
+        return []
+    return list(session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.duty_shift_id.in_(shift_ids))
+    ).scalars().all())
+
+
+@router.get("/bulk-delete/preview", response_model=BulkDeletePreview)
+def bulk_delete_preview(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BulkDeletePreview:
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    dt_map = {r.id: r.name for r in session.execute(select(DutyType)).scalars()}
+    loc_map = {r.id: r.name for r in session.execute(select(DutyLocation)).scalars()}
+
+    shifts = _shifts_in_range(session, date_from, date_to)
+    shift_ids = [s.id for s in shifts]
+    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
+
+    swap_count = session.execute(
+        select(func.count()).select_from(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids))
+    ).scalar_one() if assignment_ids else 0
+
+    dismissal_count = session.execute(
+        select(func.count()).select_from(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids))
+    ).scalar_one() if assignment_ids else 0
+
+    reserve_link_count = session.execute(
+        select(func.count()).select_from(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        )
+    ).scalar_one() if assignment_ids else 0
+
+    return BulkDeletePreview(
+        shift_count=len(shifts),
+        assignment_count=len(assignment_ids),
+        swap_count=swap_count,
+        dismissal_count=dismissal_count,
+        reserve_link_count=reserve_link_count,
+        shifts=[
+            {
+                "id": str(s.id),
+                "duty_type_name": dt_map.get(s.duty_type_id, ""),
+                "duty_location_name": loc_map.get(s.duty_location_id, ""),
+                "start_date": s.start_date.isoformat(),
+                "end_date": s.end_date.isoformat(),
+                "required_count": s.required_count,
+            }
+            for s in shifts
+        ],
+    )
+
+
+@router.delete("/bulk-delete", status_code=status.HTTP_200_OK)
+def bulk_delete_shifts(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    shifts = _shifts_in_range(session, date_from, date_to)
+    shift_ids = [s.id for s in shifts]
+    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
+
+    if assignment_ids:
+        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        ))
+        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    if shift_ids:
+        session.execute(sa_delete(DutyShift).where(DutyShift.id.in_(shift_ids)))
+
+    session.commit()
+    return {"deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)}
 
 
 @router.delete("/{shift_id}/assignments", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

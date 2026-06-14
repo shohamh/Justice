@@ -56,3 +56,29 @@ export async function deleteShift(id: string): Promise<void> {
 export async function clearShiftAssignments(id: string): Promise<void> {
   await api.delete(`/shifts/${id}/assignments`);
 }
+
+export interface BulkDeletePreviewShift {
+  id: string;
+  duty_type_name: string;
+  duty_location_name: string;
+  start_date: string;
+  end_date: string;
+  required_count: number;
+}
+
+export interface BulkDeletePreview {
+  shift_count: number;
+  assignment_count: number;
+  swap_count: number;
+  dismissal_count: number;
+  reserve_link_count: number;
+  shifts: BulkDeletePreviewShift[];
+}
+
+export async function getBulkDeletePreview(dateFrom: string, dateTo: string): Promise<BulkDeletePreview> {
+  return (await api.get<BulkDeletePreview>("/shifts/bulk-delete/preview", { params: { date_from: dateFrom, date_to: dateTo } })).data;
+}
+
+export async function bulkDeleteShifts(dateFrom: string, dateTo: string): Promise<{ deleted_shifts: number; deleted_assignments: number }> {
+  return (await api.delete<{ deleted_shifts: number; deleted_assignments: number }>("/shifts/bulk-delete", { params: { date_from: dateFrom, date_to: dateTo } })).data;
+}
