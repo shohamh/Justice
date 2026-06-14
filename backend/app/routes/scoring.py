@@ -37,6 +37,8 @@ class TransparencyRow(BaseModel):
     normalised_score: Decimal
     is_globally_exempted: bool = False
     effort_score: float = 0.0
+    c_over_d: float = 0.0
+    effort_offset_raw: int = 0
 
 
 class PerTypeRow(BaseModel):

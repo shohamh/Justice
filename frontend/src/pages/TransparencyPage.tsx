@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -8,7 +9,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
-import FairnessComponentsCard from "../components/FairnessComponentsCard";
+import FairnessComponentsCard, { type GroupKey } from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 
@@ -274,9 +275,21 @@ export default function TransparencyPage() {
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [tab, setTab] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const TAB_KEYS = ["soldiers", "sub_units"] as const;
+  type TabKey = typeof TAB_KEYS[number];
+  const rawKey = searchParams.get("tab") as TabKey | null;
+  const tab = rawKey === "sub_units" ? 1 : 0;
+
+  function setTab(next: number) {
+    setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "soldiers"); return prev; }, { replace: true });
+  }
+  const [showDebug, setShowDebug] = useState(false);
   const [officerFilter, setOfficerFilter] = useState<OfficerFilter>("all");
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
+  const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
+  const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
@@ -310,6 +323,11 @@ export default function TransparencyPage() {
     let filtered = subtreeIds
       ? rows.filter((r) => r.node_id != null && subtreeIds.has(r.node_id))
       : rows;
+    if (activeGroupKeys.size > 0) {
+      const ids = new Set<string>();
+      for (const key of activeGroupKeys) for (const id of groupSoldiersMap.get(key) ?? []) ids.add(id);
+      filtered = filtered.filter((r) => ids.has(r.soldier_id));
+    }
     if (officerFilter === "officer") filtered = filtered.filter((r) => r.is_officer);
     if (officerFilter === "enlisted") filtered = filtered.filter((r) => !r.is_officer);
     if (serviceFilter !== "all") filtered = filtered.filter((r) => r.service_type === serviceFilter);
@@ -319,7 +337,7 @@ export default function TransparencyPage() {
       _row_num: i + 1,
       _rank_order: r.rank ? (RANK_ORDER[r.rank] ?? 999) : 999,
     }));
-  }, [rows, subtreeIds, officerFilter, serviceFilter]);
+  }, [rows, subtreeIds, officerFilter, serviceFilter, activeGroupKeys, groupSoldiersMap]);
 
   // ── sub-hierarchy tab: build children map from parent_id (API returns flat list) ──
   const subRows = useMemo((): SubRow[] => {
@@ -404,6 +422,20 @@ export default function TransparencyPage() {
     setTreeOpen(false);
   }
 
+  function handleGroupToggle(soldierIds: string[], key: GroupKey) {
+    setGroupSoldiersMap((prev) => new Map(prev).set(key, soldierIds));
+    setActiveGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setTab(0);
+  }
+
+  function clearGroupFilter() {
+    setActiveGroupKeys(new Set());
+  }
+
   // ── soldiers columns ──
   type NumberedRow = TransparencyRow & { _row_num: number; _rank_order: number };
   const soldierCols: ColDef<NumberedRow>[] = [
@@ -483,6 +515,22 @@ export default function TransparencyPage() {
       },
       sortValue: (r) => r.effort_score,
     },
+    ...(showDebug ? [
+      {
+        id: "c_over_d",
+        header: "C/D (1/Wᵢ)",
+        headerTooltip: "C_over_D = 1/Wᵢ — משקל הכנסת תורנות חדשה לעומס. חייל חדש → גבוה; ותיק → נמוך.",
+        cell: (r: NumberedRow) => r.c_over_d.toFixed(4),
+        sortValue: (r: NumberedRow) => r.c_over_d,
+      },
+      {
+        id: "effort_offset_raw",
+        header: "effort_offset (×10⁹)",
+        headerTooltip: "int(effort_score × 10⁹) — ה-offset ההיסטורי שמוזרק למודל ה-CP-SAT.",
+        cell: (r: NumberedRow) => r.effort_offset_raw.toLocaleString(),
+        sortValue: (r: NumberedRow) => r.effort_offset_raw,
+      },
+    ] as ColDef<NumberedRow>[] : []),
   ];
 
   // ── sub-hierarchy columns ──
@@ -616,12 +664,23 @@ export default function TransparencyPage() {
           </div>
 
           {tab === 0 && (
-            <button
-              className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={() => void downloadTransparencyExport(selectedNodeId)}
-            >
-              📥 ייצוא לאקסל
-            </button>
+            <div className="flex items-center gap-2">
+              {user?.role === "admin" && (
+                <button
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${showDebug ? "bg-amber-100 dark:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200" : "border-gray-300 dark:border-gray-600 text-gray-500 hover:border-amber-400"}`}
+                  onClick={() => setShowDebug(d => !d)}
+                  title="הצג ערכי count-space לדיבאג הוגנות"
+                >
+                  🔧 count-space
+                </button>
+              )}
+              <button
+                className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
+                onClick={() => void downloadTransparencyExport(selectedNodeId)}
+              >
+                📥 ייצוא לאקסל
+              </button>
+            </div>
           )}
           {tab === 1 && (
             <button
@@ -659,11 +718,42 @@ export default function TransparencyPage() {
           {tab === 1 && <FairnessCard stats={subEffortStats} helpVariant="subunits" />}
         </div>
 
-        {tab === 0 && <FairnessComponentsCard />}
+        {tab === 0 && (
+          <FairnessComponentsCard
+            activeGroupKeys={activeGroupKeys}
+            onGroupToggle={handleGroupToggle}
+            onClearGroups={clearGroupFilter}
+          />
+        )}
+
+        {showDebug && tab === 0 && (
+          <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2" dir="rtl">
+            <strong>מצב דיבאג count-space:</strong> C/D = 1/Wᵢ (Wᵢ = סך חלקי-הרבעון הפעילים מאז reset_date).
+            ערך גבוה = חייל עם היסטוריה קצרה, כל תורנות "שוקלת" הרבה בחישוב ההוגנות.
+            ה-μ שהאלגוריתם מכוון אליו = (Σ effort_offset + total_new_weight) / n_eligible — מחושב per-run בלבד.
+          </div>
+        )}
 
         {/* Filter pills (soldiers tab only) */}
         {tab === 0 && (
           <div className="flex flex-wrap gap-3 items-center" dir="rtl">
+            {activeGroupKeys.size > 0 && (
+              <>
+                {[...activeGroupKeys].map((key) => (
+                  <div key={key} className="flex items-center gap-1">
+                    <span className={`text-sm px-2 py-1 rounded-full border font-medium ${
+                      key === "exempt"
+                        ? "bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 border-orange-400"
+                        : "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border-indigo-400"
+                    }`}>
+                      {key === "exempt" ? "פטורים / לא כשירים" : `קבוצה ${parseInt(key.replace("comp_", "")) + 1}`}
+                    </span>
+                    <button className="text-xs text-gray-400 hover:text-red-500 px-1" onClick={() => handleGroupToggle(groupSoldiersMap.get(key) ?? [], key)}>✕</button>
+                  </div>
+                ))}
+                <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 hidden sm:block" />
+              </>
+            )}
             <FilterPills<OfficerFilter>
               value={officerFilter}
               onChange={setOfficerFilter}
