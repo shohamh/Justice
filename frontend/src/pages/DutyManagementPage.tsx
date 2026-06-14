@@ -3,24 +3,16 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import ExplanationModal from "../components/ExplanationModal";
-import { Assignment, cancelAssignment, createAssignment, listAssignments, setOverride } from "../api/assignments";
+import { Assignment, cancelAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
-import { DutyLocation, DutyType, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { DraftPreviewItem, getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm";
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
-  const [types, setTypes] = useState<DutyType[]>([]);
-  const [locs, setLocs] = useState<DutyLocation[]>([]);
   const [soldierId, setSoldierId] = useState("");
-  const [typeId, setTypeId] = useState("");
-  const [locId, setLocId] = useState("");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
   const [rows, setRows] = useState<Assignment[]>([]);
-  const [error, setError] = useState("");
   const [adjDelta, setAdjDelta] = useState("");
   const [adjReason, setAdjReason] = useState("");
 
@@ -38,13 +30,7 @@ export function DutyManagementContent() {
   const publishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    void (async () => {
-      const [ss, dts, ls] = await Promise.all([listSoldiers(), listDutyTypes(), listLocations()]);
-      setSoldiers(ss); setTypes(dts); setLocs(ls);
-      if (ss[0]) setSoldierId(ss[0].id);
-      if (dts[0]) setTypeId(dts[0].id);
-      if (ls[0]) setLocId(ls[0].id);
-    })();
+    void listSoldiers().then(ss => { setSoldiers(ss); if (ss[0]) setSoldierId(ss[0].id); });
   }, []);
 
   const refresh = useCallback(async (sid: string) => {
@@ -69,19 +55,6 @@ export function DutyManagementContent() {
       if (publishedTimerRef.current) clearTimeout(publishedTimerRef.current);
     };
   }, []);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    try {
-      await createAssignment({ soldier_id: soldierId, duty_type_id: typeId, duty_location_id: locId, start_date: start, end_date: end });
-      setStart(""); setEnd("");
-      await refresh(soldierId);
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setError(detail ? (t(`errors.${detail}` as Parameters<typeof t>[0]) || detail) : t("errors.generic"));
-    }
-  }
 
   async function doCancel(id: string) {
     const reason = window.prompt(t("duty_management.cancel_reason"));
@@ -156,19 +129,6 @@ export function DutyManagementContent() {
           {soldiers.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
         </select>
       </label>
-
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-2" data-testid="assignment-form">
-        <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={typeId} onChange={(e) => setTypeId(e.target.value)} data-testid="dm-type">
-          {types.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-        </select>
-        <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={locId} onChange={(e) => setLocId(e.target.value)} data-testid="dm-loc">
-          {locs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="dm-start" />
-        <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="dm-end" />
-        <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dm-create">{t("duty_management.create")}</button>
-      </form>
-      {error && <p className="text-red-600 text-sm" data-testid="dm-error">{error}</p>}
 
       <ul className="text-sm space-y-1" data-testid="assignment-list">
         {rows.length === 0 && <li data-testid="dm-empty">{t("duty_management.none")}</li>}

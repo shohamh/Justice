@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
+import ShiftAssignModal from "../components/ShiftAssignModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -25,6 +26,7 @@ function Spinner() {
 }
 
 function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
+  const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [preview, setPreview] = useState<BulkDeletePreview | null>(null);
@@ -86,9 +88,17 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
   const canPreview = !!from && !!to && from <= to;
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4 border-2 border-red-200 dark:border-red-900" dir="rtl">
-      <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">ניקוי / מחיקה לפי טווח תאריכים</h2>
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow border-2 border-red-200 dark:border-red-900" dir="rtl">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-6 py-4 text-right"
+      >
+        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">ניקוי / מחיקה לפי טווח תאריכים</h2>
+        <span className="text-red-400 text-sm">{open ? "▲" : "▼"}</span>
+      </button>
 
+      {open && <div className="px-6 pb-6 space-y-4">
       <div className="flex flex-wrap gap-4 items-end text-sm">
         <label className="flex items-center gap-2">
           <span className="text-gray-700 dark:text-gray-300">מתאריך</span>
@@ -200,6 +210,7 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
           )}
         </div>
       )}
+      </div>}
     </section>
   );
 }
@@ -213,6 +224,7 @@ export function ShiftsContent() {
   const [dateTo, setDateTo] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editShift, setEditShift] = useState<DutyShift | null>(null);
+  const [assignShift, setAssignShift] = useState<DutyShift | null>(null);
 
   const refresh = useCallback(async () => {
     const [ss, dts, locs] = await Promise.all([
@@ -266,6 +278,8 @@ export function ShiftsContent() {
 
   return (
     <>
+      <BulkDeletePanel onDeleted={refresh} />
+
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
@@ -382,6 +396,15 @@ export function ShiftsContent() {
                   >
                     {t("shifts.edit")}
                   </button>
+                  {s.status === "active" && s.fill_status !== "full" && (
+                    <button
+                      type="button"
+                      onClick={() => setAssignShift(s)}
+                      className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline"
+                    >
+                      {t("shifts.assign")}
+                    </button>
+                  )}
                   {s.status === "cancelled" ? (
                     <button
                       type="button"
@@ -434,8 +457,6 @@ export function ShiftsContent() {
         })()}
       </section>
 
-      <BulkDeletePanel onDeleted={refresh} />
-
       {showCreate && (
         <ShiftFormModal
           dutyTypes={dutyTypes}
@@ -451,6 +472,14 @@ export function ShiftsContent() {
           existing={editShift}
           onSaved={async () => { setEditShift(null); await refresh(); }}
           onClose={() => setEditShift(null)}
+        />
+      )}
+      {assignShift && (
+        <ShiftAssignModal
+          shift={assignShift}
+          dutyTypes={dutyTypes}
+          onSaved={async () => { setAssignShift(null); await refresh(); }}
+          onClose={() => setAssignShift(null)}
         />
       )}
     </>

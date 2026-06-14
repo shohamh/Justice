@@ -14,6 +14,7 @@ from sqlalchemy import delete as sa_delete, func
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import shifts as svc
+from app.services.algorithm_bridge import load_soldier_inputs
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -209,6 +210,90 @@ def delete_shift(
     except svc.ShiftError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     session.commit()
+
+
+class ShiftCandidateOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str
+    personal_number: str
+    effort: float
+    blocked: bool
+    blocked_reason: str | None = None
+
+
+@router.get("/{shift_id}/candidates", response_model=list[ShiftCandidateOut])
+def get_shift_candidates(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ShiftCandidateOut]:
+    """Return eligible soldiers for a shift, sorted by effort ascending. Blocked soldiers (conflict/constraint) appear at end."""
+    shift = _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    soldier_map: dict[uuid.UUID, Soldier] = {
+        s.id: s for s in session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+    }
+
+    # Soldiers already on THIS shift (exclude them entirely)
+    already_on_shift: set[uuid.UUID] = set(
+        session.execute(
+            select(DutyAssignment.soldier_id).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        ).scalars().all()
+    )
+
+    # Soldiers with any overlapping published/draft assignment (conflict)
+    blocked_by_assignment: set[uuid.UUID] = set(
+        session.execute(
+            select(DutyAssignment.soldier_id).where(
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+                DutyAssignment.start_date <= shift.end_date,
+                DutyAssignment.end_date >= shift.start_date,
+            )
+        ).scalars().all()
+    )
+
+    soldier_inputs = load_soldier_inputs(session, as_of=shift.start_date)
+
+    result: list[ShiftCandidateOut] = []
+    for si in soldier_inputs:
+        if si.id in already_on_shift:
+            continue
+        if shift.duty_type_id in si.exempted_duty_type_ids:
+            continue
+        if shift.eligible_node_ids and si.hierarchy_node_id not in shift.eligible_node_ids:
+            continue
+        soldier = soldier_map.get(si.id)
+        if soldier is None:
+            continue
+
+        has_constraint = any(
+            c_start <= shift.end_date and c_end >= shift.start_date
+            for c_start, c_end in si.approved_constraint_dates
+        )
+        blocked = has_constraint or si.id in blocked_by_assignment
+        blocked_reason: str | None = None
+        if has_constraint:
+            blocked_reason = "constraint"
+        elif si.id in blocked_by_assignment:
+            blocked_reason = "assignment"
+
+        effort = float(si.cumulative_score) / float(si.active_days)
+
+        result.append(ShiftCandidateOut(
+            soldier_id=si.id,
+            full_name=soldier.full_name,
+            personal_number=soldier.personal_number,
+            effort=round(effort, 3),
+            blocked=blocked,
+            blocked_reason=blocked_reason,
+        ))
+
+    result.sort(key=lambda x: (x.blocked, x.effort))
+    return result
 
 
 class AssignmentOut(BaseModel):

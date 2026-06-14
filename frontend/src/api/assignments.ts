@@ -29,9 +29,22 @@ export async function listEffectiveDuties(soldierId: string, params?: { date_fro
   return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
 }
 export async function createAssignment(input: {
-  soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; notes?: string | null;
+  soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; duty_shift_id?: string | null; notes?: string | null;
 }): Promise<Assignment> {
   return (await api.post<Assignment>(`/assignments`, input)).data;
+}
+
+export interface ShiftCandidate {
+  soldier_id: string;
+  full_name: string;
+  personal_number: string;
+  effort: number;
+  blocked: boolean;
+  blocked_reason: "constraint" | "assignment" | null;
+}
+
+export async function getShiftCandidates(shiftId: string): Promise<ShiftCandidate[]> {
+  return (await api.get<ShiftCandidate[]>(`/shifts/${shiftId}/candidates`)).data;
 }
 export async function cancelAssignment(id: string, reason: string): Promise<Assignment> {
   return (await api.post<Assignment>(`/assignments/${id}/cancel`, { reason })).data;

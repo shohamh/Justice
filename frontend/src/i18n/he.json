@@ -481,6 +481,8 @@
     "delete_tooltip": "מחיקה קבועה — נדיר. לביטול בלבד יש להשתמש ב׳בטל משמרת׳.",
     "actions": "פעולות",
     "save": "שמור",
+    "assign": "שבץ",
+    "assign_modal_title": "שיבוץ ידני",
     "add_location": "מיקום חדש",
     "location_name": "שם מיקום",
     "dismiss": "ביטול",
