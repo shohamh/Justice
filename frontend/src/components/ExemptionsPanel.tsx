@@ -1,13 +1,15 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
+import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
 
 export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: string; canManage: boolean }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<Exemption[]>([]);
   const [types, setTypes] = useState<ExemptionType[]>([]);
+  const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [typeId, setTypeId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -19,10 +21,28 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   }, [soldierId]);
   useEffect(() => {
     void refresh();
-    listExemptionTypes().then(setTypes);
+    Promise.all([listExemptionTypes(), getAllExemptionDutyTypeMaps(), listDutyTypes()]).then(
+      ([etypes, maps, dtypes]) => {
+        setTypes(etypes);
+        const nameById = Object.fromEntries(dtypes.map((d) => [d.id, d.name]));
+        const named: Record<string, string[]> = {};
+        for (const [etId, dtIds] of Object.entries(maps)) {
+          named[etId] = dtIds.map((id) => nameById[id] ?? id);
+        }
+        setDutyTypeMap(named);
+      }
+    );
   }, [refresh]);
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? id;
+
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   async function onGrant(e: FormEvent) {
     e.preventDefault();
@@ -49,17 +69,43 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         <p className="text-sm text-gray-500" data-testid="exemptions-empty">{t("exemptions.none")}</p>
       )}
       <ul className="text-sm space-y-1" data-testid="exemptions-list">
-        {items.map((ex) => (
-          <li key={ex.id} className="flex items-center gap-2" data-testid={`exemption-row-${ex.id}`}>
-            <span>{typeName(ex.exemption_type_id)}</span>
-            <span className="text-gray-400" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
-            {canManage && (
-              <button className="text-rejected text-xs" onClick={() => onRevoke(ex.id)} data-testid={`revoke-${ex.id}`}>
-                {t("exemptions.revoke")}
-              </button>
-            )}
-          </li>
-        ))}
+        {items.map((ex) => {
+          const names = dutyTypeMap[ex.exemption_type_id] ?? [];
+          const isExpanded = expanded.has(ex.id);
+          return (
+            <li
+              key={ex.id}
+              className="border dark:border-gray-600 rounded p-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+              onClick={() => toggleExpand(ex.id)}
+              data-testid={`exemption-row-${ex.id}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{typeName(ex.exemption_type_id)}</span>
+                <span className="text-gray-400 text-xs" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+                {canManage && (
+                  <button
+                    className="text-red-500 text-xs mr-auto"
+                    onClick={(e) => { e.stopPropagation(); void onRevoke(ex.id); }}
+                    data-testid={`revoke-${ex.id}`}
+                  >
+                    {t("exemptions.revoke")}
+                  </button>
+                )}
+              </div>
+              {isExpanded && (
+                <div className="mt-1.5 space-y-0.5">
+                  {ex.reason && <p className="text-xs text-gray-500">{ex.reason}</p>}
+                  {names.length > 0 && (
+                    <p className="text-xs text-gray-500">
+                      <span className="font-medium">{t("exemptions.exempts_from")}:</span>{" "}
+                      {names.join("، ")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2" data-testid="grant-form">
