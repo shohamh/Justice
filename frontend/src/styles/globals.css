@@ -26,7 +26,16 @@ body {
   body {
     background-color: #111827;
     color: #f9fafb;
+    color-scheme: dark;
   }
+}
+
+/* KaTeX formulas must always render LTR regardless of page direction */
+.katex,
+.katex-display {
+  direction: ltr;
+  unicode-bidi: embed;
+  text-align: left;
 }
 
 .fc-event-has-reserves {
