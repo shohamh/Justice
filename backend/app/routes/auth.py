@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
@@ -23,6 +23,9 @@ from app.services.soldiers import PasswordPolicyError, bump_token_version, valid
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_LOCKOUT_THRESHOLD = 10
+_LOCKOUT_MINUTES = 15
 
 
 class LoginRequest(BaseModel):
@@ -111,17 +114,40 @@ def login(
     )
     soldier = session.execute(stmt).scalar_one_or_none()
 
-    if soldier is None or not verify_password(body.password, soldier.password_hash):
+    if soldier is None:
         write_audit(
-            session,
-            actor_id=soldier.id if soldier is not None else None,
-            action="auth.login.failure",
-            entity_type="soldier",
-            entity_id=soldier.id if soldier is not None else None,
-            context={**_client_context(request), "personal_number": body.personal_number},
+            session, actor_id=None, action="auth.login.failure", entity_type="soldier",
+            entity_id=None, context={**_client_context(request), "personal_number": body.personal_number},
         )
         session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+
+    # Check lockout
+    _now_utc = _dt.now(tz=UTC)
+    locked = getattr(soldier, "locked_until", None)
+    if locked is not None and locked > _now_utc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="account_locked",
+            headers={"Retry-After": str(int((locked - _now_utc).total_seconds()))},
+        )
+
+    if not verify_password(body.password, soldier.password_hash):
+        count = getattr(soldier, "failed_login_count", 0) + 1
+        soldier.failed_login_count = count
+        if count >= _LOCKOUT_THRESHOLD:
+            soldier.locked_until = _now_utc + _td(minutes=_LOCKOUT_MINUTES)
+            soldier.failed_login_count = 0
+        write_audit(
+            session, actor_id=soldier.id, action="auth.login.failure", entity_type="soldier",
+            entity_id=soldier.id, context={**_client_context(request), "personal_number": body.personal_number},
+        )
+        session.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+
+    # Successful login — reset lockout state
+    soldier.failed_login_count = 0
+    soldier.locked_until = None
 
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)

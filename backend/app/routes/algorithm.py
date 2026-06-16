@@ -1,17 +1,16 @@
-from __future__ import annotations
-
 import json as _json
 import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
+from app.rate_limit import limiter
 from app.db.models import (
     AlgorithmJob,
     AssignmentExplanation,
@@ -383,9 +382,11 @@ def _explanation_response(
 # ── Endpoints ──
 
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("3/minute")
 def create_job(
     body: CreateJobRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, Any]:

@@ -42,6 +42,8 @@ class Soldier(Base):
         Boolean, server_default=text("false"), default=False
     )
     token_version: Mapped[int] = mapped_column(Integer, server_default=text("1"), default=1)
+    failed_login_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     gender: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     is_officer: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)

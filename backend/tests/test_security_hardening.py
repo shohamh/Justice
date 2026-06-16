@@ -47,6 +47,13 @@ def test_cookie_secure_can_be_disabled_for_dev():
         assert s.cookie_secure is False
 
 
+def test_lockout_threshold_constants():
+    """Lockout fires at 10 failures, releases after 15 minutes — document the policy."""
+    from app.routes.auth import _LOCKOUT_THRESHOLD, _LOCKOUT_MINUTES
+    assert _LOCKOUT_THRESHOLD == 10
+    assert _LOCKOUT_MINUTES == 15
+
+
 def test_soldier_move_requires_dest_node_auth():
     """authorize must be called twice when hierarchy_node_id changes."""
     from app.auth.authz import Action
