@@ -86,6 +86,21 @@ export interface DismissAndReallocateResponse {
   reallocations: ReallocationOut[];
 }
 
+export interface ReserveCandidate {
+  assignment_id: string;
+  soldier_id: string;
+  distance: number;
+  called_up_from: string | null;
+  called_up_to: string | null;
+}
+
+export async function getReserveCandidates(
+  shiftId: string,
+  reserveAssignmentId: string,
+): Promise<ReserveCandidate[]> {
+  return (await api.get<ReserveCandidate[]>(`/shifts/${shiftId}/reserve-candidates/${reserveAssignmentId}`)).data;
+}
+
 export async function dismissAndReallocate(
   shiftId: string,
   body: DismissAndReallocateRequest,

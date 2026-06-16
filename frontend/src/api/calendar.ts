@@ -43,6 +43,16 @@ export interface CalendarShiftAssignee {
   called_up_from: string | null;
   called_up_to: string | null;
   primary_assignment_ids: string[];
+  hierarchy_path_ids: string[];
+}
+
+export async function dismissReserve(
+  assignmentId: string,
+  body: { from_date: string; to_date: string; reason?: string; covering_reserve_assignment_id?: string },
+): Promise<void> {
+  await import("./client").then(({ api }) =>
+    api.post(`/duty-assignments/${assignmentId}/reserve-dismissals`, body)
+  );
 }
 
 export interface CalendarShift {

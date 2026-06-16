@@ -5,6 +5,7 @@ import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
+import ReserveDismissalModal from "./ReserveDismissalModal";
 import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
@@ -22,6 +23,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const { t } = useTranslation();
   const { user } = useAuth();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);
+  const [reserveDismissTarget, setReserveDismissTarget] = useState<CalendarShiftAssignee | null>(null);
   const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
@@ -299,6 +301,12 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         {t("swaps.offer_replace")}
                       </button>
                     )}
+                    <button
+                      className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                      onClick={() => setReserveDismissTarget(a)}
+                    >
+                      {t("dismiss_action")}
+                    </button>
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
                         a.called_up_from ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"
@@ -329,6 +337,15 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             primary={dismissTarget}
             onClose={() => setDismissTarget(null)}
             onDone={() => { setDismissTarget(null); onRefreshNeeded(); }}
+          />
+        )}
+
+        {reserveDismissTarget && (
+          <ReserveDismissalModal
+            shift={shift}
+            reserve={reserveDismissTarget}
+            onClose={() => setReserveDismissTarget(null)}
+            onDone={() => { setReserveDismissTarget(null); onRefreshNeeded(); }}
           />
         )}
 

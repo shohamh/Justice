@@ -520,7 +520,11 @@
     "generate_btn": "צור",
     "new_badge": "חדש",
     "exists_badge": "קיים",
-    "created_count": "נוצרו {{count}} משמרות"
+    "created_count": "נוצרו {{count}} משמרות",
+    "recurrence_type": "תדירות",
+    "recurrence_daily": "כל יום",
+    "recurrence_weekdays": "ימי עבודה (א׳–ה׳)",
+    "recurrence_weekly": "ימים נבחרים"
   },
   "swaps": {
     "title": "החלפות",

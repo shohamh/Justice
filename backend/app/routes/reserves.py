@@ -26,6 +26,7 @@ class DismissRequest(BaseModel):
     from_date: date
     to_date: date
     reason: str | None = Field(default=None, max_length=1000)
+    covering_reserve_assignment_id: uuid.UUID | None = None
 
 
 class ReserveLinkRequest(BaseModel):
@@ -38,6 +39,14 @@ class DismissAndReallocateRequest(BaseModel):
     from_date: date
     to_date: date
     reason: str | None = Field(default=None, max_length=1000)
+
+
+class ReserveCandidateOut(BaseModel):
+    assignment_id: uuid.UUID
+    soldier_id: uuid.UUID
+    distance: int
+    called_up_from: date | None
+    called_up_to: date | None
 
 
 class ReallocationOut(BaseModel):
@@ -86,6 +95,23 @@ def _load_assignment(session: Session, assignment_id: uuid.UUID) -> DutyAssignme
     if a is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return a
+
+
+@router.get(
+    "/shifts/{shift_id}/reserve-candidates/{reserve_assignment_id}",
+    response_model=list[ReserveCandidateOut],
+)
+def get_reserve_candidates(
+    shift_id: uuid.UUID,
+    reserve_assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ReserveCandidateOut]:
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    candidates = svc.get_reserve_candidates(
+        session, shift_id=shift_id, reserve_assignment_id=reserve_assignment_id
+    )
+    return [ReserveCandidateOut(**c) for c in candidates]
 
 
 @router.get("/shifts/{shift_id}/reserve-detail", response_model=ShiftReserveDetailOut)
@@ -175,6 +201,43 @@ def dismiss(
             to_date=body.to_date,
             reason=body.reason,
             actor_id=user.id,
+        )
+    except svc.ReserveError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(d)
+    return DismissalOut(
+        id=d.id,
+        duty_assignment_id=d.duty_assignment_id,
+        dismissed_from=d.dismissed_from,
+        dismissed_to=d.dismissed_to,
+        reason=d.reason,
+        created_at=d.created_at,
+    )
+
+
+@router.post(
+    "/duty-assignments/{assignment_id}/reserve-dismissals",
+    response_model=DismissalOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def dismiss_reserve(
+    assignment_id: uuid.UUID,
+    body: DismissRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> DismissalOut:
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    a = _load_assignment(session, assignment_id)
+    try:
+        d, _ = svc.dismiss_reserve(
+            session,
+            assignment=a,
+            from_date=body.from_date,
+            to_date=body.to_date,
+            reason=body.reason,
+            actor_id=user.id,
+            covering_reserve_id=body.covering_reserve_assignment_id,
         )
     except svc.ReserveError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

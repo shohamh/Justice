@@ -105,6 +105,168 @@ def dismiss_primary(
     return dismissal
 
 
+def get_reserve_candidates(
+    session: Session,
+    *,
+    shift_id: uuid.UUID,
+    reserve_assignment_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """Return other reserves on the shift ranked by min hierarchy distance to the orphaned primaries."""
+    link_rows = (
+        session.execute(
+            select(DutyReserveLink).where(
+                DutyReserveLink.reserve_assignment_id == reserve_assignment_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not link_rows:
+        return []
+
+    orphan_primary_ids = [lk.primary_assignment_id for lk in link_rows]
+    primaries = (
+        session.execute(
+            select(DutyAssignment).where(DutyAssignment.id.in_(orphan_primary_ids))
+        )
+        .scalars()
+        .all()
+    )
+
+    all_reserves = (
+        session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.is_reserve.is_(True),
+                DutyAssignment.id != reserve_assignment_id,
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not all_reserves:
+        return []
+
+    hier_parent, _, soldier_node, _ = build_hierarchy_maps(session)
+    primary_nodes = [soldier_node.get(p.soldier_id) for p in primaries]
+
+    results = []
+    for r in all_reserves:
+        r_node = soldier_node.get(r.soldier_id)
+        distances = [
+            _hierarchy_distance(p_node, r_node, hier_parent)
+            for p_node in primary_nodes
+            if p_node is not None and r_node is not None
+        ]
+        distance = min(distances) if distances else 99
+        results.append(
+            {
+                "assignment_id": r.id,
+                "soldier_id": r.soldier_id,
+                "distance": distance,
+                "called_up_from": r.called_up_from,
+                "called_up_to": r.called_up_to,
+            }
+        )
+
+    results.sort(key=lambda x: x["distance"])
+    return results
+
+
+def dismiss_reserve(
+    session: Session,
+    *,
+    assignment: DutyAssignment,
+    from_date: date,
+    to_date: date,
+    reason: str | None,
+    actor_id: uuid.UUID | None = None,
+    covering_reserve_id: uuid.UUID | None = None,
+) -> tuple[DutyDismissal, list[dict]]:
+    """Record a dismissal on a reserve assignment and relink its covered primaries.
+
+    Returns (dismissal, reallocations).
+    """
+    if not assignment.is_reserve:
+        raise ReserveError("not_a_reserve")
+    if from_date < assignment.start_date or to_date > assignment.end_date:
+        raise ReserveError("date_out_of_range")
+    if to_date < from_date:
+        raise ReserveError("bad_date_range")
+    existing = (
+        session.execute(
+            select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
+        )
+        .scalars()
+        .all()
+    )
+    for d in existing:
+        if d.dismissed_from <= to_date and d.dismissed_to >= from_date:
+            raise ReserveError("overlapping_dismissal")
+    dismissal = DutyDismissal(
+        duty_assignment_id=assignment.id,
+        dismissed_from=from_date,
+        dismissed_to=to_date,
+        reason=reason,
+        created_by=actor_id,
+    )
+    session.add(dismissal)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="reserve.dismiss_reserve",
+        entity_type="duty_dismissal",
+        entity_id=dismissal.id,
+        after={
+            "duty_assignment_id": str(assignment.id),
+            "dismissed_from": from_date.isoformat(),
+            "dismissed_to": to_date.isoformat(),
+            "reason": reason,
+        },
+    )
+    if covering_reserve_id is not None:
+        link_rows = (
+            session.execute(
+                select(DutyReserveLink).where(
+                    DutyReserveLink.reserve_assignment_id == assignment.id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        reallocations = []
+        for lk in link_rows:
+            primary_a = session.get(DutyAssignment, lk.primary_assignment_id)
+            if primary_a is None:
+                continue
+            new_link = relink_reserve(
+                session,
+                primary_assignment=primary_a,
+                reserve_assignment_id=covering_reserve_id,
+                actor_id=actor_id,
+            )
+            reallocations.append(
+                {
+                    "primary_assignment_id": primary_a.id,
+                    "old_reserve_assignment_id": assignment.id,
+                    "new_reserve_assignment_id": covering_reserve_id,
+                    "hierarchy_distance": new_link.hierarchy_distance,
+                }
+            )
+    else:
+        reallocations = reallocate_orphaned_primaries(
+            session,
+            shift_id=assignment.duty_shift_id,
+            called_up_reserve_id=assignment.id,
+            called_up_from=from_date,
+            called_up_to=to_date,
+            actor_id=actor_id,
+        )
+    return dismissal, reallocations
+
+
 def delete_dismissal(
     session: Session,
     *,
