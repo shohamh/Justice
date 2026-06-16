@@ -433,6 +433,11 @@ def update(
 ) -> SoldierOut:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
+    if body.hierarchy_node_id is not None and body.hierarchy_node_id != s.hierarchy_node_id:
+        dest_node = session.get(HierarchyNode, body.hierarchy_node_id)
+        if dest_node is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="destination_node_not_found")
+        authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
     svc.update_soldier(
         session, soldier=s, full_name=body.full_name, phone=body.phone,
         hierarchy_node_id=body.hierarchy_node_id, actor_id=user.id
