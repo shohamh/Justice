@@ -2,9 +2,14 @@ import uuid
 import pytest
 
 
-def test_swap_approve_is_dm_global_action():
-    from app.auth.authz import Action, _DM_GLOBAL_ACTIONS
-    assert Action.SWAP_APPROVE in _DM_GLOBAL_ACTIONS
+def test_swap_approve_is_scoped_not_global():
+    """SWAP_APPROVE must NOT be a global DM action — DMs should only approve swaps in their scope."""
+    from app.auth.authz import Action, _DM_GLOBAL_ACTIONS, _DM_ACTIONS
+    assert Action.SWAP_APPROVE not in _DM_GLOBAL_ACTIONS, (
+        "SWAP_APPROVE must be scope-checked; removing it from _DM_GLOBAL_ACTIONS prevents "
+        "a DM from approving swaps outside their hierarchy."
+    )
+    assert Action.SWAP_APPROVE in _DM_ACTIONS
 
 
 def test_node_of_assignment_helper_returns_none_for_unassigned_soldier():

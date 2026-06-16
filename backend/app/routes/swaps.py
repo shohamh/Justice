@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, can, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapRequest, Soldier
 from app.db.session import get_session
@@ -256,6 +256,19 @@ def list_swaps_for_assignment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
+    assignment = session.get(DutyAssignment, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    # Allow: the assignment owner, or a user with SWAP_APPROVE in scope
+    is_owner = assignment.soldier_id == user.id
+    if not is_owner:
+        node = None
+        soldier_on_assignment = session.get(Soldier, assignment.soldier_id)
+        if soldier_on_assignment and soldier_on_assignment.hierarchy_node_id:
+            node = session.get(HierarchyNode, soldier_on_assignment.hierarchy_node_id)
+        roots = scope_root_ids(session, user)
+        if not can(user, Action.SWAP_APPROVE, target_node=node, roots=roots):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     rows = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == assignment_id,
@@ -373,8 +386,45 @@ def pending(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
-    authorize(session, user, Action.SWAP_APPROVE, target_node=None)
-    return [_out(r, session) for r in svc.list_pending_approval(session)]
+    # Only DMs and admins may use this endpoint at all.
+    if user.role not in ("admin", "duty_manager", "commander"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    all_pending = svc.list_pending_approval(session)
+    if user.role == "admin":
+        return [_out(r, session) for r in all_pending]
+    # Filter to swaps where the requester is in the caller's scope.
+    roots = scope_root_ids(session, user)
+    out = []
+    for r in all_pending:
+        node = _swap_request_node(session, r.id)
+        if can(user, Action.SWAP_APPROVE, target_node=node, roots=roots):
+            out.append(_out(r, session))
+    return out
+
+
+def _load_swap_and_node(
+    session: Session, request_id: uuid.UUID
+) -> tuple[SwapRequest, HierarchyNode | None]:
+    """Load a SwapRequest and the requester's hierarchy node (for scope checks)."""
+    swap = session.get(SwapRequest, request_id)
+    if swap is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
+    requester = session.get(Soldier, swap.requesting_soldier_id)
+    node: HierarchyNode | None = None
+    if requester and requester.hierarchy_node_id:
+        node = session.get(HierarchyNode, requester.hierarchy_node_id)
+    return swap, node
+
+
+def _swap_request_node(session: Session, request_id: uuid.UUID) -> HierarchyNode | None:
+    """Resolve the hierarchy node of the swap requester. Returns None if not found."""
+    swap = session.get(SwapRequest, request_id)
+    if swap is None:
+        return None
+    requester = session.get(Soldier, swap.requesting_soldier_id)
+    if requester is None or requester.hierarchy_node_id is None:
+        return None
+    return session.get(HierarchyNode, requester.hierarchy_node_id)
 
 
 @router.post("/swaps/{request_id}/approve", response_model=SwapOut)
@@ -384,7 +434,8 @@ def approve(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
-    authorize(session, user, Action.SWAP_APPROVE, target_node=None)
+    _, node = _load_swap_and_node(session, request_id)
+    authorize(session, user, Action.SWAP_APPROVE, target_node=node)
     try:
         r = svc.approve_side(session, request_id=request_id, side=body.side, actor_id=user.id)
     except svc.SwapError as exc:
@@ -401,7 +452,8 @@ def reject(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
-    authorize(session, user, Action.SWAP_APPROVE, target_node=None)
+    _, node = _load_swap_and_node(session, request_id)
+    authorize(session, user, Action.SWAP_APPROVE, target_node=node)
     try:
         r = svc.reject_request(session, request_id=request_id, decision_note=body.decision_note, actor_id=user.id)
     except svc.SwapError as exc:

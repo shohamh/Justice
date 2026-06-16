@@ -345,6 +345,9 @@ def forgot_password_send(
     request: Request,
     session: Session = Depends(get_session),
 ) -> dict:
+    # Always call available_channels (same DB work as the check endpoint) so
+    # timing is consistent whether or not the personal_number exists.
+    pwd_reset_svc.available_channels(session, personal_number=body.personal_number)
     pwd_reset_svc.create_and_send(session, personal_number=body.personal_number, channel=body.channel)
     session.commit()
     return {}
