@@ -59,6 +59,14 @@ def get_calendar_shifts(
         parent = all_nodes.get(leaf.parent_id) if leaf.parent_id else None
         return f"{parent.name} / {leaf.name}" if parent else leaf.name
 
+    def _leaf_path_ids(hierarchy_node_id: uuid.UUID | None) -> list[str]:
+        if hierarchy_node_id is None:
+            return []
+        leaf = all_nodes.get(hierarchy_node_id)
+        if leaf is None:
+            return []
+        return [str(pid) for pid in (leaf.path_ids or [])]
+
     dt_map: dict[uuid.UUID, tuple[str, str]] = {}
     for dt in session.execute(select(DutyType)).scalars().all():
         h = hash(dt.id) % 360
@@ -107,6 +115,7 @@ def get_calendar_shifts(
 
     assignment_ids = [a.id for a in assignments]
     primary_ids = [a.id for a in assignments if not a.is_reserve]
+    reserve_ids = [a.id for a in assignments if a.is_reserve]
 
     links: list[DutyReserveLink] = []
     if primary_ids:
@@ -138,20 +147,42 @@ def get_calendar_shifts(
         ):
             dismissals_by_primary.setdefault(d.duty_assignment_id, []).append(d)
 
+    dismissals_by_reserve: dict[uuid.UUID, list[DutyDismissal]] = {}
+    if reserve_ids:
+        for d in (
+            session.execute(
+                select(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(reserve_ids))
+            )
+            .scalars()
+            .all()
+        ):
+            dismissals_by_reserve.setdefault(d.duty_assignment_id, []).append(d)
+
     assignees_by_shift: dict[uuid.UUID, list[dict]] = {}
     for a in assignments:
         assignees_by_shift.setdefault(a.duty_shift_id, [])
+        sol_name, sol_node = soldiers_in_subtree.get(a.soldier_id, ("", None))
         entry: dict = {
             "assignment_id": a.id,
             "soldier_id": a.soldier_id,
-            "soldier_name": soldiers_in_subtree.get(a.soldier_id, ("", None))[0],
-            "hierarchy_label": _leaf_label(soldiers_in_subtree.get(a.soldier_id, ("", None))[1]),
+            "soldier_name": sol_name,
+            "hierarchy_label": _leaf_label(sol_node),
+            "hierarchy_path_ids": _leaf_path_ids(sol_node),
             "is_reserve": a.is_reserve,
         }
         if a.is_reserve:
             entry["called_up_from"] = a.called_up_from
             entry["called_up_to"] = a.called_up_to
             entry["primary_assignment_ids"] = reserve_to_primaries.get(a.id, [])
+            entry["dismissals"] = [
+                {
+                    "id": d.id,
+                    "dismissed_from": d.dismissed_from,
+                    "dismissed_to": d.dismissed_to,
+                    "reason": d.reason,
+                }
+                for d in dismissals_by_reserve.get(a.id, [])
+            ]
         else:
             link = primary_to_link.get(a.id)
             entry["dismissals"] = [
@@ -198,6 +229,7 @@ def get_calendar_shifts(
                 "soldier_id": a.soldier_id,
                 "soldier_name": name,
                 "hierarchy_label": None,
+                "hierarchy_path_ids": [],
                 "is_reserve": True,
                 "called_up_from": a.called_up_from,
                 "called_up_to": a.called_up_to,
@@ -259,6 +291,14 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
             return None
         parent = all_nodes.get(leaf.parent_id) if leaf.parent_id else None
         return f"{parent.name} / {leaf.name}" if parent else leaf.name
+
+    def _leaf_path_ids(node_id: uuid.UUID | None) -> list[str]:
+        if node_id is None:
+            return []
+        leaf = all_nodes.get(node_id)
+        if leaf is None:
+            return []
+        return [str(pid) for pid in (leaf.path_ids or [])]
 
     assignments = (
         session.execute(
@@ -328,6 +368,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
             "soldier_id": a.soldier_id,
             "soldier_name": sol.full_name if sol else "",
             "hierarchy_label": _leaf_label(sol.hierarchy_node_id if sol else None),
+            "hierarchy_path_ids": _leaf_path_ids(sol.hierarchy_node_id if sol else None),
             "is_reserve": a.is_reserve,
             "dismissals": [],
             "reserve_assignment_id": None,

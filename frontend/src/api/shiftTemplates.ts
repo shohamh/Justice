@@ -1,11 +1,15 @@
 import { api } from "./client";
 
+export type RecurrenceType = "daily" | "weekdays" | "weekly";
+
 export interface ShiftTemplate {
   id: string;
   name: string;
   duty_type_id: string;
   duty_location_id: string;
+  recurrence_type: RecurrenceType;
   weekdays: number[];
+  duration_days: number;
   start_time: string;
   end_time: string;
   required_count: number;
@@ -18,7 +22,9 @@ export interface CreateTemplateInput {
   name: string;
   duty_type_id: string;
   duty_location_id: string;
+  recurrence_type: RecurrenceType;
   weekdays: number[];
+  duration_days?: number;
   start_time?: string;
   end_time?: string;
   required_count?: number;

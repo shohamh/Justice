@@ -412,13 +412,19 @@ export default function SwapsPage() {
               {myDuties.length === 0 && <p className="text-sm text-gray-500">{t("swaps.no_duties")}</p>}
               <ul className="space-y-2">
                 {myDuties.map(d => (
-                  <li key={d.assignment_id} className="border rounded p-3 text-sm flex items-center justify-between dark:border-gray-600">
-                    <div>
+                  <li key={d.assignment_id} className="border rounded p-3 text-sm flex items-center justify-between gap-2 dark:border-gray-600">
+                    <button
+                      type="button"
+                      onClick={d.shift_id ? () => handleShiftClick(d.shift_id!) : undefined}
+                      className={`text-right flex-1 min-w-0 ${d.shift_id ? "hover:underline decoration-dotted underline-offset-2 cursor-pointer" : "cursor-default"}`}
+                    >
                       <span className="font-medium dark:text-gray-100">{dutyTypes[d.duty_type_id] ?? d.duty_type_id}</span>
-                      <span className="text-gray-500 mr-2 text-xs" dir="ltr">{d.start_date} → {d.end_date}</span>
-                    </div>
+                      <span className="text-gray-500 mr-2 text-xs" dir="ltr">
+                        {d.start_date === d.end_date ? d.start_date : `${d.start_date} → ${d.end_date}`}
+                      </span>
+                    </button>
                     <button type="button" onClick={() => setAskSwapDuty(d)}
-                      className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700">
+                      className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 shrink-0">
                       {t("swaps.ask_swap")}
                     </button>
                   </li>

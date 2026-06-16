@@ -1,11 +1,13 @@
 import { AlgorithmJob, BatchResult } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
+import { DutyShift } from "../api/shifts";
 import FailurePanel from "./FailurePanel";
 
 interface Props {
   job: AlgorithmJob;
   dutyTypes: DutyType[];
   shiftNames: Record<string, string>;
+  shiftsById: Record<string, DutyShift>;
   onRerun?: (overrides: Record<string, number>) => void;
 }
 
@@ -21,7 +23,11 @@ interface UnfilledShift {
   reason: string;
 }
 
-function collectUnfilledShifts(batchResults: BatchResult[], shiftNames: Record<string, string>): UnfilledShift[] {
+function collectUnfilledShifts(
+  batchResults: BatchResult[],
+  shiftNames: Record<string, string>,
+  shiftsById: Record<string, DutyShift>,
+): UnfilledShift[] {
   const result: UnfilledShift[] = [];
   for (const br of batchResults) {
     for (const sf of br.shifts) {
@@ -31,12 +37,13 @@ function collectUnfilledShifts(batchResults: BatchResult[], shiftNames: Record<s
       if (br.outcome === "INFEASIBLE") reason = "לא ניתן לפתרון";
       else if (br.relaxations.length > 0) reason = "הגיע לתקרת הרפיה";
       else reason = "אין מספיק חיילים כשירים";
+      const shift = sf.shift_id ? shiftsById[sf.shift_id] : undefined;
       result.push({
         shiftId: sf.shift_id,
         shiftName: sf.shift_id ? (shiftNames[sf.shift_id] ?? sf.shift_id.slice(0, 8)) : "—",
         batchIndex: br.batch_index,
-        dateFrom: br.date_from,
-        dateTo: br.date_to,
+        dateFrom: shift?.start_date ?? br.date_from,
+        dateTo: shift?.end_date ?? br.date_to,
         required: sf.required_count,
         assigned: sf.assigned_count,
         missing,
@@ -82,9 +89,9 @@ function analyzeBatches(batchResults: BatchResult[]): DiagnosticResult {
   return { rCeilingHitCount, tCeilingHitCount, infeasibleCount, currentRCeiling: maxR, currentTCeiling: maxT };
 }
 
-export default function IssuesTab({ job, dutyTypes: _dutyTypes, shiftNames, onRerun }: Props) {
+export default function IssuesTab({ job, dutyTypes: _dutyTypes, shiftNames, shiftsById, onRerun }: Props) {
   const batchResults = job.batch_results ?? [];
-  const unfilledShifts = collectUnfilledShifts(batchResults, shiftNames);
+  const unfilledShifts = collectUnfilledShifts(batchResults, shiftNames, shiftsById);
   const diagnostics = analyzeBatches(batchResults);
 
   const hasAnyIssue =

@@ -15,12 +15,31 @@ class TemplateError(Exception):
     """Raised on invalid template operations."""
 
 
-def expand_dates(*, weekdays: list[int], range_start: date, range_end: date) -> list[date]:
-    """Return every date in [range_start, range_end] whose ISO weekday is in `weekdays`.
+_VALID_WEEKDAYS = {1, 2, 3, 4, 5, 6, 7}
+_VALID_RECURRENCE = {"daily", "weekdays", "weekly"}
+# Israeli work week: Sun(7), Mon(1), Tue(2), Wed(3), Thu(4)
+_ISRAELI_WORKWEEK = [7, 1, 2, 3, 4]
 
-    ISO weekday: Mon=1 … Sun=7. Order preserved (ascending by date).
+
+def _effective_weekdays(recurrence_type: str, weekdays: list[int]) -> set[int]:
+    if recurrence_type == "daily":
+        return _VALID_WEEKDAYS
+    if recurrence_type == "weekdays":
+        return set(_ISRAELI_WORKWEEK)
+    return set(weekdays)
+
+
+def expand_dates(
+    *, recurrence_type: str = "weekly", weekdays: list[int], range_start: date, range_end: date
+) -> list[date]:
+    """Return every date in [range_start, range_end] matching the recurrence rule.
+
+    recurrence_type:
+      "daily"    – every calendar day
+      "weekdays" – Israeli work week (Sun–Thu)
+      "weekly"   – specific ISO weekdays in `weekdays` (Mon=1 … Sun=7)
     """
-    selected = set(weekdays)
+    selected = _effective_weekdays(recurrence_type, weekdays)
     out: list[date] = []
     if not selected or range_end < range_start:
         return out
@@ -32,12 +51,20 @@ def expand_dates(*, weekdays: list[int], range_start: date, range_end: date) -> 
     return out
 
 
-_VALID_WEEKDAYS = {1, 2, 3, 4, 5, 6, 7}
-
-
-def _validate(weekdays: list[int], required_count: int, start_time: str, end_time: str) -> None:
-    if not weekdays or not set(weekdays) <= _VALID_WEEKDAYS:
+def _validate(
+    recurrence_type: str,
+    weekdays: list[int],
+    duration_days: int,
+    required_count: int,
+    start_time: str,
+    end_time: str,
+) -> None:
+    if recurrence_type not in _VALID_RECURRENCE:
+        raise TemplateError("invalid_recurrence_type")
+    if recurrence_type == "weekly" and (not weekdays or not set(weekdays) <= _VALID_WEEKDAYS):
         raise TemplateError("invalid_weekdays")
+    if not (1 <= duration_days <= 14):
+        raise TemplateError("invalid_duration_days")
     if required_count < 1:
         raise TemplateError("invalid_required_count")
     for t in (start_time, end_time):
@@ -52,7 +79,9 @@ def create_template(
     name: str,
     duty_type_id: uuid.UUID,
     duty_location_id: uuid.UUID,
+    recurrence_type: str = "weekly",
     weekdays: list[int],
+    duration_days: int = 1,
     start_time: str = "00:00",
     end_time: str = "23:59",
     required_count: int = 1,
@@ -60,12 +89,14 @@ def create_template(
     notes: str | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
-    _validate(weekdays, required_count, start_time, end_time)
+    _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time)
     tpl = ShiftTemplate(
         name=name,
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id,
-        weekdays=sorted(set(weekdays)),
+        recurrence_type=recurrence_type,
+        weekdays=sorted(set(weekdays)) if recurrence_type == "weekly" else [],
+        duration_days=duration_days,
         start_time=start_time,
         end_time=end_time,
         required_count=required_count,
@@ -81,7 +112,7 @@ def create_template(
         action="shift_template.create",
         entity_type="shift_template",
         entity_id=tpl.id,
-        after={"name": name, "weekdays": tpl.weekdays, "auto_roll": auto_roll},
+        after={"name": name, "recurrence_type": recurrence_type, "weekdays": tpl.weekdays, "duration_days": duration_days, "auto_roll": auto_roll},
     )
     return tpl
 
@@ -98,7 +129,9 @@ def update_template(
     *,
     tpl: ShiftTemplate,
     name: str | None = None,
+    recurrence_type: str | None = None,
     weekdays: list[int] | None = None,
+    duration_days: int | None = None,
     start_time: str | None = None,
     end_time: str | None = None,
     required_count: int | None = None,
@@ -107,11 +140,15 @@ def update_template(
     notes: object = ...,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
-    before = {"name": tpl.name, "weekdays": tpl.weekdays, "active": tpl.active, "auto_roll": tpl.auto_roll}
+    before = {"name": tpl.name, "recurrence_type": tpl.recurrence_type, "weekdays": tpl.weekdays, "duration_days": tpl.duration_days, "active": tpl.active, "auto_roll": tpl.auto_roll}
     if name is not None:
         tpl.name = name
+    if recurrence_type is not None:
+        tpl.recurrence_type = recurrence_type
     if weekdays is not None:
         tpl.weekdays = sorted(set(weekdays))
+    if duration_days is not None:
+        tpl.duration_days = duration_days
     if start_time is not None:
         tpl.start_time = start_time
     if end_time is not None:
@@ -124,7 +161,10 @@ def update_template(
         tpl.active = active
     if notes is not ...:
         tpl.notes = notes  # type: ignore[assignment]
-    _validate(tpl.weekdays, tpl.required_count, tpl.start_time, tpl.end_time)
+    if tpl.recurrence_type != "weekly":
+        tpl.weekdays = []
+        tpl.duration_days = 1
+    _validate(tpl.recurrence_type, tpl.weekdays, tpl.duration_days, tpl.required_count, tpl.start_time, tpl.end_time)
     write_audit(
         session,
         actor_id=actor_id,
@@ -132,7 +172,7 @@ def update_template(
         entity_type="shift_template",
         entity_id=tpl.id,
         before=before,
-        after={"name": tpl.name, "weekdays": tpl.weekdays, "active": tpl.active, "auto_roll": tpl.auto_roll},
+        after={"name": tpl.name, "recurrence_type": tpl.recurrence_type, "weekdays": tpl.weekdays, "active": tpl.active, "auto_roll": tpl.auto_roll},
     )
     return tpl
 
@@ -152,15 +192,13 @@ def delete_template(session: Session, *, tpl: ShiftTemplate, actor_id: uuid.UUID
 def _existing_dates(
     session: Session, *, template_id: uuid.UUID, dates: list[date]
 ) -> set[date]:
-    """Dates in `dates` that already have a shift generated from this template
-    (single-day shift, start_date == end_date == d)."""
+    """Start dates in `dates` that already have a shift generated from this template."""
     if not dates:
         return set()
     rows = session.execute(
         select(DutyShift.start_date).where(
             DutyShift.generated_from_template_id == template_id,
             DutyShift.start_date.in_(dates),
-            DutyShift.end_date == DutyShift.start_date,
         )
     ).scalars().all()
     return set(rows)
@@ -170,7 +208,7 @@ def preview_generation(
     session: Session, *, tpl: ShiftTemplate, range_start: date, range_end: date
 ) -> list[dict]:
     """Return [{date, exists}] for each recurring date in the range. No mutation."""
-    dates = expand_dates(weekdays=tpl.weekdays, range_start=range_start, range_end=range_end)
+    dates = expand_dates(recurrence_type=tpl.recurrence_type, weekdays=tpl.weekdays, range_start=range_start, range_end=range_end)
     existing = _existing_dates(session, template_id=tpl.id, dates=dates)
     return [{"date": d, "exists": d in existing} for d in dates]
 
@@ -185,7 +223,7 @@ def generate_shifts(
 ) -> list[DutyShift]:
     """Idempotently create one single-day DutyShift per recurring date that does not
     already have one from this template. Returns the newly created shifts."""
-    dates = expand_dates(weekdays=tpl.weekdays, range_start=range_start, range_end=range_end)
+    dates = expand_dates(recurrence_type=tpl.recurrence_type, weekdays=tpl.weekdays, range_start=range_start, range_end=range_end)
     existing = _existing_dates(session, template_id=tpl.id, dates=dates)
     created: list[DutyShift] = []
     for d in dates:
@@ -195,7 +233,7 @@ def generate_shifts(
             duty_type_id=tpl.duty_type_id,
             duty_location_id=tpl.duty_location_id,
             start_date=d,
-            end_date=d,
+            end_date=d + timedelta(days=tpl.duration_days - 1),
             required_count=tpl.required_count,
             notes=tpl.notes,
             created_by=actor_id,

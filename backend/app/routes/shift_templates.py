@@ -21,7 +21,9 @@ class TemplateOut(BaseModel):
     name: str
     duty_type_id: uuid.UUID
     duty_location_id: uuid.UUID
+    recurrence_type: str
     weekdays: list[int]
+    duration_days: int
     start_time: str
     end_time: str
     required_count: int
@@ -34,7 +36,9 @@ class CreateTemplateRequest(BaseModel):
     name: str = Field(max_length=200)
     duty_type_id: uuid.UUID
     duty_location_id: uuid.UUID
-    weekdays: list[int]
+    recurrence_type: str = "weekly"
+    weekdays: list[int] = Field(default_factory=list)
+    duration_days: int = Field(default=1, ge=1, le=14)
     start_time: str = "00:00"
     end_time: str = "23:59"
     required_count: int = Field(default=1, ge=1)
@@ -44,7 +48,9 @@ class CreateTemplateRequest(BaseModel):
 
 class UpdateTemplateRequest(BaseModel):
     name: str | None = None
+    recurrence_type: str | None = None
     weekdays: list[int] | None = None
+    duration_days: int | None = Field(default=None, ge=1, le=14)
     start_time: str | None = None
     end_time: str | None = None
     required_count: int | None = Field(default=None, ge=1)
@@ -70,8 +76,9 @@ class GenerateResult(BaseModel):
 def _out(t: ShiftTemplate) -> TemplateOut:
     return TemplateOut(
         id=t.id, name=t.name, duty_type_id=t.duty_type_id, duty_location_id=t.duty_location_id,
-        weekdays=t.weekdays, start_time=t.start_time, end_time=t.end_time,
-        required_count=t.required_count, active=t.active, auto_roll=t.auto_roll, notes=t.notes,
+        recurrence_type=t.recurrence_type, weekdays=t.weekdays, duration_days=t.duration_days,
+        start_time=t.start_time, end_time=t.end_time, required_count=t.required_count,
+        active=t.active, auto_roll=t.auto_roll, notes=t.notes,
     )
 
 
@@ -102,7 +109,8 @@ def create_template(
     try:
         t = svc.create_template(
             session, name=body.name, duty_type_id=body.duty_type_id,
-            duty_location_id=body.duty_location_id, weekdays=body.weekdays,
+            duty_location_id=body.duty_location_id, recurrence_type=body.recurrence_type,
+            weekdays=body.weekdays, duration_days=body.duration_days,
             start_time=body.start_time, end_time=body.end_time,
             required_count=body.required_count, auto_roll=body.auto_roll,
             notes=body.notes, actor_id=user.id,
@@ -128,7 +136,8 @@ def update_template(
         extra["notes"] = body.notes
     try:
         svc.update_template(
-            session, tpl=t, name=body.name, weekdays=body.weekdays,
+            session, tpl=t, name=body.name, recurrence_type=body.recurrence_type,
+            weekdays=body.weekdays, duration_days=body.duration_days,
             start_time=body.start_time, end_time=body.end_time,
             required_count=body.required_count, auto_roll=body.auto_roll,
             active=body.active, actor_id=user.id, **extra,

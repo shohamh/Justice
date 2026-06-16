@@ -213,10 +213,10 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {fieldUpdates.filter(u => u.status !== "cancelled").length > 0 && (
+        {fieldUpdates.length > 0 && (
           <div className="space-y-2 text-sm">
             <p className="font-medium">{t("soldier_profile.field_updates_tab")}</p>
-            {fieldUpdates.filter(u => u.status !== "cancelled").map((u) => (
+            {fieldUpdates.map((u) => (
               <div key={u.id} className="border dark:border-gray-600 rounded p-3 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{t(`soldier_profile.${u.field_name}`)}</span>

@@ -365,6 +365,8 @@ class ShiftTemplate(Base):
     required_count: Mapped[int] = mapped_column(server_default=text("1"), default=1)
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     auto_roll: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    recurrence_type: Mapped[str] = mapped_column(Text, server_default=text("'weekly'"), default="weekly")
+    duration_days: Mapped[int] = mapped_column(server_default=text("1"), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None

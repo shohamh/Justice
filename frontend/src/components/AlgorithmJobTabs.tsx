@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlgorithmJob } from "../api/algorithm";
 import { api } from "../api/client";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
+import { DutyShift, listShifts } from "../api/shifts";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import BatchesTab from "./BatchesTab";
 import IssuesTab from "./IssuesTab";
@@ -30,8 +31,25 @@ async function downloadSolverInputs(jobId: string) {
 
 export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
   const [tab, setTab] = useState<Tab>("proposals");
+  const [shiftsById, setShiftsById] = useState<Record<string, DutyShift>>({});
 
-  const shiftNames: Record<string, string> = {};
+  useEffect(() => {
+    listShifts({ date_from: job.planning_start, date_to: job.planning_end })
+      .then(shifts => {
+        const map: Record<string, DutyShift> = {};
+        for (const s of shifts) map[s.id] = s;
+        setShiftsById(map);
+      })
+      .catch(() => {/* silently ignore — names just won't resolve */});
+  }, [job.planning_start, job.planning_end]);
+
+  const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? "";
+  const shiftNames: Record<string, string> = Object.fromEntries(
+    Object.values(shiftsById).map(s => [
+      s.id,
+      `${typeName(s.duty_type_id)} · ${s.start_date}–${s.end_date}`,
+    ])
+  );
 
   const hasAnyUnfilled = job.batch_results.some(br => br.unassigned_count > 0);
   const hasInfeasible = job.batch_results.some(br => br.outcome === "INFEASIBLE");
@@ -159,6 +177,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
           job={job}
           dutyTypes={dutyTypes}
           shiftNames={shiftNames}
+          shiftsById={shiftsById}
           onRerun={onRerun}
         />
       )}

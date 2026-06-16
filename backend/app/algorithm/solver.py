@@ -495,6 +495,7 @@ def _effort_round_solve(
                     outcome="INFEASIBLE",
                     relaxations=[],
                     wall_time_seconds=0.0,
+                    shifts=[BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=0) for d in component_duties],
                 ))
             if progress_cb:
                 progress_cb(done, n_components)
@@ -536,6 +537,7 @@ def _effort_round_solve(
                 assignments=[], status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed,
+                batch_results=batch_results,
             )
         if solver0.StatusName(st0) in ("OPTIMAL", "FEASIBLE"):
             # Hard ==1 means every component duty is assigned.
@@ -550,6 +552,7 @@ def _effort_round_solve(
                 relaxed=[],
             ))
             assigned_here = len(all_assignments) - assignments_before
+            assigned_ids_here = {a.duty_id for a in all_assignments[assignments_before:]}
             batch_results.append(BatchResult(
                 batch_index=len(batch_results),
                 component_index=done - 1,
@@ -562,6 +565,10 @@ def _effort_round_solve(
                 outcome=solver0.StatusName(st0),
                 relaxations=[],
                 wall_time_seconds=round(time.monotonic() - t0, 3),
+                shifts=[
+                    BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
+                    for d in component_duties
+                ],
             ))
             if progress_cb:
                 progress_cb(done, n_components)
@@ -582,6 +589,7 @@ def _effort_round_solve(
             if res.status == "CANCELLED":
                 return SolverResult(
                     assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
+                    batch_results=batch_results,
                 )
             _absorb(res)
 
@@ -615,6 +623,7 @@ def _effort_round_solve(
             comp_outcome = "FEASIBLE"
         else:
             comp_outcome = "OPTIMAL"
+        assigned_ids_here = {a.duty_id for a in all_assignments[assignments_before:]}
         batch_results.append(BatchResult(
             batch_index=len(batch_results),
             component_index=done - 1,
@@ -627,6 +636,10 @@ def _effort_round_solve(
             outcome=comp_outcome,
             relaxations=component_relaxed,
             wall_time_seconds=round(time.monotonic() - t0, 3),
+            shifts=[
+                BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
+                for d in component_duties
+            ],
         ))
         relaxed.extend(component_relaxed)
 

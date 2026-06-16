@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CreateTemplateInput,
+  RecurrenceType,
   ShiftTemplate,
   UpdateTemplateInput,
   createTemplate,
@@ -17,14 +18,45 @@ interface Props {
   onClose: () => void;
 }
 
-const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7];
+// Israeli week order for display: Sun(ISO 7), Mon(1) … Sat(6)
+// Picker index 0-6 = Week 1 Sun-Sat, 7-13 = Week 2 Sun-Sat
+const DAY_LABELS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"]; // Sun…Sat
+
+function indexToIso(i: number): number {
+  const dow = i % 7; // 0=Sun, 1=Mon, ..., 6=Sat
+  return dow === 0 ? 7 : dow; // ISO: Sun=7, Mon=1, ..., Sat=6
+}
+
+function isoToPickerDow(iso: number): number {
+  return iso === 7 ? 0 : iso; // Sun(7)→0, Mon(1)→1, ..., Sat(6)→6
+}
+
+function weekLabel(i: number) {
+  return `${DAY_LABELS[i % 7]} ש${i < 7 ? "1" : "2"}`;
+}
 
 export default function ShiftTemplateFormModal({ dutyTypes, locations, initial, onSubmit, onClose }: Props) {
   const { t } = useTranslation();
   const [name, setName] = useState(initial?.name ?? "");
   const [dtId, setDtId] = useState(initial?.duty_type_id ?? dutyTypes[0]?.id ?? "");
   const [locId, setLocId] = useState(initial?.duty_location_id ?? locations[0]?.id ?? "");
-  const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? []);
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>(initial?.recurrence_type ?? "weekly");
+
+  // Abstract 2-week picker state (only used for "weekly" recurrence)
+  const [startIdx, setStartIdx] = useState<number | null>(() => {
+    if (initial?.recurrence_type === "weekly" && initial.weekdays.length === 1) {
+      return isoToPickerDow(initial.weekdays[0]);
+    }
+    return null;
+  });
+  const [endIdx, setEndIdx] = useState<number | null>(() => {
+    if (initial?.recurrence_type === "weekly" && initial.weekdays.length === 1) {
+      const si = isoToPickerDow(initial.weekdays[0]);
+      return si + (initial.duration_days ?? 1) - 1;
+    }
+    return null;
+  });
+
   const [startTime, setStartTime] = useState(initial?.start_time ?? "00:00");
   const [endTime, setEndTime] = useState(initial?.end_time ?? "23:59");
   const [count, setCount] = useState(initial?.required_count ?? 1);
@@ -32,38 +64,51 @@ export default function ShiftTemplateFormModal({ dutyTypes, locations, initial, 
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  function toggleWeekday(day: number) {
-    setWeekdays(prev =>
-      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b)
-    );
+  function handlePickerClick(i: number) {
+    if (startIdx === null || endIdx === null) {
+      setStartIdx(i);
+      setEndIdx(i);
+    } else if (i < startIdx) {
+      setStartIdx(i);
+    } else if (i > endIdx) {
+      setEndIdx(i);
+    } else if (i === startIdx && i === endIdx) {
+      return;
+    } else {
+      const dFrom = Math.abs(i - startIdx);
+      const dTo = Math.abs(i - endIdx);
+      if (dFrom <= dTo) setStartIdx(i);
+      else setEndIdx(i);
+    }
   }
+
+  const computedWeekdays = startIdx !== null ? [indexToIso(startIdx)] : [];
+  const computedDurationDays =
+    startIdx !== null && endIdx !== null ? endIdx - startIdx + 1 : 1;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (recurrenceType === "weekly" && startIdx === null) {
+      setError("יש לבחור את תקופת המשמרת");
+      return;
+    }
     try {
+      const weekdays = recurrenceType === "weekly" ? computedWeekdays : [];
+      const duration_days = recurrenceType === "weekly" ? computedDurationDays : 1;
       if (initial) {
         const input: UpdateTemplateInput = {
-          name,
-          weekdays,
-          start_time: startTime,
-          end_time: endTime,
-          required_count: count,
-          auto_roll: autoRoll,
-          notes: notes || null,
+          name, recurrence_type: recurrenceType, weekdays, duration_days,
+          start_time: startTime, end_time: endTime,
+          required_count: count, auto_roll: autoRoll, notes: notes || null,
         };
         await updateTemplate(initial.id, input);
       } else {
         const input: CreateTemplateInput = {
-          name,
-          duty_type_id: dtId,
-          duty_location_id: locId,
-          weekdays,
-          start_time: startTime,
-          end_time: endTime,
-          required_count: count,
-          auto_roll: autoRoll,
-          notes: notes || null,
+          name, duty_type_id: dtId, duty_location_id: locId,
+          recurrence_type: recurrenceType, weekdays, duration_days,
+          start_time: startTime, end_time: endTime,
+          required_count: count, auto_roll: autoRoll, notes: notes || null,
         };
         await createTemplate(input);
       }
@@ -108,21 +153,78 @@ export default function ShiftTemplateFormModal({ dutyTypes, locations, initial, 
               </label>
             </>
           )}
+
+          {/* Recurrence type */}
           <div className="block text-sm">
-            <span className="block mb-1">{t("shift_templates.weekdays")}</span>
-            <div className="flex gap-1 flex-wrap">
-              {ALL_WEEKDAYS.map(day => (
+            <span className="block mb-1">{t("shift_templates.recurrence_type")}</span>
+            <div className="flex gap-2 flex-wrap">
+              {(["daily", "weekdays", "weekly"] as RecurrenceType[]).map(rt => (
                 <button
-                  key={day}
+                  key={rt}
                   type="button"
-                  onClick={() => toggleWeekday(day)}
-                  className={`px-2 py-1 rounded text-xs border ${weekdays.includes(day) ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"}`}
+                  onClick={() => setRecurrenceType(rt)}
+                  className={`px-3 py-1 rounded text-xs border ${recurrenceType === rt ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"}`}
                 >
-                  {t(`weekday_${day}`)}
+                  {t(`shift_templates.recurrence_${rt}`)}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* 2-week abstract period picker (weekly only) */}
+          {recurrenceType === "weekly" && (
+            <div className="block text-sm">
+              <span className="block mb-1.5">{t("shift_templates.shift_period", "תקופת המשמרת")}</span>
+              <div className="space-y-1">
+                {[0, 1].map(week => (
+                  <div key={week} className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 w-10 text-left shrink-0">
+                      {t("shift_templates.week", "שבוע")} {week + 1}
+                    </span>
+                    <div className="flex gap-1">
+                      {DAY_LABELS.map((label, dow) => {
+                        const i = week * 7 + dow;
+                        const isStart = startIdx === i;
+                        const isEnd = endIdx === i;
+                        const inRange =
+                          startIdx !== null &&
+                          endIdx !== null &&
+                          i >= startIdx &&
+                          i <= endIdx;
+                        const isEdge = isStart || isEnd;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handlePickerClick(i)}
+                            className={`w-8 h-8 rounded text-xs font-medium transition-colors
+                              ${isEdge
+                                ? "bg-blue-600 text-white shadow"
+                                : inRange
+                                  ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                                  : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                              }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {startIdx !== null && endIdx !== null && (
+                <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {t("shift_templates.shift_period_summary", "מ-{{from}} עד {{to}} — {{n}} ימים", {
+                    from: weekLabel(startIdx),
+                    to: weekLabel(endIdx),
+                    n: computedDurationDays,
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+
           <label className="block text-sm">
             {t("shift_templates.start_time")}
             <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />

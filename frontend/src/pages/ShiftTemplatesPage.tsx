@@ -58,17 +58,22 @@ export function ShiftTemplatesContent() {
       filterValue: (tmpl) => dtName(tmpl.duty_type_id),
     },
     {
-      id: "weekdays",
-      header: t("shift_templates.weekdays"),
+      id: "recurrence_type",
+      header: t("shift_templates.recurrence_type"),
       cell: (tmpl) => (
-        <span className="flex gap-1 flex-wrap">
-          {tmpl.weekdays.map(d => (
-            <span key={d} className="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-xs">
-              {t(`weekday_${d}`)}
+        <span className="flex flex-col gap-1">
+          <span className="bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded text-xs w-fit">
+            {t(`shift_templates.recurrence_${tmpl.recurrence_type}`)}
+          </span>
+          {tmpl.recurrence_type === "weekly" && tmpl.weekdays.length === 1 && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {t(`weekday_${tmpl.weekdays[0]}`)}
+              {tmpl.duration_days > 1 && ` · ${tmpl.duration_days} ${t("shift_templates.days", "ימים")}`}
             </span>
-          ))}
+          )}
         </span>
       ),
+      filterValue: (tmpl) => t(`shift_templates.recurrence_${tmpl.recurrence_type}`),
     },
     {
       id: "required_count",
@@ -116,7 +121,7 @@ export function ShiftTemplatesContent() {
 
   return (
     <>
-      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shift-templates-page">
+      <div data-testid="shift-templates-page" className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">{t("shift_templates.title")}</h2>
           <button
@@ -134,7 +139,7 @@ export function ShiftTemplatesContent() {
           filterPlaceholder={t("table.filter_placeholder")}
           emptyMessage="אין תבניות"
         />
-      </section>
+      </div>
 
       {showCreate && (
         <ShiftTemplateFormModal

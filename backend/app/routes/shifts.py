@@ -14,7 +14,8 @@ from sqlalchemy import delete as sa_delete, func
 from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import shifts as svc
-from app.services.algorithm_bridge import load_soldier_inputs
+from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
+from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -219,6 +220,7 @@ class ShiftCandidateOut(BaseModel):
     effort: float
     blocked: bool
     blocked_reason: str | None = None
+    hierarchy_path_ids: list[str] = []
 
 
 @router.get("/{shift_id}/candidates", response_model=list[ShiftCandidateOut])
@@ -256,6 +258,11 @@ def get_shift_candidates(
         ).scalars().all()
     )
 
+    from app.db.models import HierarchyNode
+    node_map: dict[uuid.UUID, HierarchyNode] = {
+        n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()
+    }
+
     soldier_inputs = load_soldier_inputs(session, as_of=shift.start_date)
 
     result: list[ShiftCandidateOut] = []
@@ -283,6 +290,9 @@ def get_shift_candidates(
 
         effort = float(si.cumulative_score) / float(si.active_days)
 
+        node = node_map.get(si.hierarchy_node_id) if si.hierarchy_node_id else None
+        path_ids = [str(pid) for pid in node.path_ids] if node and node.path_ids else []
+
         result.append(ShiftCandidateOut(
             soldier_id=si.id,
             full_name=soldier.full_name,
@@ -290,6 +300,7 @@ def get_shift_candidates(
             effort=round(effort, 3),
             blocked=blocked,
             blocked_reason=blocked_reason,
+            hierarchy_path_ids=path_ids,
         ))
 
     result.sort(key=lambda x: (x.blocked, x.effort))
@@ -327,6 +338,121 @@ def list_shift_assignments(
         )
         for a in rows
     ]
+
+
+class BatchAssignRequest(BaseModel):
+    primaries: list[uuid.UUID] = Field(default_factory=list)
+    reserves: list[uuid.UUID] = Field(default_factory=list)
+
+
+class BatchAssignOut(BaseModel):
+    primary_assignment_ids: list[uuid.UUID]
+    reserve_assignment_ids: list[uuid.UUID]
+    reserve_links_created: int
+
+
+@router.post("/{shift_id}/assign-batch", response_model=BatchAssignOut, status_code=status.HTTP_201_CREATED)
+def assign_batch(
+    shift_id: uuid.UUID,
+    body: BatchAssignRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BatchAssignOut:
+    """Create primary + reserve assignments for a shift in one transaction, with automatic DutyReserveLink creation."""
+    shift = _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    if not body.primaries and not body.reserves:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_soldiers")
+
+    from app.services import assignments as asvc
+
+    primary_assignments: list[DutyAssignment] = []
+    for soldier_id in body.primaries:
+        try:
+            a = asvc.create_assignment(
+                session,
+                soldier_id=soldier_id,
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                duty_shift_id=shift.id,
+                is_reserve=False,
+                actor_id=user.id,
+            )
+            primary_assignments.append(a)
+        except asvc.AssignmentError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    reserve_assignments: list[DutyAssignment] = []
+    for soldier_id in body.reserves:
+        try:
+            a = asvc.create_assignment(
+                session,
+                soldier_id=soldier_id,
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                duty_shift_id=shift.id,
+                is_reserve=True,
+                actor_id=user.id,
+            )
+            reserve_assignments.append(a)
+        except asvc.AssignmentError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    # Flush so newly created assignments get IDs and are visible to subsequent queries.
+    session.flush()
+
+    links_created = 0
+    if reserve_assignments:
+        # Query ALL active primaries on this shift (includes the ones just flushed above).
+        all_primaries = session.execute(
+            select(DutyAssignment).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.is_reserve == False,  # noqa: E712
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        ).scalars().all()
+
+        if all_primaries:
+            # Skip primaries that already have a reserve link.
+            already_linked: set[uuid.UUID] = set(
+                session.execute(
+                    select(DutyReserveLink.primary_assignment_id).where(
+                        DutyReserveLink.primary_assignment_id.in_([a.id for a in all_primaries])
+                    )
+                ).scalars().all()
+            )
+            primaries_for_linking = [a for a in all_primaries if a.id not in already_linked]
+
+            if primaries_for_linking:
+                hier_parent, hier_children, soldier_node, _ = build_hierarchy_maps(session)
+                primary_tuples = [(a.id, a.soldier_id, shift.id) for a in primaries_for_linking]
+                reserve_tuples = [(a.id, a.soldier_id, shift.id) for a in reserve_assignments]
+                links = link_reserves(
+                    primary_assignments=primary_tuples,
+                    reserve_assignments=reserve_tuples,
+                    soldier_node=soldier_node,
+                    hierarchy_parent=hier_parent,
+                    hierarchy_children=hier_children,
+                )
+                for lk in links:
+                    session.add(DutyReserveLink(
+                        reserve_assignment_id=lk.reserve_assignment_id,
+                        primary_assignment_id=lk.primary_assignment_id,
+                        hierarchy_distance=lk.hierarchy_distance,
+                    ))
+                links_created = len(links)
+
+    session.commit()
+    return BatchAssignOut(
+        primary_assignment_ids=[a.id for a in primary_assignments],
+        reserve_assignment_ids=[a.id for a in reserve_assignments],
+        reserve_links_created=links_created,
+    )
 
 
 class BulkDeletePreview(BaseModel):
@@ -459,6 +585,32 @@ def bulk_clear_assignments(
 
     session.commit()
     return {"cleared_assignments": len(assignment_ids)}
+
+
+@router.delete("/{shift_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def remove_shift_assignment(
+    shift_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    """Cancel a single assignment that belongs to this shift."""
+    _load(session, shift_id)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+    a = session.get(DutyAssignment, assignment_id)
+    if a is None or a.duty_shift_id != shift_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if a.status != "cancelled":
+        if a.is_reserve:
+            session.execute(
+                sa_delete(DutyReserveLink).where(DutyReserveLink.reserve_assignment_id == assignment_id)
+            )
+        else:
+            session.execute(
+                sa_delete(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == assignment_id)
+            )
+        a.status = "cancelled"
+        session.commit()
 
 
 @router.delete("/{shift_id}/assignments", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

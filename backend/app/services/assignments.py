@@ -75,6 +75,7 @@ def create_assignment(
     end_date: date,
     notes: str | None = None,
     duty_shift_id: uuid.UUID | None = None,
+    is_reserve: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> DutyAssignment:
     if end_date < start_date:
@@ -103,6 +104,7 @@ def create_assignment(
         end_date=end_date,
         notes=notes,
         duty_shift_id=duty_shift_id,
+        is_reserve=is_reserve,
         created_by=actor_id,
     )
     session.add(a)

@@ -39,6 +39,7 @@ class CreateAssignmentRequest(BaseModel):
     end_date: date
     notes: str | None = Field(default=None, max_length=1000)
     duty_shift_id: uuid.UUID | None = None
+    is_reserve: bool = False
 
 
 class CancelRequest(BaseModel):
@@ -149,6 +150,7 @@ def create_assignment(
             end_date=body.end_date,
             notes=body.notes,
             duty_shift_id=body.duty_shift_id,
+            is_reserve=body.is_reserve,
             actor_id=user.id,
         )
     except svc.AssignmentError as exc:

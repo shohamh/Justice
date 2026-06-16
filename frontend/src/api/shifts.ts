@@ -54,6 +54,17 @@ export async function deleteShift(id: string): Promise<void> {
   await api.delete(`/shifts/${id}`);
 }
 
+export async function assignBatch(
+  shiftId: string,
+  input: { primaries: string[]; reserves: string[] },
+): Promise<{ primary_assignment_ids: string[]; reserve_assignment_ids: string[]; reserve_links_created: number }> {
+  return (await api.post(`/shifts/${shiftId}/assign-batch`, input)).data;
+}
+
+export async function removeShiftAssignment(shiftId: string, assignmentId: string): Promise<void> {
+  await api.delete(`/shifts/${shiftId}/assignments/${assignmentId}`);
+}
+
 export async function clearShiftAssignments(id: string): Promise<void> {
   await api.delete(`/shifts/${id}/assignments`);
 }

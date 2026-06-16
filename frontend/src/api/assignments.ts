@@ -29,7 +29,7 @@ export async function listEffectiveDuties(soldierId: string, params?: { date_fro
   return (await api.get<EffectiveDuty[]>(`/assignments/effective`, { params: { soldier_id: soldierId, ...params } })).data;
 }
 export async function createAssignment(input: {
-  soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; duty_shift_id?: string | null; notes?: string | null;
+  soldier_id: string; duty_type_id: string; duty_location_id: string; start_date: string; end_date: string; duty_shift_id?: string | null; notes?: string | null; is_reserve?: boolean;
 }): Promise<Assignment> {
   return (await api.post<Assignment>(`/assignments`, input)).data;
 }
@@ -41,6 +41,7 @@ export interface ShiftCandidate {
   effort: number;
   blocked: boolean;
   blocked_reason: "constraint" | "assignment" | null;
+  hierarchy_path_ids: string[];
 }
 
 export async function getShiftCandidates(shiftId: string): Promise<ShiftCandidate[]> {

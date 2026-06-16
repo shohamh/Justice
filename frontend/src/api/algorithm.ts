@@ -73,7 +73,7 @@ export interface CountSpaceStats {
 
 export interface AlgorithmJob {
   id: string;
-  status: "pending" | "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed" | "published";
   mode: string;
   planning_start: string;
   planning_end: string;

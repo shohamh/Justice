@@ -48,11 +48,13 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
             <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 font-medium text-xs text-gray-700 dark:text-gray-300">
               קבוצה {compIdx + 1} — {soldierCount} חיילים, {batches.length} אצוות
             </div>
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-max">
               <thead>
                 <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
                   <th className="px-3 py-2 text-right font-medium">תאריכים</th>
-                  <th className="px-3 py-2 text-center font-medium">משבצות</th>
+                  <th className="px-3 py-2 text-center font-medium">משמרות</th>
+                  <th className="px-3 py-2 text-center font-medium">מקומות</th>
                   <th className="px-3 py-2 text-center font-medium">שובץ</th>
                   <th className="px-3 py-2 text-center font-medium">לא שובץ</th>
                   <th className="px-3 py-2 text-center font-medium">תוצאה</th>
@@ -69,6 +71,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
                       onClick={() => setExpandedBatch(expandedBatch === br.batch_index ? null : br.batch_index)}
                     >
                       <td className="px-3 py-2 text-right">{br.date_from} – {br.date_to}</td>
+                      <td className="px-3 py-2 text-center">{br.shifts.length > 0 ? br.shifts.length : "—"}</td>
                       <td className="px-3 py-2 text-center">{br.duty_count}</td>
                       <td className="px-3 py-2 text-center text-green-700 dark:text-green-400">{br.assigned_count}</td>
                       <td className={`px-3 py-2 text-center ${br.unassigned_count > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-gray-400"}`}>
@@ -92,7 +95,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
                     </tr>
                     {expandedBatch === br.batch_index && br.shifts.length > 0 && (
                       <tr>
-                        <td colSpan={8} className="bg-gray-50 dark:bg-gray-900/30 px-4 py-3">
+                        <td colSpan={9} className="bg-gray-50 dark:bg-gray-900/30 px-4 py-3">
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="text-gray-400 dark:text-gray-500">
@@ -126,6 +129,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         );
       })}

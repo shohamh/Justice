@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
-import ShiftAssignModal from "../components/ShiftAssignModal";
-import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
+import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
+import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -25,7 +25,7 @@ function Spinner() {
   );
 }
 
-function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
+function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; onClearedAll: () => void }) {
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -88,17 +88,30 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
   const canPreview = !!from && !!to && from <= to;
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow border-2 border-red-200 dark:border-red-900" dir="rtl">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-6 py-4 text-right"
-      >
-        <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">ניקוי / מחיקה לפי טווח תאריכים</h2>
-        <span className="text-red-400 text-sm">{open ? "▲" : "▼"}</span>
-      </button>
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl">
+      <div className="flex flex-wrap justify-between items-center gap-2">
+        <h2 className="text-xl font-semibold">ניקוי שיבוצים</h2>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm px-2 py-1"
+        >
+          {open ? "▲" : "▼"}
+        </button>
+      </div>
 
-      {open && <div className="px-6 pb-6 space-y-4">
+      {open && <div className="space-y-4">
+      <div className="flex items-center justify-between py-2 border-b dark:border-gray-600">
+        <span className="text-sm text-gray-600 dark:text-gray-300">נקה את כל השיבוצים מכל המשמרות</span>
+        <button
+          type="button"
+          onClick={() => { if (window.confirm("לנקות את כל השיבוצים?")) { void clearAllAssignments().then(onClearedAll); } }}
+          className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700"
+        >
+          נקה את כל השיבוצים
+        </button>
+      </div>
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">ניקוי / מחיקה לפי טווח תאריכים</p>
       <div className="flex flex-wrap gap-4 items-end text-sm">
         <label className="flex items-center gap-2">
           <span className="text-gray-700 dark:text-gray-300">מתאריך</span>
@@ -185,7 +198,6 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
             <p className="text-sm text-gray-500">אין משמרות בטווח זה.</p>
           ) : (
             <div className="flex flex-wrap gap-3 pt-1">
-              {/* Clear assignments only */}
               <button
                 type="button"
                 onClick={handleClearAssignments}
@@ -195,8 +207,6 @@ function BulkDeletePanel({ onDeleted }: { onDeleted: () => void }) {
                 {busy === "clear" && <Spinner />}
                 {busy === "clear" ? "מנקה..." : `נקה שיבוצים בלבד (${preview.assignment_count})`}
               </button>
-
-              {/* Delete shifts + everything */}
               <button
                 type="button"
                 onClick={handleDeleteShifts}
@@ -224,7 +234,7 @@ export function ShiftsContent() {
   const [dateTo, setDateTo] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editShift, setEditShift] = useState<DutyShift | null>(null);
-  const [assignShift, setAssignShift] = useState<DutyShift | null>(null);
+  const [editAssignmentsShift, setEditAssignmentsShift] = useState<DutyShift | null>(null);
 
   const refresh = useCallback(async () => {
     const [ss, dts, locs] = await Promise.all([
@@ -238,18 +248,6 @@ export function ShiftsContent() {
   }, [dateFrom, dateTo]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-
-  async function handleClearAll() {
-    if (!window.confirm(t("shifts.confirm_clear_all"))) return;
-    await clearAllAssignments();
-    await refresh();
-  }
-
-  async function handleClearAssignments(shift: DutyShift) {
-    if (!window.confirm(t("shifts.confirm_clear_assignments"))) return;
-    await clearShiftAssignments(shift.id);
-    await refresh();
-  }
 
   async function handleCancel(shift: DutyShift) {
     if (!window.confirm(t("shifts.confirm_cancel"))) return;
@@ -278,19 +276,12 @@ export function ShiftsContent() {
 
   return (
     <>
-      <BulkDeletePanel onDeleted={refresh} />
+      <BulkDeletePanel onDeleted={refresh} onClearedAll={refresh} />
 
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleClearAll}
-              className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
-            >
-              {t("shifts.clear_all_assignments")}
-            </button>
             <button
               type="button"
               onClick={() => setShowCreate(true)}
@@ -388,58 +379,48 @@ export function ShiftsContent() {
               id: "actions",
               header: t("shifts.actions"),
               cell: (s) => (
-                <span className="flex flex-wrap gap-x-2 gap-y-1 items-center">
+                <span className="flex flex-wrap gap-1 items-center">
                   <button
                     type="button"
                     onClick={() => setEditShift(s)}
-                    className="text-blue-600 dark:text-blue-400 text-xs hover:underline"
+                    className="px-2 py-1 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
                   >
-                    {t("shifts.edit")}
+                    ✏️ {t("shifts.edit")}
                   </button>
-                  {s.status === "active" && s.fill_status !== "full" && (
+                  {s.status === "active" && (
                     <button
                       type="button"
-                      onClick={() => setAssignShift(s)}
-                      className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline"
+                      onClick={() => setEditAssignmentsShift(s)}
+                      className="px-2 py-1 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
                     >
-                      {t("shifts.assign")}
+                      🛠️ ערוך שיבוצים
                     </button>
                   )}
                   {s.status === "cancelled" ? (
                     <button
                       type="button"
                       onClick={() => handleActivate(s)}
-                      className="text-green-600 dark:text-green-400 text-xs hover:underline"
+                      className="px-2 py-1 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
                     >
-                      {t("shifts.activate")}
+                      ▶️ {t("shifts.activate")}
                     </button>
                   ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleClearAssignments(s)}
-                        className="text-orange-600 text-xs hover:underline disabled:opacity-40"
-                        disabled={s.assigned_count === 0}
-                      >
-                        {t("shifts.clear_assignments")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleCancel(s)}
-                        className="text-yellow-600 dark:text-yellow-500 text-xs hover:underline"
-                      >
-                        {t("shifts.cancel")}
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => handleCancel(s)}
+                      className="px-2 py-1 rounded text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700"
+                    >
+                      🚫 {t("shifts.cancel")}
+                    </button>
                   )}
                   <button
                     type="button"
                     onClick={() => handleDelete(s)}
-                    className="text-gray-400 dark:text-gray-500 text-xs hover:text-red-600 dark:hover:text-red-400 hover:underline"
+                    className="px-2 py-1 rounded text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
                     disabled={s.assigned_count > 0}
                     title={t("shifts.delete_tooltip")}
                   >
-                    {t("shifts.delete")}
+                    🗑️ {t("shifts.delete")}
                   </button>
                 </span>
               ),
@@ -474,12 +455,12 @@ export function ShiftsContent() {
           onClose={() => setEditShift(null)}
         />
       )}
-      {assignShift && (
-        <ShiftAssignModal
-          shift={assignShift}
+      {editAssignmentsShift && (
+        <ShiftEditAssignmentsModal
+          shift={editAssignmentsShift}
           dutyTypes={dutyTypes}
-          onSaved={async () => { setAssignShift(null); await refresh(); }}
-          onClose={() => setAssignShift(null)}
+          onSaved={async () => { setEditAssignmentsShift(null); await refresh(); }}
+          onClose={() => setEditAssignmentsShift(null)}
         />
       )}
     </>

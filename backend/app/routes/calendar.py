@@ -55,6 +55,7 @@ class CalendarShiftAssignee(BaseModel):
     called_up_from: date | None = None
     called_up_to: date | None = None
     primary_assignment_ids: list[uuid.UUID] = []
+    hierarchy_path_ids: list[str] = []
 
 
 class CalendarShiftOut(BaseModel):
