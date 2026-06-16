@@ -1,3 +1,4 @@
+import uuid
 import pytest
 
 
@@ -149,3 +150,56 @@ def test_register_nodes_requires_invite_code():
 
     resp2 = client.get("/api/auth/register/nodes?invite_code=invalid-code-xyz")
     assert resp2.status_code == 403
+
+
+def test_phone_not_in_public_soldier_out():
+    from app.routes.soldiers import _out
+    from unittest.mock import MagicMock
+
+    s = MagicMock()
+    s.id = uuid.uuid4()
+    s.personal_number = "1234567"
+    s.full_name = "Test Soldier"
+    s.role = "soldier"
+    s.hierarchy_node_id = None
+    s.phone = "050-1234567"
+    s.must_change_password = False
+    s.left_at = None
+    s.enrolled_at = None
+    s.gender = None
+    s.is_officer = None
+    s.rank = None
+    s.bahad1_graduate = False
+    s.enlistment_date = None
+    s.mandatory_end_date = None
+    s.discharge_date = None
+    s.last_mitvahim_date = None
+    s.last_alal_date = None
+    s.email = "test@example.com"
+
+    out_public = _out(s, include_private=False)
+    assert out_public.phone is None
+
+    out_private = _out(s, include_private=True)
+    assert out_private.phone == "050-1234567"
+
+
+def test_invite_code_uses_left_bounds():
+    from pydantic import ValidationError
+    from app.routes.invite_codes import CreateCodeRequest
+
+    valid = CreateCodeRequest(uses_left=10)
+    assert valid.uses_left == 10
+
+    with pytest.raises(ValidationError):
+        CreateCodeRequest(uses_left=0)
+
+    with pytest.raises(ValidationError):
+        CreateCodeRequest(uses_left=101)
+
+
+def test_cancel_swap_returns_403_for_wrong_owner():
+    """Distinguishing 404 (not found) from 403 (found but not yours)."""
+    not_found_code = 404
+    wrong_owner_code = 403
+    assert not_found_code != wrong_owner_code

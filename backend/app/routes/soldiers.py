@@ -177,7 +177,7 @@ def _out(
         full_name=s.full_name,
         role=s.role,
         hierarchy_node_id=s.hierarchy_node_id,
-        phone=s.phone,
+        phone=s.phone if include_private else None,
         must_change_password=s.must_change_password,
         left_at=s.left_at.isoformat() if s.left_at else None,
         enrolled_at=s.enrolled_at,
@@ -251,7 +251,7 @@ def onboard(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(result.soldier)
-    return OnboardResponse(**_out(result.soldier).model_dump(), temp_password=result.temp_password)
+    return OnboardResponse(**_out(result.soldier, include_private=True).model_dump(), temp_password=result.temp_password)
 
 
 @router.get("", response_model=list[SoldierOut])
