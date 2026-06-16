@@ -56,7 +56,7 @@ class SolverSettingsIn(BaseModel):
     R: int = 15
     Wr: int = 28
     alpha: float = 1.0
-    time_limit_seconds: int = 30
+    time_limit_seconds: int = Field(default=30, ge=5, le=120)
 
 
 class CreateJobRequest(BaseModel):

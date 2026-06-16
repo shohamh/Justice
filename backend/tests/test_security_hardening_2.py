@@ -20,3 +20,17 @@ def test_hakpaza_scope_helper_raises_for_out_of_scope():
             from app.routes.hakpaza import _authorize_assignment_scope
             _authorize_assignment_scope(session, actor, fake_assignment_id)
         assert exc_info.value.status_code == 403
+
+
+def test_solver_settings_time_limit_bound():
+    from pydantic import ValidationError
+    from app.routes.algorithm import SolverSettingsIn
+
+    valid = SolverSettingsIn(time_limit_seconds=60)
+    assert valid.time_limit_seconds == 60
+
+    with pytest.raises(ValidationError):
+        SolverSettingsIn(time_limit_seconds=9999)
+
+    with pytest.raises(ValidationError):
+        SolverSettingsIn(time_limit_seconds=1)
