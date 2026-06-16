@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, Soldier
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import reserves as svc
 
@@ -97,6 +97,13 @@ def _load_assignment(session: Session, assignment_id: uuid.UUID) -> DutyAssignme
     return a
 
 
+def _node_of_assignment(session: Session, a: DutyAssignment) -> HierarchyNode | None:
+    s = session.get(Soldier, a.soldier_id)
+    if s is None or s.hierarchy_node_id is None:
+        return None
+    return session.get(HierarchyNode, s.hierarchy_node_id)
+
+
 @router.get(
     "/shifts/{shift_id}/reserve-candidates/{reserve_assignment_id}",
     response_model=list[ReserveCandidateOut],
@@ -107,7 +114,7 @@ def get_reserve_candidates(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ReserveCandidateOut]:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)  # admin-only: cross-shift view
     candidates = svc.get_reserve_candidates(
         session, shift_id=shift_id, reserve_assignment_id=reserve_assignment_id
     )
@@ -120,7 +127,7 @@ def get_reserve_detail(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> ShiftReserveDetailOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)  # admin-only: cross-shift view
     detail = svc.get_shift_reserve_detail(session, shift_id=shift_id)
     primaries = [
         PrimaryDetailOut(
@@ -168,8 +175,8 @@ def call_up(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         svc.call_up_reserve(
             session, assignment=a, from_date=body.from_date, to_date=body.to_date, actor_id=user.id
@@ -191,8 +198,8 @@ def dismiss(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> DismissalOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         d = svc.dismiss_primary(
             session,
@@ -227,8 +234,8 @@ def dismiss_reserve(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> DismissalOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         d, _ = svc.dismiss_reserve(
             session,
@@ -264,10 +271,11 @@ def delete_dismissal(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     d = session.get(DutyDismissal, dismissal_id)
     if d is None or d.duty_assignment_id != assignment_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    a = _load_assignment(session, d.duty_assignment_id)
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         svc.delete_dismissal(session, dismissal=d, actor_id=user.id)
     except svc.ReserveError as exc:
@@ -282,11 +290,10 @@ def dismiss_and_reallocate(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
-
     primary_a = _load_assignment(session, body.primary_assignment_id)
     if primary_a.duty_shift_id != shift_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_in_shift")
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, primary_a))
 
     reserve_a = _load_assignment(session, body.covering_reserve_assignment_id)
     if reserve_a.duty_shift_id != shift_id:
@@ -367,10 +374,10 @@ def relink_reserve_route(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
     a = _load_assignment(session, assignment_id)
     if a.duty_shift_id != shift_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_in_shift")
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, a))
     try:
         link = svc.relink_reserve(
             session,

@@ -64,6 +64,7 @@ _COMMANDER_ACTIONS = {
 _DM_GLOBAL_ACTIONS = {
     Action.ALGORITHM_RUN,
     Action.SHIFT_MANAGE,
+    Action.SWAP_APPROVE,
 }
 
 

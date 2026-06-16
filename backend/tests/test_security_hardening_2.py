@@ -1,6 +1,21 @@
 import pytest
 
 
+def test_swap_approve_is_dm_global_action():
+    from app.auth.authz import Action, _DM_GLOBAL_ACTIONS
+    assert Action.SWAP_APPROVE in _DM_GLOBAL_ACTIONS
+
+
+def test_node_of_assignment_helper_returns_none_for_unassigned_soldier():
+    from unittest.mock import MagicMock
+    from app.routes.reserves import _node_of_assignment
+    session = MagicMock()
+    a = MagicMock()
+    a.soldier_id = None
+    session.get.return_value = None
+    assert _node_of_assignment(session, a) is None
+
+
 def test_hakpaza_scope_helper_raises_for_out_of_scope():
     """_authorize_assignment_scope raises 403 if actor lacks scope for the soldier's node."""
     from fastapi import HTTPException
