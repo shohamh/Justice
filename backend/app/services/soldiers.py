@@ -34,6 +34,11 @@ def generate_temp_password(length: int = 14) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def bump_token_version(soldier: Soldier) -> None:
+    """Increment token_version to invalidate all existing refresh tokens."""
+    soldier.token_version = getattr(soldier, "token_version", 1) + 1
+
+
 ROLES = {"soldier", "commander", "duty_manager", "admin"}
 
 

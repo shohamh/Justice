@@ -28,7 +28,7 @@ class AdjustmentOut(BaseModel):
 
 class CreateAdjustmentRequest(BaseModel):
     soldier_id: uuid.UUID
-    delta: Decimal
+    delta: Decimal = Field(ge=-9999, le=9999)
     reason: str = Field(min_length=1, max_length=1000)
     duty_type_id: uuid.UUID | None = None
 

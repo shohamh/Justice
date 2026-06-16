@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
@@ -19,10 +19,13 @@ from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
 from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
-from app.services.soldiers import PasswordPolicyError, validate_password
+from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_LOCKOUT_THRESHOLD = 10
+_LOCKOUT_MINUTES = 15
 
 
 class LoginRequest(BaseModel):
@@ -111,20 +114,43 @@ def login(
     )
     soldier = session.execute(stmt).scalar_one_or_none()
 
-    if soldier is None or not verify_password(body.password, soldier.password_hash):
+    if soldier is None:
         write_audit(
-            session,
-            actor_id=soldier.id if soldier is not None else None,
-            action="auth.login.failure",
-            entity_type="soldier",
-            entity_id=soldier.id if soldier is not None else None,
-            context={**_client_context(request), "personal_number": body.personal_number},
+            session, actor_id=None, action="auth.login.failure", entity_type="soldier",
+            entity_id=None, context={**_client_context(request), "personal_number": body.personal_number},
         )
         session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
 
+    # Check lockout
+    _now_utc = _dt.now(tz=UTC)
+    locked = getattr(soldier, "locked_until", None)
+    if locked is not None and locked > _now_utc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="account_locked",
+            headers={"Retry-After": str(int((locked - _now_utc).total_seconds()))},
+        )
+
+    if not verify_password(body.password, soldier.password_hash):
+        count = getattr(soldier, "failed_login_count", 0) + 1
+        soldier.failed_login_count = count
+        if count >= _LOCKOUT_THRESHOLD:
+            soldier.locked_until = _now_utc + _td(minutes=_LOCKOUT_MINUTES)
+            soldier.failed_login_count = 0
+        write_audit(
+            session, actor_id=soldier.id, action="auth.login.failure", entity_type="soldier",
+            entity_id=soldier.id, context={**_client_context(request), "personal_number": body.personal_number},
+        )
+        session.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+
+    # Successful login — reset lockout state
+    soldier.failed_login_count = 0
+    soldier.locked_until = None
+
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
 
     write_audit(
         session,
@@ -141,7 +167,7 @@ def login(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600 if body.remember_me else None,
         httponly=True,
-        secure=False,  # set to True behind TLS in slice 7; left False so local dev over http works
+        secure=get_settings().cookie_secure,
         samesite="strict",
         path="/api/auth",
     )
@@ -168,15 +194,21 @@ def refresh(
     if soldier is None or soldier.left_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
 
+    expected_tv = getattr(soldier, "token_version", 1)
+    if payload.get("tv", 1) != expected_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked"
+        )
+
     settings = get_settings()
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
         key="refresh_token",
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True,
-        secure=False,
+        secure=get_settings().cookie_secure,
         samesite="strict",
         path="/api/auth",
     )
@@ -207,6 +239,7 @@ def change_password(
         ) from exc
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
+    bump_token_version(user)
     write_audit(
         session,
         actor_id=user.id,
@@ -251,18 +284,23 @@ def register(
     except (InviteCodeError, RegistrationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
         key="refresh_token", value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
-        httponly=True, secure=False, samesite="strict", path="/api/auth",
+        httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
     return LoginResponse(access_token=access, must_change_password=False)
 
 
 @router.get("/register/nodes", response_model=list[NodeOut])
-def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
+def register_nodes(
+    invite_code: str,
+    session: Session = Depends(get_session),
+) -> list[NodeOut]:
     from sqlalchemy import select as sa_select
+    if not validate_code(session, code=invite_code):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_invite_code")
     nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
     result = []
     for n in nodes:
@@ -278,7 +316,12 @@ def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
 
 
 @router.get("/register/validate-code")
-def validate_invite_code(code: str, session: Session = Depends(get_session)) -> dict:
+@limiter.limit("20/hour")
+def validate_invite_code(
+    code: str,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict:
     return {"valid": validate_code(session, code=code)}
 
 
@@ -289,8 +332,10 @@ def forgot_password_check(
     request: Request,
     session: Session = Depends(get_session),
 ) -> ForgotPasswordChannelsResponse:
-    channels = pwd_reset_svc.available_channels(session, personal_number=body.personal_number)
-    return ForgotPasswordChannelsResponse(channels=channels)
+    # Always return the same response to prevent user enumeration.
+    # The actual available channels are revealed only to the account holder via the /send endpoint.
+    pwd_reset_svc.available_channels(session, personal_number=body.personal_number)  # called to keep timing consistent
+    return ForgotPasswordChannelsResponse(channels=["telegram", "email"])
 
 
 @router.post("/forgot-password/send", status_code=200)

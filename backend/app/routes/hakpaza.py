@@ -9,8 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.authz import Action, authorize, can, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, ForcedCallup, Soldier
+from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import hakpaza as svc
 from app.services.settings_loader import get_setting
@@ -24,6 +25,30 @@ _APPROVER_ROLES = {"duty_manager", "admin"}
 def _require_role(actor: Soldier, roles: set[str]) -> None:
     if actor.role not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+
+def _authorize_assignment_scope(
+    session: Session,
+    actor: Soldier,
+    assignment_id: uuid.UUID,
+) -> DutyAssignment:
+    """Load assignment and verify actor has ASSIGNMENT_MANAGE scope over its soldier. Returns assignment."""
+    a = session.get(DutyAssignment, assignment_id)
+    if a is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    soldier = session.get(Soldier, a.soldier_id)
+    target_node: HierarchyNode | None = None
+    if soldier and soldier.hierarchy_node_id:
+        target_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+    # admin bypasses scope checks; duty_manager uses ASSIGNMENT_MANAGE; commanders
+    # use HIERARCHY_READ (scope check) since ASSIGNMENT_MANAGE is DM-only by design.
+    if actor.role == "admin":
+        return a
+    roots = scope_root_ids(session, actor)
+    action = Action.ASSIGNMENT_MANAGE if actor.role == "duty_manager" else Action.HIERARCHY_READ
+    if not can(actor, action, target_node=target_node, roots=roots):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return a
 
 
 class CandidateRequest(BaseModel):
@@ -82,6 +107,7 @@ def find_candidates(
     actor: Soldier = Depends(require_password_changed),
 ):
     _require_role(actor, _COMMANDER_ROLES)
+    _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
     candidates = svc.find_candidates(
         session,
         original_assignment_id=req.pulled_assignment_id,
@@ -98,9 +124,7 @@ def create_hakpaza(
     actor: Soldier = Depends(require_password_changed),
 ):
     _require_role(actor, _COMMANDER_ROLES)
-    original = session.get(DutyAssignment, req.pulled_assignment_id)
-    if not original:
-        raise HTTPException(status_code=404, detail="assignment_not_found")
+    original = _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
 
     try:
         multiplier = Decimal(str(get_setting(session, "hakpaza.callup_multiplier")))
@@ -127,8 +151,20 @@ def list_hakpazot(
     actor: Soldier = Depends(require_password_changed),
 ):
     _require_role(actor, _COMMANDER_ROLES)
-    items = session.execute(select(ForcedCallup).order_by(ForcedCallup.created_at.desc())).scalars().all()
-    return [_out(h) for h in items]
+    all_items = session.execute(
+        select(ForcedCallup).order_by(ForcedCallup.created_at.desc())
+    ).scalars().all()
+    if actor.role == "admin":
+        return [_out(h) for h in all_items]
+    roots = scope_root_ids(session, actor)
+    result = []
+    for h in all_items:
+        pulled = session.get(Soldier, h.pulled_soldier_id)
+        if pulled and pulled.hierarchy_node_id:
+            node = session.get(HierarchyNode, pulled.hierarchy_node_id)
+            if node and any(r in node.path_ids for r in roots):
+                result.append(_out(h))
+    return result
 
 
 @router.get("/pending-count")
@@ -154,6 +190,10 @@ def approve(
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":
         raise HTTPException(status_code=404, detail="not_found_or_not_pending")
+    pulled = session.get(Soldier, h.pulled_soldier_id)
+    if pulled and pulled.hierarchy_node_id:
+        node = session.get(HierarchyNode, pulled.hierarchy_node_id)
+        authorize(session, actor, Action.ASSIGNMENT_MANAGE, target_node=node)
 
     original = session.get(DutyAssignment, h.original_assignment_id)
     if not original:
@@ -196,6 +236,10 @@ def reject(
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":
         raise HTTPException(status_code=404, detail="not_found_or_not_pending")
+    pulled = session.get(Soldier, h.pulled_soldier_id)
+    if pulled and pulled.hierarchy_node_id:
+        node = session.get(HierarchyNode, pulled.hierarchy_node_id)
+        authorize(session, actor, Action.ASSIGNMENT_MANAGE, target_node=node)
     h.status = "rejected"
     h.approver_id = actor.id
     h.approved_at = datetime.now(timezone.utc)

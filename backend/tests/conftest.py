@@ -117,6 +117,16 @@ def app_engine(db_admin_url: str) -> Iterator["Engine"]:  # noqa: F821
 
 
 @pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Iterator[None]:
+    """Reset the in-memory rate-limiter storage before each test so that
+    rate-limited endpoints (e.g. algorithm job creation) don't bleed state
+    across tests that share the same synthetic client IP."""
+    from app.rate_limit import limiter
+    limiter._storage.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _truncate_tables(admin_engine) -> Iterator[None]:
     """Wipe all data rows before each test so personal_number and other unique constraints
     never collide across test functions, even when they use the same hardcoded values.

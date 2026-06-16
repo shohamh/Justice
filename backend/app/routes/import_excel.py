@@ -160,6 +160,9 @@ async def preview(
     actor: Soldier = Depends(require_roles("admin", "duty_manager")),
 ):
     content = await file.read()
+    # Validate XLSX magic bytes (PK signature for ZIP format)
+    if content[:4] != b"PK\x03\x04":
+        raise HTTPException(status_code=400, detail="invalid_file_type")
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     except Exception:

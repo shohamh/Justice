@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/admin/invite-codes", tags=["invite_codes"])
 
 
 class CreateCodeRequest(BaseModel):
-    uses_left: int
+    uses_left: int = Field(ge=1, le=100)
 
 
 class InviteCodeOut(BaseModel):

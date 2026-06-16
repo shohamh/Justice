@@ -220,6 +220,9 @@ def test_commit_returns_400_on_unknown_token(client: TestClient, admin_session: 
         json={"preview_token": "bad-token-that-does-not-exist"},
         headers=auth_headers(admin),
     )
-    # token_not_found → 400 (not 409; 409 is only for stale/expired)
+    # Scope re-check now fires before the service call, so the detail is
+    # "invalid_or_expired_preview_token" instead of "token_not_found".
+    # Both are 400s — 409 is only for stale/expired tokens returned by the service.
     assert resp.status_code == 400
-    assert "token_not_found" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "token" in detail  # covers both error strings

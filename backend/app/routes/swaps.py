@@ -357,8 +357,10 @@ def cancel(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     r = session.get(SwapRequest, request_id)
-    if r is None or r.requesting_soldier_id != user.id:
+    if r is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if r.requesting_soldier_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         svc.cancel_request(session, request_id=request_id, actor_id=user.id)
     except svc.SwapError as exc:

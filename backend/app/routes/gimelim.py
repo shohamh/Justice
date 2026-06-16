@@ -194,6 +194,19 @@ def commit_gimelim_route(
 ) -> GimelimCommitOut:
     _require_gimelim_enabled(session)
 
+    # Re-verify the caller has authority over the soldier in the preview token
+    # before committing.  This prevents anyone who obtained a token from another
+    # user's preview from executing it under their own identity.
+    primary_assignment_id = svc.resolve_preview_token_assignment(body.preview_token)
+    if primary_assignment_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid_or_expired_preview_token",
+        )
+    primary_a = session.get(DutyAssignment, primary_assignment_id)
+    if primary_a is not None:
+        _require_gimelim_permission(session, user, primary_a.soldier_id)
+
     try:
         result = svc.commit_gimelim(
             session,
@@ -243,6 +256,23 @@ async def upload_gimelim_attachment(
     data = await file.read()
     if len(data) > 20 * 1024 * 1024:  # 20 MB limit
         raise HTTPException(status_code=400, detail="file_too_large")
+
+    # Verify actual file magic bytes match the declared content type.
+    # The Content-Type header is attacker-controlled and must not be trusted alone.
+    _MAGIC: dict[str, list[bytes]] = {
+        "application/pdf": [b"%PDF"],
+        "image/jpeg":      [b"\xff\xd8\xff"],
+        "image/png":       [b"\x89PNG\r\n\x1a\n"],
+        "image/gif":       [b"GIF87a", b"GIF89a"],
+        "image/webp":      [b"RIFF"],  # RIFF????WEBP — first 4 bytes are enough
+    }
+    declared = file.content_type or ""
+    magic_ok = any(
+        data[: len(prefix)] == prefix
+        for prefix in _MAGIC.get(declared, [])
+    )
+    if not magic_ok:
+        raise HTTPException(status_code=400, detail="invalid_file_type")
 
     attachment = GimelimAttachment(
         dismissal_id=dismissal_id,
