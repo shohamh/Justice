@@ -28,12 +28,19 @@ def issue_access_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def issue_refresh_token(*, user_id: uuid.UUID, lifetime_seconds: int | None = None) -> str:
+def issue_refresh_token(
+    *, user_id: uuid.UUID, token_version: int = 1, lifetime_seconds: int | None = None
+) -> str:
     settings = get_settings()
     if lifetime_seconds is None:
         lifetime_seconds = settings.refresh_token_days * 24 * 3600
     exp = _now() + timedelta(seconds=lifetime_seconds)
-    payload = {"sub": str(user_id), "type": "refresh", "exp": int(exp.timestamp())}
+    payload = {
+        "sub": str(user_id),
+        "type": "refresh",
+        "tv": token_version,
+        "exp": int(exp.timestamp()),
+    }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 

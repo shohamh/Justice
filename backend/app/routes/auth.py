@@ -19,7 +19,7 @@ from app.services import password_reset as pwd_reset_svc
 from app.services import registration as reg_svc
 from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
-from app.services.soldiers import PasswordPolicyError, validate_password
+from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -124,7 +124,7 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
 
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
 
     write_audit(
         session,
@@ -168,9 +168,15 @@ def refresh(
     if soldier is None or soldier.left_at is not None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user_not_found")
 
+    expected_tv = getattr(soldier, "token_version", 1)
+    if payload.get("tv", 1) != expected_tv:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked"
+        )
+
     settings = get_settings()
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
         key="refresh_token",
         value=refresh,
@@ -207,6 +213,7 @@ def change_password(
         ) from exc
     user.password_hash = hash_password(body.new_password)
     user.must_change_password = False
+    bump_token_version(user)
     write_audit(
         session,
         actor_id=user.id,
@@ -251,7 +258,7 @@ def register(
     except (InviteCodeError, RegistrationError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id)
+    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
         key="refresh_token", value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,

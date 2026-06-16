@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.password import hash_password
 from app.db.models import PasswordResetToken, Soldier, TelegramLink, TelegramOutbox
 from app.services.email import send_email
-from app.services.soldiers import PasswordPolicyError, validate_password
+from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
 
 _TOKEN_EXPIRY = timedelta(minutes=15)
 
@@ -120,6 +120,7 @@ def redeem_reset_token(session: Session, *, token: str, new_password: str) -> st
         return "token_invalid"
     soldier.password_hash = hash_password(new_password)
     soldier.must_change_password = False
+    bump_token_version(soldier)
     row.used_at = now
     session.flush()
     return "ok"
