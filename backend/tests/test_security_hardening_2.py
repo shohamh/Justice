@@ -49,3 +49,34 @@ def test_solver_settings_time_limit_bound():
 
     with pytest.raises(ValidationError):
         SolverSettingsIn(time_limit_seconds=1)
+
+
+def test_forgot_password_always_returns_channels():
+    """Response must not differ based on whether the personal number exists."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from unittest.mock import patch
+
+    client = TestClient(app)
+
+    with patch("app.services.password_reset.available_channels", return_value=[]):
+        resp_missing = client.post("/api/auth/forgot-password", json={"personal_number": "0000000"})
+
+    with patch("app.services.password_reset.available_channels", return_value=["telegram"]):
+        resp_existing = client.post("/api/auth/forgot-password", json={"personal_number": "1234567"})
+
+    assert resp_missing.status_code == 200
+    assert resp_existing.status_code == 200
+    assert resp_missing.json()["channels"] == resp_existing.json()["channels"]
+    assert len(resp_missing.json()["channels"]) > 0
+
+
+def test_register_nodes_requires_invite_code():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    resp = client.get("/api/auth/register/nodes")
+    assert resp.status_code == 422  # missing required query param
+
+    resp2 = client.get("/api/auth/register/nodes?invite_code=invalid-code-xyz")
+    assert resp2.status_code == 403

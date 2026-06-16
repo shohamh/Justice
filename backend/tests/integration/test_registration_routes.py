@@ -75,6 +75,18 @@ def test_validate_code_endpoint(client, admin_session):
 
 def test_register_nodes_returns_list(client, admin_session):
     create_node(admin_session, level="division", name=f"div_{_uid()}")
-    resp = client.get("/api/auth/register/nodes")
+    invite = create_invite_code(admin_session, uses_left=3, actor_id=None)
+    admin_session.commit()
+    resp = client.get(f"/api/auth/register/nodes?invite_code={invite.code}")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+def test_register_nodes_rejects_missing_code(client):
+    resp = client.get("/api/auth/register/nodes")
+    assert resp.status_code == 422
+
+
+def test_register_nodes_rejects_invalid_code(client):
+    resp = client.get("/api/auth/register/nodes?invite_code=INVALID-CODE-XYZ")
+    assert resp.status_code == 403

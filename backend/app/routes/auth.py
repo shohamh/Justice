@@ -294,8 +294,13 @@ def register(
 
 
 @router.get("/register/nodes", response_model=list[NodeOut])
-def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
+def register_nodes(
+    invite_code: str,
+    session: Session = Depends(get_session),
+) -> list[NodeOut]:
     from sqlalchemy import select as sa_select
+    if not validate_code(session, code=invite_code):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_invite_code")
     nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
     result = []
     for n in nodes:
@@ -311,7 +316,12 @@ def register_nodes(session: Session = Depends(get_session)) -> list[NodeOut]:
 
 
 @router.get("/register/validate-code")
-def validate_invite_code(code: str, session: Session = Depends(get_session)) -> dict:
+@limiter.limit("20/hour")
+def validate_invite_code(
+    code: str,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> dict:
     return {"valid": validate_code(session, code=code)}
 
 
@@ -322,8 +332,10 @@ def forgot_password_check(
     request: Request,
     session: Session = Depends(get_session),
 ) -> ForgotPasswordChannelsResponse:
-    channels = pwd_reset_svc.available_channels(session, personal_number=body.personal_number)
-    return ForgotPasswordChannelsResponse(channels=channels)
+    # Always return the same response to prevent user enumeration.
+    # The actual available channels are revealed only to the account holder via the /send endpoint.
+    pwd_reset_svc.available_channels(session, personal_number=body.personal_number)  # called to keep timing consistent
+    return ForgotPasswordChannelsResponse(channels=["telegram", "email"])
 
 
 @router.post("/forgot-password/send", status_code=200)
