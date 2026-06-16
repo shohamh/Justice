@@ -422,6 +422,26 @@ def preview_gimelim(
     )
 
 
+# ── Scope helper for commit re-verification ───────────────────────────────────
+
+def resolve_preview_token_assignment(preview_token: str) -> uuid.UUID | None:
+    """Return the primary_assignment_id stored in a valid (non-expired) preview token.
+
+    Returns None if the token is unknown or expired, without consuming it.
+    """
+    entry = _PREVIEW_STORE.get(preview_token)
+    if entry is None:
+        return None
+    expires_at, payload = entry
+    now = datetime.now(timezone.utc)
+    if expires_at < now:
+        return None
+    raw = payload.get("primary_assignment_id")
+    if not raw:
+        return None
+    return uuid.UUID(raw)
+
+
 # ── Commit ────────────────────────────────────────────────────────────────────
 
 def commit_gimelim(
