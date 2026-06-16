@@ -71,6 +71,75 @@ def test_forgot_password_always_returns_channels():
     assert len(resp_missing.json()["channels"]) > 0
 
 
+def test_magic_byte_detection():
+    """Magic byte dict in the attachment route correctly detects real vs spoofed files."""
+    _MAGIC = {
+        "application/pdf": [b"%PDF"],
+        "image/jpeg": [b"\xff\xd8\xff"],
+        "image/png": [b"\x89PNG\r\n\x1a\n"],
+        "image/gif": [b"GIF87a", b"GIF89a"],
+        "image/webp": [b"RIFF"],
+    }
+
+    def check(declared: str, data: bytes) -> bool:
+        return any(
+            data[: len(prefix)] == prefix
+            for prefix in _MAGIC.get(declared, [])
+        )
+
+    assert check("application/pdf", b"%PDF-1.4 fake content")
+    assert check("image/jpeg", b"\xff\xd8\xff\xe0 fake jpeg")
+    assert check("image/png", b"\x89PNG\r\n\x1a\n fake png")
+    assert check("image/gif", b"GIF89a fake gif")
+    assert check("image/webp", b"RIFF\x00\x00\x00\x00WEBP")
+    assert not check("image/jpeg", b"<html>not a jpeg</html>")
+    assert not check("application/pdf", b"PK\x03\x04 zip file")
+    assert not check("image/png", b"%PDF-1.4 wrong type declared")
+    # Unknown declared type → no magic entries → always False
+    assert not check("application/octet-stream", b"%PDF-1.4 anything")
+
+
+def test_gimelim_resolve_preview_token_returns_none_for_unknown():
+    from app.services.gimelim import resolve_preview_token_assignment
+    assert resolve_preview_token_assignment("no-such-token") is None
+
+
+def test_gimelim_resolve_preview_token_returns_none_for_expired():
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from app.services import gimelim as svc
+
+    token = str(uuid.uuid4())
+    primary_id = uuid.uuid4()
+    expired_time = datetime.now(timezone.utc) - timedelta(seconds=1)
+    svc._PREVIEW_STORE[token] = (
+        expired_time,
+        {"primary_assignment_id": str(primary_id)},
+    )
+    result = svc.resolve_preview_token_assignment(token)
+    assert result is None
+    # clean up
+    svc._PREVIEW_STORE.pop(token, None)
+
+
+def test_gimelim_resolve_preview_token_returns_id_for_valid():
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from app.services import gimelim as svc
+
+    token = str(uuid.uuid4())
+    primary_id = uuid.uuid4()
+    future_time = datetime.now(timezone.utc) + timedelta(minutes=5)
+    svc._PREVIEW_STORE[token] = (
+        future_time,
+        {"primary_assignment_id": str(primary_id)},
+    )
+    result = svc.resolve_preview_token_assignment(token)
+    assert result == primary_id
+    # clean up
+    del svc._PREVIEW_STORE[token]
+
+
 def test_register_nodes_requires_invite_code():
     from fastapi.testclient import TestClient
     from app.main import app
