@@ -20,21 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Cache uv store
-        uses: actions/cache@v4
+      - uses: actions/setup-python@v5
         with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
-          restore-keys: uv-${{ runner.os }}-
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "backend/pyproject.toml"
 
       - name: Install Python dependencies
-        run: uv sync --frozen --extra dev
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e ".[dev]"
 
       - name: Run tests
-        run: uv run pytest -q --ignore=app/routes/tests/test_candidate_rank.py
+        run: .venv/bin/pytest -q --ignore=app/routes/tests/test_candidate_rank.py
 
   # ─────────────────────────────────────────
   # Job 2: Frontend — lint + vitest
@@ -52,30 +50,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.store }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Lint
-        run: pnpm lint
+        run: npm run lint
 
       - name: Unit tests
-        run: pnpm exec vitest run
+        run: npx vitest run
 
   # ─────────────────────────────────────────
   # Job 3: E2E — full stack (Postgres service + backend + frontend)
@@ -111,31 +96,29 @@ jobs:
       - uses: actions/checkout@v4
 
       # ── Backend setup ──
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Cache uv store
-        uses: actions/cache@v4
+      - uses: actions/setup-python@v5
         with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('backend/uv.lock') }}
-          restore-keys: uv-${{ runner.os }}-
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "backend/pyproject.toml"
 
       - name: Install Python dependencies
         working-directory: backend
-        run: uv sync --frozen --extra dev
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e ".[dev]"
 
       - name: Run Alembic migrations
         working-directory: backend
-        run: uv run alembic upgrade head
+        run: .venv/bin/alembic upgrade head
 
       - name: Seed database
         working-directory: backend
-        run: uv run python -m app.scripts.seed
+        run: .venv/bin/python -m app.scripts.seed
 
       - name: Start backend
         working-directory: backend
-        run: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+        run: .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 
       - name: Wait for backend
         run: |
@@ -149,35 +132,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "store=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.store }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ runner.os }}-
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build frontend
         working-directory: frontend
-        run: pnpm build
+        run: npm run build
         env:
           VITE_API_BASE: http://localhost:8000/api
 
       - name: Start frontend preview server
         working-directory: frontend
-        run: pnpm preview --host 0.0.0.0 --port 5173 &
+        run: npx vite preview --host 0.0.0.0 --port 5173 &
 
       - name: Wait for frontend
         run: |
@@ -190,11 +160,11 @@ jobs:
       # ── Playwright ──
       - name: Install Playwright browsers
         working-directory: frontend
-        run: pnpm exec playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         working-directory: frontend
-        run: pnpm exec playwright test
+        run: npx playwright test
 
       - name: Upload Playwright report
         if: failure()

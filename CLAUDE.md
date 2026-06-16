@@ -12,12 +12,17 @@ Army duty management system. Hebrew UI, English code. See README.md for full con
 This script:
 - Keeps Postgres in Docker, runs everything else natively on Windows
 - Stops any running Docker app containers first (frees ports 8000 / 5173)
+- Creates `backend\.venv` (Python venv) on first run and installs all deps via pip
 - Waits for DB health, runs Alembic migrations, then launches all services via `concurrently`
 - All logs stream in one terminal with colored `[backend]` / `[frontend]` / `[bot]` prefixes
 - Ctrl+C stops all services cleanly
 
 **Do not** use `docker compose up` for day-to-day dev — Docker Desktop's volume
 file-watching on Windows misses events, breaking hot reload.
+
+**Using a private PyPI mirror:** set `PIP_INDEX_URL=https://your.mirror/simple/` in your
+shell or in `.env` before running `dev.ps1`. pip reads this variable automatically.
+Delete `backend\.venv` to force a reinstall against the new index.
 
 ## Key URLs (local dev)
 
@@ -49,15 +54,18 @@ frontend/src/
 ## Common one-liners
 
 ```bash
-# Backend (run from backend/)
-uv run pytest -q                          # fast suite (excludes @pytest.mark.slow; serial)
-uv run pytest -n 8 -q                     # fast suite in parallel (each xdist worker gets its own throwaway Postgres container)
-uv run pytest -m slow -q                  # only the 8 large-scale CP-SAT tests (~11 min)
-uv run pytest -m "slow or not slow" -n 8  # EVERYTHING (slow + fast) in parallel — run locally before a release (CI skips slow)
-uv run alembic revision -m "description" # new migration
-uv run alembic upgrade head               # apply migrations
+# Backend — activate venv first: backend\.venv\Scripts\activate (Windows)
+pytest -q                          # fast suite (excludes @pytest.mark.slow; serial)
+pytest -n 8 -q                     # fast suite in parallel (each xdist worker gets its own throwaway Postgres container)
+pytest -m slow -q                  # only the 8 large-scale CP-SAT tests (~11 min)
+pytest -m "slow or not slow" -n 8  # EVERYTHING (slow + fast) in parallel — run locally before a release (CI skips slow)
+alembic revision -m "description"  # new migration
+alembic upgrade head               # apply migrations
+
+# Add/update Python deps (from backend/):
+pip install -e ".[dev]"            # reinstall after editing pyproject.toml
 
 # Frontend (run from frontend/)
-pnpm test    # vitest unit tests
-pnpm lint    # eslint (zero warnings enforced)
+npm test        # vitest unit tests
+npm run lint    # eslint (zero warnings enforced)
 ```

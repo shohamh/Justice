@@ -98,7 +98,7 @@ except AttributeError:
 start_server()
 
 if not HAS_WATCHFILES:
-    log("watchfiles not installed — running without hot reload; install it with: uv add watchfiles")
+    log("watchfiles not installed — running without hot reload; install it with: pip install watchfiles")
     try:
         proc.wait()  # type: ignore[union-attr]
     except KeyboardInterrupt:

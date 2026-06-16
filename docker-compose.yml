@@ -16,7 +16,10 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
     ports:
       - "8000:8000"
     env_file: .env
@@ -25,10 +28,9 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-      - /app/.venv  # preserve the venv built into the image
     command: >
-      sh -c "uv run alembic upgrade head &&
-             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
@@ -45,12 +47,14 @@ services:
       - backend
 
   telegram-bot:
-    build: ./backend
-    command: uv run watchfiles --filter python 'python -m bot.main' app/ bot/
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
+    command: watchfiles --filter python 'python -m bot.main' app/ bot/
     env_file: .env
     volumes:
       - ./backend:/app
-      - /app/.venv  # preserve the venv built into the image
     depends_on:
       db:
         condition: service_healthy

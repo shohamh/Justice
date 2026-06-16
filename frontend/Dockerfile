@@ -1,11 +1,10 @@
 # --- Dev stage: Vite HMR dev server (used by docker-compose)
 FROM node:20-alpine AS dev
-RUN npm install -g pnpm@9
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 EXPOSE 5173
-CMD ["pnpm", "dev"]
+CMD ["npm", "run", "dev"]
 
 # --- Production build stage
 FROM node:20-alpine AS build
@@ -14,14 +13,10 @@ ARG VITE_API_BASE=http://localhost:8000/api
 ENV VITE_API_BASE=$VITE_API_BASE
 
 WORKDIR /app
-
-RUN npm install -g pnpm@9
-
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
-RUN pnpm build
+RUN npm run build
 
 # --- Runtime stage (static files served by Caddy in slice 7; dev image just previews)
 FROM node:20-alpine AS runtime

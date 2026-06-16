@@ -24,6 +24,34 @@ Get-Content "$root\.env" | Where-Object { $_ -match '^[A-Z_]+=.+$' } | ForEach-O
 $localDbUrl    = $envVars['DATABASE_URL'] -replace '@db:', '@localhost:'
 $localAdminUrl = $envVars['DB_ADMIN_URL']  -replace '@db:', '@localhost:'
 
+# ── PyPI mirror support ───────────────────────────────────────────────────────
+# pip reads PIP_INDEX_URL from the environment automatically.
+# Set it in your shell or add PIP_INDEX_URL=https://your.mirror/simple/ to .env.
+if ($envVars.ContainsKey('PIP_INDEX_URL') -and -not $env:PIP_INDEX_URL) {
+    $env:PIP_INDEX_URL = $envVars['PIP_INDEX_URL']
+}
+
+# ── Python virtual environment ────────────────────────────────────────────────
+$venvPy  = "$root\backend\.venv\Scripts\python.exe"
+$venvPip = "$root\backend\.venv\Scripts\pip.exe"
+if (-not (Test-Path $venvPy)) {
+    Write-Host "[dev] Creating Python virtual environment..." -ForegroundColor Cyan
+    python -m venv "$root\backend\.venv"
+    Write-Host "[dev] Installing Python dependencies..." -ForegroundColor Cyan
+    Push-Location "$root\backend"
+    & $venvPip install -e ".[dev]"
+    Pop-Location
+    if ($LASTEXITCODE -ne 0) { Write-Error "[dev] pip install failed"; exit 1 }
+}
+
+# ── Node.js dependencies ──────────────────────────────────────────────────────
+if (-not (Test-Path "$root\frontend\node_modules\.bin\vite")) {
+    Write-Host "[dev] Installing frontend dependencies (npm install)..." -ForegroundColor Cyan
+    Push-Location "$root\frontend"
+    npm install
+    Pop-Location
+}
+
 # ── Helper: kill whatever process is listening on a TCP port ─────────────────
 function Stop-PortProcess([int]$Port) {
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
@@ -77,7 +105,7 @@ Write-Host "[dev] Running migrations..." -ForegroundColor Cyan
 $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
 Push-Location "$root\backend"
-uv run alembic upgrade head
+& $venvPy -m alembic upgrade head
 Pop-Location
 Write-Host "[dev] Migrations done." -ForegroundColor Green
 
@@ -87,14 +115,14 @@ $colors = [System.Collections.Generic.List[string]]::new()
 $cmds   = [System.Collections.Generic.List[string]]::new()
 
 $names.Add("backend");  $colors.Add("cyan");
-$cmds.Add("cd /d `"$root\backend`" && uv run python run_dev_server.py")
+$cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_server.py")
 
 $names.Add("frontend"); $colors.Add("yellow")
-$cmds.Add("cd /d `"$root\frontend`" && pnpm dev")
+$cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
 if (-not $NoBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && uv run python -m bot.main")
+    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" -m bot.main")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────
