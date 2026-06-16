@@ -10,6 +10,9 @@ def _setup(session, pn_prefix: str):
     node = create_node(session, level="branch", name=f"n_{pn_prefix}")
     dm = create_soldier(session, personal_number=f"{pn_prefix}_dm", role="duty_manager", hierarchy_node_id=node.id)
     commander = create_soldier(session, personal_number=f"{pn_prefix}_cmd", role="commander", hierarchy_node_id=node.id)
+    # Wire the commander as the node's commander so scope_root_ids returns this node.
+    node.commander_id = commander.id
+    session.flush()
     pulled = create_soldier(session, personal_number=f"{pn_prefix}_p", role="soldier", hierarchy_node_id=node.id)
     replacement = create_soldier(session, personal_number=f"{pn_prefix}_r", role="soldier", hierarchy_node_id=node.id)
 
