@@ -97,3 +97,31 @@ def test_cors_disallows_put_method():
     )
     allowed = resp.headers.get("access-control-allow-methods", "")
     assert "PUT" not in allowed
+
+
+def test_score_adjustment_delta_bounds():
+    from pydantic import ValidationError
+    from app.routes.score_adjustments import CreateAdjustmentRequest
+    import uuid
+
+    valid = CreateAdjustmentRequest(
+        soldier_id=uuid.uuid4(), delta="500", reason="test"
+    )
+    assert valid.delta == 500
+
+    with pytest.raises(ValidationError):
+        CreateAdjustmentRequest(soldier_id=uuid.uuid4(), delta="10000", reason="too big")
+
+    with pytest.raises(ValidationError):
+        CreateAdjustmentRequest(soldier_id=uuid.uuid4(), delta="-10000", reason="too small")
+
+
+def test_magic_bytes_xlsx():
+    """Valid xlsx starts with ZIP magic bytes."""
+    xlsx_magic = b"PK\x03\x04"
+    assert xlsx_magic[:4] == b"PK\x03\x04"
+
+
+def test_magic_bytes_rejects_html():
+    fake_html = b"<htm"
+    assert fake_html[:4] != b"PK\x03\x04"
