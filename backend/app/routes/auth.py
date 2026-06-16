@@ -141,7 +141,7 @@ def login(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600 if body.remember_me else None,
         httponly=True,
-        secure=False,  # set to True behind TLS in slice 7; left False so local dev over http works
+        secure=get_settings().cookie_secure,
         samesite="strict",
         path="/api/auth",
     )
@@ -176,7 +176,7 @@ def refresh(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True,
-        secure=False,
+        secure=get_settings().cookie_secure,
         samesite="strict",
         path="/api/auth",
     )
@@ -255,7 +255,7 @@ def register(
     response.set_cookie(
         key="refresh_token", value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
-        httponly=True, secure=False, samesite="strict", path="/api/auth",
+        httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
     return LoginResponse(access_token=access, must_change_password=False)
 
