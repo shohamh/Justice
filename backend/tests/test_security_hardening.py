@@ -71,3 +71,29 @@ def test_soldier_move_requires_dest_node_auth():
     # The real guard: if body.hierarchy_node_id differs, authorize is called twice.
     # Verified by code inspection above — this test documents the requirement.
     assert True  # placeholder; full integration coverage via existing test_soldiers.py
+
+
+def test_security_headers_present():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    resp = client.get("/api/health")
+    assert resp.headers.get("x-content-type-options") == "nosniff"
+    assert resp.headers.get("x-frame-options") == "DENY"
+    assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+
+def test_cors_disallows_put_method():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    resp = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    allowed = resp.headers.get("access-control-allow-methods", "")
+    assert "PUT" not in allowed
