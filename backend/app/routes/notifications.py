@@ -33,6 +33,7 @@ class NotificationPrefOut(BaseModel):
     notification_type: str
     in_app_enabled: bool
     push_enabled: bool
+    email_enabled: bool
 
 
 class UpdatePrefsBody(BaseModel):
@@ -152,7 +153,8 @@ def get_preferences(
 ) -> list[NotificationPrefOut]:
     prefs = svc.get_preferences(session, soldier_id=user.id)
     return [NotificationPrefOut(notification_type=p.notification_type.value,
-                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled)
+                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled,
+                                 email_enabled=p.email_enabled)
             for p in prefs]
 
 
@@ -165,7 +167,8 @@ def update_preferences(
     prefs = svc.update_preferences(session, soldier_id=user.id, preferences=body.preferences)
     session.commit()
     return [NotificationPrefOut(notification_type=p.notification_type.value,
-                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled)
+                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled,
+                                 email_enabled=p.email_enabled)
             for p in prefs]
 
 
