@@ -7,6 +7,7 @@ import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bu
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
+import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -89,16 +90,16 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl">
-      <div className="flex flex-wrap justify-between items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full justify-between items-center gap-2 text-right"
+      >
         <h2 className="text-xl font-semibold">ניקוי שיבוצים</h2>
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm px-2 py-1"
-        >
+        <span className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm px-2 py-1">
           {open ? "▲" : "▼"}
-        </button>
-      </div>
+        </span>
+      </button>
 
       {open && <div className="space-y-4">
       <div className="flex items-center justify-between py-2 border-b dark:border-gray-600">
@@ -225,7 +226,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   );
 }
 
-export function ShiftsContent() {
+export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: string) => void } = {}) {
   const { t } = useTranslation();
   const [shifts, setShifts] = useState<DutyShift[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
@@ -235,6 +236,8 @@ export function ShiftsContent() {
   const [showCreate, setShowCreate] = useState(false);
   const [editShift, setEditShift] = useState<DutyShift | null>(null);
   const [editAssignmentsShift, setEditAssignmentsShift] = useState<DutyShift | null>(null);
+  const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
+  const [showAlgorithmPanel, setShowAlgorithmPanel] = useState(false);
 
   const refresh = useCallback(async () => {
     const [ss, dts, locs] = await Promise.all([
@@ -284,6 +287,17 @@ export function ShiftsContent() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={() => setShowAlgorithmPanel(p => !p)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                showAlgorithmPanel
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                  : "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+              }`}
+            >
+              שיבוץ אוטומטי
+            </button>
+            <button
+              type="button"
               onClick={() => setShowCreate(true)}
               className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
             >
@@ -292,7 +306,7 @@ export function ShiftsContent() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm">
           <label className="flex items-center gap-2">
             {t("shifts.filter_from")}
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
@@ -301,10 +315,66 @@ export function ShiftsContent() {
             {t("shifts.filter_to")}
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
+          {shifts.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <button
+                type="button"
+                onClick={() => setSelectedShiftIds(shifts.map(s => s.id))}
+                className="text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                בחר הכל ({shifts.length})
+              </button>
+              {selectedShiftIds.length > 0 && (
+                <>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedShiftIds([])}
+                    className="text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    בטל בחירה
+                  </button>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                    {selectedShiftIds.length} נבחרו
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {(() => {
+          const algorithmPanel = showAlgorithmPanel ? (
+            <AlgorithmInlinePanel
+              selectedShiftIds={selectedShiftIds}
+              dutyTypes={dutyTypes}
+              onJobSubmitted={(jobId) => {
+                onJobSubmitted?.(jobId);
+                setShowAlgorithmPanel(false);
+                setSelectedShiftIds([]);
+              }}
+              onClose={() => setShowAlgorithmPanel(false)}
+            />
+          ) : null;
+
           const shiftCols: ColDef<DutyShift>[] = [
+            {
+              id: "select",
+              header: "",
+              cell: (s) => (
+                <input
+                  type="checkbox"
+                  checked={selectedShiftIds.includes(s.id)}
+                  onChange={() =>
+                    setSelectedShiftIds(prev =>
+                      prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                    )
+                  }
+                  onClick={e => e.stopPropagation()}
+                  aria-label="בחר משמרת"
+                />
+              ),
+            },
             {
               id: "duty_type",
               header: t("shifts.duty_type"),
@@ -377,63 +447,70 @@ export function ShiftsContent() {
             },
             {
               id: "actions",
-              header: t("shifts.actions"),
+              header: "",
               cell: (s) => (
-                <span className="flex flex-wrap gap-1 items-center">
+                <span className="flex gap-1 items-center">
                   <button
                     type="button"
                     onClick={() => setEditShift(s)}
-                    className="px-2 py-1 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
+                    title={t("shifts.edit")}
+                    className="p-1 rounded text-sm bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
                   >
-                    ✏️ {t("shifts.edit")}
+                    ✏️
                   </button>
                   {s.status === "active" && (
                     <button
                       type="button"
                       onClick={() => setEditAssignmentsShift(s)}
-                      className="px-2 py-1 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+                      title="ערוך שיבוצים"
+                      className="p-1 rounded text-sm bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
                     >
-                      🛠️ ערוך שיבוצים
+                      🛠️
                     </button>
                   )}
                   {s.status === "cancelled" ? (
                     <button
                       type="button"
                       onClick={() => handleActivate(s)}
-                      className="px-2 py-1 rounded text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
+                      title={t("shifts.activate")}
+                      className="p-1 rounded text-sm bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
                     >
-                      ▶️ {t("shifts.activate")}
+                      ▶️
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => handleCancel(s)}
-                      className="px-2 py-1 rounded text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700"
+                      title={t("shifts.cancel")}
+                      className="p-1 rounded text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
                     >
-                      🚫 {t("shifts.cancel")}
+                      🚫
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => handleDelete(s)}
-                    className="px-2 py-1 rounded text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
-                    disabled={s.assigned_count > 0}
                     title={t("shifts.delete_tooltip")}
+                    className="p-1 rounded text-sm bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
+                    disabled={s.assigned_count > 0}
                   >
-                    🗑️ {t("shifts.delete")}
+                    🗑️
                   </button>
                 </span>
               ),
             },
           ];
           return (
-            <DataTable
-              columns={shiftCols}
-              data={shifts}
-              rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
-              filterPlaceholder={t("table.filter_placeholder")}
-              emptyMessage="אין משמרות"
-            />
+            <>
+              {algorithmPanel}
+              <DataTable
+                columns={shiftCols}
+                data={shifts}
+                rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
+                filterPlaceholder={t("table.filter_placeholder")}
+                emptyMessage="אין משמרות"
+              />
+            </>
           );
         })()}
       </section>
