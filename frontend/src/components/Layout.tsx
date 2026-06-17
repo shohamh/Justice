@@ -54,7 +54,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NotificationBell />
             <button
               onClick={() => logout()}
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+              className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
               data-testid="logout-button"
             >
               {t("home.logout")}
