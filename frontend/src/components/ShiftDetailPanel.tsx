@@ -194,7 +194,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         >
                           {t("dismiss_action")}
                         </button>
-                        {gimelimEnabled && !a.is_reserve && (
+                        {gimelimEnabled && !a.is_reserve && (user?.role === "duty_manager" || user?.role === "admin") && (
                           <button
                             className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
                             onClick={() => setGimelimTarget(a)}
