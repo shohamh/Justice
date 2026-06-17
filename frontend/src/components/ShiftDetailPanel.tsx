@@ -10,7 +10,7 @@ import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
-import { getSystemSettings } from "../api/systemSettings";
+import { getPublicSettings } from "../api/publicSettings";
 import GimelimModal from "./GimelimModal";
 
 interface Props {
@@ -39,7 +39,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
 
   useEffect(() => {
-    getSystemSettings().then((settings) => {
+    getPublicSettings().then((settings) => {
       const enabled = settings["gimalim.enabled"];
       setGimelimEnabled(enabled === true || enabled === undefined);
       const restDays = settings["gimalim.default_rest_days"];

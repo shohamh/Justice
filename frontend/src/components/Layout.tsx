@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
-import { getSystemSettings } from "../api/systemSettings";
+import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -17,7 +17,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
 
   useEffect(() => {
-    getSystemSettings().then((settings) => {
+    getPublicSettings().then((settings) => {
       const enabled = settings["gimalim.enabled"];
       setGimelimEnabled(enabled === true || enabled === undefined);
     }).catch(() => {});
