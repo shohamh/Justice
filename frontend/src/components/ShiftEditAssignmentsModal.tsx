@@ -33,6 +33,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());
   const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState<string | null>(null);
+  const [hasRemovals, setHasRemovals] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [primaryPanelOpen, setPrimaryPanelOpen] = useState(true);
@@ -209,6 +210,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       return;
     }
     // Optimistic update so UI reflects the removal even if reload fails
+    setHasRemovals(true);
     setShiftDetail(prev =>
       prev ? { ...prev, assignees: prev.assignees.filter(a => a.assignment_id !== assignmentId) } : prev
     );
@@ -223,7 +225,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }
 
   async function handleSave() {
-    if (primarySelected.size === 0 && reserveSelected.size === 0) return;
+    if (totalSelected === 0) { onSaved(); return; }
     setSaving(true);
     setError(null);
     try {
@@ -265,6 +267,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
 
   const hasCurrentOrPending = currentPrimaries.length > 0 || currentReserves.length > 0 || pendingPrimaries.length > 0 || pendingReserves.length > 0;
   const totalSelected = primarySelected.size + reserveSelected.size;
+  const canSave = totalSelected > 0 || hasRemovals;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
@@ -489,7 +492,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           <button
             type="button"
             onClick={handleSave}
-            disabled={totalSelected === 0 || saving}
+            disabled={!canSave || saving}
             className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
           >
             {saving ? "שומר..." : `שמור${totalSelected > 0 ? ` (${totalSelected})` : ""}`}

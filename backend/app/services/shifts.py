@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 
-from app.db.models import DutyAssignment, DutyShift
+from app.db.models import DutyAssignment, DutyShift, DutyType
 
 _UNSET = object()
 
@@ -35,10 +36,20 @@ class ShiftWithFill:
     reserve_count_override: int | None = None
 
 
-def _fill_status(assigned: int, required: int) -> str:
-    if assigned == 0:
+def _expected_reserve(shift: DutyShift, duty_type: DutyType | None) -> int:
+    if shift.reserve_count_override is not None:
+        return shift.reserve_count_override
+    if duty_type is None:
+        return 0
+    ratio = float(duty_type.reserve_ratio or 0)
+    minimum = int(duty_type.reserve_minimum or 0)
+    return max(minimum, math.ceil(shift.required_count * ratio))
+
+
+def _fill_status(primary: int, required: int, reserve_assigned: int = 0, reserve_required: int = 0) -> str:
+    if primary == 0 and reserve_assigned == 0:
         return "empty"
-    if assigned >= required:
+    if primary >= required and (reserve_required == 0 or reserve_assigned >= reserve_required):
         return "full"
     return "partial"
 
@@ -61,6 +72,8 @@ def _get_assigned_counts(session: Session, shift_id: uuid.UUID) -> tuple[int, in
 def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
     total, reserve = _get_assigned_counts(session, shift.id)
     primary = total - reserve
+    duty_type = session.get(DutyType, shift.duty_type_id)
+    exp_reserve = _expected_reserve(shift, duty_type)
     return ShiftWithFill(
         id=shift.id,
         duty_type_id=shift.duty_type_id,
@@ -72,7 +85,7 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         created_by=shift.created_by,
         assigned_count=primary,
         reserve_assigned_count=reserve,
-        fill_status=_fill_status(primary, shift.required_count),
+        fill_status=_fill_status(primary, shift.required_count, reserve, exp_reserve),
         status=shift.status,
         reserve_count_override=shift.reserve_count_override,
     )
@@ -237,11 +250,18 @@ def list_shifts(
     count_map: dict[uuid.UUID, int] = {row.duty_shift_id: row.cnt for row in count_rows}
     reserve_map: dict[uuid.UUID, int] = {row.duty_shift_id: row.reserve_cnt or 0 for row in count_rows}
 
+    duty_type_ids = list({s.duty_type_id for s in shifts})
+    duty_types = {
+        dt.id: dt
+        for dt in session.execute(select(DutyType).where(DutyType.id.in_(duty_type_ids))).scalars().all()
+    }
+
     result = []
     for shift in shifts:
         total_assigned = count_map.get(shift.id, 0)
         reserve_assigned = reserve_map.get(shift.id, 0)
         primary_assigned = total_assigned - reserve_assigned
+        exp_reserve = _expected_reserve(shift, duty_types.get(shift.duty_type_id))
         result.append(ShiftWithFill(
             id=shift.id,
             duty_type_id=shift.duty_type_id,
@@ -253,7 +273,7 @@ def list_shifts(
             created_by=shift.created_by,
             assigned_count=primary_assigned,
             reserve_assigned_count=reserve_assigned,
-            fill_status=_fill_status(primary_assigned, shift.required_count),
+            fill_status=_fill_status(primary_assigned, shift.required_count, reserve_assigned, exp_reserve),
             status=shift.status,
             reserve_count_override=shift.reserve_count_override,
         ))
