@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
         )}
 
         <p className="text-center text-sm text-gray-500">
-          <Link to="/login" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link to="/login" className="text-indigo-600 dark:text-indigo-300 hover:underline">
             {t("forgot_password.back_to_login")}
           </Link>
         </p>

@@ -101,7 +101,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
                 </li>
               ))}
               <li
-                className="px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm text-indigo-600 dark:text-indigo-400 border-t dark:border-gray-700"
+                className="px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm text-indigo-600 dark:text-indigo-300 border-t dark:border-gray-700"
                 onClick={handleCreateNew}
                 data-testid="soldier-search-create-new"
               >

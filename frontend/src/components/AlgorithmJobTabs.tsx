@@ -99,7 +99,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
               )}
               <button
                 onClick={() => downloadSolverInputs(jobId)}
-                className="mr-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="mr-auto text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
               >
                 ⬇ ייצוא קלטי solver
               </button>
@@ -134,7 +134,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
             <div className="flex justify-end">
               <button
                 onClick={() => downloadSolverInputs(jobId)}
-                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
               >
                 ⬇ ייצוא קלטי solver
               </button>
@@ -149,7 +149,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
             onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
-                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                ? "border-indigo-500 text-indigo-600 dark:text-indigo-300"
                 : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
           >

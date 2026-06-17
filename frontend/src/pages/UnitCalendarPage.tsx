@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import UnitCalendar from "../components/UnitCalendar";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import { useAuth } from "../auth/AuthContext";
 
 function treeOrder(nodes: NodeDTO[]): NodeDTO[] {
@@ -32,7 +32,7 @@ export default function UnitCalendarPage() {
   const [nodeId, setNodeId] = useState<string>("");
 
   useEffect(() => {
-    void fetchTree().then((ns) => {
+    void fetchFullTree().then((ns) => {
       const ordered = treeOrder(ns);
       setNodes(ordered);
       const preferred = user?.hierarchy_node_id

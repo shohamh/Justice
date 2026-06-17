@@ -10,7 +10,7 @@ import SoldierLink from "./SoldierLink";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
-import { getSystemSettings } from "../api/systemSettings";
+import { getPublicSettings } from "../api/publicSettings";
 import GimelimModal from "./GimelimModal";
 
 interface Props {
@@ -39,7 +39,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
 
   useEffect(() => {
-    getSystemSettings().then((settings) => {
+    getPublicSettings().then((settings) => {
       const enabled = settings["gimalim.enabled"];
       setGimelimEnabled(enabled === true || enabled === undefined);
       const restDays = settings["gimalim.default_rest_days"];
@@ -137,7 +137,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                   {(dt.contact_name || dt.contact_phone) && (
                     <p className="text-xs text-gray-600 dark:text-gray-300">
                       {t("duty_config.contact_name")}: {dt.contact_name ?? "—"}
-                      {dt.contact_phone && <> | <a href={`tel:${dt.contact_phone}`} className="text-indigo-600 dark:text-indigo-400">{dt.contact_phone}</a></>}
+                      {dt.contact_phone && <> | <a href={`tel:${dt.contact_phone}`} className="text-indigo-600 dark:text-indigo-300">{dt.contact_phone}</a></>}
                     </p>
                   )}
                   {dt.instructions && (
@@ -194,7 +194,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         >
                           {t("dismiss_action")}
                         </button>
-                        {gimelimEnabled && !a.is_reserve && (
+                        {gimelimEnabled && !a.is_reserve && (user?.role === "duty_manager" || user?.role === "admin") && (
                           <button
                             className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
                             onClick={() => setGimelimTarget(a)}

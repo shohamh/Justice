@@ -115,8 +115,10 @@ export default function ProfilePage() {
   async function handleAddScope() {
     const nodeId = prompt(t("notifications.enter_node_id"));
     if (!nodeId) return;
+    const depthStr = prompt(t("notifications.enter_depth"), "-1");
+    const depth = parseInt(depthStr ?? "-1", 10);
     try {
-      const scope = await addCommanderScope(nodeId);
+      const scope = await addCommanderScope(nodeId, isNaN(depth) ? -1 : depth);
       setScopes((prev) => [...prev, scope]);
     } catch { alert(t("notifications.scope_add_error")); }
   }
@@ -133,7 +135,7 @@ export default function ProfilePage() {
         <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
         <p>{t("team.role")}: {user?.role}</p>
-        <Link to="/change-password" className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300" data-testid="profile-change-password">
+        <Link to="/change-password" className="text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
         {user?.id && (
@@ -150,7 +152,7 @@ export default function ProfilePage() {
           {user?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {user.rank}</div>}
           {user?.phone && <div><span className="font-medium">{t("soldier_profile.phone")}:</span> <span dir="ltr">{user.phone}</span></div>}
           {user?.is_officer !== null && user?.is_officer !== undefined && (
-            <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}</div>
+            <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("common.yes") : t("common.no")}</div>
           )}
           {user?.bahad1_graduate !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
@@ -241,7 +243,7 @@ export default function ProfilePage() {
                 ? <span className="text-green-600">✓ {t("profile.email_verified")}</span>
                 : user?.email
                   ? <><span className="text-yellow-600">{t("profile.email_unverified")}</span>
-                      <button type="button" className="text-indigo-600 dark:text-indigo-400 hover:underline" onClick={async () => {
+                      <button type="button" className="text-indigo-600 dark:text-indigo-300 hover:underline" onClick={async () => {
                         await setEmail(user.email ?? null);
                         setEmailMsg(t("profile.email_verification_sent"));
                       }}>{t("profile.resend_verification")}</button>
@@ -285,7 +287,7 @@ export default function ProfilePage() {
                 href={`https://t.me/${tgBotUsername}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline"
+                className="inline-block text-sm text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 underline"
               >
                 @{tgBotUsername}
               </a>
@@ -350,13 +352,32 @@ export default function ProfilePage() {
           {scopes.length === 0 ? (
             <p className="text-sm text-gray-500">{t("notifications.no_scopes")}</p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-3">
               {scopes.map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm py-1 border-b dark:border-gray-600">
-                  <span>{s.hierarchy_node_id}</span>
-                  <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
-                    {t("notifications.remove")}
-                  </button>
+                <li key={s.id} className="border dark:border-gray-600 rounded p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium">{s.node_name ?? s.hierarchy_node_id}</span>
+                      <span className="text-xs text-gray-500 mr-2">
+                        {s.depth === -1 ? t("notifications.depth_unlimited") : t("notifications.depth_levels", { count: s.depth })}
+                      </span>
+                    </div>
+                    <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
+                      {t("notifications.remove")}
+                    </button>
+                  </div>
+                  {s.soldiers.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium mb-1">{t("notifications.subscribed_soldiers")} ({s.soldiers.length})</p>
+                      <div className="flex flex-wrap gap-1">
+                        {s.soldiers.map(sol => (
+                          <span key={sol.id} className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                            {sol.full_name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

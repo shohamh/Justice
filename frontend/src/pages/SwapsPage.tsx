@@ -338,7 +338,7 @@ export default function SwapsPage() {
       </div>
       <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
       {swap.covering_soldier_id && swap.status === "pending_approval" && (
-        <p className="text-xs text-indigo-600 dark:text-indigo-400">{t("swaps.has_cover_candidate")}</p>
+        <p className="text-xs text-indigo-600 dark:text-indigo-300">{t("swaps.has_cover_candidate")}</p>
       )}
       {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
       {swap.decision_note && (
@@ -513,7 +513,7 @@ export default function SwapsPage() {
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                    className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
                   >
                     {t("swaps.filter_clear")}
                   </button>

@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
-import { getSystemSettings } from "../api/systemSettings";
+import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -17,7 +17,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
 
   useEffect(() => {
-    getSystemSettings().then((settings) => {
+    getPublicSettings().then((settings) => {
       const enabled = settings["gimalim.enabled"];
       setGimelimEnabled(enabled === true || enabled === undefined);
     }).catch(() => {});
@@ -54,7 +54,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NotificationBell />
             <button
               onClick={() => logout()}
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300"
+              className="text-sm text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200"
               data-testid="logout-button"
             >
               {t("home.logout")}

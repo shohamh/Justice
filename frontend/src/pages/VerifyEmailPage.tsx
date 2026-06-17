@@ -30,7 +30,7 @@ export default function VerifyEmailPage() {
         {status === "ok" && (
           <>
             <p className="text-green-700">{t("verify_email.success")}</p>
-            <Link to="/" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">{t("verify_email.go_home")}</Link>
+            <Link to="/" className="text-indigo-600 dark:text-indigo-300 hover:underline text-sm">{t("verify_email.go_home")}</Link>
           </>
         )}
         {status === "error" && (
@@ -38,7 +38,7 @@ export default function VerifyEmailPage() {
             <p className="text-red-600">
               {t(`verify_email.errors.${errorKey}`, { defaultValue: t("verify_email.errors.token_invalid") })}
             </p>
-            <Link to="/profile" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">{t("verify_email.go_profile")}</Link>
+            <Link to="/profile" className="text-indigo-600 dark:text-indigo-300 hover:underline text-sm">{t("verify_email.go_profile")}</Link>
           </>
         )}
       </div>

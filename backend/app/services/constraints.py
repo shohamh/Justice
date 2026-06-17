@@ -237,7 +237,7 @@ def list_pending_approvals(
                     select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
                 ),
             )
-            .order_by(PersonalConstraint.created_at.asc())
+            .order_by(PersonalConstraint.start_date.asc())
         )
         .scalars()
         .all()

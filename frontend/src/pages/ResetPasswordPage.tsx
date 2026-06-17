@@ -44,7 +44,7 @@ export default function ResetPasswordPage() {
       <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
         <div className="text-center space-y-3">
           <p className="text-red-600">{t("reset_password.errors.token_invalid")}</p>
-          <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-400 hover:underline text-sm">
+          <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-300 hover:underline text-sm">
             {t("forgot_password.title")}
           </Link>
         </div>
@@ -92,7 +92,7 @@ export default function ResetPasswordPage() {
         </button>
 
         <p className="text-center text-sm text-gray-500">
-          <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-300 hover:underline">
             {t("forgot_password.title")}
           </Link>
         </p>

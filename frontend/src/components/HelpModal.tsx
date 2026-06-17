@@ -279,7 +279,7 @@ function FairnessTab() {
                       <tr key={q.quarter_label} className={`border-b border-green-200 dark:border-green-800 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                         <td className="py-1.5 text-gray-700 dark:text-gray-300 font-medium">
                           <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                          {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-400 font-normal not-italic">(חלקי)</span>}
+                          {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 font-normal not-italic">(חלקי)</span>}
                         </td>
                         <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(1)}</td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
@@ -297,7 +297,7 @@ function FairnessTab() {
                 if (!partialQ) return null;
                 const endFormatted = new Date(partialQ.quarter_end + "T00:00:00").toLocaleDateString("he-IL");
                 return (
-                  <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-400">
+                  <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300">
                     ℹ️ <strong>רבעון חלקי</strong> — התורנות האחרונה המפורסמת מסתיימת ב-{endFormatted}, לפני סוף הרבעון. ניקוד חייל/יחידה הוא ניקוד רבעוני בלבד — לא מצטבר.
                   </p>
                 );

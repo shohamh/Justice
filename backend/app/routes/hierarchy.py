@@ -143,9 +143,11 @@ def delete_node(
 
 @router.get("/tree", response_model=list[NodeOut])
 def get_tree(
-    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
+    all: bool = False,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
 ) -> list[NodeOut]:
-    if user.role == "admin":
+    if all or user.role == "admin":
         nodes = session.execute(select(HierarchyNode)).scalars().all()
     elif user.role == "soldier":
         if user.hierarchy_node_id is None:

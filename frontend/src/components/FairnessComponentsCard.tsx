@@ -98,7 +98,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-sm text-gray-700 dark:text-gray-200">
                     <span className="font-semibold">{c.soldier_count}</span> חיילים
-                    {isActive && <span className="mr-2 text-xs text-indigo-600 dark:text-indigo-400 font-normal">✓ נבחר — לחץ לסינון בטבלה</span>}
+                    {isActive && <span className="mr-2 text-xs text-indigo-600 dark:text-indigo-300 font-normal">✓ נבחר — לחץ לסינון בטבלה</span>}
                   </span>
                   <div className="flex items-center gap-2">
                     {c.effort ? (
@@ -129,7 +129,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                   if (dist.length === 0) return null;
                   return (
                     <div className="mt-2 flex items-center gap-3">
-                      <div style={{ width: 56, height: 56 }}>
+                      <div style={{ width: 96, height: 96 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
@@ -137,8 +137,8 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                               dataKey="soldiers"
                               cx="50%"
                               cy="50%"
-                              innerRadius={16}
-                              outerRadius={26}
+                              innerRadius={28}
+                              outerRadius={44}
                               paddingAngle={2}
                             >
                               {dist.map((_, i) => (
@@ -191,7 +191,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                       const isCandidate = rank < 3;
                       return (
                         <div key={s.soldier_id} className="flex items-center gap-2 pr-1 border-r-2" style={{ borderRightColor: typeCountColor.get(s.eligible_type_count) ?? "transparent" }}>
-                          <span className={`text-xs w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>
+                          <span className={`text-xs w-5 text-center font-bold shrink-0 ${isCandidate ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400"}`}>
                             {rank + 1}
                           </span>
                           <span className="text-xs text-gray-700 dark:text-gray-300 w-28 truncate shrink-0" title={s.full_name}>

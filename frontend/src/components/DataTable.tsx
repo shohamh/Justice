@@ -101,7 +101,7 @@ function ColumnFilterDropdown<T>({
         onClick={() => setOpen((o) => !o)}
         className={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
           isFiltered
-            ? "border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900"
+            ? "border-indigo-500 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900"
             : "border-gray-300 text-gray-400 hover:text-gray-600 dark:border-gray-500 dark:text-gray-500 dark:hover:text-gray-300"
         }`}
       >

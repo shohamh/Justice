@@ -15,6 +15,10 @@ export async function fetchTree(): Promise<NodeDTO[]> {
   return (await api.get<NodeDTO[]>("/hierarchy/tree")).data;
 }
 
+export async function fetchFullTree(): Promise<NodeDTO[]> {
+  return (await api.get<NodeDTO[]>("/hierarchy/tree", { params: { all: true } })).data;
+}
+
 export async function createNode(input: {
   level: string;
   name: string;

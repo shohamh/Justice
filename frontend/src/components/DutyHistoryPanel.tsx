@@ -252,7 +252,7 @@ function EventCard({
                     )}
                     {dutyType.contact_name && <span>{dutyType.contact_name}</span>}
                     {dutyType.contact_phone && (
-                      <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-400" onClick={(ev) => ev.stopPropagation()}>{dutyType.contact_phone}</a>
+                      <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-300" onClick={(ev) => ev.stopPropagation()}>{dutyType.contact_phone}</a>
                     )}
                   </div>
                   {dutyType.instructions && (

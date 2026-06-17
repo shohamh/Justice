@@ -23,6 +23,8 @@
     "logout": "יציאה"
   },
   "common": {
+    "yes": "כן",
+    "no": "לא",
     "must_change_password": "עליך לשנות את הסיסמה לפני המשך השימוש.",
     "no_permission": "אין הרשאה להציג מידע זה"
   },
@@ -765,6 +767,10 @@
     "remove": "הסר",
     "enter_node_id": "הכנס מזהה צומת בהיררכיה",
     "scope_add_error": "שגיאה בהוספת התחום",
+    "depth_unlimited": "כל הרמות",
+    "depth_levels": "{{count}} רמות",
+    "subscribed_soldiers": "חיילים ברשימת ההתראות",
+    "enter_depth": "כמה רמות מתחתיו? (-1 = ללא הגבלה)",
     "type_swap_offer": "הצעת החלפה",
     "type_swap_accepted": "החלפה אושרה",
     "type_swap_rejected": "החלפה נדחתה",
