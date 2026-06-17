@@ -99,7 +99,7 @@ export default function HakpazaPage() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto space-y-4 p-4" dir="rtl">
+      <div className="space-y-4 p-4" dir="rtl">
         <h1 className="text-xl font-semibold">הקפצה פיקודית</h1>
 
         {error && (
