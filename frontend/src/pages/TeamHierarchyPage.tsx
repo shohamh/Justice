@@ -134,7 +134,24 @@ export default function TeamHierarchyPage() {
               {
                 id: "node",
                 header: t("team.node"),
-                cell: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "—",
+                cell: (s) => {
+                  if (!s.hierarchy_node_id) return <span className="text-gray-400">—</span>;
+                  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+                  const soldierNode = nodeMap.get(s.hierarchy_node_id);
+                  if (!soldierNode) return <span className="text-gray-400">—</span>;
+                  const chain = soldierNode.path_ids.map((id) => nodeMap.get(id)?.name).filter(Boolean) as string[];
+                  if (chain.length === 0) return <span>{soldierNode.name}</span>;
+                  return (
+                    <span className="text-xs">
+                      {chain.map((name, i) => (
+                        <span key={i}>
+                          {i > 0 && <span className="text-gray-300 dark:text-gray-600 mx-0.5">›</span>}
+                          <span className={i === chain.length - 1 ? "font-medium" : "text-gray-500 dark:text-gray-400"}>{name}</span>
+                        </span>
+                      ))}
+                    </span>
+                  );
+                },
                 sortValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
                 filterValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
               },
