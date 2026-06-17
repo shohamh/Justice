@@ -50,6 +50,7 @@ export default function TeamHierarchyPage() {
   }
 
   async function onReset(id: string) {
+    if (!window.confirm(t("team.confirm_reset_password", "לאפס סיסמה לחייל זה?"))) return;
     const r = await resetSoldierPassword(id);
     setTempPw(r.temp_password);
   }

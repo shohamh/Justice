@@ -159,6 +159,7 @@
     "edit_soldier": "עריכת פרטים",
     "role": "תפקיד",
     "reset_password": "אפס סיסמה",
+    "confirm_reset_password": "לאפס סיסמה לחייל זה?",
     "remove": "הסר",
     "temp_password_is": "סיסמה זמנית: {{pw}}",
     "add_node": "הוסף יחידה",
