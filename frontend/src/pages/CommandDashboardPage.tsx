@@ -72,7 +72,7 @@ export default function CommandDashboardPage() {
     {
       id: "approvals",
       title: t("command_dashboard.approvals"),
-       content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
+      content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
     },
     {
       id: "upcoming",
@@ -98,7 +98,7 @@ export default function CommandDashboardPage() {
     {
       id: "entries_exits",
       title: t("command_dashboard.entries_exits"),
-          content: <EntriesExitsPanel soldiers={soldiers} onRefresh={refresh} />,
+      content: <EntriesExitsPanel soldiers={soldiers} onRefresh={refresh} />,
     },
     {
       id: "fairness_internal",
