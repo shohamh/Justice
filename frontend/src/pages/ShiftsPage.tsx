@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
@@ -95,7 +95,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
         onClick={() => setOpen(o => !o)}
         className="flex w-full justify-between items-center gap-2 text-right"
       >
-        <h2 className="text-xl font-semibold">ניקוי שיבוצים</h2>
+        <span className="text-xl font-semibold">ניקוי שיבוצים</span>
         <span className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm px-2 py-1">
           {open ? "▲" : "▼"}
         </span>
@@ -252,18 +252,18 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function handleCancel(shift: DutyShift) {
+  const handleCancel = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_cancel"))) return;
     await cancelShift(shift.id);
     await refresh();
-  }
+  }, [t, refresh]);
 
-  async function handleActivate(shift: DutyShift) {
+  const handleActivate = useCallback(async (shift: DutyShift) => {
     await activateShift(shift.id);
     await refresh();
-  }
+  }, [refresh]);
 
-  async function handleDelete(shift: DutyShift) {
+  const handleDelete = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_delete_permanent"))) return;
     try {
       await deleteShift(shift.id);
@@ -272,10 +272,154 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (detail === "has_assignments") alert(t("shifts.has_assignments_error"));
     }
-  }
+  }, [t, refresh]);
 
-  const dtName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
-  const locName = (id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8);
+  const dtName = useCallback((id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8), [dutyTypes]);
+  const locName = useCallback((id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8), [locations]);
+
+  const shiftCols: ColDef<DutyShift>[] = useMemo(() => [
+    {
+      id: "select",
+      header: "",
+      cell: (s) => (
+        <input
+          type="checkbox"
+          checked={selectedShiftIds.includes(s.id)}
+          onChange={() =>
+            setSelectedShiftIds(prev =>
+              prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
+            )
+          }
+          onClick={e => e.stopPropagation()}
+          aria-label="בחר משמרת"
+        />
+      ),
+    },
+    {
+      id: "duty_type",
+      header: t("shifts.duty_type"),
+      cell: (s) => dtName(s.duty_type_id),
+      sortValue: (s) => dtName(s.duty_type_id),
+      filterValue: (s) => dtName(s.duty_type_id),
+    },
+    {
+      id: "location",
+      header: t("shifts.location"),
+      cell: (s) => locName(s.duty_location_id),
+      sortValue: (s) => locName(s.duty_location_id),
+      filterValue: (s) => locName(s.duty_location_id),
+    },
+    {
+      id: "start_date",
+      header: t("shifts.start_date"),
+      cell: (s) => s.start_date,
+      sortValue: (s) => s.start_date,
+    },
+    {
+      id: "end_date",
+      header: t("shifts.end_date"),
+      cell: (s) => s.end_date,
+      sortValue: (s) => s.end_date,
+    },
+    {
+      id: "required",
+      header: t("shifts.required_count"),
+      cell: (s) => s.required_count,
+      sortValue: (s) => s.required_count,
+    },
+    {
+      id: "assigned",
+      header: t("shifts.assigned_count"),
+      cell: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
+      sortValue: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
+    },
+    {
+      id: "reserve_needed",
+      header: t("shifts.reserve_needed"),
+      cell: (s) => s.calculated_reserve_count ?? 0,
+      sortValue: (s) => s.calculated_reserve_count ?? 0,
+    },
+    {
+      id: "reserve_assigned",
+      header: t("shifts.reserve_assigned"),
+      cell: (s) => s.reserve_assigned_count ?? 0,
+      sortValue: (s) => s.reserve_assigned_count ?? 0,
+    },
+    {
+      id: "fill_status",
+      header: t("shifts.status"),
+      cell: (s) => (
+        <span className={`px-2 py-0.5 rounded text-xs font-medium ${FILL_COLORS[s.fill_status]}`}>
+          {t(`shifts.fill_${s.fill_status}`)}
+        </span>
+      ),
+      sortValue: (s) => s.fill_status,
+      filterValue: (s) => t(`shifts.fill_${s.fill_status}`),
+    },
+    {
+      id: "shift_status",
+      header: t("shifts.shift_status"),
+      cell: (s) => s.status === "cancelled"
+        ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{t("shifts.cancelled")}</span>
+        : null,
+      sortValue: (s) => s.status,
+      filterValue: (s) => s.status === "cancelled" ? t("shifts.cancelled") : t("shifts.active"),
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: (s) => (
+        <span className="flex gap-1 items-center">
+          <button
+            type="button"
+            onClick={() => setEditShift(s)}
+            title={t("shifts.edit")}
+            className="p-1 rounded text-sm bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
+          >
+            ✏️
+          </button>
+          {s.status === "active" && (
+            <button
+              type="button"
+              onClick={() => setEditAssignmentsShift(s)}
+              title="ערוך שיבוצים"
+              className="p-1 rounded text-sm bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            >
+              🛠️
+            </button>
+          )}
+          {s.status === "cancelled" ? (
+            <button
+              type="button"
+              onClick={() => handleActivate(s)}
+              title={t("shifts.activate")}
+              className="p-1 rounded text-sm bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
+            >
+              ▶️
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleCancel(s)}
+              title={t("shifts.cancel")}
+              className="p-1 rounded text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
+            >
+              🚫
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => handleDelete(s)}
+            title={t("shifts.delete_tooltip")}
+            className="p-1 rounded text-sm bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
+            disabled={s.assigned_count > 0}
+          >
+            🗑️
+          </button>
+        </span>
+      ),
+    },
+  ], [selectedShiftIds, t, dtName, locName, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete]);
 
   return (
     <>
@@ -347,7 +491,6 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           const algorithmPanel = showAlgorithmPanel ? (
             <AlgorithmInlinePanel
               selectedShiftIds={selectedShiftIds}
-              dutyTypes={dutyTypes}
               onJobSubmitted={(jobId) => {
                 onJobSubmitted?.(jobId);
                 setShowAlgorithmPanel(false);
@@ -357,149 +500,6 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             />
           ) : null;
 
-          const shiftCols: ColDef<DutyShift>[] = [
-            {
-              id: "select",
-              header: "",
-              cell: (s) => (
-                <input
-                  type="checkbox"
-                  checked={selectedShiftIds.includes(s.id)}
-                  onChange={() =>
-                    setSelectedShiftIds(prev =>
-                      prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                    )
-                  }
-                  onClick={e => e.stopPropagation()}
-                  aria-label="בחר משמרת"
-                />
-              ),
-            },
-            {
-              id: "duty_type",
-              header: t("shifts.duty_type"),
-              cell: (s) => dtName(s.duty_type_id),
-              sortValue: (s) => dtName(s.duty_type_id),
-              filterValue: (s) => dtName(s.duty_type_id),
-            },
-            {
-              id: "location",
-              header: t("shifts.location"),
-              cell: (s) => locName(s.duty_location_id),
-              sortValue: (s) => locName(s.duty_location_id),
-              filterValue: (s) => locName(s.duty_location_id),
-            },
-            {
-              id: "start_date",
-              header: t("shifts.start_date"),
-              cell: (s) => s.start_date,
-              sortValue: (s) => s.start_date,
-            },
-            {
-              id: "end_date",
-              header: t("shifts.end_date"),
-              cell: (s) => s.end_date,
-              sortValue: (s) => s.end_date,
-            },
-            {
-              id: "required",
-              header: t("shifts.required_count"),
-              cell: (s) => s.required_count,
-              sortValue: (s) => s.required_count,
-            },
-            {
-              id: "assigned",
-              header: t("shifts.assigned_count"),
-              cell: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
-              sortValue: (s) => (s.assigned_count ?? 0) - (s.reserve_assigned_count ?? 0),
-            },
-            {
-              id: "reserve_needed",
-              header: t("shifts.reserve_needed"),
-              cell: (s) => s.calculated_reserve_count ?? 0,
-              sortValue: (s) => s.calculated_reserve_count ?? 0,
-            },
-            {
-              id: "reserve_assigned",
-              header: t("shifts.reserve_assigned"),
-              cell: (s) => s.reserve_assigned_count ?? 0,
-              sortValue: (s) => s.reserve_assigned_count ?? 0,
-            },
-            {
-              id: "fill_status",
-              header: t("shifts.status"),
-              cell: (s) => (
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${FILL_COLORS[s.fill_status]}`}>
-                  {t(`shifts.fill_${s.fill_status}`)}
-                </span>
-              ),
-              sortValue: (s) => s.fill_status,
-              filterValue: (s) => t(`shifts.fill_${s.fill_status}`),
-            },
-            {
-              id: "shift_status",
-              header: t("shifts.shift_status"),
-              cell: (s) => s.status === "cancelled"
-                ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{t("shifts.cancelled")}</span>
-                : null,
-              sortValue: (s) => s.status,
-              filterValue: (s) => s.status === "cancelled" ? t("shifts.cancelled") : t("shifts.active"),
-            },
-            {
-              id: "actions",
-              header: "",
-              cell: (s) => (
-                <span className="flex gap-1 items-center">
-                  <button
-                    type="button"
-                    onClick={() => setEditShift(s)}
-                    title={t("shifts.edit")}
-                    className="p-1 rounded text-sm bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
-                  >
-                    ✏️
-                  </button>
-                  {s.status === "active" && (
-                    <button
-                      type="button"
-                      onClick={() => setEditAssignmentsShift(s)}
-                      title="ערוך שיבוצים"
-                      className="p-1 rounded text-sm bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-                    >
-                      🛠️
-                    </button>
-                  )}
-                  {s.status === "cancelled" ? (
-                    <button
-                      type="button"
-                      onClick={() => handleActivate(s)}
-                      title={t("shifts.activate")}
-                      className="p-1 rounded text-sm bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
-                    >
-                      ▶️
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleCancel(s)}
-                      title={t("shifts.cancel")}
-                      className="p-1 rounded text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
-                    >
-                      🚫
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(s)}
-                    title={t("shifts.delete_tooltip")}
-                    className="p-1 rounded text-sm bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
-                    disabled={s.assigned_count > 0}
-                  >
-                    🗑️
-                  </button>
-                </span>
-              ),
-            },
-          ];
           return (
             <>
               {algorithmPanel}

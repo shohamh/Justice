@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { SolverSettings, submitJob, getAlgorithmDefaults } from "../api/algorithm";
-import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 
 interface Props {
   selectedShiftIds: string[];
-  dutyTypes: DutyType[];
   onJobSubmitted: (jobId: string) => void;
   onClose: () => void;
 }

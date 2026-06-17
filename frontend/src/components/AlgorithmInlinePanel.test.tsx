@@ -19,13 +19,11 @@ vi.mock("./AlgorithmModeHelpModal", () => ({
   ),
 }));
 
-const DUTY_TYPES = [{ id: "dt1", name: "שמירה", is_reserve_type: false }];
-
 test("shows selected shift count badge", () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={["s1", "s2", "s3"]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={vi.fn()}
       onClose={vi.fn()}
     />
@@ -37,7 +35,7 @@ test("run button disabled when 0 shifts selected", () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={[]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={vi.fn()}
       onClose={vi.fn()}
     />
@@ -49,7 +47,7 @@ test("run button enabled when shifts selected", () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={["s1"]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={vi.fn()}
       onClose={vi.fn()}
     />
@@ -67,7 +65,7 @@ test("calls submitJob and onJobSubmitted on run", async () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={["s1", "s2"]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={onJobSubmitted}
       onClose={onClose}
     />
@@ -92,7 +90,7 @@ test("shows error message on submit failure", async () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={["s1"]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={vi.fn()}
       onClose={vi.fn()}
     />
@@ -110,7 +108,7 @@ test("close button calls onClose", () => {
   render(
     <AlgorithmInlinePanel
       selectedShiftIds={[]}
-      dutyTypes={DUTY_TYPES}
+
       onJobSubmitted={vi.fn()}
       onClose={onClose}
     />
