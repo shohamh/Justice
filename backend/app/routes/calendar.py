@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, can, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
 from app.db.session import get_session
@@ -181,9 +181,14 @@ def calendar_shifts(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    show_reason = can(user, Action.HIERARCHY_READ, target_node=node, roots=scope_root_ids(session, user))
     raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
-    shifts = [
-        CalendarShiftOut(**s, swap_request_count=_swap_count_for_shift(session, s["id"]))
-        for s in raw
-    ]
+    shifts = []
+    for s in raw:
+        shift = CalendarShiftOut(**s, swap_request_count=_swap_count_for_shift(session, s["id"]))
+        if not show_reason:
+            for assignee in shift.assignees:
+                for d in assignee.dismissals:
+                    d.reason = None
+        shifts.append(shift)
     return CalendarShiftsResponse(shifts=shifts)
