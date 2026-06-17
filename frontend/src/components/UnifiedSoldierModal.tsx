@@ -9,6 +9,25 @@ import DutyHistoryPanel from "./DutyHistoryPanel";
 import SoldierLink from "./SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 
+function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
+  const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className={`w-${size} h-${size} rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-600`}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div className={`w-${size} h-${size} rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0 text-indigo-700 dark:text-indigo-300 font-semibold text-sm`}>
+      {initials}
+    </div>
+  );
+}
+
 interface Props {
   soldier: SoldierDTO;
   score: SoldierScoreDTO | null;
@@ -53,6 +72,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileMitvahim, setProfileMitvahim] = useState(soldier.last_mitvahim_date ?? "");
   const [profileAlal, setProfileAlal] = useState(soldier.last_alal_date ?? "");
   const [profileEmail, setProfileEmail] = useState(soldier.email ?? "");
+  const [profilePictureUrl, setProfilePictureUrl] = useState(soldier.profile_picture_url ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
@@ -98,6 +118,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       last_mitvahim_date: profileMitvahim || null,
       ...(profileIsOfficer ? { last_alal_date: profileAlal || null } : {}),
       ...(isAdmin ? { email: profileEmail || null } : {}),
+      profile_picture_url: profilePictureUrl || null,
     });
     setSavingProfile(false);
     onRefresh();
@@ -119,19 +140,25 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
         <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold">{soldier.full_name}</h3>
-            {(canManage || isSelf) && !editing && (
-              <button
-                onClick={() => setEditing(true)}
-                className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-sm leading-none"
-                title={t("team.edit")}
-                aria-label={t("team.edit")}
-                data-testid="modal-edit-toggle"
-              >
-                ✏️
-              </button>
-            )}
+          <div className="flex items-center gap-3">
+            <SoldierAvatar url={soldier.profile_picture_url} name={soldier.full_name} size={10} />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">{soldier.full_name}</h3>
+                {(canManage || isSelf) && !editing && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-sm leading-none"
+                    title={t("team.edit")}
+                    aria-label={t("team.edit")}
+                    data-testid="modal-edit-toggle"
+                  >
+                    ✏️
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -142,7 +169,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             ×
           </button>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
 
         <div className="flex gap-4 border-b dark:border-gray-600 mb-4">
           {TABS.map((tKey) => (
@@ -372,6 +398,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <input type="email" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
                 </label>
               )}
+              <label className="block col-span-2">
+                <span className="text-xs">{t("soldier_profile.profile_picture_url")}</span>
+                <input type="url" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://..." dir="ltr" />
+              </label>
             </div>
             {!isCommander && (
               <div className="flex justify-end gap-2">
