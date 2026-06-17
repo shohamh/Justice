@@ -5,7 +5,6 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import Layout from "../components/Layout";
 import HierarchyTree from "../components/HierarchyTree";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
-import ExemptionsPanel from "../components/ExemptionsPanel";
 import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -24,7 +23,6 @@ export default function TeamHierarchyPage() {
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
-  const [exemptionSoldierId, setExemptionSoldierId] = useState<string | null>(null);
   const isAdmin = user?.role === "admin";
 
   async function refresh() {
@@ -163,7 +161,6 @@ export default function TeamHierarchyPage() {
                     <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-300" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
-                    <button onClick={() => setExemptionSoldierId((prev) => (prev === s.id ? null : s.id))} className="text-indigo-600 dark:text-indigo-300" data-testid={`exemptions-${s.personal_number}`}>{t("exemptions.title")}</button>
                   </span>
                 ),
               },
@@ -181,16 +178,6 @@ export default function TeamHierarchyPage() {
             );
           })()}
         </div>
-
-        {exemptionSoldierId && (
-          <div data-testid="manage-exemptions" className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-700">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-medium">{t("exemptions.title")}</span>
-              <button onClick={() => setExemptionSoldierId(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-            <ExemptionsPanel soldierId={exemptionSoldierId} canManage={isAdmin} />
-          </div>
-        )}
       </section>
 
       {showAddRoot && (
