@@ -9,7 +9,7 @@ import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../ap
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 
-export function AlgorithmContent() {
+export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
@@ -60,6 +60,11 @@ export function AlgorithmContent() {
     const jobIdParam = searchParams.get("jobId");
     if (jobIdParam) setSelectedJobId(jobIdParam);
   }, [searchParams]);
+
+  // Pre-select job from initialJobId prop
+  useEffect(() => {
+    if (initialJobId) setSelectedJobId(initialJobId);
+  }, [initialJobId]);
 
   // Poll selected job every 1s while pending/running
   useEffect(() => {
