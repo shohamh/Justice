@@ -115,6 +115,6 @@ test("close button calls onClose", () => {
       onClose={onClose}
     />
   );
-  fireEvent.click(screen.getByRole("button", { name: "✕" }));
+  fireEvent.click(screen.getByRole("button", { name: "סגור" }));
   expect(onClose).toHaveBeenCalled();
 });

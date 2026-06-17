@@ -56,7 +56,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
           type="button"
           onClick={onClose}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          aria-label="✕"
+          aria-label="סגור"
         >
           ✕
         </button>
@@ -106,7 +106,10 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
               <input
                 type="number"
                 value={settings[key]}
-                onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  [key]: (key === "alpha" || key === "beta") ? parseFloat(e.target.value) : parseInt(e.target.value, 10),
+                }))}
                 className="mt-1 block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 step={key === "alpha" || key === "beta" ? 0.1 : 1}
               />
