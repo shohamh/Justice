@@ -90,7 +90,10 @@
     "algorithm_rejected": "נדחה ע״י אלגוריתם",
     "cancel": "בטל בקשה",
     "none": "אין בקשות",
-    "my_exemptions": "הפטורים שלי"
+    "my_exemptions": "הפטורים שלי",
+    "medical_exemption": "פטור רפואי",
+    "medical_privacy_note": "פרטי הפטור הרפואי הם מידע רפואי פרטי",
+    "exemption_details": "פרטים נוספים"
   },
   "approvals": {
     "title": "אישור בקשות",

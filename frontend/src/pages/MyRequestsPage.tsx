@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
 import { Exemption, listExemptions } from "../api/exemptions";
-import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
+import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import {
   PersonalConstraint,
   cancelConstraint,
@@ -41,6 +41,8 @@ export default function MyRequestsPage() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
+  const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
+  const [expandedExemption, setExpandedExemption] = useState<Set<string>>(new Set());
 
   const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -56,7 +58,18 @@ export default function MyRequestsPage() {
   const refresh = useCallback(async () => {
     setItems(await listMyConstraints());
     setExemptionRequests(await listMyExemptionRequests());
-    setExemptionTypes(await listExemptionTypes().catch(() => []));
+    const [etypes, maps, dtypes] = await Promise.all([
+      listExemptionTypes().catch(() => [] as ExemptionType[]),
+      getAllExemptionDutyTypeMaps().catch(() => ({} as Record<string, string[]>)),
+      listDutyTypes().catch(() => [] as { id: string; name: string }[]),
+    ]);
+    setExemptionTypes(etypes);
+    const nameById = Object.fromEntries(dtypes.map((d) => [d.id, d.name]));
+    const named: Record<string, string[]> = {};
+    for (const [etId, dtIds] of Object.entries(maps)) {
+      named[etId] = (dtIds as string[]).map((id) => nameById[id] ?? id);
+    }
+    setDutyTypeMap(named);
     if (user) {
       setExemptions(await listExemptions(user.id));
     }
@@ -332,12 +345,66 @@ export default function MyRequestsPage() {
         </div>
 
         <div className="pt-4 border-t dark:border-gray-600">
-          <h3 className="font-medium">{t("my_requests.my_exemptions")}</h3>
+          <h3 className="font-medium mb-2">{t("my_requests.my_exemptions")}</h3>
           {exemptions.length === 0 && <p className="text-sm text-gray-500">{t("exemptions.none")}</p>}
-          <ul className="text-sm space-y-1">
-            {exemptions.map((ex) => (
-              <li key={ex.id} dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</li>
-            ))}
+          <ul className="space-y-2">
+            {exemptions.map((ex) => {
+              const exemptType = exemptionTypes.find((et) => et.id === ex.exemption_type_id);
+              const dutyNames = dutyTypeMap[ex.exemption_type_id] ?? [];
+              const isMedical = exemptType?.is_medical ?? false;
+              const isExpanded = expandedExemption.has(ex.id);
+              return (
+                <li key={ex.id} className="border dark:border-gray-600 rounded-lg p-3 space-y-1.5 text-sm bg-white dark:bg-gray-800">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{exemptType?.name ?? ex.exemption_type_id}</span>
+                      {isMedical && (
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                          {t("my_requests.medical_exemption")}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0" dir="ltr">
+                      {ex.start_date} → {ex.end_date ?? t("exemptions.forever")}
+                    </span>
+                  </div>
+
+                  {isMedical && (
+                    <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded px-2 py-1">
+                      <span>🔒</span>
+                      <span>{t("my_requests.medical_privacy_note")}</span>
+                    </div>
+                  )}
+
+                  {(ex.reason || dutyNames.length > 0) && (
+                    <button
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                      onClick={() => setExpandedExemption((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(ex.id)) next.delete(ex.id); else next.add(ex.id);
+                        return next;
+                      })}
+                    >
+                      {isExpanded ? "▲" : "▼"} {t("my_requests.exemption_details")}
+                    </button>
+                  )}
+
+                  {isExpanded && (
+                    <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300 pt-1 border-t dark:border-gray-700">
+                      {ex.reason && (
+                        <p><span className="font-medium text-gray-500 dark:text-gray-400">{t("my_requests.reason")}:</span> {ex.reason}</p>
+                      )}
+                      {dutyNames.length > 0 && (
+                        <p>
+                          <span className="font-medium text-gray-500 dark:text-gray-400">{t("exemptions.exempts_from")}:</span>{" "}
+                          {dutyNames.join("، ")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>
