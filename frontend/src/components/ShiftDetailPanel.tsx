@@ -137,7 +137,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                   {(dt.contact_name || dt.contact_phone) && (
                     <p className="text-xs text-gray-600 dark:text-gray-300">
                       {t("duty_config.contact_name")}: {dt.contact_name ?? "—"}
-                      {dt.contact_phone && <> | <a href={`tel:${dt.contact_phone}`} className="text-indigo-600 dark:text-indigo-400">{dt.contact_phone}</a></>}
+                      {dt.contact_phone && <> | <a href={`tel:${dt.contact_phone}`} className="text-indigo-600 dark:text-indigo-300">{dt.contact_phone}</a></>}
                     </p>
                   )}
                   {dt.instructions && (

@@ -317,7 +317,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                         const pendingReserveName = pendingCoverageByPrimary[a.soldier_id];
                         const savedReserveName = a.reserve_assignment_id ? (assigneeNameById[a.reserve_assignment_id] ?? null) : null;
                         const coverCell = pendingReserveName
-                          ? <span className="text-indigo-500 dark:text-indigo-400">{pendingReserveName} <span className="text-xs opacity-60">טרם נשמר</span></span>
+                          ? <span className="text-indigo-500 dark:text-indigo-300">{pendingReserveName} <span className="text-xs opacity-60">טרם נשמר</span></span>
                           : <span className="text-gray-400 dark:text-gray-500">{savedReserveName ?? "—"}</span>;
                         return (
                           <tr key={a.assignment_id} className="border-t dark:border-gray-600">
@@ -343,7 +343,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                             {c.full_name}
                             <span className="mr-2 text-xs text-indigo-400">טרם נשמר</span>
                           </td>
-                          <td className="p-2 text-indigo-500 dark:text-indigo-400">ראשי</td>
+                          <td className="p-2 text-indigo-500 dark:text-indigo-300">ראשי</td>
                           <td className="p-2 text-indigo-400 dark:text-indigo-500">
                             {pendingCoverageByPrimary[c.soldier_id] ?? "—"}
                           </td>
@@ -379,7 +379,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                         const coveringPrimaryNames = reserveCandidateCoverage[c.soldier_id]?.join(", ") || "—";
                         return (
                         <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
-                          <td className="p-2 text-indigo-600 dark:text-indigo-400">
+                          <td className="p-2 text-indigo-600 dark:text-indigo-300">
                             {c.full_name}
                             <span className="mr-2 text-xs text-indigo-300">טרם נשמר</span>
                           </td>
@@ -413,7 +413,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                   {primarySlotsLeft > 0 ? `נותרו ${primarySlotsLeft} מקומות` : "מלאה"}
                 </span>
                 {primarySelected.size > 0 && (
-                  <span className="mr-auto text-xs text-indigo-600 dark:text-indigo-400">{primarySelected.size} נבחרו</span>
+                  <span className="mr-auto text-xs text-indigo-600 dark:text-indigo-300">{primarySelected.size} נבחרו</span>
                 )}
               </button>
               {primaryPanelOpen && (
@@ -454,7 +454,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                   </span>
                 )}
                 {reserveSelected.size > 0 && (
-                  <span className="mr-auto text-xs text-indigo-600 dark:text-indigo-400">{reserveSelected.size} נבחרו</span>
+                  <span className="mr-auto text-xs text-indigo-600 dark:text-indigo-300">{reserveSelected.size} נבחרו</span>
                 )}
               </button>
               {reservePanelOpen && (

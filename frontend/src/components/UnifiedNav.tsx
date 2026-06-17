@@ -138,12 +138,12 @@ export default function UnifiedNav() {
 
   const mobileTabClass = (active: boolean) =>
     `flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] text-xs gap-1 relative ${
-      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-gray-400"
+      active ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400 dark:text-gray-500"
     }`;
 
   const desktopTabClass = (active: boolean) =>
     `relative flex flex-col items-center justify-center py-4 gap-1 text-xs w-full ${
-      active ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 hover:text-gray-600 dark:text-gray-400"
+      active ? "text-indigo-600 dark:text-indigo-300" : "text-gray-400 hover:text-gray-600 dark:text-gray-500"
     }`;
 
   return (
@@ -209,7 +209,7 @@ export default function UnifiedNav() {
               data-testid={`desktop-${tab.testId}`}
             >
               {active && (
-                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 dark:bg-indigo-950 rounded-lg -z-10" />
+                <span className="absolute inset-x-2 inset-y-1 bg-indigo-50 dark:bg-indigo-900 rounded-lg -z-10" />
               )}
               {tabContent(tab)}
             </Link>

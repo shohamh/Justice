@@ -258,7 +258,7 @@ export default function OfferSwapModal({
           <p className="text-sm text-gray-400">{t("app.loading")}</p>
         ) : mode === "free" ? (
           totalPoints !== null && (
-            <p className="text-xs text-indigo-600 dark:text-indigo-400">
+            <p className="text-xs text-indigo-600 dark:text-indigo-300">
               {t("swaps.free_take_points_preview", { points: totalPoints })}
             </p>
           )

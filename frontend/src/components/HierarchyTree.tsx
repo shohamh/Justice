@@ -127,11 +127,11 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
           {isAdmin && (
             <span className="flex gap-1 ml-auto">
               {canHaveChildren(node.level) && (
-                <button className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline" onClick={() => setAddDialog(node)} data-testid={`tree-add-child-${node.id}`}>
+                <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={() => setAddDialog(node)} data-testid={`tree-add-child-${node.id}`}>
                   +{t("team.add_node")}
                 </button>
               )}
-              <button className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline" onClick={() => setQuickAddNode(node.id)} data-testid={`tree-add-soldier-${node.id}`}>
+              <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={() => setQuickAddNode(node.id)} data-testid={`tree-add-soldier-${node.id}`}>
                 +{t("team.add_soldier")}
               </button>
               <button className="text-xs text-green-600 hover:underline" onClick={() => setCommanderDialog(node)} data-testid={`tree-commander-btn-${node.id}`}>
@@ -174,7 +174,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
                 <TelegramBadge linked={s.telegram_linked} />
                 {isAdmin && (
                   <button
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline ml-auto"
+                    className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
                     onClick={() => setEditSoldier(s)}
                     data-testid={`edit-soldier-${s.personal_number}`}
                   >

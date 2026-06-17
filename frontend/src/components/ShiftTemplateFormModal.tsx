@@ -159,7 +159,7 @@ function Combobox({ label, items, value, onChange }: {
                   setOpen(false);
                 }}
                 className={`w-full text-right px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                  value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-200"
+                  value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-200"
                 }`}
               >
                 {item.name}
@@ -339,7 +339,7 @@ export default function ShiftTemplateFormModal({
                   <div className="flex justify-between items-center mb-0.5">
                     <span className="text-sm">{t("shift_templates.duty_type")}</span>
                     <button type="button" onClick={() => setShowAddDt(true)}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                      className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline">
                       + {t("shift_templates.add_duty_type", "הוסף סוג תורנות")}
                     </button>
                   </div>
@@ -350,7 +350,7 @@ export default function ShiftTemplateFormModal({
                   <div className="flex justify-between items-center mb-0.5">
                     <span className="text-sm">{t("shift_templates.location")}</span>
                     <button type="button" onClick={() => setShowAddLoc(true)}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                      className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline">
                       + {t("shift_templates.add_location", "הוסף מיקום")}
                     </button>
                   </div>

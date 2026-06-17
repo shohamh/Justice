@@ -558,7 +558,7 @@ export default function TransparencyPage() {
         return (
           <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
             <button
-              className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+              className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
               onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
               title="לחץ לפירוט רבעוני"
             >
@@ -586,7 +586,7 @@ export default function TransparencyPage() {
         const isTop = g.rank <= 3;
         const isBottom = g.rank >= g.groupSize - 2;
         const cls = isTop
-          ? "text-indigo-600 dark:text-indigo-400 font-semibold"
+          ? "text-indigo-600 dark:text-indigo-300 font-semibold"
           : isBottom
             ? "text-gray-400"
             : "text-gray-700 dark:text-gray-300";
@@ -672,7 +672,7 @@ export default function TransparencyPage() {
         <span className="flex items-center" style={{ paddingRight: `${r.depth * 16}px` }}>
           {r.depth > 0 && <span className="text-gray-300 dark:text-gray-600 ml-1 text-xs">{"└"}</span>}
           <button
-            className="text-indigo-600 dark:text-indigo-400 hover:underline text-right"
+            className="text-indigo-600 dark:text-indigo-300 hover:underline text-right"
             onClick={() => { setSelectedNodeId(r.node_id); setTab(0); }}
           >
             {r.node_name}
@@ -763,11 +763,11 @@ export default function TransparencyPage() {
                   {selectedNodeName}
                 </span>
                 <button className="text-xs text-gray-400 hover:text-red-500 px-1" onClick={clearFilter}>✕</button>
-                <button className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1" onClick={() => setTreeOpen((o) => !o)}>שנה</button>
+                <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline px-1" onClick={() => setTreeOpen((o) => !o)}>שנה</button>
               </div>
             ) : (
               <button
-                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-300 hover:underline"
                 onClick={() => setTreeOpen((o) => !o)}
               >
                 <span>🌳</span>
@@ -1013,7 +1013,7 @@ export default function TransparencyPage() {
                             <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                               <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
                                 <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
-                                {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-400 text-xs font-normal not-italic">(חלקי)</span>}
+                                {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
@@ -1032,7 +1032,7 @@ export default function TransparencyPage() {
                       if (!partialQ) return null;
                       const endFormatted = new Date(partialQ.quarter_end + "T00:00:00").toLocaleDateString("he-IL");
                       return (
-                        <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-400">
+                        <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300">
                           ℹ️ <strong>רבעון חלקי</strong> — התורנות האחרונה המפורסמת מסתיימת ב-{endFormatted}, לפני סוף הרבעון. לכן הניקוד ברבעון זה נמוך מרבעונות שלמים.
                         </p>
                       );
@@ -1073,7 +1073,7 @@ export default function TransparencyPage() {
                               {hasScore ? (
                                 <span className="tabular-nums text-gray-600 dark:text-gray-400">
                                   <InlineMath math={`${ap}\\% \\times \\dfrac{${ss.toFixed(2)}}{${us.toFixed(2)}} = `} />
-                                  <strong className="text-indigo-600 dark:text-indigo-400">{ws}%</strong>
+                                  <strong className="text-indigo-600 dark:text-indigo-300">{ws}%</strong>
                                 </span>
                               ) : (
                                 <span className="text-gray-400 dark:text-gray-500 italic">

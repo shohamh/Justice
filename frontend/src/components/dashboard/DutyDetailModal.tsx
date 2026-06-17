@@ -97,7 +97,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
                 <span className="text-gray-700 dark:text-gray-300 flex items-center gap-2 flex-wrap">
                   {dutyType.contact_name && <span>{dutyType.contact_name}</span>}
                   {dutyType.contact_phone && (
-                    <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-400 hover:underline" dir="ltr">
+                    <a href={`tel:${dutyType.contact_phone}`} className="text-indigo-600 dark:text-indigo-300 hover:underline" dir="ltr">
                       {dutyType.contact_phone}
                     </a>
                   )}
@@ -189,11 +189,11 @@ function AssigneeRow({ assignee, isMe, reserve, onClickSoldier }: {
   onClickSoldier?: (id: string) => void;
 }) {
   return (
-    <li className={`flex items-center gap-2 text-sm ${isMe ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-300"}`}>
+    <li className={`flex items-center gap-2 text-sm ${isMe ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-300"}`}>
       <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${reserve ? "bg-gray-300 dark:bg-gray-600" : isMe ? "bg-indigo-500" : "bg-gray-400"}`} />
       <button
         type="button"
-        className={`truncate text-right hover:underline ${isMe ? "text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-300"}`}
+        className={`truncate text-right hover:underline ${isMe ? "text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-300"}`}
         onClick={() => onClickSoldier?.(assignee.soldier_id)}
       >
         {assignee.soldier_name}

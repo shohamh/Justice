@@ -288,7 +288,7 @@ export function DutyConfigContent() {
               header: t("duty_config.active"),
               cell: d => (
                 <button
-                  className="text-xs text-indigo-600 dark:text-indigo-400 underline"
+                  className="text-xs text-indigo-600 dark:text-indigo-300 underline"
                   onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)}
                   data-testid={`dt-toggle-${d.name}`}
                 >

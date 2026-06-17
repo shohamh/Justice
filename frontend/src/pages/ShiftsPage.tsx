@@ -482,7 +482,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                   >
                     בטל בחירה
                   </button>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                  <span className="text-indigo-600 dark:text-indigo-300 font-medium">
                     {selectedShiftIds.length} נבחרו
                   </span>
                 </>
