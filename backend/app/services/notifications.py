@@ -12,6 +12,7 @@ from app.audit.writer import write_audit
 from app.db.models import (
     CommanderNotificationDepth,
     CommanderNotificationScope,
+    EmailOutbox,
     HierarchyNode,
     Notification,
     NotificationPreference,
@@ -181,6 +182,76 @@ def _enqueue_push(
     ))
 
 
+def _enqueue_email(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    title: str,
+    body: str | None = None,
+    notification_type: NotificationType | None = None,
+    reference_type: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    soldier_gender: str | None = None,
+) -> None:
+    from app.services.email import render_notification_email
+    from app.services.action_tokens import create_token, DEFAULT_ACTION_EXPIRY
+
+    soldier = session.get(Soldier, soldier_id)
+    if not soldier or not soldier.email or not soldier.email_verified:
+        return
+
+    pref = session.execute(
+        select(NotificationPreference).where(
+            NotificationPreference.soldier_id == soldier_id,
+            NotificationPreference.notification_type == notification_type,
+        )
+    ).scalar_one_or_none() if notification_type else None
+    if pref is not None and not pref.email_enabled:
+        return
+
+    approve_url: str | None = None
+    reject_url: str | None = None
+    if notification_type is not None:
+        pair = _action_pair(notification_type)
+        if pair and reference_id:
+            from app.settings import get_settings
+            approve_action, reject_action = pair
+            approve_tok = create_token(
+                session, soldier_id=soldier_id, action=approve_action,
+                resource_type=reference_type, resource_id=reference_id,
+                expiry=DEFAULT_ACTION_EXPIRY,
+            )
+            reject_tok = create_token(
+                session, soldier_id=soldier_id, action=reject_action,
+                resource_type=reference_type, resource_id=reference_id,
+                expiry=DEFAULT_ACTION_EXPIRY,
+            )
+            base = get_settings().frontend_url.rstrip("/")
+            approve_url = f"{base}/action?token={approve_tok}"
+            reject_url = f"{base}/action?token={reject_tok}"
+
+    app_url = _frontend_url(notification_type) if notification_type else ""
+    html_body = render_notification_email(
+        title=title,
+        body=body,
+        app_url=app_url,
+        frontend_url=_get_frontend_base(),
+        approve_url=approve_url,
+        reject_url=reject_url,
+        soldier_gender=soldier_gender,
+    )
+    session.add(EmailOutbox(
+        to_address=soldier.email,
+        subject=title,
+        html_body=html_body,
+    ))
+
+
+def _get_frontend_base() -> str:
+    from app.settings import get_settings
+    return get_settings().frontend_url.rstrip("/")
+
+
 def create_notification(
     session: Session,
     *,
@@ -212,8 +283,8 @@ def create_notification(
     cascade_to_commanders(session, type=type, title=title, body=body,
                           reference_type=reference_type, reference_id=reference_id,
                           actor_id=actor_id, original_soldier_id=soldier_id)
+    soldier = session.get(Soldier, soldier_id)
     if pref is None or pref.push_enabled:
-        soldier = session.get(Soldier, soldier_id)
         _enqueue_push(
             session, soldier_id=soldier_id, text=title,
             notification_type=type,
@@ -221,6 +292,13 @@ def create_notification(
             reference_id=reference_id,
             soldier_gender=soldier.gender if soldier else None,
         )
+    _enqueue_email(
+        session, soldier_id=soldier_id, title=title, body=body,
+        notification_type=type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        soldier_gender=soldier.gender if soldier else None,
+    )
     return notif
 
 
@@ -300,8 +378,8 @@ def _create_notif(
     notif = Notification(soldier_id=soldier_id, type=type, title=title, body=body,
                          reference_type=reference_type, reference_id=reference_id)
     session.add(notif)
+    soldier = session.get(Soldier, soldier_id)
     if pref is None or pref.push_enabled:
-        soldier = session.get(Soldier, soldier_id)
         _enqueue_push(
             session, soldier_id=soldier_id, text=title,
             notification_type=type,
@@ -309,6 +387,13 @@ def _create_notif(
             reference_id=reference_id,
             soldier_gender=soldier.gender if soldier else None,
         )
+    _enqueue_email(
+        session, soldier_id=soldier_id, title=title, body=body,
+        notification_type=type,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        soldier_gender=soldier.gender if soldier else None,
+    )
 
 
 def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
@@ -323,7 +408,7 @@ def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
         if nt not in existing:
             session.add(NotificationPreference(
                 soldier_id=soldier_id, notification_type=nt,
-                in_app_enabled=True, push_enabled=False,
+                in_app_enabled=True, push_enabled=False, email_enabled=True,
             ))
 
 
@@ -348,6 +433,7 @@ def update_preferences(session: Session, *, soldier_id: uuid.UUID,
         if pref:
             pref.in_app_enabled = pd.get("in_app_enabled", pref.in_app_enabled)
             pref.push_enabled = pd.get("push_enabled", pref.push_enabled)
+            pref.email_enabled = pd.get("email_enabled", pref.email_enabled)
     return get_preferences(session, soldier_id=soldier_id)
 
 

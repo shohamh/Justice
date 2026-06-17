@@ -715,6 +715,7 @@ class NotificationPreference(Base):
     notification_type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name="notification_type"), nullable=False)
     in_app_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     push_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     __table_args__ = (sa.UniqueConstraint("soldier_id", "notification_type"),)
 
 
@@ -734,6 +735,17 @@ class TelegramOutbox(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     reply_markup_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+
+
+class EmailOutbox(Base):
+    __tablename__ = "email_outbox"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    to_address: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    html_body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class TelegramActionToken(Base):

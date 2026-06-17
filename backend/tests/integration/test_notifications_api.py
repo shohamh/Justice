@@ -85,6 +85,7 @@ def test_preferences_defaults(client: TestClient, admin_session: Session):
     for p in prefs:
         assert p["in_app_enabled"] is True
         assert p["push_enabled"] is False
+        assert p["email_enabled"] is True
 
 
 def test_update_preferences(client: TestClient, admin_session: Session):

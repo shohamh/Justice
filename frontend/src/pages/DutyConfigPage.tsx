@@ -198,7 +198,7 @@ export function DutyConfigContent() {
               <h3 className="font-semibold text-base">מחיקת סוג תורנות</h3>
               <button type="button" onClick={() => setDeleteModal(null)} disabled={deleteModal.loading} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">✕</button>
             </div>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-4">"{deleteModal.dt.name}"</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-4">&quot;{deleteModal.dt.name}&quot;</p>
 
             {deleteModal.loading && !u ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">טוען נתונים...</p>

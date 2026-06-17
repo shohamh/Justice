@@ -28,6 +28,8 @@ _ALL_DATA_TABLES = [
     "commander_notification_scopes",
     "commander_notification_depth",
     "duty_manager_scope",
+    "email_outbox",
+    "notification_preferences",
     "telegram_outbox",
     "telegram_action_tokens",
     "telegram_links",

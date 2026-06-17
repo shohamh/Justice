@@ -101,10 +101,15 @@ export default function ProfilePage() {
     setTgStatus({ is_verified: false });
   }
 
-  async function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled") {
+  async function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled" | "email_enabled") {
+    const previous = prefs;
     const updated = prefs.map((p) => p.notification_type === nt ? { ...p, [field]: !p[field] } : p);
     setPrefs(updated);
-    await updatePreferences(updated.map((p) => ({ notification_type: p.notification_type, in_app_enabled: p.in_app_enabled, push_enabled: p.push_enabled })));
+    try {
+      await updatePreferences(updated);
+    } catch {
+      setPrefs(previous);
+    }
   }
 
   async function handleAddScope() {
@@ -327,6 +332,10 @@ export default function ProfilePage() {
                 <label className="flex items-center gap-1">
                   <input type="checkbox" checked={p.push_enabled} onChange={() => handleTogglePref(p.notification_type, "push_enabled")} />
                   <span className="text-xs">{t("notifications.push")}</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input type="checkbox" checked={p.email_enabled} onChange={() => handleTogglePref(p.notification_type, "email_enabled")} />
+                  <span className="text-xs">{t("notifications.email")}</span>
                 </label>
               </div>
             </div>

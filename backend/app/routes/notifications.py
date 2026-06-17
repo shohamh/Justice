@@ -33,6 +33,7 @@ class NotificationPrefOut(BaseModel):
     notification_type: str
     in_app_enabled: bool
     push_enabled: bool
+    email_enabled: bool
 
 
 class UpdatePrefsBody(BaseModel):
@@ -152,7 +153,8 @@ def get_preferences(
 ) -> list[NotificationPrefOut]:
     prefs = svc.get_preferences(session, soldier_id=user.id)
     return [NotificationPrefOut(notification_type=p.notification_type.value,
-                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled)
+                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled,
+                                 email_enabled=p.email_enabled)
             for p in prefs]
 
 
@@ -165,7 +167,8 @@ def update_preferences(
     prefs = svc.update_preferences(session, soldier_id=user.id, preferences=body.preferences)
     session.commit()
     return [NotificationPrefOut(notification_type=p.notification_type.value,
-                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled)
+                                 in_app_enabled=p.in_app_enabled, push_enabled=p.push_enabled,
+                                 email_enabled=p.email_enabled)
             for p in prefs]
 
 
@@ -249,3 +252,59 @@ def unlink(
 ) -> None:
     svc.unlink_telegram(session, soldier_id=user.id)
     session.commit()
+
+
+class ActionBody(BaseModel):
+    token: str
+
+
+@router.post("/action", status_code=200)
+def redeem_action(
+    body: ActionBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict:
+    from app.services.action_tokens import redeem_token_from_link
+    t = redeem_token_from_link(session, token=body.token, soldier_id=user.id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="token_invalid")
+    result = _dispatch_action(session, token=t, actor_id=user.id)
+    session.commit()
+    return result
+
+
+def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
+    """Dispatch an action token to the appropriate service function."""
+    action = token.action
+    resource_id = token.resource_id
+
+    if action == "constraint:approve":
+        from app.services import constraints as constraint_svc
+        constraint_svc.approve_constraint(session, constraint_id=resource_id, actor_id=actor_id)
+        return {"action": action, "status": "ok"}
+    elif action == "constraint:reject":
+        from app.services import constraints as constraint_svc
+        constraint_svc.reject_constraint(session, constraint_id=resource_id, actor_id=actor_id, decision_note="")
+        return {"action": action, "status": "ok"}
+    elif action == "exemption:approve":
+        from app.services import exemption_requests as exemption_svc
+        exemption_svc.approve_request(session, request_id=resource_id, decided_by=actor_id)
+        return {"action": action, "status": "ok"}
+    elif action == "exemption:reject":
+        from app.services import exemption_requests as exemption_svc
+        exemption_svc.reject_request(session, request_id=resource_id, decided_by=actor_id, decision_note="")
+        return {"action": action, "status": "ok"}
+    elif action == "swap:approve_requester":
+        from app.services import swaps as swap_svc
+        swap_svc.approve_side(session, request_id=resource_id, side="requester", actor_id=actor_id)
+        return {"action": action, "status": "ok"}
+    elif action == "swap:approve_covering":
+        from app.services import swaps as swap_svc
+        swap_svc.claim_request(session, request_id=resource_id, covering_soldier_id=actor_id, actor_id=actor_id)
+        return {"action": action, "status": "ok"}
+    elif action == "swap:reject":
+        from app.services import swaps as swap_svc
+        swap_svc.reject_request(session, request_id=resource_id, decision_note="", actor_id=actor_id)
+        return {"action": action, "status": "ok"}
+    else:
+        raise HTTPException(status_code=400, detail=f"unknown_action: {action}")
