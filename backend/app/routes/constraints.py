@@ -157,7 +157,7 @@ def pending_list(
             session.execute(
                 select(PersonalConstraint)
                 .where(PersonalConstraint.status == "pending")
-                .order_by(PersonalConstraint.created_at.asc())
+                .order_by(PersonalConstraint.start_date.asc())
             )
             .scalars()
             .all()

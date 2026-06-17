@@ -65,6 +65,21 @@ export default function CommandDashboardPage() {
 
   const panels: { id: string; title: string; content: React.ReactNode }[] = [
     {
+      id: "alerts",
+      title: t("command_dashboard.alerts"),
+      content: <AlertsPanel data={alertsData} />,
+    },
+    {
+      id: "approvals",
+      title: t("command_dashboard.approvals"),
+       content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
+    },
+    {
+      id: "upcoming",
+      title: t("command_dashboard.upcoming"),
+      content: <UpcomingSnapshot data={upcomingData} />,
+    },
+    {
       id: "calendar",
       title: t("command_dashboard.calendar"),
       content: nodes.length > 0 ? <UnitCalendar nodeId={nodes[0]?.id || ""} /> : null,
@@ -81,6 +96,11 @@ export default function CommandDashboardPage() {
       ),
     },
     {
+      id: "entries_exits",
+      title: t("command_dashboard.entries_exits"),
+          content: <EntriesExitsPanel soldiers={soldiers} onRefresh={refresh} />,
+    },
+    {
       id: "fairness_internal",
       title: t("command_dashboard.internal_fairness"),
       content: <InternalFairness data={fairnessInternal} />,
@@ -91,29 +111,9 @@ export default function CommandDashboardPage() {
       content: <ExternalFairness data={fairnessExternal} />,
     },
     {
-      id: "entries_exits",
-      title: t("command_dashboard.entries_exits"),
-          content: <EntriesExitsPanel soldiers={soldiers} onRefresh={refresh} />,
-    },
-    {
       id: "potential",
       title: t("command_dashboard.potential"),
       content: <DutyPotentialPanel data={potentialData} />,
-    },
-    {
-      id: "approvals",
-      title: t("command_dashboard.approvals"),
-       content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
-    },
-    {
-      id: "upcoming",
-      title: t("command_dashboard.upcoming"),
-      content: <UpcomingSnapshot data={upcomingData} />,
-    },
-    {
-      id: "alerts",
-      title: t("command_dashboard.alerts"),
-      content: <AlertsPanel data={alertsData} />,
     },
   ];
 
