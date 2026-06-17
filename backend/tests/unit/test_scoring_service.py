@@ -217,7 +217,9 @@ def test_breakdown(admin_session):
     )
     admin_session.flush()
     bd = soldier_score_breakdown(admin_session, soldier_id=s.id)
-    assert any(pt["score"] == Decimal("3.00") for pt in bd["per_type"])
+    pt = next(pt for pt in bd["per_type"] if pt["duty_type_id"] == dt.id)
+    assert pt["score"] == Decimal("3.00")
+    assert pt["days"] == 2
     assert len(bd["adjustments"]) == 1
 
 
