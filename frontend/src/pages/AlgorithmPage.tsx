@@ -9,6 +9,13 @@ import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../ap
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}m ${s}s`;
+}
+
 export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -198,6 +205,17 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                 </span>
                 <span className="font-semibold">{selectedJob.planning_start} — {selectedJob.planning_end}</span>
                 <span className="text-gray-500 text-xs">{selectedJob.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}</span>
+                {(selectedJob.status === "done" || selectedJob.status === "published" || selectedJob.status === "failed") && (() => {
+                  const wallTime = selectedJob.result_metadata?.solver_metrics?.wall_time;
+                  if (wallTime != null) {
+                    return <span className="text-xs text-gray-400">⏱ {formatDuration(wallTime)}</span>;
+                  }
+                  if (selectedJob.started_at && selectedJob.finished_at) {
+                    const elapsed = (new Date(selectedJob.finished_at).getTime() - new Date(selectedJob.started_at).getTime()) / 1000;
+                    return <span className="text-xs text-gray-400">⏱ {formatDuration(elapsed)}</span>;
+                  }
+                  return null;
+                })()}
               </div>
               {(selectedJob.status === "pending" || selectedJob.status === "running") && (() => {
                 // The backend stores real progress as JSON {pct, label} on the job
