@@ -281,10 +281,13 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     {
       id: "select",
       header: "",
+      sortValue: (s) => s.fill_status === "full" ? 2 : selectedShiftIds.includes(s.id) ? 0 : 1,
       cell: (s) => (
         <input
           type="checkbox"
           checked={selectedShiftIds.includes(s.id)}
+          disabled={s.fill_status === "full"}
+          className={s.fill_status === "full" ? "opacity-30 cursor-not-allowed" : ""}
           onChange={() =>
             setSelectedShiftIds(prev =>
               prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
@@ -368,24 +371,25 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     {
       id: "actions",
       header: "",
+      minWidth: 260,
       cell: (s) => (
         <span className="flex gap-1 items-center">
           <button
             type="button"
             onClick={() => setEditShift(s)}
             title={t("shifts.edit")}
-            className="p-1 rounded text-sm bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800"
           >
-            ✏️
+            ✏️ עריכה
           </button>
           {s.status === "active" && (
             <button
               type="button"
               onClick={() => setEditAssignmentsShift(s)}
               title="ערוך שיבוצים"
-              className="p-1 rounded text-sm bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
             >
-              🛠️
+              🛠️ שיבוצים
             </button>
           )}
           {s.status === "cancelled" ? (
@@ -393,28 +397,28 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
               type="button"
               onClick={() => handleActivate(s)}
               title={t("shifts.activate")}
-              className="p-1 rounded text-sm bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-800"
             >
-              ▶️
+              ▶️ הפעלה
             </button>
           ) : (
             <button
               type="button"
               onClick={() => handleCancel(s)}
               title={t("shifts.cancel")}
-              className="p-1 rounded text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
             >
-              🚫
+              🚫 ביטול
             </button>
           )}
           <button
             type="button"
             onClick={() => handleDelete(s)}
             title={t("shifts.delete_tooltip")}
-            className="p-1 rounded text-sm bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 disabled:opacity-40"
             disabled={s.assigned_count > 0}
           >
-            🗑️
+            🗑️ מחיקה
           </button>
         </span>
       ),
@@ -463,10 +467,10 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <button
                 type="button"
-                onClick={() => setSelectedShiftIds(shifts.map(s => s.id))}
+                onClick={() => setSelectedShiftIds(shifts.filter(s => s.fill_status !== "full").map(s => s.id))}
                 className="text-blue-600 dark:text-blue-400 hover:underline"
               >
-                בחר הכל ({shifts.length})
+                בחר הכל ({shifts.filter(s => s.fill_status !== "full").length})
               </button>
               {selectedShiftIds.length > 0 && (
                 <>

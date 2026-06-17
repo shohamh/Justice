@@ -306,9 +306,19 @@ def _explanation_response(
     if exp is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
+    # Build context block included in every response variant
+    assignee = session.get(Soldier, assignment.soldier_id)
+    duty_type = session.get(DutyType, assignment.duty_type_id)
+    assignment_context = {
+        "soldier_name": assignee.full_name if assignee else str(assignment.soldier_id)[:8],
+        "duty_type_name": duty_type.name if duty_type else str(assignment.duty_type_id)[:8],
+        "start_date": assignment.start_date.isoformat(),
+        "end_date": assignment.end_date.isoformat() if assignment.end_date else assignment.start_date.isoformat(),
+    }
+
     payload = exp.payload
     if is_dm:
-        return payload
+        return {**payload, "assignment_context": assignment_context}
 
     # Soldier-redacted view
     candidates = payload.get("candidates", [])
@@ -375,7 +385,9 @@ def _explanation_response(
         "eligible_count": eligible_count,
         "soldier_rank": soldier_rank,
         "constraint_count": len(my_candidate.get("blocking_constraints", [])) if my_candidate else 0,
+        "my_constraints": my_candidate.get("blocking_constraints", []) if my_candidate else [],
         "ranked_candidates": ranked_candidates,
+        "assignment_context": assignment_context,
     }
 
 

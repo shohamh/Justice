@@ -273,15 +273,23 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     },
   ];
 
+  const hasUnfilledShifts = (job.batch_results ?? []).some(br => br.unassigned_count > 0);
+  const hasBatchIssues = (job.batch_results ?? []).some(br => br.outcome === "INFEASIBLE");
+  const publishedWithIssues = !isDraft && (hasUnfilledShifts || hasBatchIssues);
+
   return (
     <div className="space-y-3" dir="rtl">
       {isDraft ? (
         <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-700 dark:text-amber-300 font-medium">
           {"⚠️ טיוטה — תוצאות לא פורסמו. לחץ \"אשר ופרסם (הפוך לרשמי)\" להחלת השיבוצים."}
         </div>
+      ) : publishedWithIssues ? (
+        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded p-3 text-sm text-amber-700 dark:text-amber-300 font-medium">
+          ⚠ פורסם — אך חלק מהמשמרות לא אוישו במלואן. ראה לשונית <strong>בעיות</strong> לפרטים.
+        </div>
       ) : (
         <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-700 rounded p-3 text-sm text-green-700 dark:text-green-300 font-medium">
-          ✓ פורסם — שיבוצים פעילים.
+          ✓ פורסם — כל השיבוצים פעילים.
         </div>
       )}
       {job.proposals.length === 0 ? (

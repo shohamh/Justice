@@ -74,9 +74,25 @@ export async function updateDutyType(
     end_time: string | null;
     instructions: string | null;
     is_external: boolean;
+    requirements: DutyType["requirements"];
   }>
 ): Promise<DutyType> {
   return (await api.patch<DutyType>(`/duty-config/duty-types/${id}`, input)).data;
+}
+
+export async function deleteDutyType(id: string): Promise<void> {
+  await api.delete(`/duty-config/duty-types/${id}`);
+}
+
+export interface DutyTypeUsage {
+  past_count: number;
+  future_count: number;
+  template_count: number;
+  shift_count: number;
+}
+
+export async function getDutyTypeUsage(id: string): Promise<DutyTypeUsage> {
+  return (await api.get<DutyTypeUsage>(`/duty-config/duty-types/${id}/usage`)).data;
 }
 
 export async function listLocations(): Promise<DutyLocation[]> {

@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import uuid
-from datetime import time
+from datetime import date, time
 from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import DutyLocation, DutyType, ExemptionDutyTypeMap, ExemptionType, Soldier
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
 from app.db.session import get_session
 from app.services import duty_config as svc
 
@@ -180,6 +180,82 @@ def update_duty_type(
     session.commit()
     session.refresh(dt)
     return _dt_out(dt)
+
+
+class DutyTypeUsage(BaseModel):
+    past_count: int
+    future_count: int
+    template_count: int
+    shift_count: int
+
+
+@router.get("/duty-types/{duty_type_id}/usage", response_model=DutyTypeUsage)
+def get_duty_type_usage(
+    duty_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> DutyTypeUsage:
+    today = date.today()
+    past_count = session.execute(
+        select(func.count(DutyAssignment.id)).where(
+            DutyAssignment.duty_type_id == duty_type_id,
+            DutyAssignment.status != "cancelled",
+            DutyAssignment.end_date < today,
+        )
+    ).scalar_one()
+    future_count = session.execute(
+        select(func.count(DutyAssignment.id)).where(
+            DutyAssignment.duty_type_id == duty_type_id,
+            DutyAssignment.status != "cancelled",
+            DutyAssignment.end_date >= today,
+        )
+    ).scalar_one()
+    template_count = session.execute(
+        select(func.count(ShiftTemplate.id)).where(
+            ShiftTemplate.duty_type_id == duty_type_id
+        )
+    ).scalar_one()
+    shift_count = session.execute(
+        select(func.count(DutyShift.id)).where(
+            DutyShift.duty_type_id == duty_type_id,
+            DutyShift.status != "cancelled",
+        )
+    ).scalar_one()
+    return DutyTypeUsage(past_count=past_count, future_count=future_count, template_count=template_count, shift_count=shift_count)
+
+
+@router.delete("/duty-types/{duty_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_duty_type(
+    duty_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> None:
+    dt = session.get(DutyType, duty_type_id)
+    if dt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    shift_count = session.execute(
+        select(DutyShift).where(DutyShift.duty_type_id == duty_type_id).limit(1)
+    ).scalar_one_or_none()
+    assignment_count = session.execute(
+        select(DutyAssignment).where(DutyAssignment.duty_type_id == duty_type_id).limit(1)
+    ).scalar_one_or_none()
+    template_count = session.execute(
+        select(ShiftTemplate).where(ShiftTemplate.duty_type_id == duty_type_id).limit(1)
+    ).scalar_one_or_none()
+    if shift_count or assignment_count or template_count:
+        parts = []
+        if shift_count:
+            parts.append("משמרות")
+        if assignment_count:
+            parts.append("שיבוצים")
+        if template_count:
+            parts.append("תבניות")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"לא ניתן למחוק: קיימים {', '.join(parts)} עם סוג תורנות זה",
+        )
+    session.delete(dt)
+    session.commit()
 
 
 # ---- locations ----

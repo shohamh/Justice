@@ -3,14 +3,62 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import DutyTypeRequirementsEditor from "../components/DutyTypeRequirementsEditor";
+import DutyTypeFormModal from "../components/DutyTypeFormModal";
+import { DataTable, type ColDef } from "../components/DataTable";
+import { type DutyType as DutyTypeT } from "../api/dutyConfig";
+
+type Reqs = NonNullable<DutyTypeT["requirements"]>;
+type RankLists = { enlisted: string[]; officers: string[] };
+
+function rankRange(selected: string[], ordered: string[]): string | null {
+  const indexed = selected
+    .map(r => ({ rank: r, idx: ordered.indexOf(r) }))
+    .filter(x => x.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
+  if (indexed.length === 0) return null;
+  if (indexed.length === 1) return indexed[0].rank;
+  const isContiguous = indexed.every((x, i) => i === 0 || x.idx === indexed[i - 1].idx + 1);
+  if (isContiguous) return `${indexed[0].rank}–${indexed[indexed.length - 1].rank}`;
+  return indexed.map(x => x.rank).join(", ");
+}
+
+function summarizeReqs(r: Reqs | undefined, rankLists: RankLists): string {
+  if (!r || Object.keys(r).length === 0) return "ללא הגבלה";
+  const parts: string[] = [];
+
+  const genders = r.allowed_genders ?? [];
+  if (genders.length === 1) parts.push(genders[0] === "male" ? "גברים" : "נשים");
+
+  const svc = r.allowed_service_types ?? [];
+  if (svc.length === 1) parts.push(svc[0]);
+
+  if (r.requires_mitvahim) parts.push('מטווחים');
+  if (r.requires_alal) parts.push('אל"ל');
+  if (r.requires_bahad1) parts.push('בה"ד 1');
+
+  if (r.officers_allowed === false) parts.push("חוגרים");
+  else if (r.enlisted_allowed === false) parts.push("קצינים");
+
+  const selectedRanks = r.allowed_ranks ?? [];
+  if (selectedRanks.length > 0 && rankLists.enlisted.length > 0) {
+    const eRange = rankRange(selectedRanks, rankLists.enlisted);
+    const oRange = rankRange(selectedRanks, rankLists.officers);
+    if (eRange) parts.push(eRange);
+    if (oRange) parts.push(oRange);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : "ללא הגבלה";
+}
 import {
   DutyLocation,
   DutyType,
   ExemptionType,
-  createDutyType,
   createExemptionType,
   createLocation,
+  DutyTypeUsage,
+  deleteDutyType,
   getAllExemptionDutyTypeMaps,
+  getDutyTypeUsage,
   listDutyTypes,
   listExemptionTypes,
   listLocations,
@@ -18,28 +66,24 @@ import {
   updateDutyType,
   updateExemptionType,
 } from "../api/dutyConfig";
+import { getRanks } from "../api/soldiers";
 
 export function DutyConfigContent() {
   const { t } = useTranslation();
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
   const [locations, setLocations] = useState<DutyLocation[]>([]);
   const [exTypes, setExTypes] = useState<ExemptionType[]>([]);
-  const [dtName, setDtName] = useState("");
-  const [dtScore, setDtScore] = useState("1.00");
-  const [dtReserveRatio, setDtReserveRatio] = useState("0.000");
-  const [dtReserveMin, setDtReserveMin] = useState("0");
-  const [dtContactName, setDtContactName] = useState("");
-  const [dtContactPhone, setDtContactPhone] = useState("");
-  const [dtStartTime, setDtStartTime] = useState("");
-  const [dtEndTime, setDtEndTime] = useState("");
-  const [dtInstructions, setDtInstructions] = useState("");
-  const [dtIsExternal, setDtIsExternal] = useState<"" | "true" | "false">("");
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
   const [exMedical, setExMedical] = useState(false);
   const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
-  const [expandedDtId, setExpandedDtId] = useState<string | null>(null);
+  const [dtModal, setDtModal] = useState<{ initial?: DutyType } | null>(null);
+  const [eligModal, setEligModal] = useState<DutyType | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{ dt: DutyType; usage: DutyTypeUsage | null; loading: boolean; error: string | null } | null>(null);
+  const [rankLists, setRankLists] = useState<RankLists>({ enlisted: [], officers: [] });
+
+  useEffect(() => { void getRanks().then(setRankLists).catch(() => {}); }, []);
 
   async function refresh() {
     const [dts, locs, ets, sel] = await Promise.all([
@@ -55,24 +99,44 @@ export function DutyConfigContent() {
   }
   useEffect(() => { void refresh(); }, []);
 
-  async function addDutyType(e: FormEvent) {
-    e.preventDefault();
-    await createDutyType({
-      name: dtName,
-      score_per_day: dtScore,
-      reserve_ratio: dtReserveRatio,
-      reserve_minimum: parseInt(dtReserveMin) || 0,
-      contact_name: dtContactName || null,
-      contact_phone: dtContactPhone || null,
-      start_time: dtStartTime || null,
-      end_time: dtEndTime || null,
-      instructions: dtInstructions || null,
-      is_external: dtIsExternal === "true",
-    });
-    setDtName(""); setDtScore("1.00"); setDtReserveRatio("0.000"); setDtReserveMin("0");
-    setDtContactName(""); setDtContactPhone(""); setDtStartTime(""); setDtEndTime("");
-    setDtInstructions(""); setDtIsExternal("");
-    await refresh();
+  async function openDeleteModal(dt: DutyType) {
+    setDeleteModal({ dt, usage: null, loading: true, error: null });
+    try {
+      const usage = await getDutyTypeUsage(dt.id);
+      setDeleteModal({ dt, usage, loading: false, error: null });
+    } catch (err: unknown) {
+      console.error("getDutyTypeUsage failed:", err);
+      const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response?.data?.detail;
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const msg = detail ?? (status === 403 ? "אין הרשאה" : status === 404 ? "נתיב לא נמצא (אולי השרת לא עודכן)" : "שגיאה בטעינת נתונים");
+      setDeleteModal({ dt, usage: null, loading: false, error: msg });
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteModal) return;
+    setDeleteModal(prev => prev ? { ...prev, loading: true, error: null } : null);
+    try {
+      await deleteDutyType(deleteModal.dt.id);
+      setDeleteModal(null);
+      await refresh();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: detail ?? "שגיאה במחיקה" } : null);
+    }
+  }
+
+  async function handleDisableDutyType() {
+    if (!deleteModal) return;
+    setDeleteModal(prev => prev ? { ...prev, loading: true, error: null } : null);
+    try {
+      await updateDutyType(deleteModal.dt.id, { active: false });
+      setDeleteModal(null);
+      await refresh();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: detail ?? "שגיאה בהשבתה" } : null);
+    }
   }
   async function addLocation(e: FormEvent) {
     e.preventDefault();
@@ -94,90 +158,189 @@ export function DutyConfigContent() {
   }
 
   return (
+    <>
+    {dtModal && (
+      <DutyTypeFormModal
+        initial={dtModal.initial}
+        onSaved={async () => { setDtModal(null); await refresh(); }}
+        onClose={() => setDtModal(null)}
+      />
+    )}
+    {eligModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setEligModal(null)}>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-base">{t("eligibility.title")} — {eligModal.name}</h3>
+            <button type="button" onClick={() => setEligModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          <DutyTypeRequirementsEditor
+            dutyType={eligModal}
+            onSaved={async () => { setEligModal(null); await refresh(); }}
+          />
+        </div>
+      </div>
+    )}
+    {deleteModal && (() => {
+      const u = deleteModal.usage;
+      const hasFuture = !!u && (u.future_count > 0 || u.template_count > 0 || u.shift_count > 0);
+      const hasPast = !!u && u.past_count > 0;
+      const canDelete = !!u && !hasFuture && !hasPast;
+      const pastOnly = hasPast && !hasFuture;
+      const futureParts: string[] = [];
+      if (u && u.future_count > 0) futureParts.push(`${u.future_count} תורנויות עתידיות`);
+      if (u && u.shift_count > 0) futureParts.push(`${u.shift_count} משמרות`);
+      if (u && u.template_count > 0) futureParts.push(`${u.template_count} תבניות`);
+
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !deleteModal.loading && setDeleteModal(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-sm" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-base">מחיקת סוג תורנות</h3>
+              <button type="button" onClick={() => setDeleteModal(null)} disabled={deleteModal.loading} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">✕</button>
+            </div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-4">"{deleteModal.dt.name}"</p>
+
+            {deleteModal.loading && !u ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">טוען נתונים...</p>
+            ) : u ? (
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                {canDelete && "לא נמצאו תורנויות, משמרות או תבניות עם סוג זה. מחיקה תהיה לצמיתות."}
+                {pastOnly && <>נמצאו <span className="font-medium">{u.past_count}</span> תורנויות עבר. מחיקה עלולה לפגוע בהיסטוריית הניקוד — מומלץ להשבית במקום.</>}
+                {hasFuture && <>נמצאו {futureParts.join(', ')} עם סוג זה. לא ניתן למחוק. ניתן להשבית את הסוג במקום.</>}
+              </p>
+            ) : null}
+
+            {deleteModal.error && <p className="text-red-500 text-xs mb-3">{deleteModal.error}</p>}
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setDeleteModal(null)} disabled={deleteModal.loading} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded disabled:opacity-50">
+                ביטול
+              </button>
+              {canDelete && (
+                <button type="button" onClick={handleConfirmDelete} disabled={deleteModal.loading} className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">
+                  {deleteModal.loading ? "מוחק..." : "מחק"}
+                </button>
+              )}
+              {(pastOnly || hasFuture) && (
+                <button type="button" onClick={handleDisableDutyType} disabled={deleteModal.loading} className="px-3 py-1 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50">
+                  {deleteModal.loading ? "מעדכן..." : "השבת"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })()}
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-8" data-testid="duty-config-page">
       <h2 className="text-xl font-semibold">{t("duty_config.title")}</h2>
 
       <div data-testid="duty-types-section">
-        <h3 className="font-medium mb-2">{t("duty_config.duty_types")}</h3>
-        <form onSubmit={addDutyType} className="space-y-2 mb-2" data-testid="duty-type-form">
-          <div className="flex items-end gap-2 flex-wrap">
-            <label className="block"><span className="text-xs">{t("duty_config.name")}</span>
-              <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtName} onChange={(e) => setDtName(e.target.value)} required data-testid="dt-name" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.score_per_day")}</span>
-              <input className="block border rounded p-1 w-24 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtScore} onChange={(e) => setDtScore(e.target.value)} data-testid="dt-score" /></label>
-            <label className="block"><span className="text-xs">{t("reserve_ratio")}</span>
-              <input type="number" min="0" max="1" step="0.001" className="block border rounded p-1 w-20 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveRatio} onChange={(e) => setDtReserveRatio(e.target.value)} data-testid="dt-reserve-ratio" /></label>
-            <label className="block"><span className="text-xs">{t("reserve_minimum")}</span>
-              <input type="number" min="0" step="1" className="block border rounded p-1 w-16 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtReserveMin} onChange={(e) => setDtReserveMin(e.target.value)} data-testid="dt-reserve-min" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.contact_name")}</span>
-              <input className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtContactName} onChange={(e) => setDtContactName(e.target.value)} data-testid="dt-contact-name" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.contact_phone")}</span>
-              <input className="block border rounded p-1 w-32 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtContactPhone} onChange={(e) => setDtContactPhone(e.target.value)} data-testid="dt-contact-phone" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.start_time")}</span>
-              <input type="time" className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtStartTime} onChange={(e) => setDtStartTime(e.target.value)} data-testid="dt-start-time" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.end_time")}</span>
-              <input type="time" className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtEndTime} onChange={(e) => setDtEndTime(e.target.value)} data-testid="dt-end-time" /></label>
-            <label className="block"><span className="text-xs">{t("duty_config.is_external")} *</span>
-              <select required className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={dtIsExternal} onChange={(e) => setDtIsExternal(e.target.value as "" | "true" | "false")} data-testid="dt-is-external">
-                <option value="" disabled>{t("duty_config.is_external_placeholder")}</option>
-                <option value="false">{t("duty_config.is_external_internal")}</option>
-                <option value="true">{t("duty_config.is_external_external")}</option>
-              </select></label>
-          </div>
-          <label className="block">
-            <span className="text-xs">{t("duty_config.instructions")} <span className="text-gray-400">({t("duty_config.instructions_hint")})</span></span>
-            <textarea
-              className="block border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              rows={3}
-              value={dtInstructions}
-              onChange={(e) => setDtInstructions(e.target.value)}
-              data-testid="dt-instructions"
-            />
-          </label>
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="dt-submit">{t("duty_config.add")}</button>
-        </form>
-        <div className="space-y-1 text-sm" data-testid="duty-type-list">
-          {dutyTypes.map((d) => (
-            <div key={d.id} data-testid={`dt-row-${d.name}`} className="border dark:border-gray-600 rounded p-2 space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span>{d.name} — {d.score_per_day}</span>
-                {d.reserve_ratio && parseFloat(d.reserve_ratio) > 0 && (
-                  <span className="text-xs text-purple-600 dark:text-purple-400">ר:{d.reserve_ratio} מינ:{d.reserve_minimum ?? 0}</span>
-                )}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium">{t("duty_config.duty_types")}</h3>
+          <button
+            type="button"
+            onClick={() => setDtModal({})}
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700"
+            data-testid="dt-add-btn"
+          >
+            + {t("duty_config.add")} {t("duty_config.duty_types")}
+          </button>
+        </div>
+        <DataTable<DutyType>
+          data={dutyTypes}
+          testId="duty-type-list"
+          filterPlaceholder={t("duty_config.name")}
+          emptyMessage="אין סוגי תורנות"
+          columns={[
+            {
+              id: "name",
+              header: t("duty_config.name"),
+              cell: d => <span className="font-medium">{d.name}</span>,
+              sortValue: d => d.name,
+              filterValue: d => d.name,
+            },
+            {
+              id: "score",
+              header: t("duty_config.score_per_day"),
+              cell: d => d.score_per_day,
+              sortValue: d => parseFloat(d.score_per_day),
+            },
+            {
+              id: "times",
+              header: t("duty_config.start_time"),
+              cell: d => (d.start_time || d.end_time)
+                ? `${d.start_time?.slice(0, 5) ?? "—"} – ${d.end_time?.slice(0, 5) ?? "—"}`
+                : "—",
+            },
+            {
+              id: "type",
+              header: t("duty_config.is_external"),
+              cell: d => (
                 <span className={`text-xs px-1.5 py-0.5 rounded ${d.is_external ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200" : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"}`}>
                   {d.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal")}
                 </span>
-                <button className="text-xs text-indigo-600 dark:text-indigo-400" onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)} data-testid={`dt-toggle-${d.name}`}>
-                  {d.active ? t("duty_config.active") : "—"}
-                </button>
+              ),
+              columnFilter: true,
+              filterValue: d => d.is_external ? t("duty_config.is_external_external") : t("duty_config.is_external_internal"),
+            },
+            {
+              id: "active",
+              header: t("duty_config.active"),
+              cell: d => (
                 <button
-                  type="button"
-                  className="text-xs text-blue-600 dark:text-blue-400 underline ml-auto"
-                  onClick={() => setExpandedDtId(expandedDtId === d.id ? null : d.id)}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 underline"
+                  onClick={() => updateDutyType(d.id, { active: !d.active }).then(refresh)}
+                  data-testid={`dt-toggle-${d.name}`}
                 >
-                  {t("eligibility.title")}
+                  {d.active ? t("duty_config.active") : "לא פעיל"}
                 </button>
-              </div>
-              {(d.contact_name || d.contact_phone || d.start_time || d.end_time || d.instructions) && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 mt-1">
-                  {(d.contact_name || d.contact_phone) && (
-                    <p>{t("duty_config.contact_name")}: {d.contact_name ?? "—"}{d.contact_phone ? ` | ${d.contact_phone}` : ""}</p>
-                  )}
-                  {(d.start_time || d.end_time) && (
-                    <p>{t("duty_config.start_time")}: {d.start_time?.slice(0, 5) ?? "—"} — {d.end_time?.slice(0, 5) ?? "—"}</p>
-                  )}
-                  {d.instructions && <p>{t("duty_config.instructions")}: {d.instructions}</p>}
+              ),
+            },
+            {
+              id: "eligibility",
+              header: t("eligibility.title"),
+              cell: d => {
+                const summary = summarizeReqs(d.requirements, rankLists);
+                const hasReqs = summary !== "ללא הגבלה";
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setEligModal(d)}
+                    className={`text-xs underline text-right ${hasReqs ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}
+                  >
+                    {summary}
+                  </button>
+                );
+              },
+              filterValue: d => summarizeReqs(d.requirements, rankLists),
+            },
+            {
+              id: "actions",
+              header: "",
+              cell: d => (
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDtModal({ initial: d })}
+                    className="text-xs text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    data-testid={`dt-edit-${d.name}`}
+                  >
+                    {t("duty_config.edit", "ערוך")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openDeleteModal(d)}
+                    className="text-xs text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded px-2 py-0.5 hover:bg-red-50 dark:hover:bg-red-900/30"
+                    data-testid={`dt-delete-${d.name}`}
+                  >
+                    {t("duty_config.delete", "מחק")}
+                  </button>
                 </div>
-              )}
-              {expandedDtId === d.id && (
-                <DutyTypeRequirementsEditor
-                  dutyType={d}
-                  onSaved={async () => { await refresh(); setExpandedDtId(null); }}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+              ),
+            },
+          ] satisfies ColDef<DutyType>[]}
+          rowTestId={d => `dt-row-${d.name}`}
+        />
       </div>
 
       <div data-testid="locations-section">
@@ -247,6 +410,7 @@ export function DutyConfigContent() {
         </ul>
       </div>
     </section>
+    </>
   );
 }
 
