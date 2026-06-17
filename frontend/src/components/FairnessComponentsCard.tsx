@@ -129,7 +129,7 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                   if (dist.length === 0) return null;
                   return (
                     <div className="mt-2 flex items-center gap-3">
-                      <div style={{ width: 56, height: 56 }}>
+                      <div style={{ width: 96, height: 96 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
@@ -137,8 +137,8 @@ export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle,
                               dataKey="soldiers"
                               cx="50%"
                               cy="50%"
-                              innerRadius={16}
-                              outerRadius={26}
+                              innerRadius={28}
+                              outerRadius={44}
                               paddingAngle={2}
                             >
                               {dist.map((_, i) => (
