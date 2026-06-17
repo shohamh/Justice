@@ -265,16 +265,20 @@ def list_soldiers(
     }
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
-        return [_out(s, telegram_linked=s.id in linked_ids) for s in rows]
+        return [_out(s, include_private=True, telegram_linked=s.id in linked_ids) for s in rows]
+
     roots = scope_root_ids(session, user)
+    # Unassigned soldiers with no scope can only see themselves
     if not roots:
-        return [_out(user, telegram_linked=user.id in linked_ids)]
+        return [_out(user, include_private=True, telegram_linked=user.id in linked_ids)]
+
     rows = session.execute(select(Soldier)).scalars().all()
     out: list[SoldierOut] = []
     for s in rows:
         node = _node_of(session, s)
-        if node is not None and any(r in node.path_ids for r in roots):
-            out.append(_out(s, telegram_linked=s.id in linked_ids))
+        in_scope = node is not None and any(r in node.path_ids for r in roots)
+        include_private = in_scope and _can_see_private_fields(session, user, s)
+        out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids))
     return out
 
 
