@@ -21,11 +21,12 @@ interface EnrichedSoldierExplanation extends SoldierExplanation {
   eligible_count: number;
   soldier_rank: number;
   constraint_count: number;
+  my_constraints: string[];
   ranked_candidates: RankedCandidate[];
 }
 
 interface Props {
-  jobId?: string;          // optional — if omitted, uses direct lookup
+  jobId?: string;
   assignmentId: string;
   onClose: () => void;
 }
@@ -52,12 +53,14 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
           : await getExplanationByAssignment(assignmentId);
         setData(result);
       } catch {
-        setError("שגיאה בטעינת ההסבר");
+        setError(t("algorithm.explanation_error"));
       } finally {
         setLoading(false);
       }
     })();
-  }, [jobId, assignmentId]);
+  }, [jobId, assignmentId, t]);
+
+  const ctx = data?.assignment_context;
 
   return (
     <div
@@ -69,15 +72,31 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex justify-between items-center">
           <h3 className="text-base font-semibold">{t("algorithm.why_button")}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            aria-label={t("app.close")}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+          >
+            ×
+          </button>
         </div>
+
+        {/* Context strip */}
+        {ctx && (
+          <div className="bg-gray-50 dark:bg-gray-700 rounded px-3 py-2 text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-4 gap-y-1">
+            <span><span className="text-gray-400">{t("algorithm.col_soldier")}:</span> <strong>{ctx.soldier_name}</strong></span>
+            <span><span className="text-gray-400">{t("algorithm.col_type")}:</span> <strong>{ctx.duty_type_name}</strong></span>
+            <span><span className="text-gray-400">{t("algorithm.col_date")}:</span> <strong>{ctx.start_date}{ctx.end_date !== ctx.start_date ? ` – ${ctx.end_date}` : ""}</strong></span>
+          </div>
+        )}
 
         {loading && <p className="text-gray-500">{t("app.loading")}</p>}
         {error && <p className="text-red-500">{error}</p>}
 
-        {/* DM view — full candidate table (unchanged) */}
+        {/* DM view */}
         {data && isDmExplanation(data) && (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700 p-3 rounded text-xs">
@@ -92,33 +111,33 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
               const candidateCols: ColDef<CandidateInfo>[] = [
                 {
                   id: "name",
-                  header: "חייל",
+                  header: t("algorithm.explanation_candidate_col"),
                   cell: (c) => c.soldier_name || c.soldier_id.slice(0, 8),
                   sortValue: (c) => c.soldier_name || c.soldier_id,
                   filterValue: (c) => c.soldier_name || c.soldier_id,
                 },
                 {
-                  id: "blocked",
-                  header: "חסום?",
+                  id: "eligible",
+                  header: t("algorithm.explanation_eligible_col"),
                   cell: (c) => (c.blocked ? "✗" : "✓"),
                   sortValue: (c) => (c.blocked ? 1 : 0),
                 },
                 {
                   id: "reason",
-                  header: "סיבה",
+                  header: t("algorithm.explanation_reason_col"),
                   cell: (c) =>
                     c.blocking_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", "),
                 },
                 {
                   id: "norm_before",
                   header: t("algorithm.norm_before"),
-                  cell: (c) => c.pre_norm_score?.toFixed(3) ?? "—",
+                  cell: (c) => c.pre_norm_score != null ? (c.pre_norm_score * 100).toFixed(1) + "%" : "—",
                   sortValue: (c) => c.pre_norm_score ?? null,
                 },
                 {
                   id: "norm_after",
                   header: t("algorithm.norm_after"),
-                  cell: (c) => c.post_norm_score?.toFixed(3) ?? "—",
+                  cell: (c) => c.post_norm_score != null ? (c.post_norm_score * 100).toFixed(1) + "%" : "—",
                   sortValue: (c) => c.post_norm_score ?? null,
                 },
               ];
@@ -132,19 +151,21 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
               );
             })()}
             {data.tiebreaker_note && (
-              <p className="text-gray-600 text-xs">בורר: {data.tiebreaker_note}</p>
+              <p className="text-gray-600 dark:text-gray-400 text-xs">
+                {t("algorithm.explanation_tiebreaker_lowest")}
+              </p>
             )}
           </div>
         )}
 
-        {/* Soldier view — redesigned */}
+        {/* Soldier view */}
         {data && !isDmExplanation(data) && (() => {
           const enriched = isEnriched(data) ? data : null;
 
           if (!enriched || enriched.eligible_count === 0) {
             return (
               <p className="text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-3">
-                תורנות זו שובצה ידנית — אין הסבר אלגוריתמי.
+                {t("algorithm.explanation_manual")}
               </p>
             );
           }
@@ -153,36 +174,42 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
             <>
               {/* Summary banner */}
               <div className="bg-indigo-50 dark:bg-indigo-950 rounded p-3 font-medium text-indigo-700 dark:text-indigo-300">
-                קיבלת תורנות זו כי היה לך הניקוד הנמוך ביותר מבין {enriched.eligible_count} חיילים כשירים בתאריך זה.
+                {t("algorithm.explanation_lowest_score", { count: enriched.eligible_count })}
               </div>
 
               {/* Standing table */}
               <div>
-                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">המצב שלך בעת השיבוץ:</p>
+                <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_standing")}</p>
                 <table className="w-full text-xs border-collapse">
                   <tbody>
                     <tr className="border-b dark:border-gray-700">
-                      <td className="py-1 text-gray-500 w-40">עומס רבעוני</td>
+                      <td className="py-1 text-gray-500 w-40">{t("algorithm.explanation_load")}</td>
                       <td className="py-1 font-medium">
-                        {enriched.score_at_assignment != null ? (enriched.score_at_assignment * 100).toFixed(2) + "%" : "—"}
+                        {enriched.score_at_assignment != null
+                          ? (enriched.score_at_assignment * 100).toFixed(1) + "%"
+                          : "—"}
                       </td>
                     </tr>
                     <tr className="border-b dark:border-gray-700">
-                      <td className="py-1 text-gray-500">דירוג בין כשירים</td>
+                      <td className="py-1 text-gray-500">{t("algorithm.explanation_rank")}</td>
                       <td className="py-1 font-medium">{enriched.soldier_rank} / {enriched.eligible_count}</td>
                     </tr>
-                    <tr>
-                      <td className="py-1 text-gray-500">אילוצים פעילים</td>
-                      <td className="py-1 font-medium">{enriched.constraint_count === 0 ? "אין" : enriched.constraint_count}</td>
-                    </tr>
+                    {enriched.my_constraints.length > 0 && (
+                      <tr>
+                        <td className="py-1 text-gray-500">{t("algorithm.explanation_constraints")}</td>
+                        <td className="py-1 font-medium">
+                          {enriched.my_constraints.map((k) => t(`algorithm.constraint_${k}`, k)).join(", ")}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Rejected candidates */}
+              {/* Why others weren't chosen */}
               {enriched.ranked_candidates.length > 0 && (
                 <div>
-                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">מדוע אחרים לא נבחרו:</p>
+                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">{t("algorithm.explanation_why_others")}</p>
                   <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
                     {enriched.ranked_candidates.map((c) => (
                       <li key={c.soldier_id} className="flex gap-2">
@@ -192,13 +219,19 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
                           {c.reason_excluded
                             ? ` — ${c.reason_excluded}`
                             : c.score != null
-                              ? ` — עומס גבוה יותר (${(c.score * 100).toFixed(2)}%)`
+                              ? ` — ${t("algorithm.explanation_load_higher", { score: (c.score * 100).toFixed(1) })}`
                               : ""}
                         </span>
                       </li>
                     ))}
                   </ul>
                 </div>
+              )}
+
+              {enriched.tiebreaker_note && (
+                <p className="text-gray-500 dark:text-gray-400 text-xs">
+                  {t("algorithm.explanation_tiebreaker_lowest")}
+                </p>
               )}
             </>
           );

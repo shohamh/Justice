@@ -203,14 +203,23 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     setError(null);
     try {
       await removeShiftAssignment(shift.id, assignmentId);
+    } catch {
+      setError("שגיאה בהסרת שיבוץ");
+      setRemoving(null);
+      return;
+    }
+    // Optimistic update so UI reflects the removal even if reload fails
+    setShiftDetail(prev =>
+      prev ? { ...prev, assignees: prev.assignees.filter(a => a.assignment_id !== assignmentId) } : prev
+    );
+    try {
       const [detail, cands] = await Promise.all([getCalendarShift(shift.id), getShiftCandidates(shift.id)]);
       setShiftDetail(detail);
       setCandidates(cands);
     } catch {
-      setError("שגיאה בהסרת שיבוץ");
-    } finally {
-      setRemoving(null);
+      // Reload failed — optimistic update already applied, candidates list may be stale
     }
+    setRemoving(null);
   }
 
   async function handleSave() {

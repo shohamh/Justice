@@ -18,6 +18,8 @@ export interface ColDef<T> {
   filterValue?: (row: T) => string;
   /** When true, shows an Excel-style dropdown with checkboxes for unique values in this column. */
   columnFilter?: boolean;
+  /** Minimum column width in pixels. */
+  minWidth?: number;
 }
 
 interface DataTableProps<T> {
@@ -243,6 +245,7 @@ export function DataTable<T>({
                   <th
                     key={header.id}
                     className={`border dark:border-gray-600 px-2 py-1 whitespace-nowrap${header.column.getCanSort() ? " cursor-pointer select-none" : ""}`}
+                    style={colDef?.minWidth ? { minWidth: colDef.minWidth } : undefined}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <span className="inline-flex items-center gap-1">

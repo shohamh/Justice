@@ -113,6 +113,13 @@ export interface JobListOut {
   total: number;
 }
 
+export interface AssignmentContext {
+  soldier_name: string;
+  duty_type_name: string;
+  start_date: string;
+  end_date: string;
+}
+
 export interface SoldierExplanation {
   assigned: boolean;
   norm_score_before: number | null;
@@ -121,11 +128,13 @@ export interface SoldierExplanation {
   tiebreaker_note: string | null;
   global_before: { min_gap: number; norm_variance: number };
   global_after: { min_gap: number; norm_variance: number };
+  assignment_context?: AssignmentContext;
   // Enriched fields for redesigned explanation modal
   score_at_assignment?: number | null;
   eligible_count?: number;
   soldier_rank?: number;
   constraint_count?: number;
+  my_constraints?: string[];
   ranked_candidates?: Array<{
     soldier_id: string;
     full_name: string;
@@ -150,6 +159,7 @@ export interface DmExplanation {
   candidates: CandidateInfo[];
   global_before: Record<string, number>;
   global_after: Record<string, number>;
+  assignment_context?: AssignmentContext;
 }
 
 export async function submitJob(req: CreateJobRequest): Promise<{ id: string; status: string }> {

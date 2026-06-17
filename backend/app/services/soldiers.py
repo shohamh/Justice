@@ -185,7 +185,7 @@ def assign_role(
 PROFILE_FIELDS = {
     "gender", "is_officer", "rank", "bahad1_graduate",
     "enlistment_date", "mandatory_end_date", "discharge_date",
-    "last_mitvahim_date", "last_alal_date", "email",
+    "last_mitvahim_date", "last_alal_date", "email", "phone",
 }
 
 
@@ -281,6 +281,10 @@ def approve_field_update(
         soldier.last_alal_date = date.fromisoformat(raw)
     elif field == "gender":
         soldier.gender = raw
+    elif field == "rank":
+        soldier.rank = raw
+    elif field == "phone":
+        soldier.phone = raw
     update.status = "approved"
     update.decided_by = actor_id
     update.decided_at = datetime.now(tz=timezone.utc)

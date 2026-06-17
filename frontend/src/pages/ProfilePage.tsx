@@ -10,6 +10,7 @@ import {
   FieldUpdateDTO,
   submitFieldUpdate,
   listFieldUpdates,
+  getRanks,
 } from "../api/soldiers";
 import { setEmail } from "../api/auth";
 import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
@@ -22,6 +23,9 @@ export default function ProfilePage() {
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
+  const [rankReq, setRankReq] = useState("");
+  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
+  const [phoneReq, setPhoneReq] = useState("");
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
@@ -42,6 +46,7 @@ export default function ProfilePage() {
   }, [user]);
 
   useEffect(() => {
+    getRanks().then(setRanks).catch(() => {});
     getTelegramStatus().then(setTgStatus).catch(() => {});
     getPreferences().then(setPrefs).catch(() => {});
     if (user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") {
@@ -73,6 +78,8 @@ export default function ProfilePage() {
       if (field === "last_mitvahim_date") setMitvahimReq("");
       if (field === "last_alal_date") setAlalReq("");
       if (field === "gender") setGenderReq("");
+      if (field === "rank") setRankReq("");
+      if (field === "phone") setPhoneReq("");
     } catch {
       // submission failed silently — backend returns error detail
     }
@@ -136,6 +143,7 @@ export default function ProfilePage() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           {user?.gender && <div><span className="font-medium">{t("soldier_profile.gender")}:</span> {user.gender === "male" ? t("soldier_profile.gender_male") : user.gender === "female" ? t("soldier_profile.gender_female") : user.gender}</div>}
           {user?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {user.rank}</div>}
+          {user?.phone && <div><span className="font-medium">{t("soldier_profile.phone")}:</span> <span dir="ltr">{user.phone}</span></div>}
           {user?.is_officer !== null && user?.is_officer !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}</div>
           )}
@@ -165,6 +173,32 @@ export default function ProfilePage() {
               <option value="female">{t("soldier_profile.gender_female")}</option>
             </select>
             <button type="button" onClick={() => requestUpdate("gender", genderReq)} disabled={!genderReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.rank")}</label>
+            <select value={rankReq} onChange={e => setRankReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+              <option value="">—</option>
+              {ranks.enlisted.length > 0 && (
+                <optgroup label={t("soldier_profile.enlisted")}>
+                  {ranks.enlisted.map(r => <option key={r} value={r}>{r}</option>)}
+                </optgroup>
+              )}
+              {ranks.officers.length > 0 && (
+                <optgroup label={t("soldier_profile.officers")}>
+                  {ranks.officers.map(r => <option key={r} value={r}>{r}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <button type="button" onClick={() => requestUpdate("rank", rankReq)} disabled={!rankReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.phone")}</label>
+            <input type="tel" value={phoneReq} onChange={e => setPhoneReq(e.target.value)} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="05X-XXXXXXX" dir="ltr" />
+            <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>

@@ -34,9 +34,9 @@ function collectUnfilledShifts(
       const missing = sf.required_count - sf.assigned_count;
       if (missing <= 0) continue;
       let reason = "לא ידוע";
-      if (br.outcome === "INFEASIBLE") reason = "לא ניתן לפתרון";
-      else if (br.relaxations.length > 0) reason = "הגיע לתקרת הרפיה";
-      else reason = "אין מספיק חיילים כשירים";
+      if (br.outcome === "INFEASIBLE") reason = "אין פתרון אפשרי — חסרים חיילים כשירים או קיימים אילוצים מנוגדים";
+      else if (br.relaxations.length > 0) reason = `מגבלות הוגמשו (${br.relaxations.join(", ")}) אך לא נמצאו מספיק חיילים`;
+      else reason = "אין מספיק חיילים כשירים לאותה תקופה";
       const shift = sf.shift_id ? shiftsById[sf.shift_id] : undefined;
       result.push({
         shiftId: sf.shift_id,
@@ -168,15 +168,30 @@ export default function IssuesTab({ job, dutyTypes: _dutyTypes, shiftNames, shif
       {(diagnostics.rCeilingHitCount > 0 || diagnostics.tCeilingHitCount > 0 || diagnostics.infeasibleCount > 0) && (
         <div>
           <h3 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">אבחון</h3>
-          <ul className="space-y-1 text-gray-700 dark:text-gray-300 text-xs">
+          <ul className="space-y-2 text-gray-700 dark:text-gray-300 text-xs">
             {diagnostics.rCeilingHitCount > 0 && diagnostics.currentRCeiling !== null && (
-              <li>⚠ {diagnostics.rCeilingHitCount} אצוות הגיעו לתקרת R ({diagnostics.currentRCeiling}) — שקול להגדיל</li>
+              <li className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2">
+                <span className="font-medium">⚠ מגבלת שיבוצים לחלון ארוך-טווח (R={diagnostics.currentRCeiling}) הוגמשה ב-{diagnostics.rCeilingHitCount} אצוות</span>
+                <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
+                  האלגוריתם שיבץ יותר תורנויות מהמותר בחלון הזמן הארוך. ניתן להגדיל את R בהגדרות מתקדמות, או לצמצם את כמות המשמרות.
+                </span>
+              </li>
             )}
             {diagnostics.tCeilingHitCount > 0 && diagnostics.currentTCeiling !== null && (
-              <li>⚠ {diagnostics.tCeilingHitCount} אצוות הגיעו לתקרת T ({diagnostics.currentTCeiling}) — שקול להגדיל</li>
+              <li className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2">
+                <span className="font-medium">⚠ מגבלת צפיפות שיבוצים (T={diagnostics.currentTCeiling}) הוגמשה ב-{diagnostics.tCeilingHitCount} אצוות</span>
+                <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
+                  האלגוריתם שיבץ יותר תורנויות מהמותר בחלון קצר-טווח. ניתן להגדיל את T בהגדרות מתקדמות.
+                </span>
+              </li>
             )}
             {diagnostics.infeasibleCount > 0 && (
-              <li>✗ {diagnostics.infeasibleCount} אצוות נשארו ללא פתרון — ייתכן שאין מספיק חיילים כשירים</li>
+              <li className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded p-2">
+                <span className="font-medium">✗ {diagnostics.infeasibleCount} אצוות נשארו ללא פתרון</span>
+                <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
+                  האלגוריתם לא הצליח לאייש את כל המשמרות גם לאחר הגמשת המגבלות. הסיבות הנפוצות: אין מספיק חיילים כשירים לאותה תקופה, יותר מדי אילוצים אישיים מאושרים, או שמספר המשמרות גבוה מדי ביחס לגודל הכוח.
+                </span>
+              </li>
             )}
           </ul>
         </div>

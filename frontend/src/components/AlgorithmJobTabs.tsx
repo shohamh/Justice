@@ -30,7 +30,10 @@ async function downloadSolverInputs(jobId: string) {
 }
 
 export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
-  const [tab, setTab] = useState<Tab>("proposals");
+  const hasAnyUnfilledInit = job.batch_results.some(br => br.unassigned_count > 0);
+  const hasInfeasibleInit = job.batch_results.some(br => br.outcome === "INFEASIBLE");
+  const hasIssuesInit = hasAnyUnfilledInit || hasInfeasibleInit || job.status === "failed";
+  const [tab, setTab] = useState<Tab>(hasIssuesInit ? "issues" : "proposals");
   const [shiftsById, setShiftsById] = useState<Record<string, DutyShift>>({});
 
   useEffect(() => {
@@ -55,10 +58,13 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
   const hasInfeasible = job.batch_results.some(br => br.outcome === "INFEASIBLE");
   const hasIssues = hasAnyUnfilled || hasInfeasible || job.status === "failed";
 
+  const totalUnfilled = job.batch_results.reduce((sum, br) => sum + br.unassigned_count, 0);
+  const issuesBadge = hasIssues ? (totalUnfilled > 0 ? String(totalUnfilled) : "!") : undefined;
+
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: "proposals", label: "הצעות" },
     { id: "batches", label: "אצוות" },
-    { id: "issues", label: "בעיות", badge: hasIssues ? "!" : undefined },
+    { id: "issues", label: "בעיות", badge: issuesBadge },
   ];
 
   const meta = job.result_metadata;
