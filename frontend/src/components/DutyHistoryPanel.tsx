@@ -23,6 +23,8 @@ type FilterType =
   | "exemption_request"
   | "personal_constraint";
 
+type StatusFilter = "all" | "published" | "draft" | "reserve" | "official";
+
 const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "all", i18nKey: "duty_history.filter_all" },
   { type: "assignment", i18nKey: "duty_history.filter_assignments" },
@@ -422,6 +424,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [swapsByAssignment, setSwapsByAssignment] = useState<Record<string, SwapRequest[]>>({});
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
@@ -585,12 +588,31 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const filtered =
+  const typeFiltered =
     filter === "all"
       ? events
       : filter === "algorithm_draft"
         ? events.filter((e) => e.status === "algorithm_draft")
         : events.filter((e) => e.event_type === filter);
+
+  const filtered = (() => {
+    switch (statusFilter) {
+      case "published":
+        return typeFiltered.filter(
+          (e) => e.status === "published" || e.status === "active" || e.status === "approved"
+        );
+      case "draft":
+        return typeFiltered.filter((e) => e.status === "algorithm_draft");
+      case "reserve":
+        return typeFiltered.filter((e) => e.metadata.is_reserve === "true");
+      case "official":
+        return typeFiltered.filter(
+          (e) => e.event_type === "assignment" && e.metadata.is_reserve !== "true"
+        );
+      default:
+        return typeFiltered;
+    }
+  })();
 
   // upcoming: date >= today, sorted ascending (soonest first)
   const upcoming = filtered
@@ -638,6 +660,34 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
             data-testid={`history-filter-${type}`}
           >
             {t(i18nKey)}
+          </button>
+        ))}
+      </div>
+
+      {/* Status filter row */}
+      <div className="flex flex-wrap gap-1 mb-4">
+        {(
+          [
+            { status: "all" as StatusFilter, label: t("duty_history.filter_all") },
+            { status: "published" as StatusFilter, label: t("duty_history.filter_published") },
+            ...(canManage
+              ? [{ status: "draft" as StatusFilter, label: t("duty_history.filter_draft") }]
+              : []),
+            { status: "reserve" as StatusFilter, label: t("duty_history.filter_reserve") },
+            { status: "official" as StatusFilter, label: t("duty_history.filter_official") },
+          ] as { status: StatusFilter; label: string }[]
+        ).map(({ status, label }) => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`text-xs px-2 py-1 rounded-full border ${
+              statusFilter === status
+                ? "bg-indigo-600 text-white border-indigo-600"
+                : "border-gray-300 text-gray-600 hover:border-indigo-400"
+            }`}
+            data-testid={`history-status-filter-${status}`}
+          >
+            {label}
           </button>
         ))}
       </div>

@@ -737,7 +737,11 @@
     "event_constraint": "אילוץ אישי",
     "reserve": "רזרבה",
     "called_up": "הוקפץ",
-    "draft_badge": "טיוטה"
+    "draft_badge": "טיוטה",
+    "filter_published": "פורסם",
+    "filter_draft": "טיוטה",
+    "filter_reserve": "רזרבה",
+    "filter_official": "רשמי"
   },
   "upcoming_duty_alert": {
     "today": "היום",
