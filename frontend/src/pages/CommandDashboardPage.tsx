@@ -12,7 +12,7 @@ import EntriesExitsPanel from "../components/EntriesExitsPanel";
 import UnitCalendar from "../components/UnitCalendar";
 import HierarchyTree from "../components/HierarchyTree";
 import { useAuth } from "../auth/AuthContext";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import { listSoldiers } from "../api/soldiers";
 import type { SoldierDTO } from "../api/soldiers";
 import {
@@ -45,7 +45,7 @@ export default function CommandDashboardPage() {
     const results = await Promise.allSettled([
       getSummary(), getDashboardSoldiers(), getFairnessInternal(),
       getFairnessExternal(), getPotential(), getUpcoming(),
-      getAlerts(), getApprovals(), fetchTree(), listSoldiers(),
+      getAlerts(), getApprovals(), fetchFullTree(), listSoldiers(),
     ]);
     if (results[0].status === "fulfilled") setSummaryData(results[0].value);
     if (results[1].status === "fulfilled") setSoldiers(results[1].value);

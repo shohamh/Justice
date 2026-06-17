@@ -181,8 +181,6 @@ def calendar_shifts(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if user.hierarchy_node_id != node_id:
-        authorize(session, user, Action.HIERARCHY_READ, target_node=node)
     raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
     shifts = [
         CalendarShiftOut(**s, swap_request_count=_swap_count_for_shift(session, s["id"]))

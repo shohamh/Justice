@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import SoldierLink from "../components/SoldierLink";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
@@ -304,7 +304,7 @@ export default function TransparencyPage() {
   const [fairnessComponents, setFairnessComponents] = useState<FairnessComponents | null>(null);
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
-  useEffect(() => { void fetchTree().then(setTreeNodes); }, []);
+  useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
   useEffect(() => { void getFairnessComponents().then(setFairnessComponents).catch(() => {}); }, []);
 
   async function openEffortBreakdown(soldierId: string, soldierName: string) {
