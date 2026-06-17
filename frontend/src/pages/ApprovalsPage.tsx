@@ -36,6 +36,25 @@ import {
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 
+function daysBetween(start: string, end: string | null | undefined): number | null {
+  if (!end) return null;
+  const a = new Date(start);
+  const b = new Date(end);
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function DaysBadge({ start, end }: { start: string; end: string | null | undefined }) {
+  const days = daysBetween(start, end);
+  if (days === null) return null;
+  const cls =
+    days > 90
+      ? "text-red-600 dark:text-red-400"
+      : days > 30
+      ? "text-yellow-600 dark:text-yellow-400"
+      : "text-gray-400 dark:text-gray-500";
+  return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
+}
+
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
 
 function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
@@ -234,7 +253,10 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={c.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
-                  <p className="text-sm" dir="ltr">{c.start_date} → {c.end_date}</p>
+                  <p className="text-sm flex items-center gap-2" dir="ltr">
+                    <span>{c.start_date} → {c.end_date ?? "—"}</span>
+                    <DaysBadge start={c.start_date} end={c.end_date} />
+                  </p>
                   <p className="text-xs text-gray-500 mb-2">{c.reason}</p>
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onApprove(c.id)} data-testid={`approve-${c.id}`}>
@@ -275,7 +297,10 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={er.soldier_id} name={sd.name} /></strong>
                     {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
                   </div>
-                  <p className="text-sm" dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</p>
+                  <p className="text-sm flex items-center gap-2" dir="ltr">
+                    <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
+                    <DaysBadge start={er.start_date} end={er.end_date} />
+                  </p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
                   {(requestFiles[er.id] ?? []).length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">

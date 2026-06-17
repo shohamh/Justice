@@ -4,6 +4,25 @@ import { useTranslation } from "react-i18next";
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
 
+function daysBetween(start: string, end: string | null | undefined): number | null {
+  if (!end) return null;
+  const a = new Date(start);
+  const b = new Date(end);
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function DaysBadge({ start, end }: { start: string; end: string | null | undefined }) {
+  const days = daysBetween(start, end);
+  if (days === null) return null;
+  const cls =
+    days > 90
+      ? "text-red-600 dark:text-red-400"
+      : days > 30
+      ? "text-yellow-600 dark:text-yellow-400"
+      : "text-gray-400 dark:text-gray-500";
+  return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
+}
+
 export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: string; canManage: boolean }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<Exemption[]>([]);
@@ -86,6 +105,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
               <div className="flex items-center gap-2">
                 <span className="font-medium">{typeName(ex.exemption_type_id)}</span>
                 <span className="text-gray-500 dark:text-gray-400 text-xs" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+                <DaysBadge start={ex.start_date} end={ex.end_date} />
                 {canManage && (
                   <button
                     className="text-red-500 text-xs mr-auto"
