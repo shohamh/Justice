@@ -277,7 +277,7 @@ def list_soldiers(
     for s in rows:
         node = _node_of(session, s)
         in_scope = node is not None and any(r in node.path_ids for r in roots)
-        include_private = in_scope and _can_see_private_fields(session, user, s)
+        include_private = in_scope or s.id == user.id
         out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids))
     return out
 
