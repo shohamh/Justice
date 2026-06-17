@@ -21,20 +21,24 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   }, [soldierId]);
   useEffect(() => {
     void refresh();
-    Promise.all([listExemptionTypes(), getAllExemptionDutyTypeMaps(), listDutyTypes()]).then(
-      ([etypes, maps, dtypes]) => {
+    void (async () => {
+      try {
+        const etypes = await listExemptionTypes();
         setTypes(etypes);
+      } catch { /* types stay empty on error */ }
+      try {
+        const [maps, dtypes] = await Promise.all([getAllExemptionDutyTypeMaps(), listDutyTypes()]);
         const nameById = Object.fromEntries(dtypes.map((d) => [d.id, d.name]));
         const named: Record<string, string[]> = {};
         for (const [etId, dtIds] of Object.entries(maps)) {
           named[etId] = dtIds.map((id) => nameById[id] ?? id);
         }
         setDutyTypeMap(named);
-      }
-    );
+      } catch { /* duty-type map stays empty on error */ }
+    })();
   }, [refresh]);
 
-  const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? id;
+  const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
