@@ -45,6 +45,14 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!name.trim()) {
+      setError(t("duty_config.name") + " חובה");
+      return;
+    }
+    if (isExternal === "") {
+      setError("יש לבחור אם סוג התורנות פנימי או חיצוני");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
