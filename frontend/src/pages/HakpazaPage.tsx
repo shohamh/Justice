@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "../components/Layout";
-import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
-import { SoldierDTO } from "../api/soldiers";
+import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
 import { formatDateRange } from "../utils/formatDate";
@@ -25,8 +24,14 @@ export default function HakpazaPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [scopedSoldiers, setScopedSoldiers] = useState<SoldierDTO[]>([]);
+  const [soldierSearch, setSoldierSearch] = useState("");
 
   const today = new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    listSoldiers().then(setScopedSoldiers).catch(() => {});
+  }, []);
 
   async function handleSoldierSelect(soldier: SoldierDTO | null) {
     if (!soldier) {
@@ -106,16 +111,61 @@ export default function HakpazaPage() {
           <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">{error}</div>
         )}
 
+        {/* Explanation */}
+        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm space-y-2" dir="rtl">
+          <p className="font-semibold text-blue-800 dark:text-blue-200">מה זה הקפצה פיקודית?</p>
+          <p className="text-blue-700 dark:text-blue-300">
+            הקפצה פיקודית מאפשרת להחליף חייל בתורנות פעילה — למשל אם קיבל גימלים, נסיעה, או נסיבות חריגות.
+            המערכת מחפשת את המחליף המתאים ביותר לפי ניקוד, ומציגה את הרשימה לבחירה.
+            הבקשה עוברת לאישור מנהל תורניות לפני הפעלה.
+          </p>
+        </div>
+
         {/* Step 1: Select soldier */}
         <div className={`bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3 ${step > 1 ? "opacity-60" : ""}`}>
           <h2 className="font-medium text-sm text-gray-500">שלב 1 — בחר חייל להקפיץ</h2>
           {step === 1 ? (
-            <SoldierSearchAutocomplete
-              onSelect={(s) => { void handleSoldierSelect(s); }}
-              onCreateNew={() => {}}
-            />
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="חיפוש לפי שם..."
+                value={soldierSearch}
+                onChange={(e) => setSoldierSearch(e.target.value)}
+                className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                dir="rtl"
+              />
+              <div className="max-h-60 overflow-y-auto border rounded dark:border-gray-700 divide-y dark:divide-gray-700">
+                {scopedSoldiers
+                  .filter((s) => !soldierSearch || s.full_name.includes(soldierSearch))
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full text-right px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center justify-between gap-2"
+                      onClick={() => { void handleSoldierSelect(s); }}
+                    >
+                      <span className="font-medium">{s.full_name}</span>
+                      {s.rank && <span className="text-xs text-gray-400">{s.rank}</span>}
+                    </button>
+                  ))}
+                {scopedSoldiers.filter((s) => !soldierSearch || s.full_name.includes(soldierSearch)).length === 0 && (
+                  <p className="text-sm text-gray-500 p-3 text-right">לא נמצאו חיילים</p>
+                )}
+              </div>
+            </div>
           ) : (
-            pulledSoldier && <p className="text-sm font-medium">{pulledSoldier.full_name}</p>
+            pulledSoldier && (
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">{pulledSoldier.full_name}</p>
+                <button
+                  type="button"
+                  className="text-xs text-indigo-600 hover:underline"
+                  onClick={() => { setPulledSoldier(null); setStep(1); setAssignments([]); setSelectedAssignment(null); setSoldierSearch(""); }}
+                >
+                  שנה
+                </button>
+              </div>
+            )
           )}
         </div>
 
