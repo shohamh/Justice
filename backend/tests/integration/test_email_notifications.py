@@ -98,3 +98,25 @@ def test_update_email_enabled_preference(client: TestClient, admin_session: Sess
     assert updated["announcement"]["email_enabled"] is False
     # other types unaffected
     assert updated["swap_accepted"]["email_enabled"] is True
+
+
+# --- POST /api/action token redemption ---
+
+def test_redeem_action_token_from_link_invalid(client: TestClient, admin_session: Session):
+    """Test that an invalid action token returns 404."""
+    s = create_soldier(admin_session, personal_number="8001008")
+    headers = auth_headers(s)
+    resp = client.post("/api/action", headers=headers, json={"token": "invalid_token"})
+    assert resp.status_code == 404
+
+
+def test_redeem_action_token_wrong_soldier(client: TestClient, admin_session: Session):
+    """Test that a token belonging to another soldier cannot be redeemed."""
+    from app.services.action_tokens import create_token
+    owner = create_soldier(admin_session, personal_number="8001009")
+    attacker = create_soldier(admin_session, personal_number="8001010")
+    tok = create_token(admin_session, soldier_id=owner.id, action="constraint:approve", resource_id=None)
+    admin_session.commit()
+    headers = auth_headers(attacker)
+    resp = client.post("/api/action", headers=headers, json={"token": tok})
+    assert resp.status_code == 404

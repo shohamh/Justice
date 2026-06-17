@@ -64,6 +64,28 @@ def redeem_token(session: Session, *, token: str, chat_id: int) -> TelegramActio
     return t
 
 
+def redeem_token_from_link(
+    session: Session, *, token: str, soldier_id: uuid.UUID
+) -> TelegramActionToken | None:
+    """Validate and consume a token from a web link (email action button).
+    Does not require a Telegram link — checks soldier_id ownership instead."""
+    now = datetime.now(timezone.utc)
+    t = session.execute(
+        select(TelegramActionToken).where(
+            TelegramActionToken.token == token,
+            TelegramActionToken.used_at.is_(None),
+            TelegramActionToken.expires_at > now,
+        )
+    ).scalar_one_or_none()
+    if t is None:
+        return None
+    if t.soldier_id != soldier_id:
+        return None
+    t.used_at = now
+    session.flush()
+    return t
+
+
 def set_awaiting_reply(session: Session, *, token: str, chat_id: int) -> bool:
     """Mark a token as waiting for a free-text reply from chat_id. Returns True if found."""
     t = session.execute(
