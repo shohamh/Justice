@@ -55,6 +55,7 @@ class Soldier(Base):
     discharge_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     last_mitvahim_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     last_alal_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

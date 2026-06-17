@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
 import { Exemption, listExemptions } from "../api/exemptions";
-import { ExemptionType, listExemptionTypes } from "../api/dutyConfig";
+import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import {
   PersonalConstraint,
   cancelConstraint,
@@ -41,6 +41,8 @@ export default function MyRequestsPage() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
+  const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
+  const [expandedExemption, setExpandedExemption] = useState<Set<string>>(new Set());
 
   const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -56,7 +58,18 @@ export default function MyRequestsPage() {
   const refresh = useCallback(async () => {
     setItems(await listMyConstraints());
     setExemptionRequests(await listMyExemptionRequests());
-    setExemptionTypes(await listExemptionTypes().catch(() => []));
+    const [etypes, maps, dtypes] = await Promise.all([
+      listExemptionTypes().catch(() => [] as ExemptionType[]),
+      getAllExemptionDutyTypeMaps().catch(() => ({} as Record<string, string[]>)),
+      listDutyTypes().catch(() => [] as { id: string; name: string }[]),
+    ]);
+    setExemptionTypes(etypes);
+    const nameById = Object.fromEntries(dtypes.map((d) => [d.id, d.name]));
+    const named: Record<string, string[]> = {};
+    for (const [etId, dtIds] of Object.entries(maps)) {
+      named[etId] = (dtIds as string[]).map((id) => nameById[id] ?? id);
+    }
+    setDutyTypeMap(named);
     if (user) {
       setExemptions(await listExemptions(user.id));
     }
@@ -156,22 +169,59 @@ export default function MyRequestsPage() {
           </button>
         </form>
 
-        {items.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.none")}</p>}
+        {items.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
 
-        <ul className="text-sm space-y-2" data-testid="constraints-list">
-          {items.map((c) => (
-            <li key={c.id} className="flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
-              <span dir="ltr">{c.start_date} → {c.end_date}</span>
-              <span className="text-gray-500">{c.reason}</span>
-              {statusBadge(c.status)}
-              {c.status === "pending" && (
-                <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
-                  {t("my_requests.cancel")}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        {items.filter((c) => c.status === "pending").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.pending_constraints")}</h4>
+            <ul className="space-y-2 text-sm" data-testid="constraints-list">
+              {items.filter((c) => c.status === "pending").map((c) => (
+                <li key={c.id} className="border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800 flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
+                  <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                  <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                  {statusBadge(c.status)}
+                  <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
+                    {t("my_requests.cancel")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {items.filter((c) => c.status === "approved").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.approved_constraints")}</h4>
+            <ul className="space-y-2 text-sm">
+              {items.filter((c) => c.status === "approved").map((c) => (
+                <li key={c.id} className="border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-950" data-testid={`constraint-row-${c.id}`}>
+                  <div className="flex items-center gap-3">
+                    <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                    {statusBadge(c.status)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {items.filter((c) => c.status === "rejected").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.rejected_constraints")}</h4>
+            <ul className="space-y-2 text-sm">
+              {items.filter((c) => c.status === "rejected").map((c) => (
+                <li key={c.id} className="border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950" data-testid={`constraint-row-${c.id}`}>
+                  <div className="flex items-center gap-3">
+                    <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                    {statusBadge(c.status)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("exemption_requests.title")}</h3>
@@ -321,7 +371,7 @@ export default function MyRequestsPage() {
               <li key={er.id} className="flex items-center gap-3">
                 <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
                 <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
-                {er.reason && <span className="text-gray-500">{er.reason}</span>}
+                {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
                 <span className={`text-xs ${
                   er.status === "approved" ? "text-green-600 dark:text-green-400" :
                   er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
@@ -332,12 +382,66 @@ export default function MyRequestsPage() {
         </div>
 
         <div className="pt-4 border-t dark:border-gray-600">
-          <h3 className="font-medium">{t("my_requests.my_exemptions")}</h3>
+          <h3 className="font-medium mb-2">{t("my_requests.my_exemptions")}</h3>
           {exemptions.length === 0 && <p className="text-sm text-gray-500">{t("exemptions.none")}</p>}
-          <ul className="text-sm space-y-1">
-            {exemptions.map((ex) => (
-              <li key={ex.id} dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</li>
-            ))}
+          <ul className="space-y-2">
+            {exemptions.map((ex) => {
+              const exemptType = exemptionTypes.find((et) => et.id === ex.exemption_type_id);
+              const dutyNames = dutyTypeMap[ex.exemption_type_id] ?? [];
+              const isMedical = exemptType?.is_medical ?? false;
+              const isExpanded = expandedExemption.has(ex.id);
+              return (
+                <li key={ex.id} className="border dark:border-gray-600 rounded-lg p-3 space-y-1.5 text-sm bg-white dark:bg-gray-800">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{exemptType?.name ?? ex.exemption_type_id}</span>
+                      {isMedical && (
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                          {t("my_requests.medical_exemption")}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0" dir="ltr">
+                      {ex.start_date} → {ex.end_date ?? t("exemptions.forever")}
+                    </span>
+                  </div>
+
+                  {isMedical && (
+                    <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 rounded px-2 py-1">
+                      <span>🔒</span>
+                      <span>{t("my_requests.medical_privacy_note")}</span>
+                    </div>
+                  )}
+
+                  {(ex.reason || dutyNames.length > 0) && (
+                    <button
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                      onClick={() => setExpandedExemption((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(ex.id)) next.delete(ex.id); else next.add(ex.id);
+                        return next;
+                      })}
+                    >
+                      {isExpanded ? "▲" : "▼"} {t("my_requests.exemption_details")}
+                    </button>
+                  )}
+
+                  {isExpanded && (
+                    <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300 pt-1 border-t dark:border-gray-700">
+                      {ex.reason && (
+                        <p><span className="font-medium text-gray-500 dark:text-gray-400">{t("my_requests.reason")}:</span> {ex.reason}</p>
+                      )}
+                      {dutyNames.length > 0 && (
+                        <p>
+                          <span className="font-medium text-gray-500 dark:text-gray-400">{t("exemptions.exempts_from")}:</span>{" "}
+                          {dutyNames.join("، ")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>

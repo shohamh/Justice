@@ -10,6 +10,14 @@ import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import SoldierLink from "./SoldierLink";
 import TelegramBadge from "./TelegramBadge";
 
+function SoldierAvatar({ url, name }: { url?: string | null; name: string }) {
+  const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
+  if (url) {
+    return <img src={url} alt={name} className="w-5 h-5 rounded-full object-cover border border-gray-200 dark:border-gray-600 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />;
+  }
+  return <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-semibold text-[9px] shrink-0">{initials}</span>;
+}
+
 const LEVEL_COLORS: Record<string, string> = {
   division: "text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950",
   unit: "text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950",
@@ -168,7 +176,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
           <ul className="mr-8 mb-1" data-testid={`tree-soldiers-${node.id}`}>
             {nodeSoldiers.map((s) => (
               <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-700 dark:text-gray-200" data-testid={`tree-soldier-${s.personal_number}`}>
-                <span className="w-1 h-1 bg-gray-300 rounded-full inline-block" />
+                <SoldierAvatar url={s.profile_picture_url} name={s.full_name} />
                 <SoldierLink id={s.id} name={s.full_name} />
                 <span className="text-xs text-gray-400">({s.personal_number})</span>
                 <TelegramBadge linked={s.telegram_linked} />

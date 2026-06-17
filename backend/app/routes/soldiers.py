@@ -49,6 +49,7 @@ class SoldierOut(BaseModel):
     discharge_date: date_type | None = None
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
+    profile_picture_url: str | None = None
     telegram_linked: bool = False
     email: str | None = None
     direct_commander_id: uuid.UUID | None = None
@@ -89,6 +90,7 @@ class UpdateProfileRequest(BaseModel):
     last_mitvahim_date: date_type | None = None
     last_alal_date: date_type | None = None
     email: str | None = None
+    profile_picture_url: str | None = None
 
 
 class FieldUpdateRequest(BaseModel):
@@ -190,6 +192,7 @@ def _out(
         discharge_date=s.discharge_date,
         last_mitvahim_date=s.last_mitvahim_date,
         last_alal_date=s.last_alal_date,
+        profile_picture_url=s.profile_picture_url,
         telegram_linked=telegram_linked,
         email=s.email if include_private else None,
         direct_commander_id=direct_commander.id if direct_commander else None,

@@ -85,7 +85,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
             >
               <div className="flex items-center gap-2">
                 <span className="font-medium">{typeName(ex.exemption_type_id)}</span>
-                <span className="text-gray-400 text-xs" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+                <span className="text-gray-500 dark:text-gray-400 text-xs" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
                 {canManage && (
                   <button
                     className="text-red-500 text-xs mr-auto"

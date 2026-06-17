@@ -9,6 +9,25 @@ import DutyHistoryPanel from "./DutyHistoryPanel";
 import SoldierLink from "./SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 
+function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
+  const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className={`w-${size} h-${size} rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-600`}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div className={`w-${size} h-${size} rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0 text-indigo-700 dark:text-indigo-300 font-semibold text-sm`}>
+      {initials}
+    </div>
+  );
+}
+
 interface Props {
   soldier: SoldierDTO;
   score: SoldierScoreDTO | null;
@@ -29,13 +48,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const isCommander = user?.role === "commander";
   const canManage = isAdmin || isDutyManager;
   const canViewAll = isAdmin || isDutyManager || isCommander;
-  const isLimitedView = !canViewAll && !isSelf;
-
   const TABS: TabKey[] = canViewAll
     ? ["details", "profile", "exemptions", "constraints", "duty_history"]
     : ["details", "duty_history"];
 
   const [tab, setTab] = useState<TabKey>("details");
+  const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
@@ -54,6 +72,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileMitvahim, setProfileMitvahim] = useState(soldier.last_mitvahim_date ?? "");
   const [profileAlal, setProfileAlal] = useState(soldier.last_alal_date ?? "");
   const [profileEmail, setProfileEmail] = useState(soldier.email ?? "");
+  const [profilePictureUrl, setProfilePictureUrl] = useState(soldier.profile_picture_url ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
@@ -97,8 +116,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       mandatory_end_date: profileMandEnd || null,
       discharge_date: profileDischarge || null,
       last_mitvahim_date: profileMitvahim || null,
-      last_alal_date: profileAlal || null,
+      ...(profileIsOfficer ? { last_alal_date: profileAlal || null } : {}),
       ...(isAdmin ? { email: profileEmail || null } : {}),
+      profile_picture_url: profilePictureUrl || null,
     });
     setSavingProfile(false);
     onRefresh();
@@ -120,7 +140,26 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
         <div className="flex items-start justify-between mb-2">
-          <h3 className="font-semibold">{t("team.edit_soldier")}: {soldier.full_name}</h3>
+          <div className="flex items-center gap-3">
+            <SoldierAvatar url={soldier.profile_picture_url} name={soldier.full_name} size={10} />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">{soldier.full_name}</h3>
+                {(canManage || isSelf) && !editing && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 text-sm leading-none"
+                    title={t("team.edit")}
+                    aria-label={t("team.edit")}
+                    data-testid="modal-edit-toggle"
+                  >
+                    ✏️
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 text-xl leading-none -mt-1 -mr-1 p-1"
@@ -130,7 +169,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             ×
           </button>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
 
         <div className="flex gap-4 border-b dark:border-gray-600 mb-4">
           {TABS.map((tKey) => (
@@ -146,15 +184,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         </div>
 
         {tab === "details" && (
-          isLimitedView ? (
+          !editing ? (
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">{t("team.full_name")}</span>
+                <span className="text-gray-500 dark:text-gray-400">{t("team.full_name")}</span>
                 <span className="font-medium">{soldier.full_name}</span>
               </div>
               {soldier.rank && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{t("soldier_profile.rank")}</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span>
                   <span>{soldier.rank}</span>
                 </div>
               )}
@@ -175,7 +213,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                               </span>
                             </span>
                           ))
-                        : <span>—</span>
+                        : <span className="text-gray-400">—</span>
                       }
                     </div>
                   </div>
@@ -183,24 +221,30 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               })()}
               {soldier.phone && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{t("team.phone")}</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t("team.phone")}</span>
                   <span dir="ltr">{soldier.phone}</span>
+                </div>
+              )}
+              {soldier.enrolled_at && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">{t("transparency.enrolled_at")}</span>
+                  <span dir="ltr">{soldier.enrolled_at}</span>
                 </div>
               )}
               {soldier.direct_commander_id && soldier.direct_commander_name && (
                 <div className="flex justify-between">
-                  <span className="text-gray-500">{t("soldier_profile.direct_commander")}</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.direct_commander")}</span>
                   <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
                 </div>
               )}
               {score && (
-                <div className="border-t pt-3 space-y-1">
+                <div className="border-t dark:border-gray-600 pt-3 space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">{t("transparency.active_days")}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t("transparency.active_days")}</span>
                     <span>{score.active_days}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">{t("transparency.normalised")}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t("transparency.normalised")}</span>
                     <span>{Number(score.normalised_score).toFixed(2)}</span>
                   </div>
                 </div>
@@ -265,14 +309,28 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 </div>
               )}
               <div className="flex justify-end gap-2">
-                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
+                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => setEditing(false)}>{t("team.cancel")}</button>
                 <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={saving} data-testid="edit-soldier-submit">{t("duty_config.save")}</button>
               </div>
             </form>
           )
         )}
 
-        {tab === "profile" && (
+        {tab === "profile" && !editing && (
+          <div className="space-y-2 text-sm">
+            {soldier.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldier.gender}`)}</span></div>}
+            {soldier.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldier.rank}</span></div>}
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldier.is_officer ? "✓" : "—"}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldier.bahad1_graduate ? "✓" : "—"}</span></div>
+            {soldier.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span dir="ltr">{soldier.enlistment_date}</span></div>}
+            {soldier.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span dir="ltr">{soldier.mandatory_end_date}</span></div>}
+            {soldier.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span dir="ltr">{soldier.discharge_date}</span></div>}
+            {soldier.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span dir="ltr">{soldier.last_mitvahim_date}</span></div>}
+            {soldier.is_officer && soldier.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span dir="ltr">{soldier.last_alal_date}</span></div>}
+          </div>
+        )}
+
+        {tab === "profile" && editing && (
           <form onSubmit={handleProfileSave} className="space-y-3">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <label className="block">
@@ -283,9 +341,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <option value="female">{t("soldier_profile.gender_female")}</option>
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.is_officer")}</span>
-                <input type="checkbox" className="ml-2" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
+              <label className="flex items-center gap-3 cursor-pointer col-span-1">
+                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.is_officer")}</span>
+                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
@@ -303,9 +361,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   )}
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.bahad1_graduate")}</span>
-                <input type="checkbox" className="ml-2" checked={profileBahad1} onChange={(e) => setProfileBahad1(e.target.checked)} />
+              <label className="flex items-center gap-3 cursor-pointer col-span-1">
+                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.bahad1_graduate")}</span>
+                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileBahad1} onChange={(e) => setProfileBahad1(e.target.checked)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
@@ -328,21 +386,27 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
                 <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
-                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
-              </label>
+              {profileIsOfficer && (
+                <label className="block">
+                  <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
+                  <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                </label>
+              )}
               {isAdmin && (
                 <label className="block col-span-2">
                   <span className="text-xs">{t("profile.email")}</span>
                   <input type="email" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="כתובת אימייל" />
                 </label>
               )}
+              <label className="block col-span-2">
+                <span className="text-xs">{t("soldier_profile.profile_picture_url")}</span>
+                <input type="url" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://..." dir="ltr" />
+              </label>
             </div>
             {!isCommander && (
               <div className="flex justify-end gap-2">
-                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
-                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("team.edit")}</button>
+                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => setEditing(false)}>{t("team.cancel")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("duty_config.save")}</button>
               </div>
             )}
           </form>
@@ -365,8 +429,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     {t(`my_requests.${c.status}`)}
                   </span>
                 </div>
-                {c.reason && <p className="text-gray-600">{c.reason}</p>}
-                {c.decision_note && <p className="text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
+                {c.reason && <p className="text-gray-700 dark:text-gray-300">{c.reason}</p>}
+                {c.decision_note && <p className="text-gray-500 dark:text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
                 {(isAdmin || isDutyManager) && c.status === "pending" && (
                   <div className="flex gap-2 mt-1">
                     <button className="text-xs text-green-600 hover:underline" onClick={() => handleApprove(c.id)} data-testid={`approve-constraint-${c.id}`}>

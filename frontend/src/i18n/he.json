@@ -92,7 +92,13 @@
     "algorithm_rejected": "נדחה ע״י אלגוריתם",
     "cancel": "בטל בקשה",
     "none": "אין בקשות",
-    "my_exemptions": "הפטורים שלי"
+    "my_exemptions": "הפטורים שלי",
+    "medical_exemption": "פטור רפואי",
+    "medical_privacy_note": "פרטי הפטור הרפואי הם מידע רפואי פרטי",
+    "exemption_details": "פרטים נוספים",
+    "pending_constraints": "אילוצים ממתינים לאישור",
+    "approved_constraints": "אילוצים שאושרו",
+    "rejected_constraints": "אילוצים שנדחו"
   },
   "approvals": {
     "title": "אישור בקשות",
@@ -446,7 +452,8 @@
     "previous_value": "ערך נוכחי",
     "new_value": "ערך מבוקש",
     "field_updates_tab": "עדכוני פרופיל",
-    "clear": "נקה"
+    "clear": "נקה",
+    "profile_picture_url": "תמונת פרופיל (קישור)"
   },
   "eligibility": {
     "title": "דרישות כשירות",
