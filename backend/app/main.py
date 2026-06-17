@@ -1,8 +1,12 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.email_worker import run_email_worker
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import limiter
 from app.routes import assignments as assignment_routes
@@ -37,10 +41,22 @@ from app.routes import gimelim as gimelim_routes
 from app.settings import get_settings
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(run_email_worker())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None
+        title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None,
+        lifespan=lifespan,
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
