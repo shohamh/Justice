@@ -102,14 +102,14 @@ export default function ProfilePage() {
   }
 
   async function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled" | "email_enabled") {
+    const previous = prefs;
     const updated = prefs.map((p) => p.notification_type === nt ? { ...p, [field]: !p[field] } : p);
     setPrefs(updated);
-    await updatePreferences(updated.map((p) => ({
-      notification_type: p.notification_type,
-      in_app_enabled: p.in_app_enabled,
-      push_enabled: p.push_enabled,
-      email_enabled: p.email_enabled,
-    })));
+    try {
+      await updatePreferences(updated);
+    } catch {
+      setPrefs(previous);
+    }
   }
 
   async function handleAddScope() {

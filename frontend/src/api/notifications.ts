@@ -62,7 +62,7 @@ export function getPreferences(): Promise<NotificationPref[]> {
   return client.get("/notifications/preferences").then((r) => r.data);
 }
 
-export function updatePreferences(preferences: { notification_type: string; in_app_enabled: boolean; push_enabled: boolean; email_enabled: boolean }[]): Promise<NotificationPref[]> {
+export function updatePreferences(preferences: NotificationPref[]): Promise<NotificationPref[]> {
   return client.put("/notifications/preferences", { preferences }).then((r) => r.data);
 }
 
