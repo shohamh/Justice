@@ -253,6 +253,16 @@ export default function ShiftTemplateFormModal({
       setError("יש לבחור יום התחלה");
       return;
     }
+    if (!initial) {
+      if (!dtId || !localDutyTypes.find((d) => d.id === dtId)) {
+        setError("יש לבחור סוג תורנות מהרשימה");
+        return;
+      }
+      if (!locId || !localLocations.find((l) => l.id === locId)) {
+        setError("יש לבחור מיקום מהרשימה");
+        return;
+      }
+    }
     try {
       const weekdays = recurrenceType === "weekly" ? [dowToIso(startDow!)] : [];
       const duration_days = recurrenceType === "weekly" ? durationDays : 1;
