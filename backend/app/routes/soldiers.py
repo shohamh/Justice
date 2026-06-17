@@ -346,6 +346,22 @@ def count_pending_field_updates(
     return {"count": total}
 
 
+class ReserveStatsOut(BaseModel):
+    used_days: int
+    max_days: int
+    window_days: int
+
+
+@router.get("/me/reserve-stats", response_model=ReserveStatsOut)
+def get_my_reserve_stats(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ReserveStatsOut:
+    from app.services.reserves import get_current_reserve_stats
+    stats = get_current_reserve_stats(session, user.id)
+    return ReserveStatsOut(**stats)
+
+
 @router.get("/{soldier_id}/score", response_model=SoldierScoreOut)
 def get_soldier_score(
     soldier_id: uuid.UUID,

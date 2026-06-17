@@ -640,3 +640,38 @@ def check_reserve_cap(
 
     peak = count_reserve_days_in_window(session, soldier_id, start_date, end_date)
     return peak <= max_days, peak, max_days
+
+
+def get_current_reserve_stats(
+    session: Session,
+    soldier_id: uuid.UUID,
+) -> dict:
+    """Return { used_days, max_days, window_days } for the rolling window ending today."""
+    try:
+        W = int(get_setting(session, "reserves.window_days"))
+    except SettingNotFound:
+        W = 30
+    try:
+        max_days = int(get_setting(session, "reserves.max_days_per_window"))
+    except SettingNotFound:
+        max_days = 14
+
+    rows = session.execute(
+        select(DutyAssignment.start_date, DutyAssignment.end_date).where(
+            DutyAssignment.soldier_id == soldier_id,
+            DutyAssignment.is_reserve.is_(True),
+            DutyAssignment.status.in_(["published", "algorithm_draft"]),
+        )
+    ).all()
+
+    all_dates: set[date] = set()
+    for row in rows:
+        d = row.start_date
+        while d <= row.end_date:
+            all_dates.add(d)
+            d += timedelta(days=1)
+
+    today = date.today()
+    window_start = today - timedelta(days=W - 1)
+    used = sum(1 for d in all_dates if window_start <= d <= today)
+    return {"used_days": used, "max_days": max_days, "window_days": W}

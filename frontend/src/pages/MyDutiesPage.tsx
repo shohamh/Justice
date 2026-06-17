@@ -14,6 +14,7 @@ import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties, EffectiveDuty } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow, Breakdown } from "../api/scoring";
+import { getReserveStats, ReserveStats } from "../api/soldiers";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -49,6 +50,7 @@ export default function MyDutiesPage() {
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [pastCount, setPastCount] = useState(0);
   const [pastDays, setPastDays] = useState(0);
+  const [reserveStats, setReserveStats] = useState<ReserveStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -58,12 +60,14 @@ export default function MyDutiesPage() {
       getTransparency().catch(() => [] as TransparencyRow[]),
       getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] }) as Breakdown),
       listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
-    ]).then(([rows, bd, duties]) => {
+      getReserveStats().catch(() => null),
+    ]).then(([rows, bd, duties, stats]) => {
       setAllRows(rows as TransparencyRow[]);
       setBreakdown(bd as Breakdown);
       const past = (duties as EffectiveDuty[]).filter((d) => d.end_date < today);
       setPastCount(past.length);
       setPastDays(past.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0));
+      setReserveStats(stats as ReserveStats | null);
       setLoading(false);
     });
   }, [user]);
@@ -149,6 +153,13 @@ export default function MyDutiesPage() {
             label="דירוג ביחידה"
             value={rank ? `${rank.pos} מתוך ${rank.total}` : "—"}
           />
+          {reserveStats && (
+            <StatCard
+              label="ימי רזרבה (חלון נוכחי)"
+              value={`${reserveStats.used_days} / ${reserveStats.max_days}`}
+              sub={`חלון של ${reserveStats.window_days} ימים`}
+            />
+          )}
         </div>
 
         {/* Section 2: Breakdown by duty type */}

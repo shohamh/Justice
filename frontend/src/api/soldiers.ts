@@ -147,3 +147,13 @@ export async function getSoldier(id: string): Promise<SoldierDTO> {
 export async function getSoldierScore(id: string): Promise<SoldierScoreDTO> {
   return (await api.get<SoldierScoreDTO>(`/soldiers/${id}/score`)).data;
 }
+
+export interface ReserveStats {
+  used_days: number;
+  max_days: number;
+  window_days: number;
+}
+
+export async function getReserveStats(): Promise<ReserveStats> {
+  return (await api.get<ReserveStats>("/soldiers/me/reserve-stats")).data;
+}
