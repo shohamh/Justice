@@ -227,7 +227,15 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                       key={swap.id}
                       className="flex items-center gap-2 mt-1 bg-orange-50 border border-orange-200 rounded px-2 py-1 text-xs"
                     >
-                      <span className="text-orange-700 flex-1">{t("unit_calendar.swap_requests_has")}</span>
+                      <span className="text-orange-700 flex-1">
+                        {t("unit_calendar.swap_requests_has")}
+                        {swap.requesting_soldier_name && (
+                          <span className="font-medium"> — {swap.requesting_soldier_name}</span>
+                        )}
+                        {swap.reason && (
+                          <span className="text-orange-500 mr-1"> ({swap.reason})</span>
+                        )}
+                      </span>
                       <button
                         onClick={() => void handleOpenCoverModal(swap)}
                         className="bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600"
