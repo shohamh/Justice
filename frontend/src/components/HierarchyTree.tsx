@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DndContext,
@@ -57,7 +57,6 @@ interface Props {
   soldiers: SoldierDTO[];
   isAdmin: boolean;
   onChanged: () => void;
-  user: { role: string; id: string } | null;
 }
 
 function DraggableSoldier({
@@ -145,10 +144,10 @@ function DroppableNodeRow({
     data: { kind: "node", id: node.id, name: node.name } as DragDataNode,
   });
 
-  function setRef(el: HTMLDivElement | null) {
+  const setRef = useCallback((el: HTMLDivElement | null) => {
     setDropRef(el);
     setDragRef(el);
-  }
+  }, [setDropRef, setDragRef]);
 
   return (
     <div
@@ -377,7 +376,10 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
     <>
       <DndContext
         sensors={sensors}
-        onDragStart={(e) => setActiveData(e.active.data.current as DragData)}
+        onDragStart={(e) => {
+          const d = e.active.data.current;
+          if (d) setActiveData(d as DragData);
+        }}
         onDragEnd={(e) => void handleDragEnd(e)}
       >
         <ul className="text-sm text-gray-900 dark:text-white" data-testid="node-tree">
