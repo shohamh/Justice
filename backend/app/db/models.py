@@ -723,6 +723,7 @@ class CommanderNotificationScope(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
     commander_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False)
     hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id"), nullable=False)
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=-1, server_default="-1")
 
 
 class TelegramOutbox(Base):

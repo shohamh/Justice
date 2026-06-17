@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -52,13 +53,23 @@ class GenerateCodeOut(BaseModel):
     bot_username: str
 
 
+class SoldierBrief(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    personal_number: str
+
+
 class CommanderScopeOut(BaseModel):
     id: uuid.UUID
     hierarchy_node_id: uuid.UUID
+    node_name: str | None
+    depth: int
+    soldiers: list[SoldierBrief]
 
 
 class AddScopeBody(BaseModel):
     hierarchy_node_id: uuid.UUID
+    depth: int = -1
 
 
 class AnnounceBody(BaseModel):
@@ -74,6 +85,37 @@ class PaginatedNotifications(BaseModel):
 
 class UnreadCountOut(BaseModel):
     count: int
+
+
+def _resolve_scope(session: Session, scope: CommanderNotificationScope) -> CommanderScopeOut:
+    from app.db.models import HierarchyNode, Soldier as SoldierModel
+    node = session.get(HierarchyNode, scope.hierarchy_node_id)
+    node_name = node.name if node else None
+
+    all_soldiers = session.execute(sa_select(SoldierModel)).scalars().all()
+    matched: list[SoldierBrief] = []
+    for s in all_soldiers:
+        if s.hierarchy_node_id is None:
+            continue
+        s_node = session.get(HierarchyNode, s.hierarchy_node_id)
+        if s_node is None:
+            continue
+        path_ids = list(s_node.path_ids)
+        if scope.hierarchy_node_id not in path_ids:
+            continue
+        if scope.depth >= 0:
+            depth_from_scope = len(path_ids) - path_ids.index(scope.hierarchy_node_id) - 1
+            if depth_from_scope > scope.depth:
+                continue
+        matched.append(SoldierBrief(id=s.id, full_name=s.full_name, personal_number=s.personal_number))
+
+    return CommanderScopeOut(
+        id=scope.id,
+        hierarchy_node_id=scope.hierarchy_node_id,
+        node_name=node_name,
+        depth=scope.depth,
+        soldiers=matched,
+    )
 
 
 def _out(n: Notification) -> NotificationOut:
@@ -177,7 +219,7 @@ def list_scopes(
     if user.role not in ("commander", "duty_manager", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     scopes = svc.list_commander_scopes(session, commander_id=user.id)
-    return [CommanderScopeOut(id=s.id, hierarchy_node_id=s.hierarchy_node_id) for s in scopes]
+    return [_resolve_scope(session, s) for s in scopes]
 
 
 @router.post("/notifications/commander-scopes", response_model=CommanderScopeOut, status_code=201)
@@ -189,9 +231,10 @@ def add_scope(
     if user.role not in ("commander", "duty_manager", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     scope = svc.add_commander_scope(session, commander_id=user.id,
-                                     hierarchy_node_id=body.hierarchy_node_id)
+                                     hierarchy_node_id=body.hierarchy_node_id,
+                                     depth=body.depth)
     session.commit()
-    return CommanderScopeOut(id=scope.id, hierarchy_node_id=scope.hierarchy_node_id)
+    return _resolve_scope(session, scope)
 
 
 @router.delete("/notifications/commander-scopes/{scope_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

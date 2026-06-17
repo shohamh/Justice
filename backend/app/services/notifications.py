@@ -442,8 +442,8 @@ def list_commander_scopes(session: Session, *, commander_id: uuid.UUID) -> list[
     ).scalars().all())
 
 
-def add_commander_scope(session: Session, *, commander_id: uuid.UUID, hierarchy_node_id: uuid.UUID) -> CommanderNotificationScope:
-    s = CommanderNotificationScope(commander_id=commander_id, hierarchy_node_id=hierarchy_node_id)
+def add_commander_scope(session: Session, *, commander_id: uuid.UUID, hierarchy_node_id: uuid.UUID, depth: int = -1) -> CommanderNotificationScope:
+    s = CommanderNotificationScope(commander_id=commander_id, hierarchy_node_id=hierarchy_node_id, depth=depth)
     session.add(s)
     session.flush()
     return s

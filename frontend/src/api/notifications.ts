@@ -27,9 +27,18 @@ export interface NotificationPref {
   push_enabled: boolean;
 }
 
+export interface SoldierBrief {
+  id: string;
+  full_name: string;
+  personal_number: string;
+}
+
 export interface CommanderScope {
   id: string;
   hierarchy_node_id: string;
+  node_name: string | null;
+  depth: number;
+  soldiers: SoldierBrief[];
 }
 
 export function getUnreadCount(): Promise<UnreadCount> {
@@ -69,8 +78,8 @@ export function listCommanderScopes(): Promise<CommanderScope[]> {
   return client.get("/notifications/commander-scopes").then((r) => r.data);
 }
 
-export function addCommanderScope(hierarchy_node_id: string): Promise<CommanderScope> {
-  return client.post("/notifications/commander-scopes", { hierarchy_node_id }).then((r) => r.data);
+export function addCommanderScope(hierarchy_node_id: string, depth: number = -1): Promise<CommanderScope> {
+  return client.post("/notifications/commander-scopes", { hierarchy_node_id, depth }).then((r) => r.data);
 }
 
 export function removeCommanderScope(id: string): Promise<void> {

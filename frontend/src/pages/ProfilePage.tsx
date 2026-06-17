@@ -110,8 +110,10 @@ export default function ProfilePage() {
   async function handleAddScope() {
     const nodeId = prompt(t("notifications.enter_node_id"));
     if (!nodeId) return;
+    const depthStr = prompt(t("notifications.enter_depth"), "-1");
+    const depth = parseInt(depthStr ?? "-1", 10);
     try {
-      const scope = await addCommanderScope(nodeId);
+      const scope = await addCommanderScope(nodeId, isNaN(depth) ? -1 : depth);
       setScopes((prev) => [...prev, scope]);
     } catch { alert(t("notifications.scope_add_error")); }
   }
@@ -341,13 +343,32 @@ export default function ProfilePage() {
           {scopes.length === 0 ? (
             <p className="text-sm text-gray-500">{t("notifications.no_scopes")}</p>
           ) : (
-            <ul className="space-y-1">
+            <ul className="space-y-3">
               {scopes.map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm py-1 border-b dark:border-gray-600">
-                  <span>{s.hierarchy_node_id}</span>
-                  <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
-                    {t("notifications.remove")}
-                  </button>
+                <li key={s.id} className="border dark:border-gray-600 rounded p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-medium">{s.node_name ?? s.hierarchy_node_id}</span>
+                      <span className="text-xs text-gray-500 mr-2">
+                        {s.depth === -1 ? t("notifications.depth_unlimited") : t("notifications.depth_levels", { count: s.depth })}
+                      </span>
+                    </div>
+                    <button onClick={() => handleRemoveScope(s.id)} className="text-red-500 hover:text-red-700 text-xs">
+                      {t("notifications.remove")}
+                    </button>
+                  </div>
+                  {s.soldiers.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium mb-1">{t("notifications.subscribed_soldiers")} ({s.soldiers.length})</p>
+                      <div className="flex flex-wrap gap-1">
+                        {s.soldiers.map(sol => (
+                          <span key={sol.id} className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                            {sol.full_name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
