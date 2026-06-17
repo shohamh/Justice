@@ -25,6 +25,7 @@ from app.services.soldiers import (
 )
 from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
 from app.services.duty_history import get_duty_history
+from app.services.reserves import get_current_reserve_stats
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
 
@@ -357,7 +358,6 @@ def get_my_reserve_stats(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> ReserveStatsOut:
-    from app.services.reserves import get_current_reserve_stats
     stats = get_current_reserve_stats(session, user.id)
     return ReserveStatsOut(**stats)
 

@@ -656,11 +656,16 @@ def get_current_reserve_stats(
     except SettingNotFound:
         max_days = 14
 
+    today = date.today()
+    window_start = today - timedelta(days=W - 1)
+
     rows = session.execute(
         select(DutyAssignment.start_date, DutyAssignment.end_date).where(
             DutyAssignment.soldier_id == soldier_id,
             DutyAssignment.is_reserve.is_(True),
             DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            DutyAssignment.end_date >= window_start,
+            DutyAssignment.start_date <= today,
         )
     ).all()
 
@@ -671,7 +676,5 @@ def get_current_reserve_stats(
             all_dates.add(d)
             d += timedelta(days=1)
 
-    today = date.today()
-    window_start = today - timedelta(days=W - 1)
     used = sum(1 for d in all_dates if window_start <= d <= today)
     return {"used_days": used, "max_days": max_days, "window_days": W}
