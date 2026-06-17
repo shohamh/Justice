@@ -145,7 +145,7 @@ export default function ProfilePage() {
           {user?.rank && <div><span className="font-medium">{t("soldier_profile.rank")}:</span> {user.rank}</div>}
           {user?.phone && <div><span className="font-medium">{t("soldier_profile.phone")}:</span> <span dir="ltr">{user.phone}</span></div>}
           {user?.is_officer !== null && user?.is_officer !== undefined && (
-            <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("soldier_profile.is_officer") : t("soldier_profile.is_enlisted")}</div>
+            <div><span className="font-medium">{t("soldier_profile.is_officer")}:</span> {user.is_officer ? t("common.yes") : t("common.no")}</div>
           )}
           {user?.bahad1_graduate !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
