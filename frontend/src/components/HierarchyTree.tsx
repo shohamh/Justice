@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NodeDTO, deleteNode } from "../api/hierarchy";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+} from "@dnd-kit/core";
+import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
 import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
@@ -29,12 +39,175 @@ const LEVEL_COLORS: Record<string, string> = {
 
 const LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"];
 
+interface DragDataSoldier {
+  kind: "soldier";
+  id: string;
+  name: string;
+  fromNodeId: string;
+}
+interface DragDataNode {
+  kind: "node";
+  id: string;
+  name: string;
+}
+type DragData = DragDataSoldier | DragDataNode;
+
 interface Props {
   nodes: NodeDTO[];
   soldiers: SoldierDTO[];
   isAdmin: boolean;
   onChanged: () => void;
   user: { role: string; id: string } | null;
+}
+
+function DraggableSoldier({
+  s,
+  nodeId,
+  isAdmin,
+  onEdit,
+  t,
+}: {
+  s: SoldierDTO;
+  nodeId: string;
+  isAdmin: boolean;
+  onEdit: (s: SoldierDTO) => void;
+  t: (k: string) => string;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `soldier:${s.id}`,
+    data: { kind: "soldier", id: s.id, name: s.full_name, fromNodeId: nodeId } as DragDataSoldier,
+  });
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={`flex items-center gap-2 py-0.5 px-2 text-sm text-gray-700 dark:text-gray-200 ${isDragging ? "opacity-40" : ""}`}
+      data-testid={`tree-soldier-${s.personal_number}`}
+    >
+      {isAdmin && (
+        <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 text-xs select-none">⠿</span>
+      )}
+      <SoldierAvatar url={s.profile_picture_url} name={s.full_name} />
+      <SoldierLink id={s.id} name={s.full_name} />
+      <span className="text-xs text-gray-400">({s.personal_number})</span>
+      <TelegramBadge linked={s.telegram_linked} />
+      {isAdmin && (
+        <button
+          className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
+          onClick={() => onEdit(s)}
+          data-testid={`edit-soldier-${s.personal_number}`}
+        >
+          {t("team.edit")}
+        </button>
+      )}
+    </li>
+  );
+}
+
+function DroppableNodeRow({
+  node,
+  depth,
+  isAdmin,
+  canHaveChildren,
+  onAddChild,
+  onAddSoldier,
+  onAssignCommander,
+  onRename,
+  onDelete,
+  hasChildren,
+  hasSoldiers,
+  isExpanded,
+  onToggle,
+  t,
+}: {
+  node: NodeDTO;
+  depth: number;
+  isAdmin: boolean;
+  canHaveChildren: boolean;
+  onAddChild: () => void;
+  onAddSoldier: () => void;
+  onAssignCommander: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+  hasChildren: boolean;
+  hasSoldiers: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  t: (k: string) => string;
+}) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `node:${node.id}`,
+    data: { kind: "node-drop-target", nodeId: node.id },
+  });
+
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: `node-drag:${node.id}`,
+    data: { kind: "node", id: node.id, name: node.name } as DragDataNode,
+  });
+
+  function setRef(el: HTMLDivElement | null) {
+    setDropRef(el);
+    setDragRef(el);
+  }
+
+  return (
+    <div
+      ref={setRef}
+      className={`flex items-center gap-2 py-1 px-2 rounded ${depth > 0 ? "mr-4" : ""} ${
+        isDragging ? "opacity-40" : ""
+      } ${isOver ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-950" : "hover:bg-gray-50 dark:hover:bg-gray-700"}`}
+    >
+      <button
+        className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren || hasSoldiers ? "visible" : "invisible"}`}
+        onClick={onToggle}
+        data-testid={`tree-toggle-${node.id}`}
+      >
+        {isExpanded ? "▼" : "▶"}
+      </button>
+      {isAdmin && (
+        <span
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 text-xs select-none"
+          title="גרור להזזה"
+        >
+          ⠿
+        </span>
+      )}
+      <span className={`text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? ""}`}>
+        {t(`team.level_${node.level}`)}
+      </span>
+      <span className="font-medium" data-testid={`tree-name-${node.id}`}>{node.name}</span>
+      {node.commander_name && (
+        <span className="text-xs text-gray-400" data-testid={`tree-commander-${node.id}`}>
+          ({t("team.commander")}: {node.commander_name})
+        </span>
+      )}
+      {isAdmin && (
+        <span className="flex gap-1 ml-auto">
+          {canHaveChildren && (
+            <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddChild} data-testid={`tree-add-child-${node.id}`}>
+              +{t("team.add_node")}
+            </button>
+          )}
+          <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddSoldier} data-testid={`tree-add-soldier-${node.id}`}>
+            +{t("team.add_soldier")}
+          </button>
+          <button className="text-xs text-green-600 hover:underline" onClick={onAssignCommander} data-testid={`tree-commander-btn-${node.id}`}>
+            {t("team.assign_commander")}
+          </button>
+          <button className="text-xs text-amber-600 hover:underline" onClick={onRename} data-testid={`tree-rename-${node.id}`}>
+            {t("team.edit")}
+          </button>
+          {!node.commander_id && !hasChildren && (
+            <button className="text-xs text-red-500 hover:underline" onClick={onDelete} data-testid={`tree-delete-${node.id}`}>
+              {t("duty_config.delete")}
+            </button>
+          )}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: Props) {
@@ -45,6 +218,9 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);
   const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
+  const [activeData, setActiveData] = useState<DragData | null>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   function toggle(id: string) {
     setExpanded((prev) => {
@@ -79,19 +255,49 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
     }
   }
 
+  async function handleDragEnd(event: DragEndEvent) {
+    setActiveData(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const dragData = active.data.current as DragData | undefined;
+    const overNodeId = (over.data.current as { nodeId?: string } | undefined)?.nodeId;
+    if (!dragData || !overNodeId) return;
+
+    if (dragData.kind === "soldier") {
+      if (dragData.fromNodeId === overNodeId) return;
+      try {
+        await updateSoldier(dragData.id, { hierarchy_node_id: overNodeId });
+        setExpanded((prev) => new Set(prev).add(overNodeId));
+        onChanged();
+      } catch {
+        alert(t("errors.generic"));
+      }
+    } else if (dragData.kind === "node") {
+      if (dragData.id === overNodeId) return;
+      const overNode = nodes.find((n) => n.id === overNodeId);
+      if (overNode && overNode.path_ids.includes(dragData.id)) {
+        return;
+      }
+      try {
+        await moveNode(dragData.id, overNodeId);
+        onChanged();
+      } catch {
+        alert(t("errors.generic"));
+      }
+    }
+  }
+
   const childrenOf = (parentId: string | null) =>
     nodes.filter((n) => n.parent_id === parentId).sort((a, b) => a.name.localeCompare(b.name));
 
   const soldiersOf = (nodeId: string) => {
-    // Soldiers whose hierarchy_node_id points here, excluding those who are
-    // commanders of a different node (they appear under their commanded node)
     const assigned = soldiers.filter((s) => {
       if (s.hierarchy_node_id !== nodeId) return false;
       if (s.left_at) return false;
       const isCommanderElsewhere = nodes.some((n) => n.commander_id === s.id && n.id !== nodeId);
       return !isCommanderElsewhere;
     });
-    // If this node has a commander not already in the list, add them
     const node = nodes.find((n) => n.id === nodeId);
     if (node?.commander_id) {
       const cmdr = soldiers.find((s) => s.id === node.commander_id && !s.left_at);
@@ -102,7 +308,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
     return assigned;
   };
 
-  const canHaveChildren = (level: string) => {
+  const canHaveChildrenFn = (level: string) => {
     const idx = LEVEL_ORDER.indexOf(level);
     return idx >= 0 && idx < LEVEL_ORDER.length - 1;
   };
@@ -115,59 +321,28 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
 
     return (
       <li key={node.id} className="select-none">
-        <div className={`flex items-center gap-2 py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded ${depth > 0 ? "mr-4" : ""}`}>
-          <button
-            className={`w-4 h-4 flex items-center justify-center text-xs ${hasChildren || nodeSoldiers.length > 0 ? "visible" : "invisible"}`}
-            onClick={() => toggle(node.id)}
-            data-testid={`tree-toggle-${node.id}`}
-          >
-            {isExpanded ? "▼" : "▶"}
-          </button>
-          <span className={`text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? ""}`}>
-            {t(`team.level_${node.level}`)}
-          </span>
-          <span className="font-medium" data-testid={`tree-name-${node.id}`}>{node.name}</span>
-          {node.commander_name && (
-            <span className="text-xs text-gray-400" data-testid={`tree-commander-${node.id}`}>
-              ({t("team.commander")}: {node.commander_name})
-            </span>
-          )}
-          {isAdmin && (
-            <span className="flex gap-1 ml-auto">
-              {canHaveChildren(node.level) && (
-                <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={() => setAddDialog(node)} data-testid={`tree-add-child-${node.id}`}>
-                  +{t("team.add_node")}
-                </button>
-              )}
-              <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={() => setQuickAddNode(node.id)} data-testid={`tree-add-soldier-${node.id}`}>
-                +{t("team.add_soldier")}
-              </button>
-              <button className="text-xs text-green-600 hover:underline" onClick={() => setCommanderDialog(node)} data-testid={`tree-commander-btn-${node.id}`}>
-                {t("team.assign_commander")}
-              </button>
-              <button className="text-xs text-amber-600 hover:underline" onClick={() => setRenameDialog(node)} data-testid={`tree-rename-${node.id}`}>
-                {t("team.edit")}
-              </button>
-              {!node.commander_id && children.length === 0 && (
-                <button className="text-xs text-red-500 hover:underline" onClick={() => handleDelete(node.id)} data-testid={`tree-delete-${node.id}`}>
-                  {t("duty_config.delete")}
-                </button>
-              )}
-            </span>
-          )}
-        </div>
+        <DroppableNodeRow
+          node={node}
+          depth={depth}
+          isAdmin={isAdmin}
+          canHaveChildren={canHaveChildrenFn(node.level)}
+          onAddChild={() => setAddDialog(node)}
+          onAddSoldier={() => setQuickAddNode(node.id)}
+          onAssignCommander={() => setCommanderDialog(node)}
+          onRename={() => setRenameDialog(node)}
+          onDelete={() => void handleDelete(node.id)}
+          hasChildren={hasChildren}
+          hasSoldiers={nodeSoldiers.length > 0}
+          isExpanded={isExpanded}
+          onToggle={() => toggle(node.id)}
+          t={t}
+        />
 
         {quickAddNode === node.id && (
           <div className="mr-8 mb-2 px-2" data-testid={`quick-add-${node.id}`}>
             <SoldierSearchAutocomplete
-              onSelect={(s) => {
-                if (s) {
-                  void handleQuickAdd(node.id, s, "", "");
-                }
-              }}
-              onCreateNew={(pn, name) => {
-                void handleQuickAdd(node.id, null, pn || "", name || "");
-              }}
+              onSelect={(s) => { if (s) void handleQuickAdd(node.id, s, "", ""); }}
+              onCreateNew={(pn, name) => void handleQuickAdd(node.id, null, pn || "", name || "")}
             />
           </div>
         )}
@@ -175,21 +350,14 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
         {isExpanded && nodeSoldiers.length > 0 && (
           <ul className="mr-8 mb-1" data-testid={`tree-soldiers-${node.id}`}>
             {nodeSoldiers.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 py-0.5 px-2 text-sm text-gray-700 dark:text-gray-200" data-testid={`tree-soldier-${s.personal_number}`}>
-                <SoldierAvatar url={s.profile_picture_url} name={s.full_name} />
-                <SoldierLink id={s.id} name={s.full_name} />
-                <span className="text-xs text-gray-400">({s.personal_number})</span>
-                <TelegramBadge linked={s.telegram_linked} />
-                {isAdmin && (
-                  <button
-                    className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
-                    onClick={() => setEditSoldier(s)}
-                    data-testid={`edit-soldier-${s.personal_number}`}
-                  >
-                    {t("team.edit")}
-                  </button>
-                )}
-              </li>
+              <DraggableSoldier
+                key={s.id}
+                s={s}
+                nodeId={node.id}
+                isAdmin={isAdmin}
+                onEdit={setEditSoldier}
+                t={t}
+              />
             ))}
           </ul>
         )}
@@ -207,9 +375,22 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
 
   return (
     <>
-      <ul className="text-sm text-gray-900 dark:text-white" data-testid="node-tree">
-        {roots.map((node) => renderNode(node, 0))}
-      </ul>
+      <DndContext
+        sensors={sensors}
+        onDragStart={(e) => setActiveData(e.active.data.current as DragData)}
+        onDragEnd={(e) => void handleDragEnd(e)}
+      >
+        <ul className="text-sm text-gray-900 dark:text-white" data-testid="node-tree">
+          {roots.map((node) => renderNode(node, 0))}
+        </ul>
+        <DragOverlay>
+          {activeData && (
+            <div className="bg-white dark:bg-gray-800 border border-indigo-300 rounded px-3 py-1 text-sm shadow-lg opacity-90">
+              {activeData.kind === "soldier" ? "👤" : "📁"} {activeData.name}
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {addDialog && (
         <AddChildNodeDialog parent={addDialog} onClose={() => setAddDialog(null)} onCreated={onChanged} />
