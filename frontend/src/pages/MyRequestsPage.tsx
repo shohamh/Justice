@@ -169,22 +169,59 @@ export default function MyRequestsPage() {
           </button>
         </form>
 
-        {items.length === 0 && <p className="text-sm text-gray-500">{t("my_requests.none")}</p>}
+        {items.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
 
-        <ul className="text-sm space-y-2" data-testid="constraints-list">
-          {items.map((c) => (
-            <li key={c.id} className="flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
-              <span dir="ltr">{c.start_date} → {c.end_date}</span>
-              <span className="text-gray-700 dark:text-gray-300">{c.reason}</span>
-              {statusBadge(c.status)}
-              {c.status === "pending" && (
-                <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
-                  {t("my_requests.cancel")}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        {items.filter((c) => c.status === "pending").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.pending_constraints")}</h4>
+            <ul className="space-y-2 text-sm" data-testid="constraints-list">
+              {items.filter((c) => c.status === "pending").map((c) => (
+                <li key={c.id} className="border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800 flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
+                  <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                  <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                  {statusBadge(c.status)}
+                  <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
+                    {t("my_requests.cancel")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {items.filter((c) => c.status === "approved").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.approved_constraints")}</h4>
+            <ul className="space-y-2 text-sm">
+              {items.filter((c) => c.status === "approved").map((c) => (
+                <li key={c.id} className="border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-950" data-testid={`constraint-row-${c.id}`}>
+                  <div className="flex items-center gap-3">
+                    <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                    {statusBadge(c.status)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {items.filter((c) => c.status === "rejected").length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.rejected_constraints")}</h4>
+            <ul className="space-y-2 text-sm">
+              {items.filter((c) => c.status === "rejected").map((c) => (
+                <li key={c.id} className="border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950" data-testid={`constraint-row-${c.id}`}>
+                  <div className="flex items-center gap-3">
+                    <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
+                    {statusBadge(c.status)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("exemption_requests.title")}</h3>

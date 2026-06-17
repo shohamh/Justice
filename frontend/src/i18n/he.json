@@ -93,7 +93,10 @@
     "my_exemptions": "הפטורים שלי",
     "medical_exemption": "פטור רפואי",
     "medical_privacy_note": "פרטי הפטור הרפואי הם מידע רפואי פרטי",
-    "exemption_details": "פרטים נוספים"
+    "exemption_details": "פרטים נוספים",
+    "pending_constraints": "אילוצים ממתינים לאישור",
+    "approved_constraints": "אילוצים שאושרו",
+    "rejected_constraints": "אילוצים שנדחו"
   },
   "approvals": {
     "title": "אישור בקשות",

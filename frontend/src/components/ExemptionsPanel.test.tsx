@@ -7,6 +7,8 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("../api/dutyConfig", () => ({
   listExemptionTypes: vi.fn(() => Promise.resolve([])),
+  getAllExemptionDutyTypeMaps: vi.fn(() => Promise.resolve({})),
+  listDutyTypes: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("../api/exemptions", () => ({
