@@ -162,7 +162,7 @@ export default function MyRequestsPage() {
           {items.map((c) => (
             <li key={c.id} className="flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
               <span dir="ltr">{c.start_date} → {c.end_date}</span>
-              <span className="text-gray-500">{c.reason}</span>
+              <span className="text-gray-700 dark:text-gray-300">{c.reason}</span>
               {statusBadge(c.status)}
               {c.status === "pending" && (
                 <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
@@ -321,7 +321,7 @@ export default function MyRequestsPage() {
               <li key={er.id} className="flex items-center gap-3">
                 <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
                 <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
-                {er.reason && <span className="text-gray-500">{er.reason}</span>}
+                {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
                 <span className={`text-xs ${
                   er.status === "approved" ? "text-green-600 dark:text-green-400" :
                   er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"

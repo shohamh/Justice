@@ -97,7 +97,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       mandatory_end_date: profileMandEnd || null,
       discharge_date: profileDischarge || null,
       last_mitvahim_date: profileMitvahim || null,
-      last_alal_date: profileAlal || null,
+      ...(profileIsOfficer ? { last_alal_date: profileAlal || null } : {}),
       ...(isAdmin ? { email: profileEmail || null } : {}),
     });
     setSavingProfile(false);
@@ -130,7 +130,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             ×
           </button>
         </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
 
         <div className="flex gap-4 border-b dark:border-gray-600 mb-4">
           {TABS.map((tKey) => (
@@ -283,9 +283,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <option value="female">{t("soldier_profile.gender_female")}</option>
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.is_officer")}</span>
-                <input type="checkbox" className="ml-2" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
+              <label className="flex items-center gap-3 cursor-pointer col-span-1">
+                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.is_officer")}</span>
+                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
@@ -303,9 +303,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   )}
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.bahad1_graduate")}</span>
-                <input type="checkbox" className="ml-2" checked={profileBahad1} onChange={(e) => setProfileBahad1(e.target.checked)} />
+              <label className="flex items-center gap-3 cursor-pointer col-span-1">
+                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.bahad1_graduate")}</span>
+                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileBahad1} onChange={(e) => setProfileBahad1(e.target.checked)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
@@ -328,10 +328,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
                 <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
               </label>
-              <label className="block">
-                <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
-                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
-              </label>
+              {profileIsOfficer && (
+                <label className="block">
+                  <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
+                  <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                </label>
+              )}
               {isAdmin && (
                 <label className="block col-span-2">
                   <span className="text-xs">{t("profile.email")}</span>
@@ -342,7 +344,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {!isCommander && (
               <div className="flex justify-end gap-2">
                 <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
-                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("team.edit")}</button>
+                <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("duty_config.save")}</button>
               </div>
             )}
           </form>
@@ -365,8 +367,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     {t(`my_requests.${c.status}`)}
                   </span>
                 </div>
-                {c.reason && <p className="text-gray-600">{c.reason}</p>}
-                {c.decision_note && <p className="text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
+                {c.reason && <p className="text-gray-700 dark:text-gray-300">{c.reason}</p>}
+                {c.decision_note && <p className="text-gray-500 dark:text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
                 {(isAdmin || isDutyManager) && c.status === "pending" && (
                   <div className="flex gap-2 mt-1">
                     <button className="text-xs text-green-600 hover:underline" onClick={() => handleApprove(c.id)} data-testid={`approve-constraint-${c.id}`}>
