@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import CommanderNotificationScope, Notification, NotificationPreference, NotificationType, Soldier
+from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier
 from app.db.session import get_session
 from app.services import notifications as svc
 from app.settings import get_settings
@@ -88,16 +88,25 @@ class UnreadCountOut(BaseModel):
 
 
 def _resolve_scope(session: Session, scope: CommanderNotificationScope) -> CommanderScopeOut:
-    from app.db.models import HierarchyNode, Soldier as SoldierModel
-    node = session.get(HierarchyNode, scope.hierarchy_node_id)
-    node_name = node.name if node else None
+    all_soldiers = session.execute(sa_select(Soldier)).scalars().all()
 
-    all_soldiers = session.execute(sa_select(SoldierModel)).scalars().all()
+    # Batch-load all HierarchyNode rows needed in one query
+    node_ids = {s.hierarchy_node_id for s in all_soldiers if s.hierarchy_node_id}
+    node_ids.add(scope.hierarchy_node_id)
+    node_map: dict[uuid.UUID, HierarchyNode] = {
+        n.id: n for n in session.execute(
+            sa_select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+        ).scalars()
+    }
+
+    scope_node = node_map.get(scope.hierarchy_node_id)
+    node_name = scope_node.name if scope_node else None
+
     matched: list[SoldierBrief] = []
     for s in all_soldiers:
         if s.hierarchy_node_id is None:
             continue
-        s_node = session.get(HierarchyNode, s.hierarchy_node_id)
+        s_node = node_map.get(s.hierarchy_node_id)
         if s_node is None:
             continue
         path_ids = list(s_node.path_ids)
@@ -233,8 +242,10 @@ def add_scope(
     scope = svc.add_commander_scope(session, commander_id=user.id,
                                      hierarchy_node_id=body.hierarchy_node_id,
                                      depth=body.depth)
+    session.flush()  # assign id without committing
+    result = _resolve_scope(session, scope)
     session.commit()
-    return _resolve_scope(session, scope)
+    return result
 
 
 @router.delete("/notifications/commander-scopes/{scope_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
