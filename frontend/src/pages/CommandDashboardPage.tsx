@@ -7,28 +7,30 @@ import UpcomingSnapshot from "../components/UpcomingSnapshot";
 import AlertsPanel from "../components/AlertsPanel";
 import { InternalFairness, ExternalFairness } from "../components/FairnessChart";
 import DutyPotentialPanel from "../components/DutyPotentialPanel";
-import ApprovalsFeed from "../components/ApprovalsFeed";
+import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import EntriesExitsPanel from "../components/EntriesExitsPanel";
 import UnitCalendar from "../components/UnitCalendar";
 import HierarchyTree from "../components/HierarchyTree";
-import { useAuth } from "../auth/AuthContext";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import { listSoldiers } from "../api/soldiers";
 import type { SoldierDTO } from "../api/soldiers";
 import {
   getSummary, getDashboardSoldiers, getFairnessInternal,
   getFairnessExternal, getPotential, getUpcoming,
-  getAlerts, getApprovals,
+  getAlerts,
   type SummaryCards as SummaryCardsData,
   type SoldierWithStatus, type FairnessStats,
   type NodeFairness, type PotentialCount,
-  type UpcomingDay, type Alert, type ApprovalItem,
+  type UpcomingDay, type Alert,
 } from "../api/commanderDashboard";
+import { listPendingEnrollments, type EnrollmentRequestDTO } from "../api/enrollment";
+import { listPendingSwaps, type SwapRequest } from "../api/swaps";
+import { getPendingCount } from "../api/constraints";
+import { getPendingExemptionCount } from "../api/exemptions";
+import { getPendingFieldUpdateCount } from "../api/soldiers";
 
 export default function CommandDashboardPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
-
   const [summaryData, setSummaryData] = useState<SummaryCardsData | null>(null);
   const [soldiers, setSoldiers] = useState<SoldierWithStatus[]>([]);
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
@@ -38,14 +40,20 @@ export default function CommandDashboardPage() {
   const [potentialData, setPotentialData] = useState<PotentialCount[] | null>(null);
   const [upcomingData, setUpcomingData] = useState<UpcomingDay[] | null>(null);
   const [alertsData, setAlertsData] = useState<Alert[] | null>(null);
-  const [approvalsData, setApprovalsData] = useState<ApprovalItem[] | null>(null);
+  const [pendingEnrollments, setPendingEnrollments] = useState<EnrollmentRequestDTO[]>([]);
+  const [pendingSwaps, setPendingSwaps] = useState<SwapRequest[]>([]);
+  const [pendingConstraints, setPendingConstraints] = useState(0);
+  const [pendingExemptions, setPendingExemptions] = useState(0);
+  const [pendingFieldUpdates, setPendingFieldUpdates] = useState(0);
   const [_activePanel, setActivePanel] = useState<string>("summary");
 
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([
       getSummary(), getDashboardSoldiers(), getFairnessInternal(),
       getFairnessExternal(), getPotential(), getUpcoming(),
-      getAlerts(), getApprovals(), fetchFullTree(), listSoldiers(),
+      getAlerts(), fetchFullTree(), listSoldiers(),
+      listPendingEnrollments(), listPendingSwaps(),
+      getPendingCount(), getPendingExemptionCount(), getPendingFieldUpdateCount(),
     ]);
     if (results[0].status === "fulfilled") setSummaryData(results[0].value);
     if (results[1].status === "fulfilled") setSoldiers(results[1].value);
@@ -54,9 +62,13 @@ export default function CommandDashboardPage() {
     if (results[4].status === "fulfilled") setPotentialData(results[4].value);
     if (results[5].status === "fulfilled") setUpcomingData(results[5].value);
     if (results[6].status === "fulfilled") setAlertsData(results[6].value);
-    if (results[7].status === "fulfilled") setApprovalsData(results[7].value);
-    if (results[8].status === "fulfilled") setNodes(results[8].value);
-    if (results[9].status === "fulfilled") setSoldierDTOs(results[9].value);
+    if (results[7].status === "fulfilled") setNodes(results[7].value);
+    if (results[8].status === "fulfilled") setSoldierDTOs(results[8].value);
+    if (results[9].status === "fulfilled") setPendingEnrollments(results[9].value as EnrollmentRequestDTO[]);
+    if (results[10].status === "fulfilled") setPendingSwaps(results[10].value as SwapRequest[]);
+    if (results[11].status === "fulfilled") setPendingConstraints(results[11].value as number);
+    if (results[12].status === "fulfilled") setPendingExemptions(results[12].value as number);
+    if (results[13].status === "fulfilled") setPendingFieldUpdates(results[13].value as number);
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -72,7 +84,15 @@ export default function CommandDashboardPage() {
     {
       id: "approvals",
       title: t("command_dashboard.approvals"),
-      content: <ApprovalsFeed data={approvalsData} onRefresh={refresh} />,
+      content: (
+        <PendingApprovalsWidget
+          pendingEnrollments={pendingEnrollments}
+          pendingSwaps={pendingSwaps}
+          pendingConstraints={pendingConstraints}
+          pendingExemptions={pendingExemptions}
+          pendingFieldUpdates={pendingFieldUpdates}
+        />
+      ),
     },
     {
       id: "upcoming",
@@ -90,7 +110,7 @@ export default function CommandDashboardPage() {
       content: (
         <div>
           <div className="mb-4">
-            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} isAdmin={false} onChanged={refresh} user={user} />
+            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} isAdmin={false} onChanged={refresh} />
           </div>
         </div>
       ),
