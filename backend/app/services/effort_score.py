@@ -214,13 +214,12 @@ def compute_effort_data(
         for dt in session.execute(select(DutyType)).scalars().all()
     }
 
-    # Map each calendar date to its quarter_start (skipping the planning window gap naturally)
-    date_to_quarter: dict[date, date] = {}
-    for q_start_d, q_end_d in all_quarters:
-        d = q_start_d
-        while d <= q_end_d:
-            date_to_quarter[d] = q_start_d
-            d += timedelta(days=1)
+    # Map calendar-quarter-start → clipped quarter-start used in all_quarters.
+    # O(Q) instead of O(Q × 90 days) — the per-day loop was building ~720 entries
+    # only to do a dict lookup that quarter_start() computes directly.
+    cal_qs_to_clipped: dict[date, date] = {
+        quarter_start(q_start_d): q_start_d for q_start_d, _ in all_quarters
+    }
 
     # Aggregate duty scores per quarter
     q_unit_scores: dict[date, Decimal] = {}
@@ -229,7 +228,7 @@ def compute_effort_data(
         # Skip the planning window — solver controls those
         if planning_start <= day <= planning_end:
             continue
-        qs = date_to_quarter.get(day)
+        qs = cal_qs_to_clipped.get(quarter_start(day))
         if qs is None:
             continue
         score = dt_scores.get(duty_type_id, Decimal("0")) * mult
@@ -307,13 +306,10 @@ def compute_effort_breakdown(
         for dt in session.execute(select(DutyType)).scalars().all()
     }
 
-    # Map each calendar date → quarter_start
-    date_to_quarter: dict[date, date] = {}
-    for q_start_d, q_end_d in quarters:
-        d = q_start_d
-        while d <= q_end_d:
-            date_to_quarter[d] = q_start_d
-            d += timedelta(days=1)
+    # Map calendar-quarter-start → clipped quarter-start (O(Q) instead of O(Q × 90 days))
+    cal_qs_to_clipped: dict[date, date] = {
+        quarter_start(q_start_d): q_start_d for q_start_d, _ in quarters
+    }
 
     # Aggregate duty scores per quarter
     q_unit_scores: dict[date, Decimal] = {}
@@ -322,7 +318,7 @@ def compute_effort_breakdown(
         # Skip the planning window — solver controls those
         if planning_start <= day <= planning_end:
             continue
-        qs = date_to_quarter.get(day)
+        qs = cal_qs_to_clipped.get(quarter_start(day))
         if qs is None:
             continue
         score = dt_scores.get(duty_type_id, Decimal("0")) * mult

@@ -209,6 +209,22 @@ def build_model(
                 dt += timedelta(days=1)
         constraint_map[s.id] = dates
 
+    # Pre-build duty date sets once so the eligible-filter and no-overlap loops
+    # don't re-expand the same date range O(S) and O(S×W) times respectively.
+    duty_dates_cache: dict[int, frozenset[date]] = {
+        di: frozenset(_duty_dates(d)) for di, d in enumerate(duty_list)
+    }
+
+    # Pre-build existing-assignment date sets per soldier (all and real-only) once
+    # so the no-overlap and rolling-window loops don't re-scan existing O(S) times.
+    _existing_real = [e for e in existing if not e.is_reserve]
+    existing_dates_cache: dict[uuid.UUID, set[date]] = {
+        s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
+    }
+    existing_real_dates_cache: dict[uuid.UUID, set[date]] = {
+        s.id: _existing_dates_by_soldier(_existing_real, s.id) for s in soldier_list
+    }
+
     # Pre-filter eligible (duty, soldier) pairs
     eligible: list[tuple[int, int]] = []
     soldier_duties: dict[int, list[int]] = defaultdict(list)
@@ -217,7 +233,7 @@ def build_model(
             if d.duty_type_id in exempt_map.get(s.id, set()):
                 continue
             constrained_dates = constraint_map.get(s.id, set())
-            if any(dt in constrained_dates for dt in _duty_dates(d)):
+            if duty_dates_cache[di] & constrained_dates:
                 continue
             if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
                 if s.hierarchy_node_id not in d.eligible_node_ids:
@@ -244,14 +260,14 @@ def build_model(
 
     # Hard constraint 2: No overlap — a soldier cannot be assigned two duties covering the same day
     all_dates_set: set[date] = set()
-    for d in duty_list:
-        all_dates_set.update(_duty_dates(d))
+    for di in range(len(duty_list)):
+        all_dates_set.update(duty_dates_cache[di])
 
     for si, s in enumerate(soldier_list):
-        existing_dates = _existing_dates_by_soldier(existing, s.id)
+        existing_dates = existing_dates_cache[s.id]
         for t in sorted(all_dates_set):
             day_vars = [x[(di, si)] for di in soldier_duties.get(si, [])
-                        if _duty_dates(duty_list[di]).count(t) > 0]
+                        if t in duty_dates_cache[di]]
             if not day_vars:
                 continue
             if t in existing_dates:
@@ -354,15 +370,8 @@ def build_model(
     # W-day window per soldier.  T <= R enforces the invariant; reserve days consume
     # R headroom but not T.  Inner loop uses binary search (bisect) so per-window
     # duty lookup is O(log m + matches) instead of O(m).
-    existing_all_by_soldier = {
-        s.id: _existing_dates_by_soldier(existing, s.id) for s in soldier_list
-    }
-    existing_real_by_soldier = {
-        s.id: _existing_dates_by_soldier(
-            [e for e in existing if not e.is_reserve], s.id
-        )
-        for s in soldier_list
-    }
+    existing_all_by_soldier = existing_dates_cache
+    existing_real_by_soldier = existing_real_dates_cache
 
     for si, s in enumerate(soldier_list):
         si_duties = soldier_duties.get(si, [])
