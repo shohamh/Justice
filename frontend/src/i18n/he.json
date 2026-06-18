@@ -151,7 +151,8 @@
     "revoke": "בטל",
     "none": "אין פטורים",
     "forever": "ללא הגבלה",
-    "exempts_from": "פוטר מ"
+    "exempts_from": "פוטר מ",
+    "past": "פטורים שפגו"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",
@@ -506,7 +507,7 @@
     "cancel": "ביטול",
     "activate": "הפעל מחדש",
     "delete": "מחק",
-    "delete_tooltip": "מחיקה קבועה — נדיר. לביטול בלבד יש להשתמש ב׳בטל משמרת׳.",
+    "delete_tooltip": "מחיקה קבועה — נדיר. לביטול בלבד יש להשתמש ב׳ביטול׳.",
     "actions": "פעולות",
     "save": "שמור",
     "assign": "שבץ",
@@ -515,7 +516,9 @@
     "location_name": "שם מיקום",
     "dismiss": "ביטול",
     "search_shifts": "חיפוש משמרות...",
-    "filter_duty_type": "סוג תורנות"
+    "filter_duty_type": "סוג תורנות",
+    "algorithm_running_badge": "ריצות פעילות",
+    "algorithm_done_badge": "הושלמו, ממתינות לפרסום"
   },
   "table": {
     "filter_placeholder": "סנן..."
@@ -921,6 +924,9 @@
     "no_adjustments": "אין שינויים לתצוגה",
     "delta_col": "שינוי",
     "reason_col": "סיבה",
-    "date_col": "תאריך"
+    "date_col": "תאריך",
+    "soldiers_load_error": "שגיאה בטעינת רשימת חיילים",
+    "generic_error": "שגיאה",
+    "soldier_placeholder": "— בחר חייל —"
   }
 }
