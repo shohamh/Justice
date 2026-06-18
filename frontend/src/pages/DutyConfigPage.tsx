@@ -106,9 +106,12 @@ export function DutyConfigContent() {
       setDeleteModal({ dt, usage, loading: false, error: null });
     } catch (err: unknown) {
       console.error("getDutyTypeUsage failed:", err);
-      const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response?.data?.detail;
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      const msg = detail ?? (status === 403 ? "אין הרשאה" : status === 404 ? "נתיב לא נמצא (אולי השרת לא עודכן)" : "שגיאה בטעינת נתונים");
+      const resp = (err as { response?: { data?: unknown; status?: number } })?.response;
+      const status = resp?.status;
+      let msg = status === 403 ? "אין הרשאה" : status === 404 ? "נתיב לא נמצא (אולי השרת לא עודכן)" : `שגיאה בטעינת נתונים (${status ?? "network"})`;
+      const detail = (resp?.data as { detail?: unknown } | undefined)?.detail;
+      if (typeof detail === "string" && detail) msg = detail;
+      else if (Array.isArray(detail) && detail.length > 0) msg = JSON.stringify(detail[0]);
       setDeleteModal({ dt, usage: null, loading: false, error: msg });
     }
   }
