@@ -3,7 +3,8 @@ import Layout from "../components/Layout";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
-import { formatDateRange } from "../utils/formatDate";
+import { DutyType, listDutyTypes } from "../api/dutyConfig";
+import { formatDate, formatDateRange } from "../utils/formatDate";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -26,12 +27,52 @@ export default function HakpazaPage() {
   const [done, setDone] = useState(false);
   const [scopedSoldiers, setScopedSoldiers] = useState<SoldierDTO[]>([]);
   const [soldierSearch, setSoldierSearch] = useState("");
+  const [nextShiftBySoldier, setNextShiftBySoldier] = useState<Record<string, { date: string; typeName: string } | null>>({});
+  const [shiftsLoading, setShiftsLoading] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
     listSoldiers().then(setScopedSoldiers).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (scopedSoldiers.length === 0) return;
+    setShiftsLoading(true);
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    Promise.all([
+      listDutyTypes().catch(() => [] as DutyType[]),
+      Promise.all(
+        scopedSoldiers.map((s) =>
+          listAssignments(s.id, { date_from: todayStr })
+            .then((asgns) => ({
+              soldierId: s.id,
+              upcoming: asgns
+                .filter((a) => a.status === "published")
+                .sort((a, b) => a.start_date.localeCompare(b.start_date)),
+            }))
+            .catch(() => ({ soldierId: s.id, upcoming: [] }))
+        )
+      ),
+    ]).then(([dts, results]) => {
+      const typeNameById = Object.fromEntries((dts as DutyType[]).map((d) => [d.id, d.name]));
+      const map: Record<string, { date: string; typeName: string } | null> = {};
+      for (const { soldierId, upcoming } of results) {
+        if (upcoming.length > 0) {
+          const first = upcoming[0];
+          map[soldierId] = {
+            date: first.start_date,
+            typeName: typeNameById[first.duty_type_id] ?? "תורנות",
+          };
+        } else {
+          map[soldierId] = null;
+        }
+      }
+      setNextShiftBySoldier(map);
+      setShiftsLoading(false);
+    });
+  }, [scopedSoldiers]);
 
   async function handleSoldierSelect(soldier: SoldierDTO | null) {
     if (!soldier) {
@@ -134,8 +175,19 @@ export default function HakpazaPage() {
                 className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 dir="rtl"
               />
+              {shiftsLoading && (
+                <p className="text-xs text-gray-400 px-3 py-1">טוען תורנויות...</p>
+              )}
               <div className="max-h-60 overflow-y-auto border rounded dark:border-gray-700 divide-y dark:divide-gray-700">
-                {scopedSoldiers
+                {[...scopedSoldiers]
+                  .sort((a, b) => {
+                    const na = nextShiftBySoldier[a.id];
+                    const nb = nextShiftBySoldier[b.id];
+                    if (na && nb) return na.date.localeCompare(nb.date);
+                    if (na) return -1;
+                    if (nb) return 1;
+                    return a.full_name.localeCompare(b.full_name);
+                  })
                   .filter((s) => !soldierSearch || s.full_name.includes(soldierSearch))
                   .map((s) => (
                     <button
@@ -144,8 +196,17 @@ export default function HakpazaPage() {
                       className="w-full text-right px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950 flex items-center justify-between gap-2"
                       onClick={() => { void handleSoldierSelect(s); }}
                     >
-                      <span className="font-medium">{s.full_name}</span>
-                      {s.rank && <span className="text-xs text-gray-400">{s.rank}</span>}
+                      <div className="text-right">
+                        <span className="font-medium">{s.full_name}</span>
+                        {s.rank && <span className="text-xs text-gray-400 mr-1">{s.rank}</span>}
+                        {nextShiftBySoldier[s.id] ? (
+                          <p className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">
+                            {nextShiftBySoldier[s.id]!.typeName} — {formatDate(nextShiftBySoldier[s.id]!.date)}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-0.5">אין תורנות קרובה</p>
+                        )}
+                      </div>
                     </button>
                   ))}
                 {scopedSoldiers.filter((s) => !soldierSearch || s.full_name.includes(soldierSearch)).length === 0 && (
