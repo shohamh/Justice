@@ -256,10 +256,12 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
-    void listJobs(50, 0).then((data) => {
-      setRunningCount(data.items.filter(j => j.status === "pending" || j.status === "running").length);
-      setDoneUnpublishedCount(data.items.filter(j => j.status === "done").length);
-    });
+    void listJobs(50, 0)
+      .then((data) => {
+        setRunningCount(data.items.filter((j) => j.status === "pending" || j.status === "running").length);
+        setDoneUnpublishedCount(data.items.filter((j) => j.status === "done").length);
+      })
+      .catch(() => {});
   }, []);
 
   const handleCancel = useCallback(async (shift: DutyShift) => {
