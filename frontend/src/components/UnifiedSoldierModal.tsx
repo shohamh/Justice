@@ -51,7 +51,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const canViewAll = isAdmin || isDutyManager || isCommander;
   const TABS: TabKey[] = canViewAll
     ? ["details", "profile", "exemptions", "constraints", "duty_history"]
-    : ["details", "duty_history"];
+    : isSelf
+      ? ["details", "profile", "duty_history"]
+      : ["details", "duty_history"];
 
   const [tab, setTab] = useState<TabKey>("details");
   const [editing, setEditing] = useState(false);
@@ -236,6 +238,18 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.direct_commander")}</span>
                   <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
+                </div>
+              )}
+              {soldier.last_mitvahim_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span>
+                  <span>{formatDate(soldier.last_mitvahim_date)}</span>
+                </div>
+              )}
+              {soldier.is_officer && soldier.last_alal_date && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span>
+                  <span>{formatDate(soldier.last_alal_date)}</span>
                 </div>
               )}
               {score && (
