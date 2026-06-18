@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
+import { formatDate } from "../utils/formatDate";
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -104,7 +105,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
             >
               <div className="flex items-center gap-2">
                 <span className="font-medium">{typeName(ex.exemption_type_id)}</span>
-                <span className="text-gray-500 dark:text-gray-400 text-xs" dir="ltr">{ex.start_date} → {ex.end_date ?? t("exemptions.forever")}</span>
+                <span className="text-gray-500 dark:text-gray-400 text-xs">{formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : t("exemptions.forever")}</span>
                 <DaysBadge start={ex.start_date} end={ex.end_date} />
                 {canManage && (
                   <button
