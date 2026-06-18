@@ -658,7 +658,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
             className={`text-xs px-2 py-1 rounded-full border ${
               filter === type
                 ? "bg-indigo-600 text-white border-indigo-600"
-                : "border-gray-300 text-gray-600 hover:border-indigo-400"
+                : "border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:border-indigo-500 dark:hover:border-indigo-400"
             }`}
             data-testid={`history-filter-${type}`}
           >
@@ -686,7 +686,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
             className={`text-xs px-2 py-1 rounded-full border ${
               statusFilter === status
                 ? "bg-indigo-600 text-white border-indigo-600"
-                : "border-gray-300 text-gray-600 hover:border-indigo-400"
+                : "border-gray-400 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:border-indigo-500 dark:hover:border-indigo-400"
             }`}
             data-testid={`history-status-filter-${status}`}
           >
