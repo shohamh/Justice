@@ -14,14 +14,15 @@ import { getPublicSettings } from "../api/publicSettings";
 import GimelimModal from "./GimelimModal";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
+  const [imgError, setImgError] = useState(false);
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
-  if (url) {
+  if (url && !imgError) {
     return (
       <img
         src={url}
         alt={name}
         className="w-7 h-7 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-600"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        onError={() => setImgError(true)}
       />
     );
   }
