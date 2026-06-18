@@ -8,6 +8,7 @@ import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
 import SoldierLink from "./SoldierLink";
 import { useAuth } from "../auth/AuthContext";
+import { formatDate } from "../utils/formatDate";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -228,7 +229,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               {soldier.enrolled_at && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("transparency.enrolled_at")}</span>
-                  <span dir="ltr">{soldier.enrolled_at}</span>
+                  <span>{formatDate(soldier.enrolled_at!)}</span>
                 </div>
               )}
               {soldier.direct_commander_id && soldier.direct_commander_name && (
@@ -322,11 +323,11 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldier.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldier.rank}</span></div>}
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldier.is_officer ? "✓" : "—"}</span></div>
             <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldier.bahad1_graduate ? "✓" : "—"}</span></div>
-            {soldier.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span dir="ltr">{soldier.enlistment_date}</span></div>}
-            {soldier.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span dir="ltr">{soldier.mandatory_end_date}</span></div>}
-            {soldier.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span dir="ltr">{soldier.discharge_date}</span></div>}
-            {soldier.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span dir="ltr">{soldier.last_mitvahim_date}</span></div>}
-            {soldier.is_officer && soldier.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span dir="ltr">{soldier.last_alal_date}</span></div>}
+            {soldier.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldier.enlistment_date)}</span></div>}
+            {soldier.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldier.mandatory_end_date)}</span></div>}
+            {soldier.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldier.discharge_date)}</span></div>}
+            {soldier.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldier.last_mitvahim_date)}</span></div>}
+            {soldier.is_officer && soldier.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldier.last_alal_date)}</span></div>}
           </div>
         )}
 
@@ -424,7 +425,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {constraints.map((c) => (
               <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-1" data-testid={`constraint-row-${c.id}`}>
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500" dir="ltr">{c.start_date} → {c.end_date}</span>
+                  <span className="text-gray-500">{formatDate(c.start_date)} → {formatDate(c.end_date)}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded ${c.status === "pending" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : c.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
                     {t(`my_requests.${c.status}`)}
                   </span>
