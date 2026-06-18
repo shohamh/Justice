@@ -112,6 +112,7 @@ export default function UnifiedNav() {
     { label: t("nav.planning_shifts"), to: "/planning/shifts", testId: "nav-shifts-management" },
     { label: t("nav.planning_assignment"), to: "/planning/assignment", testId: "nav-assignment" },
     { label: t("nav.planning_config"), to: "/planning/config", testId: "nav-duty-config" },
+    { label: t("score_adjustment.nav_label"), to: "/planning/score-adjustments", testId: "nav-score-adjustments" },
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
   ];
 
