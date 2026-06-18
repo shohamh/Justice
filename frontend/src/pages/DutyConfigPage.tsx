@@ -193,6 +193,9 @@ export function DutyConfigContent() {
       if (u && u.future_count > 0) futureParts.push(`${u.future_count} תורנויות עתידיות`);
       if (u && u.shift_count > 0) futureParts.push(`${u.shift_count} משמרות`);
       if (u && u.template_count > 0) futureParts.push(`${u.template_count} תבניות`);
+      const exemptionNote = u && u.exemption_map_count > 0
+        ? ` (${u.exemption_map_count} מיפויי פטורים יימחקו גם כן)`
+        : "";
 
       return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => !deleteModal.loading && setDeleteModal(null)}>
@@ -207,7 +210,7 @@ export function DutyConfigContent() {
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">טוען נתונים...</p>
             ) : u ? (
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                {canDelete && "לא נמצאו תורנויות, משמרות או תבניות עם סוג זה. מחיקה תהיה לצמיתות."}
+                {canDelete && `לא נמצאו תורנויות, משמרות או תבניות עם סוג זה.${exemptionNote} מחיקה תהיה לצמיתות.`}
                 {pastOnly && <>נמצאו <span className="font-medium">{u.past_count}</span> תורנויות עבר. מחיקה עלולה לפגוע בהיסטוריית הניקוד — מומלץ להשבית במקום.</>}
                 {hasFuture && <>נמצאו {futureParts.join(', ')} עם סוג זה. לא ניתן למחוק. ניתן להשבית את הסוג במקום.</>}
               </p>

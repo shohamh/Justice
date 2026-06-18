@@ -89,6 +89,7 @@ export interface DutyTypeUsage {
   future_count: number;
   template_count: number;
   shift_count: number;
+  exemption_map_count: number;
 }
 
 export async function getDutyTypeUsage(id: string): Promise<DutyTypeUsage> {

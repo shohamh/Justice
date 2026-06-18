@@ -187,6 +187,7 @@ class DutyTypeUsage(BaseModel):
     future_count: int
     template_count: int
     shift_count: int
+    exemption_map_count: int
 
 
 @router.get("/duty-types/{duty_type_id}/usage", response_model=DutyTypeUsage)
@@ -221,7 +222,12 @@ def get_duty_type_usage(
             DutyShift.status != "cancelled",
         )
     ).scalar_one()
-    return DutyTypeUsage(past_count=past_count, future_count=future_count, template_count=template_count, shift_count=shift_count)
+    exemption_map_count = session.execute(
+        select(func.count()).where(
+            ExemptionDutyTypeMap.duty_type_id == duty_type_id
+        )
+    ).scalar_one()
+    return DutyTypeUsage(past_count=past_count, future_count=future_count, template_count=template_count, shift_count=shift_count, exemption_map_count=exemption_map_count)
 
 
 @router.delete("/duty-types/{duty_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
