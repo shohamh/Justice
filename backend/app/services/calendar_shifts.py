@@ -33,7 +33,7 @@ def get_calendar_shifts(
     )
 
     soldiers_in_subtree = {
-        s.id: (s.full_name, s.hierarchy_node_id)
+        s.id: (s.full_name, s.hierarchy_node_id, s.profile_picture_url)
         for s in session.execute(
             select(Soldier).where(
                 Soldier.hierarchy_node_id.in_(subtree_node_ids),
@@ -161,7 +161,8 @@ def get_calendar_shifts(
     assignees_by_shift: dict[uuid.UUID, list[dict]] = {}
     for a in assignments:
         assignees_by_shift.setdefault(a.duty_shift_id, [])
-        sol_name, sol_node = soldiers_in_subtree.get(a.soldier_id, ("", None))
+        sol_data = soldiers_in_subtree.get(a.soldier_id, ("", None, None))
+        sol_name, sol_node, sol_pic = sol_data[0], sol_data[1], sol_data[2] if len(sol_data) > 2 else None
         entry: dict = {
             "assignment_id": a.id,
             "soldier_id": a.soldier_id,
@@ -169,6 +170,7 @@ def get_calendar_shifts(
             "hierarchy_label": _leaf_label(sol_node),
             "hierarchy_path_ids": _leaf_path_ids(sol_node),
             "is_reserve": a.is_reserve,
+            "profile_picture_url": sol_pic,
         }
         if a.is_reserve:
             entry["called_up_from"] = a.called_up_from
@@ -214,16 +216,23 @@ def get_calendar_shifts(
             .all()
         )
         extra_soldier_ids = {a.soldier_id for a in extra_assigns} - set(soldiers_in_subtree)
-        extra_soldiers: dict[uuid.UUID, str] = {}
+        extra_soldiers: dict[uuid.UUID, tuple[str, str | None]] = {}
         if extra_soldier_ids:
             for s in (
                 session.execute(select(Soldier).where(Soldier.id.in_(extra_soldier_ids)))
                 .scalars()
                 .all()
             ):
-                extra_soldiers[s.id] = s.full_name
+                extra_soldiers[s.id] = (s.full_name, s.profile_picture_url)
         for a in extra_assigns:
-            name = soldiers_in_subtree.get(a.soldier_id, ("", None))[0] or extra_soldiers.get(a.soldier_id, "")
+            subtree_data = soldiers_in_subtree.get(a.soldier_id)
+            if subtree_data:
+                name = subtree_data[0]
+                pic = subtree_data[2] if len(subtree_data) > 2 else None
+            else:
+                extra_data = extra_soldiers.get(a.soldier_id, ("", None))
+                name = extra_data[0]
+                pic = extra_data[1]
             assignees_by_shift.setdefault(a.duty_shift_id, []).append({
                 "assignment_id": a.id,
                 "soldier_id": a.soldier_id,
@@ -231,6 +240,7 @@ def get_calendar_shifts(
                 "hierarchy_label": None,
                 "hierarchy_path_ids": [],
                 "is_reserve": True,
+                "profile_picture_url": pic,
                 "called_up_from": a.called_up_from,
                 "called_up_to": a.called_up_to,
                 "primary_assignment_ids": reserve_to_primaries.get(a.id, []),
@@ -370,6 +380,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
             "hierarchy_label": _leaf_label(sol.hierarchy_node_id if sol else None),
             "hierarchy_path_ids": _leaf_path_ids(sol.hierarchy_node_id if sol else None),
             "is_reserve": a.is_reserve,
+            "profile_picture_url": sol.profile_picture_url if sol else None,
             "dismissals": [],
             "reserve_assignment_id": None,
             "reserve_hierarchy_distance": None,

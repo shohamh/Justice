@@ -49,6 +49,7 @@ class CalendarShiftAssignee(BaseModel):
     soldier_name: str
     hierarchy_label: str | None
     is_reserve: bool
+    profile_picture_url: str | None = None
     dismissals: list[CalendarShiftAssigneeDismissal] = []
     reserve_assignment_id: uuid.UUID | None = None
     reserve_hierarchy_distance: int | None = None
