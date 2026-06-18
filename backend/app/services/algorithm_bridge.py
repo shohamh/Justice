@@ -568,6 +568,14 @@ def persist_results(
     duty_to_batch: dict[uuid.UUID, int] | None = None,
 ) -> None:
     """Insert algorithm_draft assignments, explanations (primary only), and reserve links."""
+    import logging as _logging
+    import time as _time_pr
+    _pr_log = _logging.getLogger(__name__)
+    _pr_t0 = _time_pr.monotonic()
+
+    def _pr_phase(label: str) -> None:
+        _pr_log.info("[persist_results] phase=%-35s elapsed=%.1fs", label, _time_pr.monotonic() - _pr_t0)
+
     from app.algorithm.reserve import link_reserves
 
     duty_map = {d.id: d for d in duty_blocks}
@@ -616,8 +624,10 @@ def persist_results(
             else:
                 primary_assignments.append((da.id, a.soldier_id, shift_id))
 
+    _pr_phase(f"pass1 built ({len(created)} rows)")
     # Flush DutyAssignment rows so PKs are committed before FK-child rows
     session.flush()
+    _pr_phase("pass1 flush done")
 
     # Pass 2: insert AssignmentExplanation rows (FK to duty_assignments now safe)
     for da, duty_id in created:
@@ -635,6 +645,7 @@ def persist_results(
                     solver_seed=str(explanation_data.solver_seed),
                 ))
 
+    _pr_phase("pass2 explanations added")
     if primary_assignments and reserve_assignments and soldier_node is not None:
         links = link_reserves(
             primary_assignments=primary_assignments,
@@ -649,6 +660,7 @@ def persist_results(
                 primary_assignment_id=link.primary_assignment_id,
                 hierarchy_distance=link.hierarchy_distance,
             ))
+    _pr_phase("persist_results complete (pre-commit)")
 
 
 def _count_proposals_for_job(session: Session, job: AlgorithmJob) -> int:
@@ -775,11 +787,20 @@ def _br_to_dict(br) -> dict:
 
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
+    import logging
+    import time as _time
+
     from app.algorithm.explain import build_explanations
     from app.algorithm.reserve import compute_reserve_dist
     from app.algorithm.solver import solve
     from app.db.session import session_scope
     from app.services.settings_loader import get_setting
+
+    _log = logging.getLogger(__name__)
+    _t0 = _time.monotonic()
+
+    def _phase(label: str) -> None:
+        _log.info("[job %s] phase=%-30s elapsed=%.1fs", job_id, label, _time.monotonic() - _t0)
 
     cancel_event = threading.Event()
     _cancel_events[str(job_id)] = cancel_event
@@ -810,9 +831,11 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
                 shift_ids = [uuid.UUID(s) for s in job.shift_ids]
+                _phase("load_duty_blocks: start")
                 duties, block_to_shift_map = load_duty_blocks_from_shifts(
                     session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
                 )
+                _phase(f"load_duty_blocks: done ({len(duties)} blocks)")
 
                 if not duties:
                     # Every selected shift is already fully staffed (published or
@@ -831,7 +854,9 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 planning_start = min(d.start_date for d in duties)
                 planning_end = max(d.end_date for d in duties)
 
+                _phase("load_soldier_inputs: start")
                 soldiers = load_soldier_inputs(session, as_of=planning_start)
+                _phase(f"load_soldier_inputs: done ({len(soldiers)} soldiers)")
                 # Compute and inject quarterly effort scores
                 try:
                     _reset_raw = get_setting(session, "fairness.reset_date")
@@ -870,10 +895,12 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
                 hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
 
+                _phase("compute_reserve_dist: start")
                 reserve_dist = compute_reserve_dist(
                     soldiers=soldiers, duties=duties, block_to_shift=block_to_shift_map,
                     hierarchy_parent=hier_parent, soldier_node=soldier_node,
                 )
+                _phase("compute_reserve_dist: done")
 
                 # Real-time progress: the solver decomposes the run into batches and
                 # calls this back once with (0, total) then after each batch.  We map
@@ -892,11 +919,13 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 job.progress_message = json.dumps({"pct": 3, "label": "מכין נתונים…"})
                 session.commit()
 
+                _phase("solver: start")
                 result = solve(
                     soldiers, duties, existing, settings,
                     reserve_dist=reserve_dist, cancel_event=cancel_event,
                     progress_cb=_report_progress,
                 )
+                _phase(f"solver: done (status={result.status}, assignments={len(result.assignments)})")
                 job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
                 session.commit()
 
@@ -942,6 +971,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 stats_after = _count_space_stats(soldiers, result.assignments, duties, settings.effort_resolution,
                                                  settings.effort_range_min, settings.effort_range_max)
 
+                _phase("build_explanations: start")
                 explanation_data = build_explanations(
                     soldiers=soldiers,
                     duties=duties,
@@ -950,12 +980,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     global_after=stats_after,
                     solver_seed=result.seed,
                 )
+                _phase("build_explanations: done")
 
                 soldier_names = {
                     s.id: s.full_name
                     for s in session.execute(select(Soldier)).scalars().all()
                 }
 
+                _phase("persist_results: start")
                 persist_results(
                     session,
                     job=job,
@@ -970,6 +1002,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     soldier_node=soldier_node,
                     duty_to_batch=duty_to_batch,
                 )
+                _phase("persist_results: done")
 
                 # Check if job was cancelled while the solver was running
                 session.refresh(job)
@@ -1004,6 +1037,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 }
                 job.status = "done"
                 job.finished_at = datetime.now(tz=UTC)
+                _phase("job marked done, pre-final-commit")
 
                 if job.created_by:
                     from app.db.models import NotificationType
@@ -1019,6 +1053,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     )
 
                 session.commit()
+                _phase("final commit done — job complete")
 
             except Exception as exc:  # noqa: BLE001
                 session.rollback()
