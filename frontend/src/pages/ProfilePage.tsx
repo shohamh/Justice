@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import { formatDate } from "../utils/formatDate";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
@@ -157,11 +158,11 @@ export default function ProfilePage() {
           {user?.bahad1_graduate !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
           )}
-          {user?.enlistment_date && <div><span className="font-medium">{t("soldier_profile.enlistment_date")}:</span> {user.enlistment_date}</div>}
-          {user?.mandatory_end_date && <div><span className="font-medium">{t("soldier_profile.mandatory_end_date")}:</span> {user.mandatory_end_date}</div>}
-          {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {user.discharge_date}</div>}
-          {user?.last_mitvahim_date && <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {user.last_mitvahim_date}</div>}
-          {user?.last_alal_date && <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {user.last_alal_date}</div>}
+          {user?.enlistment_date && <div><span className="font-medium">{t("soldier_profile.enlistment_date")}:</span> {formatDate(user.enlistment_date)}</div>}
+          {user?.mandatory_end_date && <div><span className="font-medium">{t("soldier_profile.mandatory_end_date")}:</span> {formatDate(user.mandatory_end_date)}</div>}
+          {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {formatDate(user.discharge_date)}</div>}
+          {user?.last_mitvahim_date && <div><span className="font-medium">{t("soldier_profile.last_mitvahim_date")}:</span> {formatDate(user.last_mitvahim_date)}</div>}
+          {user?.last_alal_date && <div><span className="font-medium">{t("soldier_profile.last_alal_date")}:</span> {formatDate(user.last_alal_date)}</div>}
           {user?.direct_commander_id && user?.direct_commander_name && (
             <div>
               <span className="font-medium">{t("soldier_profile.direct_commander")}:</span>{" "}
