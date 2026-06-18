@@ -70,6 +70,7 @@ class EffortQuarterRow(BaseModel):
     share: Decimal
     weighted_share: Decimal
     is_partial: bool = False
+    adjustment_delta: Decimal = Decimal("0")
 
 
 class EffortBreakdownOut(BaseModel):
@@ -296,6 +297,7 @@ def effort_breakdown(
                 share=q.share,
                 weighted_share=q.weighted_share,
                 is_partial=q.is_partial,
+                adjustment_delta=q.adjustment_delta,
             )
             for q in bd.quarters
         ],

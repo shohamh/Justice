@@ -206,9 +206,9 @@ export default function ScoreAdjustmentPage() {
                 },
                 {
                   label: "עומס",
-                  before: preview ? preview.effort_score : (effortData ? Number(effortData.effort_score).toFixed(4) : "—"),
-                  after: preview ? preview.effort_score : null,
-                  note: "לא מושפע",
+                  before: preview ? preview.effort_score_before : (effortData ? Number(effortData.effort_score).toFixed(4) : "—"),
+                  after: preview ? preview.effort_score_after : null,
+                  note: "לחץ תצוגה מקדימה",
                 },
               ].map(({ label, before, after, note }) => (
                 <div key={label} className="grid grid-cols-3 border-t border-gray-200 dark:border-gray-600">

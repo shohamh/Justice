@@ -1009,13 +1009,21 @@ export default function TransparencyPage() {
                           const activePct = (parseFloat(q.active_frac) * 100).toFixed(0);
                           const unitScore = parseFloat(q.unit_score);
                           const weightedSharePct = (parseFloat(q.weighted_share) * 100).toFixed(2);
+                          const adjDelta = parseFloat(q.adjustment_delta ?? "0");
                           return (
                             <tr key={q.quarter_label} className={`border-b dark:border-gray-700 ${q.is_partial ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
                               <td className="py-2 text-gray-700 dark:text-gray-300 font-medium">
                                 <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
                                 {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
-                              <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(2)}</td>
+                              <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">
+                                <span>{parseFloat(q.soldier_score).toFixed(2)}</span>
+                                {adjDelta !== 0 && (
+                                  <span className={`block text-xs font-normal ${adjDelta > 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                                    {adjDelta > 0 ? "+" : ""}{adjDelta.toFixed(2)} התאמה
+                                  </span>
+                                )}
+                              </td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
                                 {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
                               </td>

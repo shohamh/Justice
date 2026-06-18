@@ -28,12 +28,13 @@ class EffortQuarterDetail:
     quarter_start: date
     quarter_end: date
     quarter_label: str       # e.g. "Q1 2026"
-    soldier_score: Decimal   # raw score earned by soldier in this quarter
-    unit_score: Decimal      # total unit score in this quarter
+    soldier_score: Decimal   # raw score earned by soldier in this quarter (duties + adjustments)
+    unit_score: Decimal      # total unit score in this quarter (duties + adjustments)
     active_frac: Decimal     # fraction of quarter soldier was active (0.0–1.0)
     share: Decimal           # soldier_score / unit_score (0 if unit had no duties)
     weighted_share: Decimal  # share × active_frac
     is_partial: bool = False # True if quarter end was clipped (still in progress)
+    adjustment_delta: Decimal = field(default_factory=lambda: Decimal("0"))  # sum of manual score adjustments in this quarter
 
 
 @dataclass
@@ -64,6 +65,18 @@ def quarter_end(d: date) -> date:
     if qs.month >= 10:
         return date(qs.year, 12, 31)
     return date(qs.year, qs.month + 3, 1) - timedelta(days=1)
+
+
+def _find_quarter_key(all_quarters: list[tuple[date, date]], d: date) -> date | None:
+    """
+    Return the q_start_d key (possibly clipped) for the calendar quarter containing d.
+    Returns None if d does not fall in any of the tracked quarters.
+    """
+    target = quarter_start(d)
+    for q_start_d, _ in all_quarters:
+        if quarter_start(q_start_d) == target:
+            return q_start_d
+    return None
 
 
 def _compute_effort_data(
@@ -151,7 +164,8 @@ def compute_effort_data(
     reset_date: date,
 ) -> dict[uuid.UUID, EffortData]:
     """
-    Compute EffortData for all soldiers using published assignment history.
+    Compute EffortData for all soldiers using published assignment history plus
+    any manual score adjustments (ScoreAdjustment records).
 
     Uses effective_duty_days() from scoring.py (same source-of-truth as score calculations).
     Loads history from reset_date up to (but not including) planning_start, PLUS any
@@ -161,7 +175,7 @@ def compute_effort_data(
     the caller (bridge) sets effort_per_milli after knowing unit_score_milli.
     """
     from sqlalchemy import select
-    from app.db.models import DutyType
+    from app.db.models import DutyType, ScoreAdjustment
 
     history_end = planning_start - timedelta(days=1)
 
@@ -208,7 +222,7 @@ def compute_effort_data(
             date_to_quarter[d] = q_start_d
             d += timedelta(days=1)
 
-    # Aggregate scores per quarter
+    # Aggregate duty scores per quarter
     q_unit_scores: dict[date, Decimal] = {}
     q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
     for day, soldier_id, duty_type_id, mult in days_data:
@@ -222,6 +236,16 @@ def compute_effort_data(
         q_unit_scores[qs] = q_unit_scores.get(qs, Decimal("0")) + score
         q_s_map = q_soldier_scores.setdefault(qs, {})
         q_s_map[soldier_id] = q_s_map.get(soldier_id, Decimal("0")) + score
+
+    # Include manual score adjustments in effort calculation
+    adj_rows = session.execute(select(ScoreAdjustment)).scalars().all()
+    for adj in adj_rows:
+        qs = _find_quarter_key(all_quarters, adj.created_at.date())
+        if qs is None:
+            continue
+        q_unit_scores[qs] = q_unit_scores.get(qs, Decimal("0")) + adj.delta
+        q_s_map = q_soldier_scores.setdefault(qs, {})
+        q_s_map[adj.soldier_id] = q_s_map.get(adj.soldier_id, Decimal("0")) + adj.delta
 
     return _compute_effort_data(
         soldiers=soldiers,
@@ -238,15 +262,21 @@ def compute_effort_breakdown(
     planning_start: date,
     planning_end: date,
     reset_date: date,
+    extra_adj_delta: Decimal = Decimal("0"),
+    extra_adj_date: date | None = None,
 ) -> EffortBreakdown:
     """
     Compute a full per-quarter effort breakdown for a single soldier.
+
+    Includes manual score adjustments (ScoreAdjustment records) in the calculation.
+    Pass extra_adj_delta + extra_adj_date to simulate a hypothetical future adjustment
+    (used by the preview endpoint).
 
     Returns EffortBreakdown with one EffortQuarterDetail per historical quarter
     (past and future beyond planning window) plus the aggregate effort_score and C_over_D.
     """
     from sqlalchemy import select
-    from app.db.models import DutyType
+    from app.db.models import DutyType, ScoreAdjustment
 
     history_end = planning_start - timedelta(days=1)
 
@@ -285,7 +315,7 @@ def compute_effort_breakdown(
             date_to_quarter[d] = q_start_d
             d += timedelta(days=1)
 
-    # Aggregate scores per quarter
+    # Aggregate duty scores per quarter
     q_unit_scores: dict[date, Decimal] = {}
     q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
     for day, s_id, duty_type_id, mult in days_data:
@@ -299,6 +329,29 @@ def compute_effort_breakdown(
         q_unit_scores[qs] = q_unit_scores.get(qs, Decimal("0")) + score
         q_s_map = q_soldier_scores.setdefault(qs, {})
         q_s_map[s_id] = q_s_map.get(s_id, Decimal("0")) + score
+
+    # Include manual score adjustments for this soldier
+    q_adj_scores: dict[date, Decimal] = {}
+    adj_rows = session.execute(
+        select(ScoreAdjustment).where(ScoreAdjustment.soldier_id == soldier.id)
+    ).scalars().all()
+    for adj in adj_rows:
+        qs = _find_quarter_key(quarters, adj.created_at.date())
+        if qs is None:
+            continue
+        q_adj_scores[qs] = q_adj_scores.get(qs, Decimal("0")) + adj.delta
+        q_unit_scores[qs] = q_unit_scores.get(qs, Decimal("0")) + adj.delta
+        q_s_map = q_soldier_scores.setdefault(qs, {})
+        q_s_map[soldier.id] = q_s_map.get(soldier.id, Decimal("0")) + adj.delta
+
+    # Apply hypothetical extra adjustment (for preview simulation)
+    if extra_adj_delta and extra_adj_date is not None:
+        extra_qs = _find_quarter_key(quarters, extra_adj_date)
+        if extra_qs is not None:
+            q_adj_scores[extra_qs] = q_adj_scores.get(extra_qs, Decimal("0")) + extra_adj_delta
+            q_unit_scores[extra_qs] = q_unit_scores.get(extra_qs, Decimal("0")) + extra_adj_delta
+            q_s_map = q_soldier_scores.setdefault(extra_qs, {})
+            q_s_map[soldier.id] = q_s_map.get(soldier.id, Decimal("0")) + extra_adj_delta
 
     # Compute per-quarter detail for this soldier
     quarter_details: list[EffortQuarterDetail] = []
@@ -324,7 +377,6 @@ def compute_effort_breakdown(
             W_i += active_frac
 
         true_q_end = quarter_end(q_start_d)
-        # Past quarters may be clipped (partial); future quarters are full calendar quarters
         quarter_details.append(EffortQuarterDetail(
             quarter_start=q_start_d,
             quarter_end=q_end_d,
@@ -335,6 +387,7 @@ def compute_effort_breakdown(
             share=share,
             weighted_share=weighted_share,
             is_partial=(q_end_d < true_q_end),
+            adjustment_delta=q_adj_scores.get(q_start_d, Decimal("0")),
         ))
 
     effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")

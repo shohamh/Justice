@@ -35,6 +35,7 @@ export interface EffortQuarterRow {
   share: string;
   weighted_share: string;
   is_partial: boolean;
+  adjustment_delta: string;
 }
 
 export interface EffortBreakdown {

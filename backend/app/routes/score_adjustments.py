@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, ScoreAdjustment, Soldier
+from app.db.models import DutyAssignment, HierarchyNode, ScoreAdjustment, Soldier
 from app.db.session import get_session
 from app.services import adjustments as svc
 from app.services.scoring import transparency_rows
@@ -50,8 +51,8 @@ class PreviewOut(BaseModel):
     cumulative_score_after: str
     normalised_score_before: str
     normalised_score_after: str
-    effort_score: str
-    effort_unchanged: bool = True
+    effort_score_before: str
+    effort_score_after: str
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
@@ -72,6 +73,9 @@ def preview_adjustment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> PreviewOut:
+    from app.services.effort_score import compute_effort_breakdown, quarter_start
+    from app.services.settings_loader import get_setting
+
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
@@ -84,7 +88,6 @@ def preview_adjustment(
     cum_before = Decimal(str(soldier_row["cumulative_score"]))
     spd_before = Decimal(str(soldier_row["score_per_day"]))
     normalised_before = Decimal(str(soldier_row["normalised_score"]))
-    effort = Decimal(str(soldier_row["effort_score"]))
     ad = int(soldier_row["active_days"])
     n = len(rows)
 
@@ -99,13 +102,46 @@ def preview_adjustment(
     else:
         normalised_after = Decimal("0")
 
+    # Compute effort before/after using the breakdown service
+    today = date.today()
+    try:
+        reset_raw = get_setting(session, "fairness.reset_date")
+        reset_date = date.fromisoformat(str(reset_raw))
+    except Exception:
+        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+
+    latest_published_end = session.execute(
+        select(func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= today:
+        planning_start = latest_published_end + timedelta(days=1)
+    else:
+        planning_start = today
+
+    bd_before = compute_effort_breakdown(
+        session,
+        soldier=s,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=reset_date,
+    )
+    bd_after = compute_effort_breakdown(
+        session,
+        soldier=s,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=reset_date,
+        extra_adj_delta=delta,
+        extra_adj_date=today,
+    )
+
     return PreviewOut(
         cumulative_score_before=f"{cum_before:.3f}",
         cumulative_score_after=f"{cum_after:.3f}",
         normalised_score_before=f"{normalised_before:.4f}",
         normalised_score_after=f"{normalised_after:.4f}",
-        effort_score=f"{effort:.4f}",
-        effort_unchanged=True,
+        effort_score_before=f"{bd_before.effort_score:.4f}",
+        effort_score_after=f"{bd_after.effort_score:.4f}",
     )
 
 

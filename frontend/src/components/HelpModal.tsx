@@ -281,7 +281,14 @@ function FairnessTab() {
                           <span className={q.is_partial ? "italic" : ""}>{q.quarter_label}</span>
                           {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 font-normal not-italic">(חלקי)</span>}
                         </td>
-                        <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">{parseFloat(q.soldier_score).toFixed(1)}</td>
+                        <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">
+                          <span>{parseFloat(q.soldier_score).toFixed(1)}</span>
+                          {parseFloat(q.adjustment_delta ?? "0") !== 0 && (
+                            <span className={`block text-xs ${parseFloat(q.adjustment_delta) > 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                              {parseFloat(q.adjustment_delta) > 0 ? "+" : ""}{parseFloat(q.adjustment_delta).toFixed(1)} התאמה
+                            </span>
+                          )}
+                        </td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
                           {unitScore > 0 ? unitScore.toFixed(1) : "—"}
                         </td>
@@ -366,6 +373,7 @@ function FairnessTab() {
           { icon: "📊", title: "דף השקיפות", desc: "כל חייל רואה את העומס הרבעוני שלו ושל שאר חברי היחידה — כולל טבלה שניתן למיין לפי עומס. לחץ על הערך לפירוט רבעוני." },
           { icon: "📅", title: "תאריך איפוס", desc: "מנהל המערכת יכול לקבוע מאיזה תאריך מחשבים היסטוריה. מומלץ: תחילת רבעון. תורנויות לפני תאריך זה לא נלקחות בחשבון." },
           { icon: "⚖️", title: "הגינות לחדשים", desc: "חייל שהצטרף לאחרונה מושווה רק לתקופה שבה שירת — הוא לא נפגע מכך שהיחידה הייתה פחות עסוקה לפני שהצטרף." },
+          { icon: "✏️", title: "התאמות ניקוד ידניות", desc: "מפקד רשאי להוסיף התאמה ידנית לניקוד חייל (חיובית או שלילית). ההתאמה משפיעה גם על ניקוד העומס הרבעוני — היא מתווספת לניקוד החייל וליחידה באותו רבעון, ומשפיעה בהתאם על חלקו היחסי. הפירוט הרבעוני מציין מה מגיע מהתאמה ידנית." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
             <span className="text-xl flex-shrink-0">{icon}</span>
