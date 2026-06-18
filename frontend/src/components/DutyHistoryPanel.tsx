@@ -23,7 +23,7 @@ type FilterType =
   | "exemption_request"
   | "personal_constraint";
 
-type StatusFilter = "all" | "published" | "draft" | "reserve" | "official";
+type StatusFilter = "all" | "published" | "draft" | "reserve" | "cancelled";
 
 const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "all", i18nKey: "duty_history.filter_all" },
@@ -607,7 +607,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
         return typeFiltered.filter((e) => e.status === "algorithm_draft");
       case "reserve":
         return typeFiltered.filter((e) => e.metadata.is_reserve === "true");
-      case "official":
+      case "cancelled":
         return typeFiltered.filter(
           (e) => e.status === "cancelled" || e.event_type === "cancellation"
         );
@@ -676,7 +676,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
               ? [{ status: "draft" as StatusFilter, label: t("duty_history.filter_draft") }]
               : []),
             { status: "reserve" as StatusFilter, label: t("duty_history.filter_reserve") },
-            { status: "official" as StatusFilter, label: t("duty_history.filter_official") },
+            { status: "cancelled" as StatusFilter, label: t("duty_history.filter_official") },
           ] as { status: StatusFilter; label: string }[]
         ).map(({ status, label }) => (
           <button
