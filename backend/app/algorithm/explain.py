@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
@@ -24,6 +26,13 @@ def build_explanations(
 ) -> ExplanationData:
     duty_map = {d.id: d for d in duties}
 
+    # Pre-build soldier → assigned duties lookup so the overlap check below is
+    # O(avg_assignments_per_soldier) rather than O(len(assignments)), avoiding
+    # an O(A² × S) triple-nested loop that hangs for large runs.
+    soldier_duties: dict[uuid.UUID, list[tuple[uuid.UUID, DutyBlock]]] = defaultdict(list)
+    for a2 in assignments:
+        soldier_duties[a2.soldier_id].append((a2.duty_id, duty_map[a2.duty_id]))
+
     per_assignment: list[AssignmentExplanation] = []
     for a in assignments:
         duty = duty_map[a.duty_id]
@@ -37,9 +46,8 @@ def build_explanations(
                 if cs <= duty.end_date and ce >= duty.start_date:
                     blocking.append("personal_constraint")
                     break
-            for other_a in assignments:
-                if other_a.soldier_id == s.id and other_a.duty_id != a.duty_id:
-                    other_duty = duty_map[other_a.duty_id]
+            for other_duty_id, other_duty in soldier_duties.get(s.id, []):
+                if other_duty_id != a.duty_id:
                     if other_duty.start_date <= duty.end_date and other_duty.end_date >= duty.start_date:
                         blocking.append("overlap")
                         break
