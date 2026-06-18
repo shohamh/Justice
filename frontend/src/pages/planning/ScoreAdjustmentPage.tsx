@@ -17,7 +17,7 @@ export default function ScoreAdjustmentPage() {
 
   useEffect(() => {
     listSoldiers().then(setSoldiers).catch(() => setError(t("score_adjustment.soldiers_load_error")));
-  }, []);
+  }, [t]);
 
   // Load adjustments when soldier changes
   useEffect(() => {

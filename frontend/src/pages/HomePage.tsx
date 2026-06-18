@@ -165,6 +165,53 @@ export default function HomePage() {
     return { pos, total: transparencyRows.length };
   }, [myRow, transparencyRows]);
 
+  const currentMonthStart = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }, []);
+
+  const currentMonthEnd = useMemo(() => {
+    const d = new Date();
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return last.toISOString().split("T")[0];
+  }, []);
+
+  const monthReserveDays = useMemo(() => {
+    return duties
+      .filter(
+        (d) =>
+          d.is_reserve &&
+          d.start_date <= currentMonthEnd &&
+          d.end_date >= currentMonthStart
+      )
+      .reduce((sum, d) => {
+        const start = d.start_date < currentMonthStart ? currentMonthStart : d.start_date;
+        const end = d.end_date > currentMonthEnd ? currentMonthEnd : d.end_date;
+        const [sy, sm, sd] = start.split("-").map(Number);
+        const [ey, em, ed] = end.split("-").map(Number);
+        return sum + (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+      }, 0);
+  }, [duties, currentMonthStart, currentMonthEnd]);
+
+  const yearReserveDays = useMemo(() => {
+    const yearStart = `${new Date().getFullYear()}-01-01`;
+    const yearEnd = `${new Date().getFullYear()}-12-31`;
+    return duties
+      .filter(
+        (d) =>
+          d.is_reserve &&
+          d.start_date <= yearEnd &&
+          d.end_date >= yearStart
+      )
+      .reduce((sum, d) => {
+        const start = d.start_date < yearStart ? yearStart : d.start_date;
+        const end = d.end_date > yearEnd ? yearEnd : d.end_date;
+        const [sy, sm, sd] = start.split("-").map(Number);
+        const [ey, em, ed] = end.split("-").map(Number);
+        return sum + (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+      }, 0);
+  }, [duties]);
+
   const typeChartData = useMemo(() => {
     if (!breakdown) return [];
     return breakdown.per_type
@@ -224,6 +271,15 @@ export default function HomePage() {
           myRow={myRow}
           allRows={transparencyRows}
         />
+
+        {/* Reserve days this month */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">ימי רזרבה החודש</p>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{monthReserveDays}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{"סה\"כ"} השנה: {yearReserveDays}</p>
+          </div>
+        </div>
 
         {/* היומן שלי — stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
