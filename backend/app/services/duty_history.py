@@ -67,7 +67,8 @@ def _score_parts(
     Returns ("0.0", "", "[]") when there are no days in range or spd is zero.
     """
     start = max(a.start_date, date_from) if date_from is not None else a.start_date
-    end = min(a.end_date, date_to) if date_to is not None else a.end_date
+    # date_to is inclusive; convert to exclusive to match end_date semantics
+    end = min(a.end_date, date_to + timedelta(days=1)) if date_to is not None else a.end_date
 
     if start >= end or spd == Decimal("0"):
         return "0.0", "", "[]"
