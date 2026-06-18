@@ -15,31 +15,46 @@ function toDateStr(d: Date): string {
 
 export default function GenerateShiftsModal({ open, templateId, onClose, onGenerated }: Props) {
   const { t } = useTranslation();
-  const today = toDateStr(new Date());
 
-  const [fromDate, setFromDate] = useState(today);
+  const [fromDate, setFromDate] = useState(() => toDateStr(new Date()));
   const [toDate, setToDate] = useState("");
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-preview when both dates are set and valid
+  // Reset state when modal opens so stale preview/result don't carry over
+  useEffect(() => {
+    if (open) {
+      setFromDate(toDateStr(new Date()));
+      setToDate("");
+      setPreview(null);
+      setResult(null);
+      setError(null);
+    }
+  }, [open]);
+
+  // Auto-preview when both dates are set and valid; cancel stale requests
   useEffect(() => {
     if (!fromDate || !toDate || toDate < fromDate) {
       setPreview(null);
       return;
     }
+    let cancelled = false;
+    setPreview(null);
     setError(null);
     setResult(null);
     setLoading(true);
     previewGeneration(templateId, fromDate, toDate)
-      .then(setPreview)
+      .then((rows) => { if (!cancelled) setPreview(rows); })
       .catch((err: unknown) => {
-        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-        setError(detail ?? "שגיאה");
+        if (!cancelled) {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          setError(detail ?? "שגיאה");
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [templateId, fromDate, toDate]);
 
   if (!open) return null;
