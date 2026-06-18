@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../../components/Layout";
 import { createAdjustment, listAdjustments, ScoreAdjustment } from "../../api/scoreAdjustments";
@@ -8,8 +8,17 @@ export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [adjustments, setAdjustments] = useState<ScoreAdjustment[]>([]);
+
+  // Soldier search combobox
+  const [soldierSearch, setSoldierSearch] = useState("");
   const [soldierId, setSoldierId] = useState("");
-  const [delta, setDelta] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+
+  // Delta: sign + positive amount
+  const [sign, setSign] = useState<"+" | "-">("+");
+  const [amount, setAmount] = useState("");
+
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -19,11 +28,41 @@ export default function ScoreAdjustmentPage() {
     listSoldiers().then(setSoldiers).catch(() => setError(t("score_adjustment.soldiers_load_error")));
   }, [t]);
 
-  // Load adjustments when soldier changes
   useEffect(() => {
     if (!soldierId) { setAdjustments([]); return; }
     listAdjustments(soldierId).then(setAdjustments).catch(() => setAdjustments([]));
   }, [soldierId]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filteredSoldiers = soldiers.filter((s) =>
+    s.full_name.includes(soldierSearch)
+  );
+
+  function selectSoldier(s: SoldierDTO) {
+    setSoldierId(s.id);
+    setSoldierSearch(s.full_name);
+    setShowDropdown(false);
+    setSuccessMsg("");
+  }
+
+  function clearSoldier() {
+    setSoldierId("");
+    setSoldierSearch("");
+    setAdjustments([]);
+    setSuccessMsg("");
+  }
+
+  const delta = amount ? (sign === "+" ? amount : `-${amount}`) : "";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,9 +73,9 @@ export default function ScoreAdjustmentPage() {
     try {
       await createAdjustment({ soldier_id: soldierId, delta, reason: reason.trim() });
       setSuccessMsg(t("score_adjustment.success_msg"));
-      setDelta("");
+      setAmount("");
+      setSign("+");
       setReason("");
-      // Reload adjustments for this soldier
       listAdjustments(soldierId).then(setAdjustments).catch(() => {});
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -63,41 +102,101 @@ export default function ScoreAdjustmentPage() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow p-5 space-y-4">
+
+          {/* Soldier searchable combobox */}
           <div>
-            <label htmlFor="adj-soldier" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t("score_adjustment.soldier_label")} <span className="text-red-500">*</span>
             </label>
-            <select
-              id="adj-soldier"
-              value={soldierId}
-              onChange={(e) => { setSoldierId(e.target.value); setSuccessMsg(""); }}
-              required
-              className="block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
-            >
-              <option value="">{t("score_adjustment.soldier_placeholder")}</option>
-              {soldiers.map((s) => (
-                <option key={s.id} value={s.id}>{s.full_name}</option>
-              ))}
-            </select>
+            <div ref={comboRef} className="relative">
+              <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 overflow-hidden">
+                <input
+                  type="text"
+                  value={soldierSearch}
+                  onChange={(e) => {
+                    setSoldierSearch(e.target.value);
+                    setSoldierId("");
+                    setShowDropdown(true);
+                  }}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder={t("score_adjustment.soldier_placeholder")}
+                  className="flex-1 p-2 text-sm bg-transparent outline-none dark:text-gray-100"
+                  autoComplete="off"
+                />
+                {soldierSearch && (
+                  <button
+                    type="button"
+                    onClick={clearSoldier}
+                    className="px-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg leading-none"
+                    tabIndex={-1}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {showDropdown && filteredSoldiers.length > 0 && (
+                <ul className="absolute z-20 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg mt-1 shadow-lg max-h-52 overflow-y-auto text-sm">
+                  {filteredSoldiers.map((s) => (
+                    <li
+                      key={s.id}
+                      onMouseDown={() => selectSoldier(s)}
+                      className={`px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${s.id === soldierId ? "bg-blue-50 dark:bg-blue-900/40 font-medium" : ""}`}
+                    >
+                      {s.full_name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
+          {/* Delta: +/- buttons + positive number */}
           <div>
-            <label htmlFor="adj-delta" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t("score_adjustment.delta_label")} <span className="text-red-500">*</span>
             </label>
-            <input
-              id="adj-delta"
-              type="number"
-              step="0.01"
-              value={delta}
-              onChange={(e) => setDelta(e.target.value)}
-              required
-              placeholder="+1.5 / -2.0"
-              className="block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
-              dir="ltr"
-            />
+            <div className="flex items-center gap-2" dir="ltr">
+              <button
+                type="button"
+                onClick={() => setSign("+")}
+                className={`w-10 h-10 rounded-lg text-lg font-bold border transition-colors ${
+                  sign === "+"
+                    ? "bg-green-500 text-white border-green-500"
+                    : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-green-400"
+                }`}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => setSign("-")}
+                className={`w-10 h-10 rounded-lg text-lg font-bold border transition-colors ${
+                  sign === "-"
+                    ? "bg-red-500 text-white border-red-500"
+                    : "bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-red-400"
+                }`}
+              >
+                −
+              </button>
+              <input
+                id="adj-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
+              />
+              {amount && (
+                <span className={`text-sm font-semibold ${sign === "+" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                  {sign}{Number(amount).toFixed(2)}
+                </span>
+              )}
+            </div>
           </div>
 
+          {/* Reason */}
           <div>
             <label htmlFor="adj-reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t("score_adjustment.reason_label")} <span className="text-red-500">*</span>
@@ -117,7 +216,7 @@ export default function ScoreAdjustmentPage() {
 
           <button
             type="submit"
-            disabled={submitting || !soldierId || !delta || !reason.trim()}
+            disabled={submitting || !soldierId || !amount || Number(amount) <= 0 || !reason.trim()}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {t("score_adjustment.submit_btn")}
@@ -146,7 +245,7 @@ export default function ScoreAdjustmentPage() {
                       <td className={`py-2 font-medium ${Number(a.delta) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {Number(a.delta) >= 0 ? "+" : ""}{Number(a.delta).toFixed(2)}
                       </td>
-                      <td className="py-2 text-xs text-gray-600 dark:text-gray-400 max-w-xs truncate">{a.reason}</td>
+                      <td className="py-2 text-xs text-gray-600 dark:text-gray-400 max-w-xs" title={a.reason}>{a.reason}</td>
                     </tr>
                   ))}
                 </tbody>
