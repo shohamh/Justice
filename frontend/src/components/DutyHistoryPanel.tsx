@@ -11,6 +11,7 @@ import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
+import { formatDate } from "../utils/formatDate";
 
 type FilterType =
   | "all"
@@ -159,8 +160,8 @@ function EventCard({
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="font-medium">{e.title}</p>
-            <p className="text-xs text-gray-500" dir="ltr">
-              {e.date}{e.end_date && e.end_date !== e.date ? ` → ${e.end_date}` : ""}
+            <p className="text-xs text-gray-500">
+              {formatDate(e.date)}{e.end_date && e.end_date !== e.date ? ` – ${formatDate(e.end_date)}` : ""}
             </p>
             <div className="flex gap-1 mt-1 flex-wrap">
               {e.metadata.is_reserve === "true" && (
@@ -713,7 +714,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
           {/* Divider */}
           <div className="flex items-center gap-2 py-1">
             <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs text-gray-400">{today}</span>
+            <span className="text-xs text-gray-400">{formatDate(today)}</span>
             <div className="flex-1 h-px bg-gray-200" />
           </div>
 
