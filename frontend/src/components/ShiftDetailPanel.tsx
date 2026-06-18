@@ -13,6 +13,25 @@ import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import GimelimModal from "./GimelimModal";
 
+function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
+  const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className="w-7 h-7 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-600"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0 text-indigo-700 dark:text-indigo-300 font-semibold text-xs">
+      {initials}
+    </div>
+  );
+}
+
 interface Props {
   shift: CalendarShift;
   onClose: () => void;
@@ -168,6 +187,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                 >
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
+                      <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                       <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                       {a.hierarchy_label && <span className="text-xs text-gray-400">({a.hierarchy_label})</span>}
                       {isCalledUp && (
@@ -262,11 +282,14 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                   className="border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 rounded p-2 text-sm flex flex-col gap-1"
                 >
                   <div className="flex justify-between items-center">
-                    <div>
-                      <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                      {a.hierarchy_label && (
-                        <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
+                      <div>
+                        <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
+                        {a.hierarchy_label && (
+                          <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {a.dismissals.map((d) => (
@@ -294,6 +317,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
+                    <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
                     <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
                     <span className="text-xs text-purple-500">({t("reserve_label")})</span>
                     {a.hierarchy_label && (

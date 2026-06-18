@@ -37,6 +37,7 @@ export interface CalendarShiftAssignee {
   soldier_name: string;
   hierarchy_label: string | null;
   is_reserve: boolean;
+  profile_picture_url: string | null;
   dismissals: CalendarShiftAssigneeDismissal[];
   reserve_assignment_id: string | null;
   reserve_hierarchy_distance: number | null;
