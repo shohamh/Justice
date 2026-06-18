@@ -496,9 +496,40 @@ def _explanation_payload(
     dm_view: bool,
     soldier_names: dict[uuid.UUID, str],
 ) -> dict[str, Any]:
-    """Serialise one AssignmentExplanation to a JSON-safe dict."""
+    """Serialise one AssignmentExplanation to a JSON-safe dict.
+
+    Pre-computes pool_size/blocked_count/assigned_rank from the full candidate
+    list, then truncates to top-10 unblocked + 5 blocked before storing.
+    Keeps JSONB payloads small (~1-2KB instead of ~40KB) while preserving the
+    aggregate stats the UI needs.
+    """
+    assigned_id = exp.assigned_soldier_id
+
+    unblocked = [c for c in exp.candidates if not c.blocked]
+    blocked_list = [c for c in exp.candidates if c.blocked]
+
+    pool_size = len(unblocked)
+    blocked_count = len(blocked_list)
+
+    unblocked_sorted = sorted(
+        unblocked,
+        key=lambda c: c.pre_effort_score if c.pre_effort_score is not None else float("inf"),
+    )
+    assigned_rank = next(
+        (i + 1 for i, c in enumerate(unblocked_sorted) if c.soldier_id == assigned_id),
+        None,
+    )
+
+    # Top 10 unblocked for display; always include the assigned soldier even if rank > 10
+    display_unblocked: list = unblocked_sorted[:10]
+    if assigned_rank is not None and assigned_rank > 10:
+        assigned_c = next(c for c in unblocked_sorted if c.soldier_id == assigned_id)
+        display_unblocked = display_unblocked + [assigned_c]
+
+    display_candidates = display_unblocked + blocked_list[:5]
+
     candidates = []
-    for c in exp.candidates:
+    for c in display_candidates:
         entry: dict[str, Any] = {
             "soldier_id": str(c.soldier_id),
             "blocked": c.blocked,
@@ -509,10 +540,14 @@ def _explanation_payload(
             entry["pre_norm_score"] = c.pre_effort_score
             entry["post_norm_score"] = c.post_effort_score
         candidates.append(entry)
+
     return {
         "duty_id": str(exp.duty_id),
-        "assigned_soldier_id": str(exp.assigned_soldier_id),
+        "assigned_soldier_id": str(assigned_id),
         "tiebreaker_note": exp.tiebreaker_note,
+        "pool_size": pool_size,
+        "blocked_count": blocked_count,
+        "assigned_rank": assigned_rank,
         "candidates": candidates,
     }
 

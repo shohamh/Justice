@@ -31,8 +31,18 @@ router = APIRouter(prefix="/algorithm", tags=["algorithm"])
 def _compute_candidate_rank(
     candidates: list[dict],
     soldier_id: str,
+    *,
+    payload: dict | None = None,
 ) -> tuple[int | None, int | None]:
-    """Return (1-based rank, pool_size) for soldier among unblocked candidates sorted by pre_norm_score asc."""
+    """Return (1-based rank, pool_size) for soldier among unblocked candidates sorted by pre_norm_score asc.
+
+    Uses pre-computed pool_size/assigned_rank from payload when available (new records).
+    Falls back to scanning candidates for old records that predate the truncation change.
+    """
+    if payload is not None and payload.get("pool_size") is not None:
+        if payload.get("assigned_soldier_id") == soldier_id:
+            return payload.get("assigned_rank"), payload["pool_size"]
+
     unblocked = [c for c in candidates if not c.get("blocked")]
     pool_size = len(unblocked)
     if pool_size == 0:
@@ -269,7 +279,7 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                     norm_before = c.get("pre_norm_score")
                     norm_after = c.get("post_norm_score")
                     break
-            candidate_rank, candidate_pool_size = _compute_candidate_rank(candidates, str(a.soldier_id))
+            candidate_rank, candidate_pool_size = _compute_candidate_rank(candidates, str(a.soldier_id), payload=payload)
         proposals.append(ProposalOut(
             assignment_id=a.id,
             soldier_id=a.soldier_id,
@@ -322,7 +332,9 @@ def _explanation_response(
 
     # Soldier-redacted view
     candidates = payload.get("candidates", [])
-    blocked_count = sum(1 for c in candidates if c.get("blocked"))
+    # Use pre-computed aggregates when available (new records); fall back to counting
+    # the truncated candidate list for old records that predate the truncation change.
+    blocked_count = payload.get("blocked_count") if payload.get("blocked_count") is not None else sum(1 for c in candidates if c.get("blocked"))
     my_candidate = next(
         (c for c in candidates if c["soldier_id"] == str(user.id)),
         None,
@@ -344,9 +356,9 @@ def _explanation_response(
     # Build enriched soldier view for the redesigned explanation modal
     eligible = [c for c in candidates if not c.get("blocked")]
     eligible_sorted = sorted(eligible, key=lambda c: (_score(c) or 0))
-    eligible_count = len(eligible)
+    eligible_count = payload.get("pool_size") if payload.get("pool_size") is not None else len(eligible)
     my_id = str(user.id)
-    soldier_rank = next(
+    soldier_rank = payload.get("assigned_rank") if payload.get("assigned_rank") is not None else next(
         (i + 1 for i, c in enumerate(eligible_sorted) if c["soldier_id"] == my_id),
         1,
     )
