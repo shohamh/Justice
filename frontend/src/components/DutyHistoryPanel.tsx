@@ -599,7 +599,9 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     switch (statusFilter) {
       case "published":
         return typeFiltered.filter(
-          (e) => e.status === "published" || e.status === "active" || e.status === "approved"
+          (e) =>
+            (e.status === "published" || e.status === "active" || e.status === "approved") &&
+            e.metadata.is_reserve !== "true"
         );
       case "draft":
         return typeFiltered.filter((e) => e.status === "algorithm_draft");
@@ -607,7 +609,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
         return typeFiltered.filter((e) => e.metadata.is_reserve === "true");
       case "official":
         return typeFiltered.filter(
-          (e) => e.event_type === "assignment" && e.metadata.is_reserve !== "true"
+          (e) => e.status === "cancelled" || e.event_type === "cancellation"
         );
       default:
         return typeFiltered;

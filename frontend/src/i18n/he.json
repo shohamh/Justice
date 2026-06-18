@@ -742,10 +742,10 @@
     "reserve": "רזרבה",
     "called_up": "הוקפץ",
     "draft_badge": "טיוטה",
-    "filter_published": "פורסם",
+    "filter_published": "שיבוץ בפועל (לא רזרבה)",
     "filter_draft": "טיוטה",
     "filter_reserve": "רזרבה",
-    "filter_official": "רשמי"
+    "filter_official": "בוטל"
   },
   "upcoming_duty_alert": {
     "today": "היום",
