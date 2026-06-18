@@ -16,7 +16,7 @@ export default function ScoreAdjustmentPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    listSoldiers().then(setSoldiers).catch(() => {});
+    listSoldiers().then(setSoldiers).catch(() => setError("שגיאה בטעינת רשימת חיילים"));
   }, []);
 
   // Load adjustments when soldier changes
@@ -70,7 +70,7 @@ export default function ScoreAdjustmentPage() {
             <select
               id="adj-soldier"
               value={soldierId}
-              onChange={(e) => setSoldierId(e.target.value)}
+              onChange={(e) => { setSoldierId(e.target.value); setSuccessMsg(""); }}
               required
               className="block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
             >

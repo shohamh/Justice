@@ -72,7 +72,8 @@
     "shifts_tab_manual": "שיבוץ ידני",
     "shifts_tab_algorithm": "שיבוץ אלגוריתם",
     "admin_settings": "הגדרות מערכת",
-    "admin_invite_codes": "קודי הזמנה"
+    "admin_invite_codes": "קודי הזמנה",
+    "score_adjustments": "שינוי ניקוד ידני"
   },
   "my_requests": {
     "title": "אילוצים ופטורים",
