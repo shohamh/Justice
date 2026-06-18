@@ -55,6 +55,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       ? ["details", "profile", "duty_history"]
       : ["details", "duty_history"];
 
+  const [soldierData, setSoldierData] = useState<SoldierDTO>(soldier);
+
+  useEffect(() => { setSoldierData(soldier); }, [soldier]);
+
   const [tab, setTab] = useState<TabKey>("details");
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(soldier.full_name);
@@ -79,12 +83,19 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
+    setFullName(soldierData.full_name);
+    setPhone(soldierData.phone ?? "");
+    setHierarchyNodeId(soldierData.hierarchy_node_id ?? "");
+    setEnrolledAt(soldierData.enrolled_at ?? "");
+  }, [soldierData]);
+
+  useEffect(() => {
     void getRanks().then(setRankOptions);
   }, []);
 
   const refreshConstraints = useCallback(async () => {
-    setConstraints(await listSoldierConstraints(soldier.id));
-  }, [soldier.id]);
+    setConstraints(await listSoldierConstraints(soldierData.id));
+  }, [soldierData.id]);
 
   useEffect(() => {
     if (tab === "constraints") void refreshConstraints();
@@ -94,23 +105,24 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     e.preventDefault();
     setSaving(true);
     const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null } = {};
-    if (fullName !== soldier.full_name) data.full_name = fullName;
-    if (phone !== (soldier.phone ?? "")) data.phone = phone || null;
-    if (hierarchyNodeId !== (soldier.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
-    if (enrolledAt !== (soldier.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
+    if (fullName !== soldierData.full_name) data.full_name = fullName;
+    if (phone !== (soldierData.phone ?? "")) data.phone = phone || null;
+    if (hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
+    if (enrolledAt !== (soldierData.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
     if (Object.keys(data).length > 0) {
-      await updateSoldier(soldier.id, data);
+      const updated = await updateSoldier(soldierData.id, data);
+      setSoldierData(updated);
     }
     setSaving(false);
+    setEditing(false);
     onRefresh();
-    onClose();
   }
 
   async function handleProfileSave(e: FormEvent) {
     e.preventDefault();
     if (isCommander) return;  // UI hides button, but guard against keyboard submit
     setSavingProfile(true);
-    await updateSoldierProfile(soldier.id, {
+    await updateSoldierProfile(soldierData.id, {
       gender: profileGender || null,
       is_officer: profileIsOfficer,
       rank: profileRank || null,
@@ -144,10 +156,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-[32rem] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="unified-soldier-modal">
         <div className="flex items-start justify-between mb-2">
           <div className="flex items-center gap-3">
-            <SoldierAvatar url={soldier.profile_picture_url} name={soldier.full_name} size={10} />
+            <SoldierAvatar url={soldierData.profile_picture_url} name={soldierData.full_name} size={10} />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold">{soldier.full_name}</h3>
+                <h3 className="font-semibold">{soldierData.full_name}</h3>
                 {(canManage || isSelf) && !editing && (
                   <button
                     onClick={() => setEditing(true)}
@@ -160,7 +172,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   </button>
                 )}
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{soldier.personal_number} · {t(`role.${soldier.role}`)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{soldierData.personal_number} · {t(`role.${soldierData.role}`)}</p>
             </div>
           </div>
           <button
@@ -191,17 +203,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">{t("team.full_name")}</span>
-                <span className="font-medium">{soldier.full_name}</span>
+                <span className="font-medium">{soldierData.full_name}</span>
               </div>
-              {soldier.rank && (
+              {soldierData.rank && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span>
-                  <span>{soldier.rank}</span>
+                  <span>{soldierData.rank}</span>
                 </div>
               )}
               {(() => {
                 const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-                const soldierNode = soldier.hierarchy_node_id ? nodeMap.get(soldier.hierarchy_node_id) : null;
+                const soldierNode = soldierData.hierarchy_node_id ? nodeMap.get(soldierData.hierarchy_node_id) : null;
                 const chain = soldierNode ? soldierNode.path_ids.map((id) => nodeMap.get(id)?.name ?? id) : null;
                 return (
                   <div className="space-y-0.5">
@@ -222,34 +234,34 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   </div>
                 );
               })()}
-              {soldier.phone && (
+              {soldierData.phone && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("team.phone")}</span>
-                  <span dir="ltr">{soldier.phone}</span>
+                  <span dir="ltr">{soldierData.phone}</span>
                 </div>
               )}
-              {soldier.enrolled_at && (
+              {soldierData.enrolled_at && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("transparency.enrolled_at")}</span>
-                  <span>{formatDate(soldier.enrolled_at!)}</span>
+                  <span>{formatDate(soldierData.enrolled_at!)}</span>
                 </div>
               )}
-              {soldier.direct_commander_id && soldier.direct_commander_name && (
+              {soldierData.direct_commander_id && soldierData.direct_commander_name && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.direct_commander")}</span>
-                  <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
+                  <SoldierLink id={soldierData.direct_commander_id} name={soldierData.direct_commander_name} />
                 </div>
               )}
-              {soldier.last_mitvahim_date && (
+              {soldierData.last_mitvahim_date && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span>
-                  <span>{formatDate(soldier.last_mitvahim_date)}</span>
+                  <span>{formatDate(soldierData.last_mitvahim_date)}</span>
                 </div>
               )}
-              {soldier.is_officer && soldier.last_alal_date && (
+              {soldierData.is_officer && soldierData.last_alal_date && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span>
-                  <span>{formatDate(soldier.last_alal_date)}</span>
+                  <span>{formatDate(soldierData.last_alal_date)}</span>
                 </div>
               )}
               {score && (
@@ -317,10 +329,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   />
                 </div>
               )}
-              {soldier.direct_commander_id && soldier.direct_commander_name && (
+              {soldierData.direct_commander_id && soldierData.direct_commander_name && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-xs text-gray-500">{t("soldier_profile.direct_commander")}:</span>
-                  <SoldierLink id={soldier.direct_commander_id} name={soldier.direct_commander_name} />
+                  <SoldierLink id={soldierData.direct_commander_id} name={soldierData.direct_commander_name} />
                 </div>
               )}
               <div className="flex justify-end gap-2">
@@ -333,15 +345,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
         {tab === "profile" && !editing && (
           <div className="space-y-2 text-sm">
-            {soldier.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldier.gender}`)}</span></div>}
-            {soldier.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldier.rank}</span></div>}
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldier.is_officer ? "✓" : "—"}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldier.bahad1_graduate ? "✓" : "—"}</span></div>
-            {soldier.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldier.enlistment_date)}</span></div>}
-            {soldier.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldier.mandatory_end_date)}</span></div>}
-            {soldier.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldier.discharge_date)}</span></div>}
-            {soldier.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldier.last_mitvahim_date)}</span></div>}
-            {soldier.is_officer && soldier.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldier.last_alal_date)}</span></div>}
+            {soldierData.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldierData.gender}`)}</span></div>}
+            {soldierData.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldierData.rank}</span></div>}
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldierData.is_officer ? "✓" : "—"}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldierData.bahad1_graduate ? "✓" : "—"}</span></div>
+            {soldierData.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldierData.enlistment_date)}</span></div>}
+            {soldierData.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldierData.mandatory_end_date)}</span></div>}
+            {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
+            {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
+            {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
           </div>
         )}
 
