@@ -19,12 +19,34 @@ def _node_ancestors(node_id: uuid.UUID, hierarchy_parent: dict[uuid.UUID, uuid.U
     return path
 
 
+def _build_ancestor_cache(
+    nodes: set[uuid.UUID],
+    hierarchy_parent: dict[uuid.UUID, uuid.UUID | None],
+) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+    """Pre-compute ancestor sets for all nodes once.
+
+    compute_reserve_dist calls _hierarchy_distance O(R×S×P) times against
+    the same ~200 unique nodes.  Building this cache once and reusing it
+    cuts ancestor traversals from millions to O(unique_nodes).
+    """
+    return {n: frozenset(_node_ancestors(n, hierarchy_parent)) for n in nodes}
+
+
 def _hierarchy_distance(node_a: uuid.UUID, node_b: uuid.UUID,
                         hierarchy_parent: dict[uuid.UUID, uuid.UUID | None]) -> int:
     """Symmetric-difference distance: len(ancestors(a) Δ ancestors(b))."""
     return len(_node_ancestors(node_a, hierarchy_parent).symmetric_difference(
         _node_ancestors(node_b, hierarchy_parent)
     ))
+
+
+def _hierarchy_distance_cached(
+    node_a: uuid.UUID,
+    node_b: uuid.UUID,
+    ancestor_cache: dict[uuid.UUID, frozenset[uuid.UUID]],
+) -> int:
+    """Fast variant using a pre-built ancestor cache."""
+    return len(ancestor_cache[node_a].symmetric_difference(ancestor_cache[node_b]))
 
 
 def link_reserves(
@@ -48,6 +70,9 @@ def link_reserves(
     for r_assign_id, r_soldier_id, shift_id in reserve_assignments:
         reserves_by_shift.setdefault(shift_id, []).append((r_assign_id, r_soldier_id))
 
+    all_nodes: set[uuid.UUID] = set(soldier_node.values())
+    ancestor_cache = _build_ancestor_cache(all_nodes, hierarchy_parent)
+
     links: list[ReserveLink] = []
     for p_assign_id, p_soldier_id, shift_id in primary_assignments:
         candidates = reserves_by_shift.get(shift_id)
@@ -69,6 +94,8 @@ def link_reserves(
             r_node = soldier_node.get(r_soldier_id)
             if r_node is None:
                 dist = 10
+            elif r_node in ancestor_cache and p_node in ancestor_cache:
+                dist = _hierarchy_distance_cached(p_node, r_node, ancestor_cache)
             else:
                 dist = _hierarchy_distance(p_node, r_node, hierarchy_parent)
             if dist < best_dist:
@@ -111,6 +138,11 @@ def compute_reserve_dist(
                     if node:
                         shift_primary_nodes[shift_id].add(node)
 
+    # Pre-build ancestor sets for all unique node IDs so the inner distance
+    # loop doesn't recompute O(depth) traversals millions of times.
+    all_nodes: set[uuid.UUID] = set(soldier_node.values())
+    ancestor_cache = _build_ancestor_cache(all_nodes, hierarchy_parent)
+
     result: dict[tuple[int, int], int] = {}
     for di, d in enumerate(duty_list):
         if not d.is_reserve:
@@ -123,7 +155,8 @@ def compute_reserve_dist(
                 result[(di, si)] = 10
             else:
                 result[(di, si)] = min(
-                    _hierarchy_distance(s_node, pn, hierarchy_parent)
+                    _hierarchy_distance_cached(s_node, pn, ancestor_cache)
                     for pn in primary_nodes
+                    if pn in ancestor_cache
                 )
     return result
