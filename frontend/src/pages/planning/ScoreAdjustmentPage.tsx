@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../../components/Layout";
 import { createAdjustment, listAdjustments, ScoreAdjustment } from "../../api/scoreAdjustments";
-import { listSoldiers, SoldierDTO } from "../../api/soldiers";
+import { getSoldierScore, listSoldiers, SoldierDTO, SoldierScoreDTO } from "../../api/soldiers";
+import { getEffortBreakdown, EffortBreakdown } from "../../api/scoring";
 
 export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
@@ -14,6 +15,10 @@ export default function ScoreAdjustmentPage() {
   const [soldierId, setSoldierId] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const comboRef = useRef<HTMLDivElement>(null);
+
+  // Current soldier metrics
+  const [soldierScore, setSoldierScore] = useState<SoldierScoreDTO | null>(null);
+  const [effortData, setEffortData] = useState<EffortBreakdown | null>(null);
 
   // Delta: sign + positive amount
   const [sign, setSign] = useState<"+" | "-">("+");
@@ -29,8 +34,15 @@ export default function ScoreAdjustmentPage() {
   }, [t]);
 
   useEffect(() => {
-    if (!soldierId) { setAdjustments([]); return; }
+    if (!soldierId) {
+      setAdjustments([]);
+      setSoldierScore(null);
+      setEffortData(null);
+      return;
+    }
     listAdjustments(soldierId).then(setAdjustments).catch(() => setAdjustments([]));
+    getSoldierScore(soldierId).then(setSoldierScore).catch(() => setSoldierScore(null));
+    getEffortBreakdown(soldierId).then(setEffortData).catch(() => setEffortData(null));
   }, [soldierId]);
 
   // Close dropdown on outside click
@@ -77,6 +89,8 @@ export default function ScoreAdjustmentPage() {
       setSign("+");
       setReason("");
       listAdjustments(soldierId).then(setAdjustments).catch(() => {});
+      getSoldierScore(soldierId).then(setSoldierScore).catch(() => {});
+      getEffortBreakdown(soldierId).then(setEffortData).catch(() => {});
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail ?? t("score_adjustment.generic_error"));
@@ -149,6 +163,54 @@ export default function ScoreAdjustmentPage() {
               )}
             </div>
           </div>
+
+          {/* Before / after metrics */}
+          {soldierScore && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-sm">
+              <div className="grid grid-cols-3 bg-gray-50 dark:bg-gray-700/50 text-xs text-gray-500 dark:text-gray-400 font-medium">
+                <span className="px-3 py-2"></span>
+                <span className="px-3 py-2 text-center border-r border-gray-200 dark:border-gray-600">לפני</span>
+                <span className="px-3 py-2 text-center">אחרי</span>
+              </div>
+              {[
+                {
+                  label: "ניקוד צבור",
+                  before: Number(soldierScore.cumulative_score).toFixed(3),
+                  after: delta
+                    ? (Number(soldierScore.cumulative_score) + Number(delta)).toFixed(3)
+                    : null,
+                },
+                {
+                  label: "ניקוד מנורמל",
+                  before: Number(soldierScore.normalised_score).toFixed(4),
+                  after: null,
+                  note: "יתעדכן לאחר שמירה",
+                },
+                {
+                  label: "עומס",
+                  before: effortData ? Number(effortData.effort_score).toFixed(4) : "—",
+                  after: null,
+                  note: "יתעדכן לאחר שמירה",
+                },
+              ].map(({ label, before, after, note }) => (
+                <div key={label} className="grid grid-cols-3 border-t border-gray-200 dark:border-gray-600">
+                  <span className="px-3 py-2 font-medium text-gray-700 dark:text-gray-300">{label}</span>
+                  <span className="px-3 py-2 text-center border-r border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-mono" dir="ltr">
+                    {before}
+                  </span>
+                  <span className="px-3 py-2 text-center" dir="ltr">
+                    {after !== null ? (
+                      <span className={`font-mono font-semibold ${Number(delta) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                        {after}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">{note ?? "—"}</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Delta: +/- buttons + positive number */}
           <div>
