@@ -28,6 +28,7 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
   const [reqs, setReqs] = useState<Reqs>(initial?.requirements ?? {});
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
   const [eligOpen, setEligOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +86,7 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
     }
   }
 
-  const inputCls = "block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100";
+  const inputCls = "block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100";
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
@@ -97,59 +98,82 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Basic fields */}
-          <div className="flex flex-wrap gap-2">
-            <label className="block flex-1 min-w-36">
-              <span className="text-xs">{t("duty_config.name")} *</span>
-              <input required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-24">
-              <span className="text-xs">{t("duty_config.score_per_day")}</span>
-              <input value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-20">
-              <span className="text-xs">{t("reserve_ratio")}</span>
-              <input type="number" min="0" max="1" step="0.001" value={reserveRatio} onChange={e => setReserveRatio(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-16">
-              <span className="text-xs">{t("reserve_minimum")}</span>
-              <input type="number" min="0" step="1" value={reserveMin} onChange={e => setReserveMin(e.target.value)} className={inputCls} />
-            </label>
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <div className="flex-1 min-w-36">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.name")} *</label>
+                <input required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
+              </div>
+              <div className="w-24">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.score_per_day")}</label>
+                <input value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
+              </div>
+              <div className="w-20">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_ratio")}</label>
+                <input type="number" min="0" max="1" step="0.001" value={reserveRatio} onChange={e => setReserveRatio(e.target.value)} className={inputCls} />
+              </div>
+              <div className="w-16">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_minimum")}</label>
+                <input type="number" min="0" step="1" value={reserveMin} onChange={e => setReserveMin(e.target.value)} className={inputCls} />
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <label className="block flex-1 min-w-36">
-              <span className="text-xs">{t("duty_config.contact_name")}</span>
+            <div className="flex-1 min-w-36">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_name")}</label>
               <input value={contactName} onChange={e => setContactName(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-36">
-              <span className="text-xs">{t("duty_config.contact_phone")}</span>
+            </div>
+            <div className="w-36">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_phone")}</label>
               <input value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-24">
-              <span className="text-xs">{t("duty_config.start_time")}</span>
+            </div>
+            <div className="w-24">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.start_time")}</label>
               <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={startTime} onChange={e => setStartTime(e.target.value)} className={inputCls} />
-            </label>
-            <label className="block w-24">
-              <span className="text-xs">{t("duty_config.end_time")}</span>
+            </div>
+            <div className="w-24">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.end_time")}</label>
               <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputCls} />
-            </label>
+            </div>
           </div>
 
-          <label className="block">
-            <span className="text-xs">{t("duty_config.is_external")} *</span>
-            <select required value={isExternal} onChange={e => setIsExternal(e.target.value as "" | "true" | "false")} className={inputCls}>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t("duty_config.is_external")}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowHelp((v) => !v)}
+                className="text-xs text-blue-500 hover:underline"
+              >
+                {t("duty_config.is_external_help_title")}
+              </button>
+            </div>
+            {showHelp && (
+              <div className="mb-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-2 border border-gray-200 dark:border-gray-600">
+                {t("duty_config.is_external_help_text")}
+              </div>
+            )}
+            <select
+              required
+              value={isExternal}
+              onChange={e => setIsExternal(e.target.value as "" | "true" | "false")}
+              className={inputCls}
+            >
               <option value="" disabled>{t("duty_config.is_external_placeholder")}</option>
               <option value="false">{t("duty_config.is_external_internal")}</option>
               <option value="true">{t("duty_config.is_external_external")}</option>
             </select>
-          </label>
+          </div>
 
-          <label className="block">
-            <span className="text-xs">{t("duty_config.instructions")}</span>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.instructions")}</label>
             <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={2} className={inputCls} />
-          </label>
+          </div>
 
           {/* Eligibility section */}
           <div className="border dark:border-gray-600 rounded">

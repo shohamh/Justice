@@ -133,10 +133,12 @@
     "end_time": "שעת סיום",
     "instructions": "הנחיות",
     "instructions_hint": "עד 300 מילים",
-    "is_external": "סוג תורנות",
-    "is_external_internal": "פנימית",
-    "is_external_external": "חיצונית",
-    "is_external_placeholder": "בחר סוג..."
+    "is_external": "תורנות פנימית / חיצונית",
+    "is_external_internal": "תורנות פנימית",
+    "is_external_external": "תורנות חיצונית",
+    "is_external_placeholder": "בחר סוג...",
+    "is_external_help_title": "מה ההבדל?",
+    "is_external_help_text": "תורנות פנימית — תורנות שנוצרת ומתוכננת בתוך היחידה. תורנות חיצונית — תורנות שהגיעה ליחידה מגורם חיצוני (למשל פקודה)."
   },
   "exemptions": {
     "title": "פטורים",
