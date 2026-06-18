@@ -514,12 +514,12 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         <div className="flex gap-2 mb-2 flex-wrap" dir="rtl">
           {runningCount > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300">
-              {runningCount} ריצות פעילות
+              {runningCount} {t("shifts.algorithm_running_badge")}
             </span>
           )}
           {doneUnpublishedCount > 0 && (
             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-              {doneUnpublishedCount} הושלמו, ממתינות לפרסום
+              {doneUnpublishedCount} {t("shifts.algorithm_done_badge")}
             </span>
           )}
         </div>

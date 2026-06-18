@@ -16,7 +16,7 @@ export default function ScoreAdjustmentPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    listSoldiers().then(setSoldiers).catch(() => setError("שגיאה בטעינת רשימת חיילים"));
+    listSoldiers().then(setSoldiers).catch(() => setError(t("score_adjustment.soldiers_load_error")));
   }, []);
 
   // Load adjustments when soldier changes
@@ -40,7 +40,7 @@ export default function ScoreAdjustmentPage() {
       listAdjustments(soldierId).then(setAdjustments).catch(() => {});
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(detail ?? t("score_adjustment.generic_error"));
     } finally {
       setSubmitting(false);
     }
@@ -74,7 +74,7 @@ export default function ScoreAdjustmentPage() {
               required
               className="block w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
             >
-              <option value="">— בחר חייל —</option>
+              <option value="">{t("score_adjustment.soldier_placeholder")}</option>
               {soldiers.map((s) => (
                 <option key={s.id} value={s.id}>{s.full_name}</option>
               ))}
