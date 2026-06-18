@@ -104,18 +104,21 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null } = {};
-    if (fullName !== soldierData.full_name) data.full_name = fullName;
-    if (phone !== (soldierData.phone ?? "")) data.phone = phone || null;
-    if (hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
-    if (enrolledAt !== (soldierData.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
-    if (Object.keys(data).length > 0) {
-      const updated = await updateSoldier(soldierData.id, data);
-      setSoldierData(updated);
+    try {
+      const data: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null } = {};
+      if (fullName !== soldierData.full_name) data.full_name = fullName;
+      if (phone !== (soldierData.phone ?? "")) data.phone = phone || null;
+      if (hierarchyNodeId !== (soldierData.hierarchy_node_id ?? "")) data.hierarchy_node_id = hierarchyNodeId || null;
+      if (enrolledAt !== (soldierData.enrolled_at ?? "")) data.enrolled_at = enrolledAt || null;
+      if (Object.keys(data).length > 0) {
+        const updated = await updateSoldier(soldierData.id, data);
+        setSoldierData(updated);
+      }
+      setEditing(false);
+      onRefresh();
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setEditing(false);
-    onRefresh();
   }
 
   async function handleProfileSave(e: FormEvent) {
