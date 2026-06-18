@@ -549,7 +549,11 @@
     "recurrence_type": "תדירות",
     "recurrence_daily": "כל יום",
     "recurrence_weekdays": "ימי עבודה (א׳–ה׳)",
-    "recurrence_weekly": "ימים נבחרים"
+    "recurrence_weekly": "ימים נבחרים",
+    "from_date": "מתאריך",
+    "to_date": "עד תאריך",
+    "preview_title": "תצוגה מקדימה",
+    "total": "סה״כ"
   },
   "swaps": {
     "title": "החלפות",
