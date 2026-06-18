@@ -786,6 +786,8 @@
     "remove": "הסר",
     "enter_node_id": "הכנס מזהה צומת בהיררכיה",
     "scope_add_error": "שגיאה בהוספת התחום",
+    "scope_node": "ענף",
+    "scope_depth": "עומק",
     "depth_unlimited": "כל הרמות",
     "depth_levels": "{{count}} רמות",
     "subscribed_soldiers": "חיילים ברשימת ההתראות",
