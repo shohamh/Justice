@@ -11,7 +11,7 @@ from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput
 def _duty_days(d: DutyBlock) -> list[date]:
     days: list[date] = []
     dt = d.start_date
-    while dt <= d.end_date:
+    while dt < d.end_date:
         days.append(dt)
         dt += timedelta(days=1)
     return days
@@ -37,7 +37,7 @@ def diagnose_infeasibility(
     existing_dates: dict[uuid.UUID, set[date]] = defaultdict(set)
     for ea in existing:
         d = ea.start_date
-        while d <= ea.end_date:
+        while d < ea.end_date:
             existing_dates[ea.soldier_id].add(d)
             d += timedelta(days=1)
 

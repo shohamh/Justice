@@ -140,7 +140,7 @@ def find_candidates(
     result = solve(candidate_inputs, [remaining_block], existing, settings)
 
     assigned_ids = {a.soldier_id for a in result.assignments}
-    days_remaining = (original.end_date - pull_date).days + 1
+    days_remaining = (original.end_date - pull_date).days
 
     candidates = []
     for si in candidate_inputs:

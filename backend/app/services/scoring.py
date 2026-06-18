@@ -69,7 +69,7 @@ def effective_duty_days(
     out: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]] = []
     for a in assignments:
         day = a.start_date
-        while day <= a.end_date:
+        while day < a.end_date:
             if date_to is not None and day > date_to:
                 break
             if (date_from is None or day >= date_from):
@@ -121,7 +121,7 @@ def effective_duty_spans(
         run_start: date | None = None
         run_end: date | None = None
         day = a.start_date
-        while day <= a.end_date:
+        while day < a.end_date:
             ov = overrides.get((a.id, day))
             eff = ov.effective_soldier_id if ov is not None else a.soldier_id
             if eff == cur:

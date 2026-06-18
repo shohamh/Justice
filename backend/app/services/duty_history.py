@@ -69,7 +69,7 @@ def _score_parts(
     start = max(a.start_date, date_from) if date_from is not None else a.start_date
     end = min(a.end_date, date_to) if date_to is not None else a.end_date
 
-    if start > end or spd == Decimal("0"):
+    if start >= end or spd == Decimal("0"):
         return "0.0", "", "[]"
 
     def _day_mult_and_type(day: date) -> tuple[Decimal, str]:
@@ -93,7 +93,7 @@ def _score_parts(
     cur_count = 0
 
     day = start
-    while day <= end:
+    while day < end:
         m, t = _day_mult_and_type(day)
         key = (m, t)
         if key == cur_key:

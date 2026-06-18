@@ -136,7 +136,7 @@ def _existing_duty_dates(session: Session, soldier_id: uuid.UUID) -> set[date]:
     dates: set[date] = set()
     for a in assignments:
         d = a.start_date
-        while d <= a.end_date:
+        while d < a.end_date:
             dates.add(d)
             d += timedelta(days=1)
     return dates
@@ -152,7 +152,7 @@ def _passes_density(
     """Check that adding [candidate_start, candidate_end] doesn't exceed T days in any W-day window."""
     candidate_dates: set[date] = set()
     d = candidate_start
-    while d <= candidate_end:
+    while d < candidate_end:
         candidate_dates.add(d)
         d += timedelta(days=1)
     all_dates = sorted(existing_dates | candidate_dates)
@@ -494,7 +494,7 @@ def commit_gimelim(
         session,
         assignment=primary_a,
         from_date=primary_a.start_date,
-        to_date=primary_a.end_date,
+        to_date=primary_a.end_date - timedelta(days=1),
         reason=reason,
         actor_id=actor_id,
     )
@@ -511,11 +511,12 @@ def commit_gimelim(
     )
 
     # ── Step 2: Call up reserve B ──────────────────────────────────────────
+    call_up_last = primary_a.end_date - timedelta(days=1)
     call_up_reserve(
         session,
         assignment=reserve_b,
         from_date=primary_a.start_date,
-        to_date=primary_a.end_date,
+        to_date=call_up_last,
         actor_id=actor_id,
     )
 
@@ -525,7 +526,7 @@ def commit_gimelim(
         action="gimelim.call_up",
         entity_type="duty_assignment",
         entity_id=reserve_b.id,
-        after={"called_up_from": primary_a.start_date.isoformat(), "called_up_to": primary_a.end_date.isoformat()},
+        after={"called_up_from": primary_a.start_date.isoformat(), "called_up_to": call_up_last.isoformat()},
     )
 
     # Handle reserve_fate setting for B

@@ -41,7 +41,7 @@ function StatCard({ label, value, sub }: StatCardProps) {
 const dayCount = (d: { start_date: string; end_date: string }) => {
   const [sy, sm, sd] = d.start_date.split("-").map(Number);
   const [ey, em, ed] = d.end_date.split("-").map(Number);
-  return (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+  return Math.max(1, (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000);
 };
 
 export default function MyDutiesPage() {

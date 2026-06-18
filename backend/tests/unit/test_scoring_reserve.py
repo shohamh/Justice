@@ -24,7 +24,7 @@ def test_standby_reserve_score(admin_session):
     set_setting(admin_session, "scoring.reserve_standby_multiplier", Decimal("0.2"), actor_id=None)
     assign = DutyAssignment(
         soldier_id=s_reserve.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3),
         status="published", is_reserve=True,
     )
     admin_session.add(assign); admin_session.flush()
@@ -38,7 +38,7 @@ def test_called_up_reserve_score(admin_session):
     set_setting(admin_session, "scoring.reserve_called_up_multiplier", Decimal("1.3"), actor_id=None)
     assign = DutyAssignment(
         soldier_id=s_reserve.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3),
         status="published", is_reserve=True,
         called_up_from=date(2026, 6, 1), called_up_to=date(2026, 6, 2),
     )
@@ -54,7 +54,7 @@ def test_partial_called_up_reserve_score(admin_session):
     # 3-day reserve; called up only day 2 → 0.2 + 1.3 + 0.2 = 1.7
     assign = DutyAssignment(
         soldier_id=s_reserve.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 4),
         status="published", is_reserve=True,
         called_up_from=date(2026, 6, 2), called_up_to=date(2026, 6, 2),
     )
@@ -68,7 +68,7 @@ def test_dismissed_primary_score(admin_session):
     set_setting(admin_session, "scoring.dismissed_multiplier", Decimal("0.0"), actor_id=None)
     assign = DutyAssignment(
         soldier_id=s_primary.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 4),
         status="published", is_reserve=False,
     )
     admin_session.add(assign); admin_session.flush()
@@ -86,7 +86,7 @@ def test_normal_primary_unaffected(admin_session):
     dt, loc, s_primary, s_reserve = _seed(admin_session)
     assign = DutyAssignment(
         soldier_id=s_primary.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3),
         status="published", is_reserve=False,
     )
     admin_session.add(assign); admin_session.flush()

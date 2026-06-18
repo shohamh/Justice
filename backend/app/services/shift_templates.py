@@ -233,7 +233,7 @@ def generate_shifts(
             duty_type_id=tpl.duty_type_id,
             duty_location_id=tpl.duty_location_id,
             start_date=d,
-            end_date=d + timedelta(days=tpl.duration_days - 1),
+            end_date=d + timedelta(days=tpl.duration_days),
             required_count=tpl.required_count,
             notes=tpl.notes,
             created_by=actor_id,

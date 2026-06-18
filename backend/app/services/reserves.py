@@ -29,7 +29,7 @@ def call_up_reserve(
     """Record הקפצה on a reserve assignment. Replaces any prior call-up range."""
     if not assignment.is_reserve:
         raise ReserveError("not_a_reserve")
-    if from_date < assignment.start_date or to_date > assignment.end_date:
+    if from_date < assignment.start_date or to_date >= assignment.end_date:
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
@@ -66,7 +66,7 @@ def dismiss_primary(
     """Record a dismissal on a primary assignment. Validates no overlap with existing dismissals."""
     if assignment.is_reserve:
         raise ReserveError("not_a_primary")
-    if from_date < assignment.start_date or to_date > assignment.end_date:
+    if from_date < assignment.start_date or to_date >= assignment.end_date:
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
@@ -190,7 +190,7 @@ def dismiss_reserve(
     """
     if not assignment.is_reserve:
         raise ReserveError("not_a_reserve")
-    if from_date < assignment.start_date or to_date > assignment.end_date:
+    if from_date < assignment.start_date or to_date >= assignment.end_date:
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
@@ -602,11 +602,11 @@ def count_reserve_days_in_window(
     all_dates: set[date] = set()
     for row in rows:
         d = row.start_date
-        while d <= row.end_date:
+        while d < row.end_date:
             all_dates.add(d)
             d += timedelta(days=1)
     d = start_date
-    while d <= end_date:
+    while d < end_date:
         all_dates.add(d)
         d += timedelta(days=1)
 
@@ -672,7 +672,7 @@ def get_current_reserve_stats(
     all_dates: set[date] = set()
     for row in rows:
         d = row.start_date
-        while d <= row.end_date:
+        while d < row.end_date:
             all_dates.add(d)
             d += timedelta(days=1)
 

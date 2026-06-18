@@ -17,7 +17,7 @@ def _seed(session):
     session.flush()
     assignment = DutyAssignment(
         soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 10), status="published",
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
     )
     session.add(assignment)
     session.flush()
@@ -152,7 +152,7 @@ def _seed_with_reserve(session):
     session.flush()
     reserve_a = DutyAssignment(
         soldier_id=owner.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 8, 1), end_date=date(2026, 8, 7),
+        start_date=date(2026, 8, 1), end_date=date(2026, 8, 8),
         status="published", is_reserve=True,
     )
     session.add(reserve_a)
@@ -174,7 +174,7 @@ def test_take_free_reserve_blocked_when_feature_disabled(admin_session):
 def test_take_free_reserve_blocked_when_cap_exceeded(admin_session):
     owner, taker, reserve_a, dt, loc = _seed_with_reserve(admin_session)
     # Give taker 14 existing reserve days in the same window (Aug 1-30)
-    _reserve_assignment(admin_session, taker.id, dt.id, loc.id, date(2026, 8, 10), date(2026, 8, 23))
+    _reserve_assignment(admin_session, taker.id, dt.id, loc.id, date(2026, 8, 10), date(2026, 8, 24))
     try:
         svc.take_free(admin_session, assignment_id=reserve_a.id, covering_soldier_id=taker.id, actor_id=taker.id)
         assert False, "expected SwapError"

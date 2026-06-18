@@ -108,7 +108,7 @@ def test_passes_density_exactly_at_cap():
     """Exactly T days in window is OK."""
     existing = {date(2026, 6, 1) + timedelta(days=i) for i in range(6)}  # 6 days
     # Adding 1 more day → 7 total; T=7, W=14 → OK
-    result = _passes_density(existing, date(2026, 6, 7), date(2026, 6, 7), T=7, W=14)
+    result = _passes_density(existing, date(2026, 6, 7), date(2026, 6, 8), T=7, W=14)
     assert result is True
 
 
@@ -116,7 +116,7 @@ def test_passes_density_exceeds_cap():
     """More than T days in window → fails."""
     existing = {date(2026, 6, 1) + timedelta(days=i) for i in range(7)}  # 7 days
     # Adding 1 more day → 8 total; T=7 → fails
-    result = _passes_density(existing, date(2026, 6, 8), date(2026, 6, 8), T=7, W=14)
+    result = _passes_density(existing, date(2026, 6, 8), date(2026, 6, 9), T=7, W=14)
     assert result is False
 
 

@@ -49,7 +49,7 @@ def build_explanations(
             post_effort = None
             if not blocked:
                 block_milli = int(
-                    float(duty.score_per_day) * ((duty.end_date - duty.start_date).days + 1) * 1000
+                    float(duty.score_per_day) * ((duty.end_date - duty.start_date).days) * 1000
                 )
                 post_milli = s.effort_offset + s.effort_per_milli * block_milli
                 post_effort = post_milli / EFFORT_SCALE

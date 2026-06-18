@@ -116,7 +116,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     for da in session.execute(
         select(DutyAssignment).where(DutyAssignment.status == "algorithm_draft")
     ).scalars().all():
-        days = (da.end_date - da.start_date).days + 1
+        days = (da.end_date - da.start_date).days
         draft_scores[da.soldier_id] = (
             draft_scores.get(da.soldier_id, Decimal("0"))
             + dt_score_map.get(da.duty_type_id, Decimal("0")) * days
@@ -371,7 +371,7 @@ def inject_effort_scores(
     effort_offset value throughout the entire run (including worst-case accumulation).
     """
     unit_score_milli = sum(
-        int(float(b.score_per_day) * ((b.end_date - b.start_date).days + 1) * 1000)
+        int(float(b.score_per_day) * ((b.end_date - b.start_date).days) * 1000)
         for b in duty_blocks
     )
     for s in soldiers:

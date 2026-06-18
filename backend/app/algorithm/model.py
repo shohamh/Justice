@@ -23,14 +23,14 @@ from app.algorithm.types import (
 
 def _block_score(d: DutyBlock) -> int:
     """Total score for completing the entire block, in milli-units (x1000 for integer math)."""
-    days = (d.end_date - d.start_date).days + 1
+    days = (d.end_date - d.start_date).days
     return int(d.score_per_day * Decimal(days) * 1000)
 
 
 def _duty_dates(d: DutyBlock) -> list[date]:
     dt = d.start_date
     result: list[date] = []
-    while dt <= d.end_date:
+    while dt < d.end_date:
         result.append(dt)
         dt += timedelta(days=1)
     return result
@@ -43,7 +43,7 @@ def _existing_dates_by_soldier(
     for ea in existing:
         if ea.soldier_id == soldier_id:
             dt = ea.start_date
-            while dt <= ea.end_date:
+            while dt < ea.end_date:
                 result.add(dt)
                 dt += timedelta(days=1)
     return result

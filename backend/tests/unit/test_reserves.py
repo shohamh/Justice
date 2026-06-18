@@ -43,7 +43,7 @@ def _seed(session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 6, 1),
-        end_date=date(2026, 6, 7),
+        end_date=date(2026, 6, 8),
         required_count=1,
     )
     session.add(shift)
@@ -53,7 +53,7 @@ def _seed(session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 6, 1),
-        end_date=date(2026, 6, 7),
+        end_date=date(2026, 6, 8),
         status="published",
         is_reserve=False,
         duty_shift_id=shift.id,
@@ -63,7 +63,7 @@ def _seed(session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 6, 1),
-        end_date=date(2026, 6, 7),
+        end_date=date(2026, 6, 8),
         status="published",
         is_reserve=True,
         duty_shift_id=shift.id,
@@ -329,7 +329,7 @@ def _reserve(session, soldier_id, dt_id, loc_id, start, end, status="published")
 def test_cap_passes_when_no_existing_reserves(admin_session):
     s, dt, loc = _make_soldier(admin_session, "cap-none")
     passes, current, max_days = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 1), date(2026, 7, 7)
+        admin_session, s.id, date(2026, 7, 1), date(2026, 7, 8)
     )
     assert passes is True
     assert current == 7   # candidate days only
@@ -339,9 +339,9 @@ def test_cap_passes_when_no_existing_reserves(admin_session):
 def test_cap_passes_exactly_at_limit(admin_session):
     s, dt, loc = _make_soldier(admin_session, "cap-exact")
     # 7 existing reserve days, candidate adds 7 more = 14 total, which equals the cap
-    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 7))
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 8))
     passes, current, _ = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 8), date(2026, 7, 14)
+        admin_session, s.id, date(2026, 7, 8), date(2026, 7, 15)
     )
     assert passes is True
     assert current == 14
@@ -350,9 +350,9 @@ def test_cap_passes_exactly_at_limit(admin_session):
 def test_cap_fails_one_over_limit(admin_session):
     s, dt, loc = _make_soldier(admin_session, "cap-over")
     # 8 existing days in same 30-day window, candidate adds 7 more = 15 > 14
-    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 8))
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 9))
     passes, current, max_days = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 9), date(2026, 7, 15)
+        admin_session, s.id, date(2026, 7, 9), date(2026, 7, 16)
     )
     assert passes is False
     assert current == 15
@@ -364,9 +364,9 @@ def test_cap_respects_settings_override(admin_session):
     admin_session.add(SystemSetting(key="reserves.max_days_per_window", value=7))
     admin_session.flush()
     # 4 existing + 4 candidate = 8 > 7
-    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 4))
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 5))
     passes, current, max_days = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 5), date(2026, 7, 8)
+        admin_session, s.id, date(2026, 7, 5), date(2026, 7, 9)
     )
     assert passes is False
     assert max_days == 7
@@ -377,13 +377,13 @@ def test_cap_ignores_primary_assignments(admin_session):
     # 14 PRIMARY days should not count toward the reserve cap
     a = DutyAssignment(
         soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 7, 1), end_date=date(2026, 7, 14),
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 15),
         status="published", is_reserve=False,
     )
     admin_session.add(a)
     admin_session.flush()
     passes, current, _ = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 1), date(2026, 7, 7)
+        admin_session, s.id, date(2026, 7, 1), date(2026, 7, 8)
     )
     assert passes is True
     assert current == 7
@@ -392,9 +392,9 @@ def test_cap_ignores_primary_assignments(admin_session):
 def test_cap_counts_algorithm_draft_reserves(admin_session):
     s, dt, loc = _make_soldier(admin_session, "cap-draft")
     # algorithm_draft reserves should also count
-    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 8), status="algorithm_draft")
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 9), status="algorithm_draft")
     passes, _, _ = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 9), date(2026, 7, 15)
+        admin_session, s.id, date(2026, 7, 9), date(2026, 7, 16)
     )
     assert passes is False
 
@@ -406,9 +406,9 @@ def test_cap_respects_window_days_override(admin_session):
     admin_session.add(SystemSetting(key="reserves.window_days", value=10))
     admin_session.flush()
     # 5 existing days (Jul 1-5), candidate Jul 17-21 (5 days) — 12 days apart, no 10-day window spans both
-    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 5))
+    _reserve(admin_session, s.id, dt.id, loc.id, date(2026, 7, 1), date(2026, 7, 6))
     passes, current, _ = check_reserve_cap(
-        admin_session, s.id, date(2026, 7, 17), date(2026, 7, 21)
+        admin_session, s.id, date(2026, 7, 17), date(2026, 7, 22)
     )
     assert passes is True   # would exceed 14 in a 30-day window but not in a 10-day window
     assert current == 5     # peak is 5 (only one side fits per 10-day window)

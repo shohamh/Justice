@@ -43,7 +43,7 @@ def test_effective_days_basic_block(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 3),
+        end_date=date(2026, 9, 4),
         notes=None,
         actor_id=None,
     )
@@ -63,7 +63,7 @@ def test_cumulative_with_override_and_adjustment(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 3),
+        end_date=date(2026, 9, 4),
         notes=None,
         actor_id=None,
     )
@@ -102,7 +102,7 @@ def test_cancelled_assignment_excluded(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 2),
+        end_date=date(2026, 9, 3),
         notes=None,
         actor_id=None,
     )
@@ -184,7 +184,7 @@ def test_normalised_and_transparency(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date.today() - timedelta(days=3),
-        end_date=date.today() - timedelta(days=2),
+        end_date=date.today() - timedelta(days=1),
         notes=None,
         actor_id=None,
     )
@@ -208,7 +208,7 @@ def test_breakdown(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 2),
+        end_date=date(2026, 9, 3),
         notes=None,
         actor_id=None,
     )
@@ -234,7 +234,7 @@ def test_effective_spans_split_on_override(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 12, 1),
-        end_date=date(2026, 12, 5),
+        end_date=date(2026, 12, 6),
         notes=None,
         actor_id=None,
     )
@@ -282,7 +282,7 @@ def test_effective_spans_no_override_is_single_block(admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=date(2026, 12, 10),
-        end_date=date(2026, 12, 12),
+        end_date=date(2026, 12, 13),
         notes=None,
         actor_id=None,
     )

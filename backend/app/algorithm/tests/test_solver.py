@@ -118,12 +118,12 @@ def test_settings_and_existing_have_reserve_caps() -> None:
     # ExistingAssignment carries an is_reserve flag, default False.
     ea = ExistingAssignment(
         soldier_id=uuid4(), duty_type_id=uuid4(),
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
     )
     assert ea.is_reserve is False
     ea_r = ExistingAssignment(
         soldier_id=uuid4(), duty_type_id=uuid4(),
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
         is_reserve=True,
     )
     assert ea_r.is_reserve is True
@@ -134,7 +134,7 @@ def test_solve_no_eligible_soldiers() -> None:
     exempt_type = uuid4()
     duty_type = exempt_type
     duties = [DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
                         score_per_day=Decimal("1.00"))]
     soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
                              cumulative_score=Decimal("0"), active_days=100,
@@ -203,7 +203,7 @@ def test_golden_fixture(fixture_name: str) -> None:
         d = duty_map[a.duty_id]
         dates = set()
         dt = d.start_date
-        while dt <= d.end_date:
+        while dt < d.end_date:
             if dt in soldier_dates.get(a.soldier_id, set()):
                 pytest.fail(f"Overlap: soldier {a.soldier_id} assigned two duties on {dt}")
             dates.add(dt)
@@ -583,7 +583,7 @@ def test_batched_solve_covers_all_and_balances_by_effort() -> None:
 def _single_day_duty(dt: date, duty_type: uuid.UUID, *, is_reserve: bool) -> DutyBlock:
     return DutyBlock(
         id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-        start_date=dt, end_date=dt, score_per_day=Decimal("1.00"),
+        start_date=dt, end_date=dt + timedelta(days=1), score_per_day=Decimal("1.00"),
         is_reserve=is_reserve,
     )
 
@@ -672,10 +672,10 @@ def test_existing_reserve_counts_toward_R_not_T() -> None:
     # Two existing PUBLISHED RESERVE duty-days in the window.
     existing = [
         ExistingAssignment(soldier_id=soldier_id, duty_type_id=duty_type,
-                           start_date=base, end_date=base, is_reserve=True),
+                           start_date=base, end_date=base + timedelta(days=1), is_reserve=True),
         ExistingAssignment(soldier_id=soldier_id, duty_type_id=duty_type,
                            start_date=base + timedelta(days=1),
-                           end_date=base + timedelta(days=1), is_reserve=True),
+                           end_date=base + timedelta(days=2), is_reserve=True),
     ]
     # One NEW REAL duty in the same window.
     duties = [_single_day_duty(base + timedelta(days=2), duty_type, is_reserve=False)]

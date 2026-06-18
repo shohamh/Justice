@@ -55,7 +55,7 @@ def _score_data(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, di
         .all()
     )
     for a in assignments:
-        days = (a.end_date - a.start_date).days + 1
+        days = (a.end_date - a.start_date).days
         score_by_soldier[a.soldier_id] += duty_scores.get(a.duty_type_id, Decimal("0")) * Decimal(
             days
         )
@@ -315,7 +315,7 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
         soldier = soldier_map.get(a.soldier_id)
         dt = duty_type_map.get(a.duty_type_id)
         node = node_map.get(soldier.hierarchy_node_id) if soldier else None
-        while d <= min(a.end_date, end):
+        while d < min(a.end_date, end + timedelta(days=1)):
             day_map.setdefault(d, []).append(
                 {
                     "assignment_id": str(a.id),
