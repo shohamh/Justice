@@ -103,47 +103,47 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
           <div>
             <div className="flex flex-wrap gap-2">
               <div className="flex-1 min-w-36">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.name")} *</label>
-                <input required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
+                <label htmlFor="duty-type-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.name")} *</label>
+                <input id="duty-type-name" required autoFocus value={name} onChange={e => setName(e.target.value)} className={inputCls} />
               </div>
               <div className="w-24">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.score_per_day")}</label>
-                <input value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
+                <label htmlFor="duty-type-score" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.score_per_day")}</label>
+                <input id="duty-type-score" value={score} onChange={e => setScore(e.target.value)} className={inputCls} />
               </div>
               <div className="w-20">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_ratio")}</label>
-                <input type="number" min="0" max="1" step="0.001" value={reserveRatio} onChange={e => setReserveRatio(e.target.value)} className={inputCls} />
+                <label htmlFor="duty-type-reserve-ratio" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_ratio")}</label>
+                <input id="duty-type-reserve-ratio" type="number" min="0" max="1" step="0.001" value={reserveRatio} onChange={e => setReserveRatio(e.target.value)} className={inputCls} />
               </div>
               <div className="w-16">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_minimum")}</label>
-                <input type="number" min="0" step="1" value={reserveMin} onChange={e => setReserveMin(e.target.value)} className={inputCls} />
+                <label htmlFor="duty-type-reserve-minimum" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_minimum")}</label>
+                <input id="duty-type-reserve-minimum" type="number" min="0" step="1" value={reserveMin} onChange={e => setReserveMin(e.target.value)} className={inputCls} />
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <div className="flex-1 min-w-36">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_name")}</label>
-              <input value={contactName} onChange={e => setContactName(e.target.value)} className={inputCls} />
+              <label htmlFor="duty-type-contact-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_name")}</label>
+              <input id="duty-type-contact-name" value={contactName} onChange={e => setContactName(e.target.value)} className={inputCls} />
             </div>
             <div className="w-36">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_phone")}</label>
-              <input value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputCls} />
+              <label htmlFor="duty-type-contact-phone" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.contact_phone")}</label>
+              <input id="duty-type-contact-phone" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className={inputCls} />
             </div>
             <div className="w-24">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.start_time")}</label>
-              <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={startTime} onChange={e => setStartTime(e.target.value)} className={inputCls} />
+              <label htmlFor="duty-type-start-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.start_time")}</label>
+              <input id="duty-type-start-time" type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={startTime} onChange={e => setStartTime(e.target.value)} className={inputCls} />
             </div>
             <div className="w-24">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.end_time")}</label>
-              <input type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputCls} />
+              <label htmlFor="duty-type-end-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.end_time")}</label>
+              <input id="duty-type-end-time" type="text" inputMode="numeric" placeholder="HH:MM" pattern="[0-2][0-9]:[0-5][0-9]" value={endTime} onChange={e => setEndTime(e.target.value)} className={inputCls} />
             </div>
           </div>
 
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t("duty_config.is_external")}
+              <label htmlFor="is-external-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t("duty_config.is_external")}<span className="text-red-500"> *</span>
               </label>
               <button
                 type="button"
@@ -159,6 +159,7 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
               </div>
             )}
             <select
+              id="is-external-select"
               required
               value={isExternal}
               onChange={e => setIsExternal(e.target.value as "" | "true" | "false")}
@@ -171,8 +172,8 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.instructions")}</label>
-            <textarea value={instructions} onChange={e => setInstructions(e.target.value)} rows={2} className={inputCls} />
+            <label htmlFor="duty-type-instructions" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("duty_config.instructions")}</label>
+            <textarea id="duty-type-instructions" value={instructions} onChange={e => setInstructions(e.target.value)} rows={2} className={inputCls} />
           </div>
 
           {/* Eligibility section */}
