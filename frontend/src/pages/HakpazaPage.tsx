@@ -38,6 +38,7 @@ export default function HakpazaPage() {
 
   useEffect(() => {
     if (scopedSoldiers.length === 0) return;
+    let cancelled = false;
     setShiftsLoading(true);
     const todayStr = new Date().toISOString().split("T")[0];
 
@@ -56,6 +57,7 @@ export default function HakpazaPage() {
         )
       ),
     ]).then(([dts, results]) => {
+      if (cancelled) return;
       const typeNameById = Object.fromEntries((dts as DutyType[]).map((d) => [d.id, d.name]));
       const map: Record<string, { date: string; typeName: string } | null> = {};
       for (const { soldierId, upcoming } of results) {
@@ -71,7 +73,8 @@ export default function HakpazaPage() {
       }
       setNextShiftBySoldier(map);
       setShiftsLoading(false);
-    });
+    }).catch(() => { if (!cancelled) setShiftsLoading(false); });
+    return () => { cancelled = true; };
   }, [scopedSoldiers]);
 
   async function handleSoldierSelect(soldier: SoldierDTO | null) {
