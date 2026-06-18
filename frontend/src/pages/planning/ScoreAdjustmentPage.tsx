@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../../components/Layout";
-import { createAdjustment, listAdjustments, ScoreAdjustment } from "../../api/scoreAdjustments";
+import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment, ScoreAdjustment } from "../../api/scoreAdjustments";
 import { getSoldierScore, listSoldiers, SoldierDTO, SoldierScoreDTO } from "../../api/soldiers";
 import { getEffortBreakdown, EffortBreakdown } from "../../api/scoring";
 
@@ -24,6 +24,10 @@ export default function ScoreAdjustmentPage() {
   const [sign, setSign] = useState<"+" | "-">("+");
   const [amount, setAmount] = useState("");
 
+  // Preview
+  const [preview, setPreview] = useState<AdjustmentPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -34,6 +38,7 @@ export default function ScoreAdjustmentPage() {
   }, [t]);
 
   useEffect(() => {
+    setPreview(null);
     if (!soldierId) {
       setAdjustments([]);
       setSoldierScore(null);
@@ -75,6 +80,20 @@ export default function ScoreAdjustmentPage() {
   }
 
   const delta = amount ? (sign === "+" ? amount : `-${amount}`) : "";
+
+  async function handlePreview() {
+    if (!soldierId || !delta) return;
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const result = await previewAdjustment(soldierId, delta);
+      setPreview(result);
+    } catch {
+      // ignore — preview is optional
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -175,22 +194,21 @@ export default function ScoreAdjustmentPage() {
               {[
                 {
                   label: "ניקוד צבור",
-                  before: Number(soldierScore.cumulative_score).toFixed(3),
-                  after: delta
-                    ? (Number(soldierScore.cumulative_score) + Number(delta)).toFixed(3)
-                    : null,
+                  before: preview ? preview.cumulative_score_before : Number(soldierScore.cumulative_score).toFixed(3),
+                  after: preview ? preview.cumulative_score_after : (delta ? (Number(soldierScore.cumulative_score) + Number(delta)).toFixed(3) : null),
+                  note: undefined,
                 },
                 {
                   label: "ניקוד מנורמל",
-                  before: Number(soldierScore.normalised_score).toFixed(4),
-                  after: null,
-                  note: "יתעדכן לאחר שמירה",
+                  before: preview ? preview.normalised_score_before : Number(soldierScore.normalised_score).toFixed(4),
+                  after: preview ? preview.normalised_score_after : null,
+                  note: "לחץ תצוגה מקדימה",
                 },
                 {
                   label: "עומס",
-                  before: effortData ? Number(effortData.effort_score).toFixed(4) : "—",
-                  after: null,
-                  note: "יתעדכן לאחר שמירה",
+                  before: preview ? preview.effort_score : (effortData ? Number(effortData.effort_score).toFixed(4) : "—"),
+                  after: preview ? preview.effort_score : null,
+                  note: "לא מושפע",
                 },
               ].map(({ label, before, after, note }) => (
                 <div key={label} className="grid grid-cols-3 border-t border-gray-200 dark:border-gray-600">
@@ -199,7 +217,7 @@ export default function ScoreAdjustmentPage() {
                     {before}
                   </span>
                   <span className="px-3 py-2 text-center" dir="ltr">
-                    {after !== null ? (
+                    {after !== null && after !== undefined ? (
                       <span className={`font-mono font-semibold ${Number(delta) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {after}
                       </span>
@@ -220,7 +238,7 @@ export default function ScoreAdjustmentPage() {
             <div className="flex items-center gap-2" dir="ltr">
               <button
                 type="button"
-                onClick={() => setSign("+")}
+                onClick={() => { setSign("+"); setPreview(null); }}
                 className={`w-10 h-10 rounded-lg text-lg font-bold border transition-colors ${
                   sign === "+"
                     ? "bg-green-500 text-white border-green-500"
@@ -231,7 +249,7 @@ export default function ScoreAdjustmentPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setSign("-")}
+                onClick={() => { setSign("-"); setPreview(null); }}
                 className={`w-10 h-10 rounded-lg text-lg font-bold border transition-colors ${
                   sign === "-"
                     ? "bg-red-500 text-white border-red-500"
@@ -246,14 +264,19 @@ export default function ScoreAdjustmentPage() {
                 step="0.01"
                 min="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { setAmount(e.target.value); setPreview(null); }}
                 placeholder="0.00"
                 className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm dark:bg-gray-700 dark:text-gray-100"
               />
-              {amount && (
-                <span className={`text-sm font-semibold ${sign === "+" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                  {sign}{Number(amount).toFixed(2)}
-                </span>
+              {amount && Number(amount) > 0 && (
+                <button
+                  type="button"
+                  onClick={handlePreview}
+                  disabled={previewing || !soldierId}
+                  className="px-3 py-2 text-xs border border-indigo-400 text-indigo-600 dark:text-indigo-400 dark:border-indigo-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50 transition-colors"
+                >
+                  {previewing ? "..." : "תצוגה מקדימה"}
+                </button>
               )}
             </div>
           </div>
