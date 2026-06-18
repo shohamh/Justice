@@ -115,7 +115,7 @@ export default function HakpazaPage() {
         <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm space-y-2" dir="rtl">
           <p className="font-semibold text-blue-800 dark:text-blue-200">מה זה הקפצה פיקודית?</p>
           <p className="text-blue-700 dark:text-blue-300">
-            הקפצה פיקודית מאפשרת להחליף חייל בתורנות פעילה — למשל אם קיבל גימלים, נסיעה, או נסיבות חריגות.
+            הקפצה פיקודית מיועדת לנסיבות חריגות מבצעיות או אישיות בלבד.
             המערכת מחפשת את המחליף המתאים ביותר לפי ניקוד, ומציגה את הרשימה לבחירה.
             הבקשה עוברת לאישור מנהל תורניות לפני הפעלה.
           </p>
