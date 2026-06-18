@@ -363,8 +363,16 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       id: "shift_status",
       header: t("shifts.shift_status"),
       cell: (s) => s.status === "cancelled"
-        ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">{t("shifts.cancelled")}</span>
-        : null,
+        ? (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+            {t("shifts.cancelled")}
+          </span>
+        )
+        : (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300">
+            {t("shifts.active")}
+          </span>
+        ),
       sortValue: (s) => s.status,
       filterValue: (s) => s.status === "cancelled" ? t("shifts.cancelled") : t("shifts.active"),
     },
