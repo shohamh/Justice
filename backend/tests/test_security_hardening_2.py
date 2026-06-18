@@ -181,6 +181,7 @@ def test_phone_not_in_public_soldier_out():
     s.last_mitvahim_date = None
     s.last_alal_date = None
     s.email = "test@example.com"
+    s.profile_picture_url = None
 
     out_public = _out(s, include_private=False)
     assert out_public.phone is None
