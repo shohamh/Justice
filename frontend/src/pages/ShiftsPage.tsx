@@ -8,6 +8,7 @@ import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
+import { listJobs } from "../api/algorithm";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -238,6 +239,8 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [editAssignmentsShift, setEditAssignmentsShift] = useState<DutyShift | null>(null);
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [showAlgorithmPanel, setShowAlgorithmPanel] = useState(false);
+  const [runningCount, setRunningCount] = useState(0);
+  const [doneUnpublishedCount, setDoneUnpublishedCount] = useState(0);
 
   const refresh = useCallback(async () => {
     const [ss, dts, locs] = await Promise.all([
@@ -251,6 +254,13 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   }, [dateFrom, dateTo]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    void listJobs(50, 0).then((data) => {
+      setRunningCount(data.items.filter(j => j.status === "pending" || j.status === "running").length);
+      setDoneUnpublishedCount(data.items.filter(j => j.status === "done").length);
+    });
+  }, []);
 
   const handleCancel = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_cancel"))) return;
@@ -496,6 +506,19 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                 </>
               )}
             </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 mb-2 flex-wrap" dir="rtl">
+          {runningCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300">
+              {runningCount} ריצות פעילות
+            </span>
+          )}
+          {doneUnpublishedCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+              {doneUnpublishedCount} הושלמו, ממתינות לפרסום
+            </span>
           )}
         </div>
 
