@@ -43,7 +43,7 @@ type TabKey = (typeof ALL_TABS)[number];
 export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const isSelf = user?.id === soldier.id;
+  const isSelf = user?.personal_number === soldier.personal_number;
   const isAdmin = user?.role === "admin";
   const isDutyManager = user?.role === "duty_manager";
   const isCommander = user?.role === "commander";
