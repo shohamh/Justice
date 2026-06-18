@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -125,6 +125,18 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleToggleAll(field: "in_app_enabled" | "push_enabled" | "email_enabled") {
+    const allOn = prefs.every((p) => p[field]);
+    const previous = prefs;
+    const updated = prefs.map((p) => ({ ...p, [field]: !allOn }));
+    setPrefs(updated);
+    try {
+      await updatePreferences(updated);
+    } catch {
+      setPrefs(previous);
+    }
+  }
+
   async function handleAddScope(e: React.FormEvent) {
     e.preventDefault();
     if (!addNodeId) return;
@@ -149,7 +161,22 @@ export default function ProfilePage() {
   return (
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-3">
-        <h2 className="text-xl font-semibold">{t("profile.title")}</h2>
+        <div className="flex items-center gap-4">
+          {user?.profile_picture_url ? (
+            <img
+              src={user.profile_picture_url}
+              alt={user.full_name}
+              className="w-16 h-16 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-600"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-600">
+              <span className="text-xl font-semibold text-indigo-600 dark:text-indigo-300">
+                {user?.full_name?.charAt(0) ?? "?"}
+              </span>
+            </div>
+          )}
+          <h2 className="text-xl font-semibold">{t("profile.title")}</h2>
+        </div>
         <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
         <p>{t("team.role")}: {user?.role}</p>
@@ -340,25 +367,40 @@ export default function ProfilePage() {
 
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>
-        <div className="space-y-2">
+        <div className="text-sm" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 4.5rem)" }}>
+          {/* header — column labels with select-all checkboxes */}
+          <div className="py-1 border-b dark:border-gray-600" />
+          {(["in_app_enabled", "push_enabled", "email_enabled"] as const).map((field) => {
+            const allOn = prefs.length > 0 && prefs.every((p) => p[field]);
+            const someOn = prefs.some((p) => p[field]);
+            return (
+              <label key={field} className="py-1 border-b dark:border-gray-600 flex flex-col items-center gap-1 cursor-pointer select-none font-medium">
+                <input
+                  type="checkbox"
+                  checked={allOn}
+                  ref={(el) => { if (el) el.indeterminate = someOn && !allOn; }}
+                  onChange={() => handleToggleAll(field)}
+                />
+                <span className="text-xs text-center leading-tight">
+                  {field === "in_app_enabled" ? t("notifications.in_app") : field === "push_enabled" ? t("notifications.push") : t("notifications.email")}
+                </span>
+              </label>
+            );
+          })}
+          {/* preference rows */}
           {prefs.map((p) => (
-            <div key={p.notification_type} className="flex items-center justify-between py-1 border-b dark:border-gray-600 text-sm">
-              <span>{t(`notifications.type_${p.notification_type}`)}</span>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={p.in_app_enabled} onChange={() => handleTogglePref(p.notification_type, "in_app_enabled")} />
-                  <span className="text-xs">{t("notifications.in_app")}</span>
-                </label>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={p.push_enabled} onChange={() => handleTogglePref(p.notification_type, "push_enabled")} />
-                  <span className="text-xs">{t("notifications.push")}</span>
-                </label>
-                <label className="flex items-center gap-1">
-                  <input type="checkbox" checked={p.email_enabled} onChange={() => handleTogglePref(p.notification_type, "email_enabled")} />
-                  <span className="text-xs">{t("notifications.email")}</span>
-                </label>
-              </div>
-            </div>
+            <React.Fragment key={p.notification_type}>
+              <div className="py-1 border-b dark:border-gray-600 flex items-center">{t(`notifications.type_${p.notification_type}`)}</div>
+              {(["in_app_enabled", "push_enabled", "email_enabled"] as const).map((field) => (
+                <div key={field} className="py-1 border-b dark:border-gray-600 flex items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={p[field]}
+                    onChange={() => handleTogglePref(p.notification_type, field)}
+                  />
+                </div>
+              ))}
+            </React.Fragment>
           ))}
         </div>
       </section>

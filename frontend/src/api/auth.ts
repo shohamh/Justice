@@ -29,6 +29,7 @@ export interface Me {
   email_verified?: boolean;
   direct_commander_id?: string | null;
   direct_commander_name?: string | null;
+  profile_picture_url?: string | null;
 }
 
 export interface NodeOut {
