@@ -223,7 +223,7 @@ def get_duty_type_usage(
         )
     ).scalar_one()
     exemption_map_count = session.execute(
-        select(func.count()).where(
+        select(func.count(ExemptionDutyTypeMap.duty_type_id)).where(
             ExemptionDutyTypeMap.duty_type_id == duty_type_id
         )
     ).scalar_one()
