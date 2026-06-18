@@ -317,7 +317,10 @@ def _solve_soft_coverage(
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
     seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
     solver.parameters.random_seed = seed
-    solver.parameters.num_search_workers = 8
+    # num_search_workers=1: parallel workers introduce non-determinism because
+    # whichever worker wins the race depends on CPU scheduling, not the seed.
+    # Single-threaded + fixed seed = fully reproducible results across runs.
+    solver.parameters.num_search_workers = 1
 
     # Stage 1: maximize number of covered duties. Replaces the fairness
     # objective that build_model installed.
@@ -375,12 +378,11 @@ def _solve_with_settings(
     model, x = build_model(soldiers, duties, existing, settings, reserve_dist)
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
-    # Always seed the solver so runs are reproducible. When the objective has
-    # ties (e.g. several equally-fair assignments), an unseeded multi-worker
-    # search returns a different optimum each run; a fixed seed makes the result
-    # deterministic. Callers may override via settings.seed.
+    # Fixed seed + single worker = deterministic results. random_seed alone is
+    # not sufficient: parallel workers race each other and whichever wins depends
+    # on CPU scheduling, not the seed. Callers may override seed via settings.seed.
     solver.parameters.random_seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
-    solver.parameters.num_search_workers = 8
+    solver.parameters.num_search_workers = 1
     if cancel_event is not None:
         threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
     status = solver.Solve(model)
