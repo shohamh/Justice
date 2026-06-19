@@ -270,7 +270,11 @@ def roll_horizon(
     actor_id: uuid.UUID | None = None,
 ) -> int:
     """Materialise the next `horizon_days` days of shifts for every active auto_roll
-    template. Idempotent (relies on generate_shifts). Returns total shifts created."""
+    template. Idempotent (relies on generate_shifts). Returns total shifts created.
+
+    Templates with `auto_roll_until` set have their generation window clamped to that
+    date; templates whose `auto_roll_until` has already passed are skipped entirely.
+    """
     base = today or date.today()
     range_end = base + timedelta(days=horizon_days - 1)
     templates = session.execute(
@@ -280,8 +284,13 @@ def roll_horizon(
     ).scalars().all()
     total = 0
     for tpl in templates:
+        if tpl.auto_roll_until is not None and tpl.auto_roll_until < base:
+            continue
+        tpl_range_end = range_end
+        if tpl.auto_roll_until is not None and tpl.auto_roll_until < tpl_range_end:
+            tpl_range_end = tpl.auto_roll_until
         created = generate_shifts(
-            session, tpl=tpl, range_start=base, range_end=range_end, actor_id=actor_id
+            session, tpl=tpl, range_start=base, range_end=tpl_range_end, actor_id=actor_id
         )
         total += len(created)
     return total

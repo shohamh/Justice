@@ -137,3 +137,31 @@ def test_update_template_can_clear_auto_roll_until(admin_session):
     admin_session.flush()
     svc.update_template(admin_session, tpl=tpl, auto_roll_until=None)
     assert tpl.auto_roll_until is None
+
+
+def test_roll_horizon_clamps_to_auto_roll_until(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="clamped", duty_type_id=dt.id, duty_location_id=loc.id,
+        weekdays=[1, 2, 3, 4, 5, 6, 7], auto_roll=True,
+    )
+    tpl.auto_roll_until = date(2026, 6, 5)
+    admin_session.flush()
+    total = svc.roll_horizon(admin_session, horizon_days=10, today=date(2026, 6, 1))
+    assert total == 5  # Jun 1..5 inclusive, clamped well before the 10-day horizon end (Jun 10)
+    rolled = admin_session.query(DutyShift).filter(DutyShift.generated_from_template_id == tpl.id).count()
+    assert rolled == 5
+
+
+def test_roll_horizon_skips_template_past_auto_roll_until(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="expired", duty_type_id=dt.id, duty_location_id=loc.id,
+        weekdays=[1, 2, 3, 4, 5, 6, 7], auto_roll=True,
+    )
+    tpl.auto_roll_until = date(2026, 5, 1)
+    admin_session.flush()
+    total = svc.roll_horizon(admin_session, horizon_days=10, today=date(2026, 6, 1))
+    assert total == 0
+    rolled = admin_session.query(DutyShift).filter(DutyShift.generated_from_template_id == tpl.id).count()
+    assert rolled == 0
