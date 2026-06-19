@@ -29,6 +29,7 @@ class TemplateOut(BaseModel):
     required_count: int
     active: bool
     auto_roll: bool
+    auto_roll_until: date | None
     notes: str | None
 
 
@@ -43,6 +44,7 @@ class CreateTemplateRequest(BaseModel):
     end_time: str = "23:59"
     required_count: int = Field(default=1, ge=1)
     auto_roll: bool = False
+    auto_roll_until: date | None = None
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -55,6 +57,7 @@ class UpdateTemplateRequest(BaseModel):
     end_time: str | None = None
     required_count: int | None = Field(default=None, ge=1)
     auto_roll: bool | None = None
+    auto_roll_until: date | None = None
     active: bool | None = None
     notes: str | None = None
 
@@ -78,7 +81,7 @@ def _out(t: ShiftTemplate) -> TemplateOut:
         id=t.id, name=t.name, duty_type_id=t.duty_type_id, duty_location_id=t.duty_location_id,
         recurrence_type=t.recurrence_type, weekdays=t.weekdays, duration_days=t.duration_days,
         start_time=t.start_time, end_time=t.end_time, required_count=t.required_count,
-        active=t.active, auto_roll=t.auto_roll, notes=t.notes,
+        active=t.active, auto_roll=t.auto_roll, auto_roll_until=t.auto_roll_until, notes=t.notes,
     )
 
 
@@ -113,6 +116,7 @@ def create_template(
             weekdays=body.weekdays, duration_days=body.duration_days,
             start_time=body.start_time, end_time=body.end_time,
             required_count=body.required_count, auto_roll=body.auto_roll,
+            auto_roll_until=body.auto_roll_until,
             notes=body.notes, actor_id=user.id,
         )
     except svc.TemplateError as exc:
@@ -134,6 +138,8 @@ def update_template(
     extra: dict = {}
     if "notes" in body.model_fields_set:
         extra["notes"] = body.notes
+    if "auto_roll_until" in body.model_fields_set:
+        extra["auto_roll_until"] = body.auto_roll_until
     try:
         svc.update_template(
             session, tpl=t, name=body.name, recurrence_type=body.recurrence_type,
