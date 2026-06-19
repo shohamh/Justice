@@ -29,18 +29,22 @@ export default function UnitCalendarPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
-  const [nodeId, setNodeId] = useState<string>("");
+  // Start with the user's own node immediately so UnitCalendar can fetch in
+  // parallel with the tree, instead of waiting for the tree fetch to complete.
+  const [nodeId, setNodeId] = useState<string>(() => user?.hierarchy_node_id ?? "");
 
   useEffect(() => {
     void fetchFullTree().then((ns) => {
       const ordered = treeOrder(ns);
       setNodes(ordered);
-      const preferred = user?.hierarchy_node_id
-        ? ordered.find((n) => n.id === user.hierarchy_node_id)
-        : null;
-      setNodeId((preferred ?? ordered[0])?.id ?? "");
+      if (!nodeId) {
+        const preferred = user?.hierarchy_node_id
+          ? ordered.find((n) => n.id === user.hierarchy_node_id)
+          : null;
+        setNodeId((preferred ?? ordered[0])?.id ?? "");
+      }
     });
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const indentLabel = useMemo(() => {
     const depthMap = new Map<string, number>();

@@ -253,6 +253,127 @@ def active_days(session: Session, *, soldier: Soldier) -> int:
     return max(1, raw - len(exempt))
 
 
+def _count_exempt_days(exemptions: list, start: date, end: date) -> int:
+    """Count unique exempt days in [start, end], merging overlapping ranges."""
+    ranges = []
+    for ex in exemptions:
+        lo = max(ex.start_date, start)
+        hi = min(ex.end_date, end) if ex.end_date is not None else end
+        if lo <= hi:
+            ranges.append((lo, hi))
+    if not ranges:
+        return 0
+    ranges.sort()
+    total = 0
+    cur_lo, cur_hi = ranges[0]
+    for lo, hi in ranges[1:]:
+        if lo <= cur_hi + timedelta(days=1):
+            cur_hi = max(cur_hi, hi)
+        else:
+            total += (cur_hi - cur_lo).days + 1
+            cur_lo, cur_hi = lo, hi
+    total += (cur_hi - cur_lo).days + 1
+    return total
+
+
+def _bulk_active_days(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, int]:
+    """Compute active_days for many soldiers using 3 DB queries total instead of 3-per-soldier."""
+    today = date.today()
+    active_dts = _active_duty_type_ids(session)
+    if not active_dts:
+        return {s.id: max(1, (today - s.enrolled_at).days) for s in soldiers}
+
+    covered: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+    for etid, dtid in session.execute(
+        select(ExemptionDutyTypeMap.exemption_type_id, ExemptionDutyTypeMap.duty_type_id)
+    ).all():
+        covered[etid].add(dtid)
+    full_types = {etid for etid, dts in covered.items() if active_dts <= dts}
+
+    if not full_types:
+        return {s.id: max(1, (today - s.enrolled_at).days) for s in soldiers}
+
+    soldier_ids = [s.id for s in soldiers]
+    all_exemptions = (
+        session.execute(
+            select(SoldierExemption).where(
+                SoldierExemption.soldier_id.in_(soldier_ids),
+                SoldierExemption.exemption_type_id.in_(full_types),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    exemptions_by_soldier: dict[uuid.UUID, list] = defaultdict(list)
+    for ex in all_exemptions:
+        exemptions_by_soldier[ex.soldier_id].append(ex)
+
+    result: dict[uuid.UUID, int] = {}
+    for s in soldiers:
+        raw = max(1, (today - s.enrolled_at).days)
+        exempt_count = _count_exempt_days(exemptions_by_soldier.get(s.id, []), s.enrolled_at, today)
+        result[s.id] = max(1, raw - exempt_count)
+    return result
+
+
+def _duty_stats_by_soldier(
+    session: Session,
+) -> tuple[dict[uuid.UUID, Decimal], dict[uuid.UUID, int]]:
+    """Return (score_by_soldier, shift_count_by_soldier) in a single pass — half the queries of
+    calling duty_score_by_soldier + shift_count_by_soldier separately."""
+    type_scores = _duty_type_scores(session)
+    standby_mult = _get_multiplier_setting(session, "scoring.reserve_standby_multiplier", "0.2")
+    called_up_mult = _get_multiplier_setting(session, "scoring.reserve_called_up_multiplier", "1.3")
+    dismissed_mult = _get_multiplier_setting(session, "scoring.dismissed_multiplier", "0.0")
+
+    assignments = (
+        session.execute(select(DutyAssignment).where(DutyAssignment.status == "published"))
+        .scalars()
+        .all()
+    )
+    overrides = {
+        (o.duty_assignment_id, o.date): o
+        for o in session.execute(select(DutyDayOverride)).scalars().all()
+    }
+    dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
+    for d in session.execute(select(DutyDismissal)).scalars().all():
+        dismissal_ranges.setdefault(d.duty_assignment_id, []).append(
+            (d.dismissed_from, d.dismissed_to)
+        )
+
+    duty_scores: dict[uuid.UUID, Decimal] = defaultdict(lambda: Decimal("0"))
+    assignment_sets: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+
+    for a in assignments:
+        day = a.start_date
+        while day < a.end_date:
+            ov = overrides.get((a.id, day))
+            eff = ov.effective_soldier_id if ov is not None else a.soldier_id
+            if eff is not None:
+                if a.forced_call_up_multiplier is not None:
+                    mult = a.forced_call_up_multiplier
+                elif a.is_reserve:
+                    if (
+                        a.called_up_from is not None
+                        and a.called_up_to is not None
+                        and a.called_up_from <= day <= a.called_up_to
+                    ):
+                        mult = called_up_mult
+                    else:
+                        mult = standby_mult
+                else:
+                    ranges = dismissal_ranges.get(a.id, [])
+                    if any(df <= day <= dt for df, dt in ranges):
+                        mult = dismissed_mult
+                    else:
+                        mult = Decimal("1.0")
+                duty_scores[eff] += type_scores.get(a.duty_type_id, Decimal("0")) * mult
+                assignment_sets[eff].add(a.id)
+            day += timedelta(days=1)
+
+    return dict(duty_scores), {sid: len(asgns) for sid, asgns in assignment_sets.items()}
+
+
 def normalised_score(session: Session, *, soldier: Soldier) -> Decimal:
     return cumulative_score(session, soldier_id=soldier.id) / Decimal(
         active_days(session, soldier=soldier)
@@ -286,9 +407,9 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
     from app.services.settings_loader import SettingNotFound, get_setting
 
     soldiers = session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
-    duty_scores = duty_score_by_soldier(session)
+    duty_scores, shift_counts = _duty_stats_by_soldier(session)
     adj_scores = adjustments_by_soldier(session)
-    shift_counts = shift_count_by_soldier(session)
+    active_days_map = _bulk_active_days(session, list(soldiers))
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
 
@@ -323,7 +444,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for s in soldiers:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
-        ad = active_days(session, soldier=s)
+        ad = active_days_map.get(s.id, 1)
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         effort_data = effort_map.get(s.id)
         effort_score = float(effort_data.effort_score) if effort_data else 0.0

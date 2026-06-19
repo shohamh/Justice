@@ -84,16 +84,20 @@ def _duty_type_color(duty_type_id: uuid.UUID) -> str:
     return f"hsl({h}, 65%, 55%)"
 
 
-def _swap_count_for_shift(session: Session, shift_id: uuid.UUID) -> int:
-    return session.execute(
-        select(func.count())
+def _swap_counts_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not shift_ids:
+        return {}
+    rows = session.execute(
+        select(DutyAssignment.duty_shift_id, func.count())
         .select_from(SwapRequest)
         .join(DutyAssignment, DutyAssignment.id == SwapRequest.duty_assignment_id)
         .where(
-            DutyAssignment.duty_shift_id == shift_id,
+            DutyAssignment.duty_shift_id.in_(shift_ids),
             SwapRequest.status == "open",
         )
-    ).scalar_one()
+        .group_by(DutyAssignment.duty_shift_id)
+    ).all()
+    return {shift_id: count for shift_id, count in rows}
 
 
 @router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)
@@ -105,7 +109,8 @@ def get_shift_detail(
     raw = get_single_shift(session, shift_id=shift_id)
     if raw is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return CalendarShiftOut(**raw, swap_request_count=_swap_count_for_shift(session, shift_id))
+    swap_count = _swap_counts_for_shifts(session, [shift_id]).get(shift_id, 0)
+    return CalendarShiftOut(**raw, swap_request_count=swap_count)
 
 
 @router.get("/unit", response_model=list[CalRow])
@@ -184,9 +189,10 @@ def calendar_shifts(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     show_reason = can(user, Action.HIERARCHY_READ, target_node=node, roots=scope_root_ids(session, user))
     raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
+    swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:
-        shift = CalendarShiftOut(**s, swap_request_count=_swap_count_for_shift(session, s["id"]))
+        shift = CalendarShiftOut(**s, swap_request_count=swap_counts.get(s["id"], 0))
         if not show_reason:
             for assignee in shift.assignees:
                 for d in assignee.dismissals:
