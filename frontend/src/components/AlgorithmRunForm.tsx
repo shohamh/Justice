@@ -233,14 +233,13 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
       {showSettings && (
         <div className="bg-gray-50 dark:bg-gray-700 rounded p-3 space-y-3 text-sm">
           {([
-            { key: "K" as const, label: "גודל מאגר מועמדים (K)", description: "כמה מועמדים הפותר שוקל לכל תורנות — ערך נמוך מהיר יותר אך עשוי להחמיץ פתרונות הוגנים יותר", step: 1 },
             { key: "T" as const, label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בחלון נע — חייב להיות ≤ R", step: 1 },
             { key: "Wt" as const, label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים לספירת T — בדרך כלל קצר יותר מ-Wr", step: 1 },
             { key: "R" as const, label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בחלון נע, כולל רזרבה — חייב להיות ≥ T", step: 1 },
             { key: "Wr" as const, label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים לספירת R — בדרך כלל ארוך יותר מ-Wt", step: 1 },
             { key: "alpha" as const, label: "משקל העדפת ניקוד (α)", description: "ככל שגבוה יותר, האלגוריתם יעדיף חיילים עם עומס נמוך — ערכים גבוהים מייצרים שיבוץ הוגן יותר", step: 0.1 },
             { key: "beta" as const, label: "משקל הוגנות (β)", description: "מחושב אוטומטית — ניתן לשינוי ידני במקרים מיוחדים בלבד", step: 0.1 },
-            { key: "time_limit_seconds" as const, label: "מגבלת זמן הפותר (שניות)", description: "מספר שניות מרבי לפותר — יחזיר את הפתרון הטוב ביותר שנמצא עד אז", step: 1 },
+            { key: "time_limit_seconds" as const, label: "מגבלת זמן ריצת האלגוריתם (שניות)", description: "מספר שניות מרבי להרצת האלגוריתם — יחזיר את הפתרון הטוב ביותר שנמצא עד אז", step: 1 },
           ]).map(({ key, label, description, step }) => (
             <div key={key} className="flex items-start justify-between gap-4">
               <div className="flex-1">
