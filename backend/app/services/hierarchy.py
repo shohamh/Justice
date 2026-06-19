@@ -9,7 +9,7 @@ from app.audit.writer import write_audit
 from app.db.models import HierarchyNode, Soldier
 
 # Top (index 0) to bottom. A child must be at any level below the parent.
-LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"]
+LEVEL_ORDER = ["corps", "division", "unit", "department", "branch", "group", "team"]
 
 
 class HierarchyError(Exception):

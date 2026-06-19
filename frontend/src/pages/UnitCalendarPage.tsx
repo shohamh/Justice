@@ -29,19 +29,14 @@ export default function UnitCalendarPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
-  // Start with the user's own node immediately so UnitCalendar can fetch in
-  // parallel with the tree, instead of waiting for the tree fetch to complete.
-  const [nodeId, setNodeId] = useState<string>(() => user?.hierarchy_node_id ?? "");
+  const [nodeId, setNodeId] = useState<string>("");
 
   useEffect(() => {
     void fetchFullTree().then((ns) => {
       const ordered = treeOrder(ns);
       setNodes(ordered);
       if (!nodeId) {
-        const preferred = user?.hierarchy_node_id
-          ? ordered.find((n) => n.id === user.hierarchy_node_id)
-          : null;
-        setNodeId((preferred ?? ordered[0])?.id ?? "");
+        setNodeId(ordered[0]?.id ?? "");
       }
     });
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps

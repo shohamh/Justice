@@ -36,6 +36,25 @@ def _ensure_admin(session, settings) -> None:
     print(f"bootstrap: created admin id={admin.id} personal_number={pn}")
 
 
+def _ensure_root_node(session) -> None:
+    if session.get(SystemSetting, "system.root_node_id") is not None:
+        print("bootstrap: root node already exists; skipping.")
+        return
+    node = HierarchyNode(
+        level="corps",
+        name="כלל המסגרת",
+        parent_id=None,
+        commander_id=None,
+        path_ids=[],
+    )
+    session.add(node)
+    session.flush()
+    node.path_ids = [node.id]
+    session.flush()
+    session.add(SystemSetting(key="system.root_node_id", value=str(node.id), updated_by=None))
+    print(f"bootstrap: created root node id={node.id}")
+
+
 def _ensure_holding_node(session) -> None:
     if session.get(SystemSetting, "system.holding_node_id") is not None:
         print("bootstrap: holding node already exists; skipping.")
@@ -59,6 +78,7 @@ def main() -> int:
     settings = get_settings()
     with session_scope() as session:
         _ensure_admin(session, settings)
+        _ensure_root_node(session)
         _ensure_holding_node(session)
         session.commit()
     return 0

@@ -7,11 +7,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import uuid as _uuid_mod
+
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import HierarchyNode, Soldier, SystemSetting
 from app.db.session import get_session
 from app.services import hierarchy as svc
+
+
+def _get_root_node_id(session: Session) -> uuid.UUID | None:
+    setting = session.get(SystemSetting, "system.root_node_id")
+    return _uuid_mod.UUID(setting.value) if setting else None
 
 router = APIRouter(prefix="/hierarchy", tags=["hierarchy"])
 
@@ -112,6 +119,8 @@ def move_node(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if node_id == _get_root_node_id(session):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="root_node_immovable")
     authorize(session, user, Action.HIERARCHY_MANAGE, target_node=node)
     new_parent = session.get(HierarchyNode, body.new_parent_id) if body.new_parent_id else None
     authorize(session, user, Action.HIERARCHY_MANAGE, target_node=new_parent)
@@ -133,6 +142,8 @@ def delete_node(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if node_id == _get_root_node_id(session):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="root_node_protected")
     authorize(session, user, Action.HIERARCHY_MANAGE, target_node=node)
     try:
         svc.delete_node(session, node_id=node_id, actor_id=user.id)
@@ -147,20 +158,30 @@ def get_tree(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[NodeOut]:
+    root_node_id = _get_root_node_id(session)
+
     if all or user.role == "admin":
-        nodes = session.execute(select(HierarchyNode)).scalars().all()
+        nodes = list(session.execute(select(HierarchyNode)).scalars().all())
     elif user.role == "soldier":
         if user.hierarchy_node_id is None:
             return []
         node = session.get(HierarchyNode, user.hierarchy_node_id)
-        return [_out(node, session)] if node else []
+        nodes = [node] if node else []
     else:
         roots = scope_root_ids(session, user)
         if not roots:
-            return []
-        nodes = [
-            n
-            for n in session.execute(select(HierarchyNode)).scalars().all()
-            if any(r in n.path_ids for r in roots)
-        ]
+            nodes = []
+        else:
+            nodes = [
+                n
+                for n in session.execute(select(HierarchyNode)).scalars().all()
+                if any(r in n.path_ids for r in roots)
+            ]
+
+    # Always include the system root node so every role can use it as a calendar default.
+    if root_node_id and not any(n.id == root_node_id for n in nodes):
+        root_node = session.get(HierarchyNode, root_node_id)
+        if root_node:
+            nodes = [root_node, *nodes]
+
     return [_out(n, session) for n in nodes]
