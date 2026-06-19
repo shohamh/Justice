@@ -36,7 +36,8 @@ export default function UnitCalendarPage() {
       const ordered = treeOrder(ns);
       setNodes(ordered);
       if (!nodeId) {
-        setNodeId(ordered[0]?.id ?? "");
+        const root = ordered.find((n) => n.level === "corps") ?? ordered[0];
+        setNodeId(root?.id ?? "");
       }
     });
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
