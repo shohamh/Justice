@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -37,6 +37,8 @@ export default function ProfilePage() {
   const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
   const [tgPolling, setTgPolling] = useState(false);
   const [prefs, setPrefs] = useState<NotificationPref[]>([]);
+  const latestPrefsRef = useRef<NotificationPref[]>([]);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scopes, setScopes] = useState<CommanderScope[]>([]);
   const [hierarchyNodes, setHierarchyNodes] = useState<NodeDTO[]>([]);
   const [addNodeId, setAddNodeId] = useState("");
@@ -55,7 +57,7 @@ export default function ProfilePage() {
   useEffect(() => {
     getRanks().then(setRanks).catch(() => {});
     getTelegramStatus().then(setTgStatus).catch(() => {});
-    getPreferences().then(setPrefs).catch(() => {});
+    getPreferences().then((p) => { latestPrefsRef.current = p; setPrefs(p); }).catch(() => {});
     if (user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") {
       listCommanderScopes().then(setScopes).catch(() => {});
       fetchTree().then((nodes) => {
@@ -114,27 +116,31 @@ export default function ProfilePage() {
     setTgStatus({ is_verified: false });
   }
 
-  async function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled" | "email_enabled") {
-    const previous = prefs;
-    const updated = prefs.map((p) => p.notification_type === nt ? { ...p, [field]: !p[field] } : p);
-    setPrefs(updated);
-    try {
-      await updatePreferences(updated);
-    } catch {
-      setPrefs(previous);
-    }
+  function scheduleSyncPrefs() {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      syncTimerRef.current = null;
+      try {
+        await updatePreferences(latestPrefsRef.current);
+      } catch {
+        getPreferences().then((p) => { latestPrefsRef.current = p; setPrefs(p); }).catch(() => {});
+      }
+    }, 300);
   }
 
-  async function handleToggleAll(field: "in_app_enabled" | "push_enabled" | "email_enabled") {
-    const allOn = prefs.every((p) => p[field]);
-    const previous = prefs;
-    const updated = prefs.map((p) => ({ ...p, [field]: !allOn }));
+  function handleTogglePref(nt: string, field: "in_app_enabled" | "push_enabled" | "email_enabled") {
+    const updated = latestPrefsRef.current.map((p) => p.notification_type === nt ? { ...p, [field]: !p[field] } : p);
+    latestPrefsRef.current = updated;
     setPrefs(updated);
-    try {
-      await updatePreferences(updated);
-    } catch {
-      setPrefs(previous);
-    }
+    scheduleSyncPrefs();
+  }
+
+  function handleToggleAll(field: "in_app_enabled" | "push_enabled" | "email_enabled") {
+    const allOn = latestPrefsRef.current.every((p) => p[field]);
+    const updated = latestPrefsRef.current.map((p) => ({ ...p, [field]: !allOn }));
+    latestPrefsRef.current = updated;
+    setPrefs(updated);
+    scheduleSyncPrefs();
   }
 
   async function handleAddScope(e: React.FormEvent) {
@@ -175,7 +181,7 @@ export default function ProfilePage() {
               </span>
             </div>
           )}
-          <h2 className="text-xl font-semibold">{t("profile.title")}</h2>
+          <h2 className="text-xl font-semibold">{user?.full_name}</h2>
         </div>
         <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
