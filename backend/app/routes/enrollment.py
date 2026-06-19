@@ -19,6 +19,7 @@ router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
 class EnrollmentRequestOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_name: str
     requested_node_id: uuid.UUID
     status: str
     decided_by: uuid.UUID | None
@@ -41,9 +42,18 @@ def list_pending(
     else:
         roots = scope_root_ids(session, user)
         reqs = svc.list_pending_for_node_ids(session, roots)
+    soldier_ids = {r.soldier_id for r in reqs}
+    soldiers = {
+        s.id: s
+        for s in session.execute(
+            select(Soldier).where(Soldier.id.in_(soldier_ids))
+        ).scalars().all()
+    }
     return [
         EnrollmentRequestOut(
-            id=r.id, soldier_id=r.soldier_id, requested_node_id=r.requested_node_id,
+            id=r.id, soldier_id=r.soldier_id,
+            soldier_name=soldiers[r.soldier_id].full_name if r.soldier_id in soldiers else str(r.soldier_id)[:8],
+            requested_node_id=r.requested_node_id,
             status=r.status, decided_by=r.decided_by, decision_note=r.decision_note,
         )
         for r in reqs

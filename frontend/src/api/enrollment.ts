@@ -3,6 +3,7 @@ import { api } from "./client";
 export interface EnrollmentRequestDTO {
   id: string;
   soldier_id: string;
+  soldier_name: string;
   requested_node_id: string;
   status: string;
   decided_by: string | null;

@@ -432,13 +432,11 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
             {enrollItems.map(req => {
-              const sd = soldierDisplay(req.soldier_id);
               const nodeName = nodeMap.get(req.requested_node_id)?.name ?? req.requested_node_id.slice(0, 8);
               return (
                 <div key={req.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
-                    <strong><SoldierLink id={req.soldier_id} name={sd.name} /></strong>
-                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                    <strong><SoldierLink id={req.soldier_id} name={req.soldier_name} /></strong>
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
                   <div className="flex gap-2 items-center">

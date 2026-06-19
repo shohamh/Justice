@@ -48,6 +48,7 @@ api.interceptors.response.use(
         return api.request(originalRequest);
       } catch {
         setAccessToken(null);
+        window.dispatchEvent(new Event("auth:session-expired"));
         throw error;
       }
     }

@@ -24,7 +24,6 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
       }`}
     >
       {a.soldier_name || a.duty_type_id?.slice(0, 6) || "?"}
-      {a.is_reserve ? <span className="text-[10px] bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 rounded px-1 mr-1">רזרבה</span> : null}
     </button>
   );
 }

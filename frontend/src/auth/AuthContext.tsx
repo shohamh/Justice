@@ -31,6 +31,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setAuthLoading(false));
   }, []);
 
+  useEffect(() => {
+    const handler = () => { setAccessToken(null); setUser(null); };
+    window.addEventListener("auth:session-expired", handler);
+    return () => window.removeEventListener("auth:session-expired", handler);
+  }, []);
+
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const r = await apiLogin(personal_number, password, remember_me);
     setAccessToken(r.access_token);
