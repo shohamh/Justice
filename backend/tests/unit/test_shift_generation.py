@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from app.db.models import DutyLocation, DutyShift, DutyType
 from app.services import shift_templates as svc
 
@@ -106,3 +108,32 @@ def test_reserve_count_override(admin_session):
                 start_date=date(2026,6,1), end_date=date(2026,6,1), required_count=20, reserve_count_override=7)
     admin_session.add(shift); admin_session.flush()
     assert reserve_count_for_shift(admin_session, shift=shift) == 7
+
+
+def test_create_template_rejects_past_auto_roll_until(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    with pytest.raises(svc.TemplateError):
+        svc.create_template(
+            admin_session, name="bad", duty_type_id=dt.id, duty_location_id=loc.id,
+            weekdays=[1], auto_roll=True, auto_roll_until=date(2020, 1, 1),
+        )
+
+
+def test_create_template_stores_auto_roll_until(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="future", duty_type_id=dt.id, duty_location_id=loc.id,
+        weekdays=[1], auto_roll=True, auto_roll_until=date(2099, 1, 1),
+    )
+    assert tpl.auto_roll_until == date(2099, 1, 1)
+
+
+def test_update_template_can_clear_auto_roll_until(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="clearme", duty_type_id=dt.id, duty_location_id=loc.id,
+        weekdays=[1], auto_roll=True, auto_roll_until=date(2099, 1, 1),
+    )
+    admin_session.flush()
+    svc.update_template(admin_session, tpl=tpl, auto_roll_until=None)
+    assert tpl.auto_roll_until is None

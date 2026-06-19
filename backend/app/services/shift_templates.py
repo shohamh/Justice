@@ -58,6 +58,7 @@ def _validate(
     required_count: int,
     start_time: str,
     end_time: str,
+    auto_roll_until: date | None = None,
 ) -> None:
     if recurrence_type not in _VALID_RECURRENCE:
         raise TemplateError("invalid_recurrence_type")
@@ -71,6 +72,8 @@ def _validate(
         parts = t.split(":")
         if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
             raise TemplateError("invalid_time")
+    if auto_roll_until is not None and auto_roll_until < date.today():
+        raise TemplateError("invalid_auto_roll_until")
 
 
 def create_template(
@@ -86,10 +89,11 @@ def create_template(
     end_time: str = "23:59",
     required_count: int = 1,
     auto_roll: bool = False,
+    auto_roll_until: date | None = None,
     notes: str | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
-    _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time)
+    _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time, auto_roll_until)
     tpl = ShiftTemplate(
         name=name,
         duty_type_id=duty_type_id,
@@ -101,6 +105,7 @@ def create_template(
         end_time=end_time,
         required_count=required_count,
         auto_roll=auto_roll,
+        auto_roll_until=auto_roll_until,
         notes=notes,
         created_by=actor_id,
     )
@@ -112,7 +117,7 @@ def create_template(
         action="shift_template.create",
         entity_type="shift_template",
         entity_id=tpl.id,
-        after={"name": name, "recurrence_type": recurrence_type, "weekdays": tpl.weekdays, "duration_days": duration_days, "auto_roll": auto_roll},
+        after={"name": name, "recurrence_type": recurrence_type, "weekdays": tpl.weekdays, "duration_days": duration_days, "auto_roll": auto_roll, "auto_roll_until": auto_roll_until.isoformat() if auto_roll_until else None},
     )
     return tpl
 
@@ -136,6 +141,7 @@ def update_template(
     end_time: str | None = None,
     required_count: int | None = None,
     auto_roll: bool | None = None,
+    auto_roll_until: object = ...,
     active: bool | None = None,
     notes: object = ...,
     actor_id: uuid.UUID | None = None,
@@ -157,6 +163,8 @@ def update_template(
         tpl.required_count = required_count
     if auto_roll is not None:
         tpl.auto_roll = auto_roll
+    if auto_roll_until is not ...:
+        tpl.auto_roll_until = auto_roll_until  # type: ignore[assignment]
     if active is not None:
         tpl.active = active
     if notes is not ...:
@@ -164,7 +172,7 @@ def update_template(
     if tpl.recurrence_type != "weekly":
         tpl.weekdays = []
         tpl.duration_days = 1
-    _validate(tpl.recurrence_type, tpl.weekdays, tpl.duration_days, tpl.required_count, tpl.start_time, tpl.end_time)
+    _validate(tpl.recurrence_type, tpl.weekdays, tpl.duration_days, tpl.required_count, tpl.start_time, tpl.end_time, tpl.auto_roll_until)
     write_audit(
         session,
         actor_id=actor_id,
