@@ -183,7 +183,6 @@ export default function ProfilePage() {
           )}
           <h2 className="text-xl font-semibold">{user?.full_name}</h2>
         </div>
-        <p>{t("team.full_name")}: {user?.full_name}</p>
         <p>{t("team.personal_number")}: {user?.personal_number}</p>
         <p>{t("team.role")}: {user?.role}</p>
         <Link to="/change-password" className="text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200" data-testid="profile-change-password">
