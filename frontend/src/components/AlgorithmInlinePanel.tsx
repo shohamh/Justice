@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: SolverSettings = {
 export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted, onClose }: Props) {
   const [mode, setMode] = useState<"draft" | "direct_publish">("draft");
   const [showModeHelp, setShowModeHelp] = useState(false);
+  const [showDeterministicHelp, setShowDeterministicHelp] = useState(false);
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
@@ -60,7 +61,8 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Run mode */}
+      <div className="flex items-center gap-2" dir="rtl">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">מצב הרצה:</span>
         <div className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
           <button
@@ -68,14 +70,14 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
             className={`px-3 py-1 ${mode === "draft" ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
             onClick={() => setMode("draft")}
           >
-            טיוטה
+            מצב טיוטה
           </button>
           <button
             type="button"
             className={`px-3 py-1 ${mode === "direct_publish" ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
             onClick={() => setMode("direct_publish")}
           >
-            פרסום ישיר
+            מצב פרסום ישיר
           </button>
         </div>
         <button
@@ -89,35 +91,75 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
         {showModeHelp && <AlgorithmModeHelpModal onClose={() => setShowModeHelp(false)} />}
       </div>
 
-      <button
-        type="button"
-        className="text-xs text-blue-600 dark:text-blue-400 underline"
-        onClick={() => setShowSettings(s => !s)}
-      >
+      {/* Determinism toggle */}
+      <div className="flex items-center gap-2 flex-wrap" dir="rtl">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">תוצאות:</span>
+        <div className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+          <button
+            type="button"
+            className={`px-3 py-1 ${settings.num_workers === 1 ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setSettings(s => ({ ...s, num_workers: 1 }))}
+          >
+            דטרמיניסטי
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 ${settings.num_workers !== 1 ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setSettings(s => ({ ...s, num_workers: 8 }))}
+          >
+            מהיר
+          </button>
+        </div>
+        <button
+          type="button"
+          className="text-gray-400 hover:text-indigo-600 text-xs font-bold border rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0"
+          onClick={() => setShowDeterministicHelp(h => !h)}
+          title="מה ההבדל?"
+        >
+          ?
+        </button>
+        {showDeterministicHelp && (
+          <p className="w-full text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-2 mt-1" dir="rtl">
+            <strong>דטרמיניסטי:</strong> האלגוריתם רץ עם חוט עיבוד אחד ולכן מייצר תמיד את אותן הצעות בדיוק לאותו קלט — שימושי כשרוצים לוודא שהרצה חוזרת לא תשנה שיבוצים שכבר אושרו.{" "}
+            <strong>מהיר:</strong> האלגוריתם רץ עם 8 חוטי עיבוד במקביל — מהיר יותר אבל עשוי לתת תוצאות שונות בין הרצה להרצה אפילו על אותו קלט, כי חוטי העיבוד מתחרים זה בזה וסדר הסיום שלהם תלוי בתזמוני המעבד.
+          </p>
+        )}
+      </div>
+
+      <button type="button" className="text-xs text-blue-600 dark:text-blue-400 underline" onClick={() => setShowSettings(s => !s)}>
         הגדרות מתקדמות
       </button>
       {showSettings && (
-        <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 dark:bg-gray-700 p-3 rounded">
-          {(["K", "T", "Wt", "R", "Wr", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
-            <label key={key} className="block">
-              {key}
+        <div className="bg-gray-50 dark:bg-gray-700 rounded p-3 space-y-3 text-sm">
+          {([
+            { key: "T" as const, label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בחלון נע — חייב להיות ≤ R", step: 1 },
+            { key: "Wt" as const, label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים לספירת T — בדרך כלל קצר יותר מ-Wr", step: 1 },
+            { key: "R" as const, label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בחלון נע, כולל רזרבה — חייב להיות ≥ T", step: 1 },
+            { key: "Wr" as const, label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים לספירת R — בדרך כלל ארוך יותר מ-Wt", step: 1 },
+            { key: "alpha" as const, label: "משקל העדפת ניקוד (α)", description: "ככל שגבוה יותר, האלגוריתם יעדיף חיילים עם עומס נמוך — ערכים גבוהים מייצרים שיבוץ הוגן יותר", step: 0.1 },
+            { key: "beta" as const, label: "משקל הוגנות (β)", description: "מחושב אוטומטית — ניתן לשינוי ידני במקרים מיוחדים בלבד", step: 0.1 },
+            { key: "time_limit_seconds" as const, label: "מגבלת זמן ריצת האלגוריתם (שניות)", description: "מספר שניות מרבי להרצת האלגוריתם — יחזיר את הפתרון הטוב ביותר שנמצא עד אז", step: 1 },
+          ]).map(({ key, label, description, step }) => (
+            <div key={key} className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-xs font-medium text-gray-800 dark:text-gray-100">{label}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{description}</div>
+              </div>
               <input
                 type="number"
                 value={settings[key]}
-                onChange={e => setSettings(s => ({
-                  ...s,
-                  [key]: (key === "alpha" || key === "beta") ? parseFloat(e.target.value) : parseInt(e.target.value, 10),
-                }))}
-                className="mt-1 block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                step={key === "alpha" || key === "beta" ? 0.1 : 1}
+                onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
+                className="w-20 border rounded px-2 py-1 text-xs text-left dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 flex-shrink-0"
+                step={step}
+                dir="ltr"
               />
-            </label>
+            </div>
           ))}
         </div>
       )}
 
       <details className="border dark:border-gray-600 rounded p-2">
-        <summary className="cursor-pointer">הגבלת תת-עץ</summary>
+        <summary className="cursor-pointer text-xs">הגבלת תת-עץ</summary>
         <SubHierarchySelector value={eligibleNodeIds} onChange={setEligibleNodeIds} />
       </details>
 

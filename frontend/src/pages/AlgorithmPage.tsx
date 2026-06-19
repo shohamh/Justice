@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import Layout from "../components/Layout";
@@ -147,12 +147,12 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
       <div className="w-full md:w-72 md:shrink-0 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 flex flex-col overflow-hidden max-h-48 md:max-h-none">
         <div className="flex justify-between items-center p-3 border-b dark:border-gray-600">
           <h2 className="font-semibold text-sm">{t("algorithm.runs_title")}</h2>
-          <button
-            onClick={() => setShowRunForm(true)}
-            className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+          <Link
+            to="/planning/shifts?autoAssign=1"
+            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
           >
-            {t("algorithm.new_run")}
-          </button>
+            ריצה חדשה ←
+          </Link>
         </div>
         <div className="overflow-y-auto flex-1 p-2 space-y-1">
           {jobs.length === 0 && (

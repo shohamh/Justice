@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
@@ -229,6 +230,8 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
 export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: string) => void } = {}) {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoAssignSectionRef = useRef<HTMLDivElement>(null);
   const [shifts, setShifts] = useState<DutyShift[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
   const [locations, setLocations] = useState<DutyLocation[]>([]);
@@ -263,6 +266,14 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get("autoAssign") === "1") {
+      setShowAlgorithmPanel(true);
+      setSearchParams({}, { replace: true });
+      setTimeout(() => autoAssignSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleCancel = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_cancel"))) return;
@@ -449,7 +460,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     <>
       <BulkDeletePanel onDeleted={refresh} onClearedAll={refresh} />
 
-      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
+      <section ref={autoAssignSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
           <div className="flex flex-wrap gap-2">
