@@ -70,11 +70,12 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "מגבלות צפיפות (אלגוריתם)",
     settings: [
-      { key: "algorithm.max_duties_per_window", label: "מכסת תורנויות (ללא רזרבה) בחלון", description: "מספר תורנויות אמת מרבי לחייל בכל חלון נע (T). חייב להיות קטן או שווה למכסה הכוללת.", type: "number", defaultValue: 7 },
-      { key: "algorithm.max_total_duties_per_window", label: "מכסת תורנויות כוללת (כולל רזרבה) בחלון", description: "מספר התורנויות הכולל המרבי לחייל בכל חלון נע, כולל רזרבה (R).", type: "number", defaultValue: 7 },
-      { key: "algorithm.window_days", label: "אורך החלון (ימים)", description: "אורך החלון הנע בימים שבו נספרות המכסות (W).", type: "number", defaultValue: 14 },
-      { key: "algorithm.relax_t_ceiling", label: "תקרת הרפיה — תורנויות (ללא רזרבה)", description: "הערך המרבי שאליו ניתן להרפות את מכסת תורנויות האמת כשאין פתרון (ברירת מחדל 9).", type: "number", defaultValue: 9 },
-      { key: "algorithm.relax_r_ceiling", label: "תקרת הרפיה — תורנויות כוללת", description: "הערך המרבי שאליו ניתן להרפות את המכסה הכוללת כשאין פתרון (ברירת מחדל 11).", type: "number", defaultValue: 11 },
+      { key: "algorithm.max_duties_per_window", label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בכל חלון נע. חייב להיות קטן או שווה למכסה הכוללת (R).", type: "number", defaultValue: 8 },
+      { key: "algorithm.window_t", label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים שבו נספרת מכסת T. בדרך כלל קצר יותר מחלון R.", type: "number", defaultValue: 14 },
+      { key: "algorithm.max_total_duties_per_window", label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בכל חלון נע, כולל רזרבה. חייב להיות גדול או שווה ל-T.", type: "number", defaultValue: 15 },
+      { key: "algorithm.window_r", label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים שבו נספרת המכסה הכוללת R. בדרך כלל ארוך יותר מחלון T.", type: "number", defaultValue: 28 },
+      { key: "algorithm.relax_t_ceiling", label: "תקרת הרפיה — תורנויות ללא רזרבה", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את T כשאין פתרון פיזיבילי. חייב להיות ≤ תקרת R.", type: "number", defaultValue: 10 },
+      { key: "algorithm.relax_r_ceiling", label: "תקרת הרפיה — תורנויות כוללת", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את R כשאין פתרון פיזיבילי. R מורפה ראשון, ואחר כך T.", type: "number", defaultValue: 20 },
     ],
   },
   {

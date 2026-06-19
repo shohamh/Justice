@@ -231,18 +231,31 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
         {t("algorithm.settings")}
       </button>
       {showSettings && (
-        <div className="grid grid-cols-3 gap-3 text-xs bg-gray-50 dark:bg-gray-700 p-3 rounded">
-          {(["K", "T", "Wt", "R", "Wr", "alpha", "beta", "time_limit_seconds"] as const).map(key => (
-            <label key={key} className="block">
-              {key}
+        <div className="bg-gray-50 dark:bg-gray-700 rounded p-3 space-y-3 text-sm">
+          {([
+            { key: "K" as const, label: "גודל מאגר מועמדים (K)", description: "כמה מועמדים הפותר שוקל לכל תורנות — ערך נמוך מהיר יותר אך עשוי להחמיץ פתרונות הוגנים יותר", step: 1 },
+            { key: "T" as const, label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בחלון נע — חייב להיות ≤ R", step: 1 },
+            { key: "Wt" as const, label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים לספירת T — בדרך כלל קצר יותר מ-Wr", step: 1 },
+            { key: "R" as const, label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בחלון נע, כולל רזרבה — חייב להיות ≥ T", step: 1 },
+            { key: "Wr" as const, label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים לספירת R — בדרך כלל ארוך יותר מ-Wt", step: 1 },
+            { key: "alpha" as const, label: "משקל העדפת ניקוד (α)", description: "ככל שגבוה יותר, האלגוריתם יעדיף חיילים עם עומס נמוך — ערכים גבוהים מייצרים שיבוץ הוגן יותר", step: 0.1 },
+            { key: "beta" as const, label: "משקל הוגנות (β)", description: "מחושב אוטומטית — ניתן לשינוי ידני במקרים מיוחדים בלבד", step: 0.1 },
+            { key: "time_limit_seconds" as const, label: "מגבלת זמן הפותר (שניות)", description: "מספר שניות מרבי לפותר — יחזיר את הפתרון הטוב ביותר שנמצא עד אז", step: 1 },
+          ]).map(({ key, label, description, step }) => (
+            <div key={key} className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-xs font-medium text-gray-800 dark:text-gray-100">{label}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{description}</div>
+              </div>
               <input
                 type="number"
                 value={settings[key]}
                 onChange={e => setSettings(s => ({ ...s, [key]: parseFloat(e.target.value) }))}
-                className="mt-1 block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                step={key === "alpha" || key === "beta" ? 0.1 : 1}
+                className="w-20 border rounded px-2 py-1 text-xs text-left dark:bg-gray-600 dark:border-gray-500 dark:text-gray-100 flex-shrink-0"
+                step={step}
+                dir="ltr"
               />
-            </label>
+            </div>
           ))}
         </div>
       )}

@@ -10,7 +10,7 @@ interface Props {
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
-  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
+  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
 };
 
 export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted, onClose }: Props) {
