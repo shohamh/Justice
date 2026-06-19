@@ -2,7 +2,7 @@ import { api } from "./client";
 
 export interface NodeDTO {
   id: string;
-  level: "division" | "unit" | "department" | "branch" | "group" | "team";
+  level: "corps" | "division" | "unit" | "department" | "branch" | "group" | "team";
   name: string;
   parent_id: string | null;
   commander_id: string | null;
