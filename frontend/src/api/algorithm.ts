@@ -9,6 +9,7 @@ export interface SolverSettings {
   alpha: number;
   beta: number;
   time_limit_seconds: number;
+  num_workers: number;
 }
 
 export interface AlgorithmDefaults {

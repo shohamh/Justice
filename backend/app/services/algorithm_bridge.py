@@ -723,6 +723,7 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
         decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
         round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 20))),
+        num_workers=int(settings_json.get("num_workers", 1)),
     )
 
 

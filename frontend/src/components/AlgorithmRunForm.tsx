@@ -13,7 +13,7 @@ interface Props {
 }
 
 const DEFAULT_SETTINGS: SolverSettings = {
-  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30,
+  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
 };
 
 function todayStr() {
@@ -40,6 +40,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [mode, setMode] = useState<"draft" | "direct_publish">("draft");
   const [showModeHelp, setShowModeHelp] = useState(false);
+  const [showDeterministicHelp, setShowDeterministicHelp] = useState(false);
   const [settings, setSettings] = useState<SolverSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [eligibleNodeIds, setEligibleNodeIds] = useState<string[]>([]);
@@ -189,6 +190,41 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
           ?
         </button>
         {showModeHelp && <AlgorithmModeHelpModal onClose={() => setShowModeHelp(false)} />}
+      </div>
+
+      {/* Determinism toggle */}
+      <div className="flex items-center gap-2 flex-wrap" dir="rtl">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">תוצאות:</span>
+        <div className="flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-sm">
+          <button
+            type="button"
+            className={`px-3 py-1 ${settings.num_workers === 1 ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setSettings(s => ({ ...s, num_workers: 1 }))}
+          >
+            דטרמיניסטי
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 ${settings.num_workers !== 1 ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
+            onClick={() => setSettings(s => ({ ...s, num_workers: 8 }))}
+          >
+            מהיר
+          </button>
+        </div>
+        <button
+          type="button"
+          className="text-gray-400 hover:text-indigo-600 text-xs font-bold border rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0"
+          onClick={() => setShowDeterministicHelp(h => !h)}
+          title="מה ההבדל?"
+        >
+          ?
+        </button>
+        {showDeterministicHelp && (
+          <p className="w-full text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 rounded p-2 mt-1" dir="rtl">
+            <strong>דטרמיניסטי:</strong> האלגוריתם רץ עם חוט עיבוד אחד ולכן מייצר תמיד את אותן הצעות בדיוק לאותו קלט — שימושי כשרוצים לוודא שהרצה חוזרת לא תשנה שיבוצים שכבר אושרו.{" "}
+            <strong>מהיר:</strong> האלגוריתם רץ עם 8 חוטי עיבוד במקביל — מהיר יותר אבל עשוי לתת תוצאות שונות בין הרצה להרצה אפילו על אותו קלט, כי חוטי העיבוד מתחרים זה בזה וסדר הסיום שלהם תלוי בתזמוני המעבד.
+          </p>
+        )}
       </div>
 
       <button type="button" className="text-xs text-blue-600 dark:text-blue-400 underline" onClick={() => setShowSettings(s => !s)}>

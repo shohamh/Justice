@@ -86,6 +86,10 @@ class SolverSettings:
     decomposition: str = "effort_rounds"
     # Disjoint Phase-1 group size for effort-round decomposition.
     round_soldier_count: int = 20
+    # Search workers for CP-SAT. 1 = fully deterministic (fixed seed produces identical
+    # results every run). >1 = parallel workers race each other; faster but non-deterministic
+    # even with a fixed seed because the winning worker depends on CPU scheduling.
+    num_workers: int = 1
 
 
 @dataclass
