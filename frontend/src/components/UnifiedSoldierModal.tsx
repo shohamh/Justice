@@ -1,9 +1,10 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO } from "../api/hierarchy";
-import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
+import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
 import SoldierLink from "./SoldierLink";
@@ -292,10 +293,13 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("team.title")}</span>
-                <select className="border rounded p-1 w-full text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
-                  <option value="">—</option>
-                  {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
-                </select>
+                <Combobox
+                  items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                  value={hierarchyNodeId}
+                  onChange={setHierarchyNodeId}
+                  placeholder="—"
+                  testId="edit-soldier-node"
+                />
               </label>
               {(() => {
                 const nodeMap = new Map(nodes.map((n) => [n.id, n]));
@@ -377,19 +381,15 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
-                <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileRank} onChange={(e) => setProfileRank(e.target.value)}>
-                  <option value="">—</option>
-                  {rankOptions.enlisted.length > 0 && (
-                    <optgroup label={t("soldier_profile.enlisted")}>
-                      {rankOptions.enlisted.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </optgroup>
-                  )}
-                  {rankOptions.officers.length > 0 && (
-                    <optgroup label={t("soldier_profile.officers")}>
-                      {rankOptions.officers.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </optgroup>
-                  )}
-                </select>
+                <Combobox
+                  items={[
+                    ...rankOptions.enlisted.map(r => ({ id: r, name: r, group: t("soldier_profile.enlisted") })),
+                    ...rankOptions.officers.map(r => ({ id: r, name: r, group: t("soldier_profile.officers") })),
+                  ]}
+                  value={profileRank}
+                  onChange={setProfileRank}
+                  placeholder="—"
+                />
               </label>
               <label className="flex items-center gap-3 cursor-pointer col-span-1">
                 <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.bahad1_graduate")}</span>
