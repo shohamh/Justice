@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
+import Combobox from "./Combobox";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -82,12 +83,10 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
         <form onSubmit={handleSubmit} className="space-y-3">
           {!existing && (
             <>
-              <label className="block text-sm">
-                {t("shifts.duty_type")}
-                <select value={dtId} onChange={e => setDtId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                  {dutyTypes.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </label>
+              <div>
+                <span className="text-sm block mb-0.5">{t("shifts.duty_type")}</span>
+                <Combobox items={dutyTypes} value={dtId} onChange={setDtId} />
+              </div>
               <div className="block text-sm">
                 <div className="flex items-center justify-between mb-1">
                   <span>{t("shifts.location")}</span>
@@ -115,9 +114,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                     </button>
                   </form>
                 ) : (
-                  <select value={locId} onChange={e => setLocId(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
+                  <Combobox items={locations} value={locId} onChange={setLocId} />
                 )}
               </div>
             </>
