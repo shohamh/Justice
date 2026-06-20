@@ -15,6 +15,7 @@ export interface ShiftTemplate {
   required_count: number;
   active: boolean;
   auto_roll: boolean;
+  auto_roll_until: string | null;
   notes: string | null;
 }
 
@@ -29,6 +30,7 @@ export interface CreateTemplateInput {
   end_time?: string;
   required_count?: number;
   auto_roll?: boolean;
+  auto_roll_until?: string | null;
   notes?: string | null;
 }
 
