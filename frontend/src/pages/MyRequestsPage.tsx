@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
 import { Exemption, listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
@@ -230,26 +231,18 @@ export default function MyRequestsPage() {
             <div className="flex flex-wrap gap-2 items-end">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.type")}</label>
-                <select
-                  className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                <Combobox
+                  items={exemptionTypes.map(et => ({ id: et.id, name: `${et.name}${et.is_medical ? " 🏥" : ""}` }))}
                   value={erTypeId}
-                  onChange={(e) => {
-                    const typeId = e.target.value;
+                  onChange={(typeId) => {
                     setErTypeId(typeId);
                     setUploadFiles([]); setUploadSizeErrors([]);
                     const type = exemptionTypes.find(et => et.id === typeId);
                     setErMedical(type?.is_medical ?? false);
                   }}
-                  required
-                  data-testid="er-type"
-                >
-                  <option value="">— {t("exemption_requests.type")} —</option>
-                  {exemptionTypes.map((et) => (
-                    <option key={et.id} value={et.id}>
-                      {et.name}{et.is_medical ? " 🏥" : ""}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={`— ${t("exemption_requests.type")} —`}
+                  testId="er-type"
+                />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
