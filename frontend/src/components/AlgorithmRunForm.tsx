@@ -5,6 +5,7 @@ import { DutyShift, listShifts } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
+import Combobox from "./Combobox";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -131,14 +132,14 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
               placeholder={t("shifts.search_shifts")}
               className="flex-1 border rounded p-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             />
-            <select
-              value={filterDutyTypeId}
-              onChange={e => setFilterDutyTypeId(e.target.value)}
-              className="border rounded p-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-            >
-              <option value="">כל הסוגים</option>
-              {dutyTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
-            </select>
+            <div className="w-40">
+              <Combobox
+                items={dutyTypes}
+                value={filterDutyTypeId}
+                onChange={setFilterDutyTypeId}
+                placeholder="כל הסוגים"
+              />
+            </div>
           </div>
           <div className="space-y-1 max-h-48 overflow-y-auto border dark:border-gray-600 rounded p-2">
             {availableShifts
