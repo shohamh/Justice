@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
+import Combobox from "./Combobox";
 import { DataTable, type ColDef } from "./DataTable";
 import ExplanationModal from "./ExplanationModal";
 import SoldierLink from "./SoldierLink";
@@ -298,16 +299,14 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
         <>
           <div className="flex items-center gap-3 text-sm flex-wrap">
             {hasBatches && (
-              <select
-                value={batchFilter ?? ""}
-                onChange={e => setBatchFilter(e.target.value === "" ? null : Number(e.target.value))}
-                className="text-xs border dark:border-gray-600 rounded px-2 py-1 dark:bg-gray-700 dark:text-gray-100"
-              >
-                <option value="">כל האצוות</option>
-                {batchIndices.map(bi => (
-                  <option key={bi} value={bi}>אצווה {bi + 1}</option>
-                ))}
-              </select>
+              <div className="w-40">
+                <Combobox
+                  items={batchIndices.map(bi => ({ id: String(bi), name: `אצווה ${bi + 1}` }))}
+                  value={batchFilter === null ? "" : String(batchFilter)}
+                  onChange={id => setBatchFilter(id === "" ? null : Number(id))}
+                  placeholder="כל האצוות"
+                />
+              </div>
             )}
             <button type="button" onClick={toggleSelectAll} className="text-blue-600 dark:text-blue-400 hover:underline">
               {allPendingSelected ? "בטל בחירה הכל" : "בחר הכל"}
