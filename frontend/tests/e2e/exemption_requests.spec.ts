@@ -33,7 +33,9 @@ test("admin creates exemption type, soldier requests exemption, admin approves",
   await page.getByTestId("nav-my-requests").click();
   await expect(page).toHaveURL(/\/my-requests$/);
 
-  await page.getByTestId("er-type").selectOption({ label: etName });
+  await page.getByTestId("er-type").click();
+  await page.getByTestId("er-type").fill(etName);
+  await page.getByRole("option", { name: etName }).click();
   const futureStart = new Date();
   futureStart.setDate(futureStart.getDate() + 20);
   const futureEnd = new Date();
