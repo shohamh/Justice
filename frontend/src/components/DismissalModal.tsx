@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { dismissAndReallocate } from "../api/reserves";
+import Combobox from "./Combobox";
 
 interface Props {
   shift: CalendarShift;
@@ -137,19 +138,18 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
 
         <div className="mb-4">
           <label className="text-sm font-medium text-gray-600 dark:text-gray-300 mb-1.5 block">{t("dismiss_modal.covering_reserve")}</label>
-          <select
-            value={selectedReserveId}
-            onChange={e => setSelectedReserveId(e.target.value)}
-            className="border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
-          >
-            {reserveOptions.length === 0 && <option value="">{t("dismiss_modal.no_reserves")}</option>}
-            {reserveOptions.map(a => (
-              <option key={a.assignment_id} value={a.assignment_id}>
-                {a.soldier_name}
-                {a.assignment_id === primary.reserve_assignment_id ? ` (${t("reserve_standby")})` : ""}
-              </option>
-            ))}
-          </select>
+          {reserveOptions.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">{t("dismiss_modal.no_reserves")}</p>
+          ) : (
+            <Combobox
+              items={reserveOptions.map(a => ({
+                id: a.assignment_id,
+                name: a.soldier_name + (a.assignment_id === primary.reserve_assignment_id ? ` (${t("reserve_standby")})` : ""),
+              }))}
+              value={selectedReserveId}
+              onChange={setSelectedReserveId}
+            />
+          )}
         </div>
 
         <div className="mb-4">
