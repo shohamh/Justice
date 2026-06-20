@@ -1,0 +1,113 @@
+import Fuse from "fuse.js";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+export interface ComboboxItem {
+  id: string;
+  name: string;
+  /** Tree-indentation depth (0 = top level). Renders a leading "└" marker for depth > 0. */
+  depth?: number;
+  /** Group header text. A header row is rendered before the first item of each new group. */
+  group?: string;
+  disabled?: boolean;
+}
+
+interface ComboboxProps {
+  label?: string;
+  items: ComboboxItem[];
+  value: string;
+  onChange: (id: string) => void;
+  /** When set, renders a selectable first row with this text that calls onChange(""). */
+  placeholder?: string;
+  testId?: string;
+}
+
+// Combobox with Fuse.js fuzzy search — dropdown rendered via portal so it
+// escapes overflow-y-auto containers (modals, panels).
+export default function Combobox({ label, items, value, onChange, placeholder, testId }: ComboboxProps) {
+  const allItems: ComboboxItem[] = useMemo(
+    () => (placeholder !== undefined ? [{ id: "", name: placeholder }, ...items] : items),
+    [items, placeholder]
+  );
+
+  const [query, setQuery] = useState(() => allItems.find(i => i.id === value)?.name ?? "");
+  // Separate from `query` (the input's displayed text) so that opening the list while a value
+  // is already selected shows the full list, rather than fuzzy-filtering by the selected name.
+  const [filterQuery, setFilterQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  const fuse = new Fuse(allItems, { keys: ["name"], threshold: 0.4 });
+  const results = filterQuery.trim() === "" ? allItems : fuse.search(filterQuery).map(r => r.item);
+
+  useLayoutEffect(() => {
+    if (open && inputRef.current) setRect(inputRef.current.getBoundingClientRect());
+  }, [open]);
+
+  // Sync displayed text when external value changes (e.g. after a quick-add selects a new item)
+  useEffect(() => {
+    const match = allItems.find(i => i.id === value);
+    if (match) setQuery(match.name);
+  }, [value, allItems]);
+
+  return (
+    <div>
+      {label && <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</span>}
+      <input
+        ref={inputRef}
+        type="text"
+        value={query}
+        autoComplete="off"
+        data-testid={testId}
+        onChange={e => { setQuery(e.target.value); setFilterQuery(e.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setFilterQuery(""); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+      />
+      {open && results.length > 0 && rect && createPortal(
+        <ul
+          style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
+          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto"
+        >
+          {results.map((item, idx) => {
+            const showGroup = item.group !== undefined && (idx === 0 || results[idx - 1].group !== item.group);
+            const depth = item.depth ?? 0;
+            return (
+              <li key={item.id}>
+                {showGroup && (
+                  <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">
+                    {item.group}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  disabled={item.disabled}
+                  onPointerDown={e => {
+                    if (item.disabled) return;
+                    e.preventDefault(); // keep input focused so blur doesn't fire before onChange
+                    onChange(item.id);
+                    setQuery(item.name);
+                    setOpen(false);
+                  }}
+                  style={depth > 0 ? { paddingRight: `${0.75 + depth * 1.25}rem` } : undefined}
+                  className={`w-full flex items-center gap-1 text-right px-3 py-2 text-sm ${
+                    item.disabled
+                      ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                      : `hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                          value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-200"
+                        }`
+                  }`}
+                >
+                  {depth > 0 && <span className="text-gray-300 dark:text-gray-600 text-xs select-none">└</span>}
+                  {item.name}
+                </button>
+              </li>
+            );
+          })}
+        </ul>,
+        document.body
+      )}
+    </div>
+  );
+}
