@@ -6,8 +6,9 @@ import SoldierLink from "./SoldierLink";
 import { grantExemption } from "../api/exemptions";
 import { listExemptionTypes, type ExemptionType } from "../api/dutyConfig";
 import { fetchTree, type NodeDTO } from "../api/hierarchy";
-import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { updateSoldier } from "../api/soldiers";
+import Combobox from "./Combobox";
 
 interface Props {
   soldiers: SoldierWithStatus[];
@@ -91,12 +92,12 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.grant_exemption")} - {exemptTarget.full_name}</h3>
             <div className="space-y-3">
               <label className="block text-sm">{t("command_dashboard.exemption_type")}</label>
-              <select className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptionTypeId} onChange={(e) => setExemptionTypeId(e.target.value)}>
-                <option value="">{t("command_dashboard.none")}</option>
-                {exemptionTypes.map((et) => (
-                  <option key={et.id} value={et.id}>{et.name}</option>
-                ))}
-              </select>
+              <Combobox
+                items={exemptionTypes.map(et => ({ id: et.id, name: et.name }))}
+                value={exemptionTypeId}
+                onChange={setExemptionTypeId}
+                placeholder={t("command_dashboard.none")}
+              />
               <label className="block text-sm">{t("command_dashboard.exemption_start")}</label>
               <input type="date" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(e) => setExemptStart(e.target.value)} />
               <label className="block text-sm">{t("command_dashboard.exemption_end")}</label>
@@ -116,12 +117,12 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.move_soldier")} - {moveTarget.full_name}</h3>
             <div className="space-y-3">
               <label className="block text-sm">{t("command_dashboard.target_node")}</label>
-              <select className="w-full border rounded p-2 text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={targetNodeId} onChange={(e) => setTargetNodeId(e.target.value)}>
-                <option value="">{t("command_dashboard.none")}</option>
-                {sortNodesByTree(nodes).map(({ node, depth }) => (
-                  <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>
-                ))}
-              </select>
+              <Combobox
+                items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                value={targetNodeId}
+                onChange={setTargetNodeId}
+                placeholder={t("command_dashboard.none")}
+              />
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setMoveTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleMove} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.move_confirm")}</button>
