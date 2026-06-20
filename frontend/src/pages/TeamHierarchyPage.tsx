@@ -8,7 +8,8 @@ import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
-import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
+import Combobox from "../components/Combobox";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 import TelegramBadge from "../components/TelegramBadge";
 
@@ -88,10 +89,13 @@ export default function TeamHierarchyPage() {
             </label>
             <label className="block">
               <span className="text-xs">{t("team.title")}</span>
-              <select className="block border rounded p-1 text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={nodeId} onChange={(e) => setNodeId(e.target.value)} data-testid="onboard-node">
-                <option value="">—</option>
-                {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
-              </select>
+              <Combobox
+                items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                value={nodeId}
+                onChange={setNodeId}
+                placeholder="—"
+                testId="onboard-node"
+              />
             </label>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="onboard-submit">
               {t("team.add_soldier")}
