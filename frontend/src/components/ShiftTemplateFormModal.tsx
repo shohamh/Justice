@@ -1,6 +1,4 @@
-import Fuse from "fuse.js";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CreateTemplateInput,
@@ -11,6 +9,7 @@ import {
   updateTemplate,
 } from "../api/shiftTemplates";
 import { DutyType, DutyLocation } from "../api/dutyConfig";
+import Combobox from "./Combobox";
 import DutyTypeFormModal from "./DutyTypeFormModal";
 import LocationFormModal from "./LocationFormModal";
 
@@ -100,75 +99,6 @@ function TimePicker({ label, value, onChange }: { label: string; value: string; 
           </button>
         ))}
       </div>
-    </div>
-  );
-}
-
-// Combobox with Fuse.js fuzzy search — dropdown rendered via portal so it
-// escapes the modal's overflow-y-auto container.
-function Combobox({ label, items, value, onChange }: {
-  label: string;
-  items: { id: string; name: string }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const [query, setQuery] = useState(() => items.find(i => i.id === value)?.name ?? "");
-  const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  const fuse = new Fuse(items, { keys: ["name"], threshold: 0.4 });
-  const results = query.trim() === "" ? items : fuse.search(query).map(r => r.item);
-
-  useLayoutEffect(() => {
-    if (open && inputRef.current) setRect(inputRef.current.getBoundingClientRect());
-  }, [open]);
-
-  // Sync label when external value changes (e.g. after quick-add selects new item)
-  useEffect(() => {
-    const match = items.find(i => i.id === value);
-    if (match) setQuery(match.name);
-  }, [value, items]);
-
-  return (
-    <div>
-      <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</span>
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        autoComplete="off"
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => { setOpen(true); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-      />
-      {open && results.length > 0 && rect && createPortal(
-        <ul
-          style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
-          className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto"
-        >
-          {results.map(item => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onPointerDown={e => {
-                  e.preventDefault(); // keep input focused so blur doesn't fire
-                  onChange(item.id);
-                  setQuery(item.name);
-                  setOpen(false);
-                }}
-                className={`w-full text-right px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                  value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-200"
-                }`}
-              >
-                {item.name}
-              </button>
-            </li>
-          ))}
-        </ul>,
-        document.body
-      )}
     </div>
   );
 }
