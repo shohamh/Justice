@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import Combobox from "../components/Combobox";
 import ExplanationModal from "../components/ExplanationModal";
 import { Assignment, cancelAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
@@ -124,11 +125,15 @@ export function DutyManagementContent() {
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6" data-testid="duty-management-page">
       <h2 className="text-xl font-semibold">{t("duty_management.title")}</h2>
 
-      <label className="block text-sm">{t("duty_management.soldier")}
-        <select className="block border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={soldierId} onChange={(e) => setSoldierId(e.target.value)} data-testid="dm-soldier">
-          {soldiers.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-        </select>
-      </label>
+      <div className="block text-sm">
+        <span className="block mb-0.5">{t("duty_management.soldier")}</span>
+        <Combobox
+          items={soldiers.map(s => ({ id: s.id, name: s.full_name }))}
+          value={soldierId}
+          onChange={setSoldierId}
+          testId="dm-soldier"
+        />
+      </div>
 
       <ul className="text-sm space-y-1" data-testid="assignment-list">
         {rows.length === 0 && <li data-testid="dm-empty">{t("duty_management.none")}</li>}
