@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { SoldierDTO } from "../api/soldiers";
-import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
+import Combobox from "./Combobox";
 
 interface Props {
   soldier: SoldierDTO;
@@ -49,10 +50,13 @@ export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
           </label>
           <label className="block">
             <span className="text-xs">{t("team.title")}</span>
-            <select className="border rounded p-1 w-full text-gray-900 dark:text-white bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600" value={hierarchyNodeId} onChange={(e) => setHierarchyNodeId(e.target.value)} data-testid="edit-soldier-node">
-              <option value="">—</option>
-              {sortNodesByTree(nodes).map(({ node, depth }) => <option key={node.id} value={node.id}>{indentedNodeLabel(node, depth)}</option>)}
-            </select>
+            <Combobox
+              items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+              value={hierarchyNodeId}
+              onChange={setHierarchyNodeId}
+              placeholder="—"
+              testId="edit-soldier-node"
+            />
           </label>
           <div className="flex justify-end gap-2">
             <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={onClose}>{t("team.cancel")}</button>
