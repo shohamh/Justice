@@ -366,7 +366,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
 
         {tab === "profile" && editing && (
           <form onSubmit={handleProfileSave} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3">
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.gender")}</span>
                 <select className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileGender} onChange={(e) => setProfileGender(e.target.value)}>
