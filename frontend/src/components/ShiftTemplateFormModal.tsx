@@ -33,6 +33,40 @@ const TIME_PRESETS = ["06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "17:
 function dowToIso(dow: number): number { return dow === 0 ? 7 : dow; }
 function isoToDow(iso: number): number { return iso === 7 ? 0 : iso; }
 
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// SYNC: duplicates backend recurrence logic (not RPC'd — template may not exist yet on create).
+// If you change _effective_weekdays/expand_dates in backend/app/services/shift_templates.py, update this too.
+function countAutoRollInstances(
+  recurrenceType: RecurrenceType,
+  startDow: number | null,
+  fromDateStr: string,
+  untilDateStr: string,
+): number {
+  if (!untilDateStr) return 0;
+  let selected: Set<number>;
+  if (recurrenceType === "daily") {
+    selected = new Set([1, 2, 3, 4, 5, 6, 7]);
+  } else if (recurrenceType === "weekdays") {
+    selected = new Set([7, 1, 2, 3, 4]); // Israeli work week: Sun-Thu
+  } else {
+    if (startDow === null) return 0;
+    selected = new Set([dowToIso(startDow)]);
+  }
+  const from = new Date(`${fromDateStr}T00:00:00`);
+  const until = new Date(`${untilDateStr}T00:00:00`);
+  if (until < from) return 0;
+  let count = 0;
+  const cur = new Date(from);
+  while (cur <= until) {
+    if (selected.has(dowToIso(cur.getDay()))) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
 function parseTimeFraction(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return (h * 60 + (m || 0)) / (24 * 60);
@@ -134,10 +168,15 @@ export default function ShiftTemplateFormModal({
   const [endTime, setEndTime] = useState(initial?.end_time ?? "17:00");
   const [count, setCount] = useState(initial?.required_count ?? 1);
   const [autoRoll, setAutoRoll] = useState(initial?.auto_roll ?? false);
+  const [autoRollUntil, setAutoRollUntil] = useState(initial?.auto_roll_until ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [showAddDt, setShowAddDt] = useState(false);
   const [showAddLoc, setShowAddLoc] = useState(false);
+
+  const autoRollCount = autoRoll && autoRollUntil
+    ? countAutoRollInstances(recurrenceType, startDow, todayStr(), autoRollUntil)
+    : 0;
 
   function changeDuration(delta: number) {
     setDurationDays(d => Math.max(1, Math.min(11, d + delta)));
@@ -200,7 +239,8 @@ export default function ShiftTemplateFormModal({
         const input: UpdateTemplateInput = {
           name, recurrence_type: recurrenceType, weekdays, duration_days,
           start_time: startTime, end_time: endTime,
-          required_count: count, auto_roll: autoRoll, notes: notes || null,
+          required_count: count, auto_roll: autoRoll, auto_roll_until: autoRollUntil || null,
+          notes: notes || null,
         };
         await updateTemplate(initial.id, input);
       } else {
@@ -208,7 +248,8 @@ export default function ShiftTemplateFormModal({
           name, duty_type_id: dtId, duty_location_id: locId,
           recurrence_type: recurrenceType, weekdays, duration_days,
           start_time: startTime, end_time: endTime,
-          required_count: count, auto_roll: autoRoll, notes: notes || null,
+          required_count: count, auto_roll: autoRoll, auto_roll_until: autoRollUntil || null,
+          notes: notes || null,
         };
         await createTemplate(input);
       }
@@ -423,9 +464,36 @@ export default function ShiftTemplateFormModal({
             </label>
 
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={autoRoll} onChange={e => setAutoRoll(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={autoRoll}
+                onChange={e => setAutoRoll(e.target.checked)}
+                data-testid="auto-roll-checkbox"
+              />
               {t("shift_templates.auto_roll")}
             </label>
+
+            {autoRoll && (
+              <div className="pl-6 space-y-1">
+                <label className="block text-sm">
+                  {t("shift_templates.auto_roll_until")}
+                  <input
+                    type="date"
+                    value={autoRollUntil}
+                    min={todayStr()}
+                    onChange={e => setAutoRollUntil(e.target.value)}
+                    data-testid="auto-roll-until-date"
+                    dir="ltr"
+                    className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  />
+                </label>
+                {autoRollUntil && (
+                  <p data-testid="auto-roll-until-count" className="text-xs text-gray-500 dark:text-gray-400">
+                    {t("shift_templates.auto_roll_until_count", { count: autoRollCount })}
+                  </p>
+                )}
+              </div>
+            )}
 
             <label className="block text-sm">
               {t("shift_templates.notes")}

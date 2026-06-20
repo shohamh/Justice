@@ -21,6 +21,7 @@ _VALID_RECURRENCE = {"daily", "weekdays", "weekly"}
 _ISRAELI_WORKWEEK = [7, 1, 2, 3, 4]
 
 
+# SYNC: mirrored in frontend/src/components/ShiftTemplateFormModal.tsx (countAutoRollInstances).
 def _effective_weekdays(recurrence_type: str, weekdays: list[int]) -> set[int]:
     if recurrence_type == "daily":
         return _VALID_WEEKDAYS
@@ -58,6 +59,7 @@ def _validate(
     required_count: int,
     start_time: str,
     end_time: str,
+    auto_roll_until: date | None = None,
 ) -> None:
     if recurrence_type not in _VALID_RECURRENCE:
         raise TemplateError("invalid_recurrence_type")
@@ -71,6 +73,8 @@ def _validate(
         parts = t.split(":")
         if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
             raise TemplateError("invalid_time")
+    if auto_roll_until is not None and auto_roll_until < date.today():
+        raise TemplateError("invalid_auto_roll_until")
 
 
 def create_template(
@@ -86,10 +90,11 @@ def create_template(
     end_time: str = "23:59",
     required_count: int = 1,
     auto_roll: bool = False,
+    auto_roll_until: date | None = None,
     notes: str | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
-    _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time)
+    _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time, auto_roll_until)
     tpl = ShiftTemplate(
         name=name,
         duty_type_id=duty_type_id,
@@ -101,6 +106,7 @@ def create_template(
         end_time=end_time,
         required_count=required_count,
         auto_roll=auto_roll,
+        auto_roll_until=auto_roll_until,
         notes=notes,
         created_by=actor_id,
     )
@@ -112,7 +118,7 @@ def create_template(
         action="shift_template.create",
         entity_type="shift_template",
         entity_id=tpl.id,
-        after={"name": name, "recurrence_type": recurrence_type, "weekdays": tpl.weekdays, "duration_days": duration_days, "auto_roll": auto_roll},
+        after={"name": name, "recurrence_type": recurrence_type, "weekdays": tpl.weekdays, "duration_days": duration_days, "auto_roll": auto_roll, "auto_roll_until": auto_roll_until.isoformat() if auto_roll_until else None},
     )
     return tpl
 
@@ -136,6 +142,7 @@ def update_template(
     end_time: str | None = None,
     required_count: int | None = None,
     auto_roll: bool | None = None,
+    auto_roll_until: object = ...,
     active: bool | None = None,
     notes: object = ...,
     actor_id: uuid.UUID | None = None,
@@ -157,6 +164,8 @@ def update_template(
         tpl.required_count = required_count
     if auto_roll is not None:
         tpl.auto_roll = auto_roll
+    if auto_roll_until is not ...:
+        tpl.auto_roll_until = auto_roll_until  # type: ignore[assignment]
     if active is not None:
         tpl.active = active
     if notes is not ...:
@@ -164,7 +173,7 @@ def update_template(
     if tpl.recurrence_type != "weekly":
         tpl.weekdays = []
         tpl.duration_days = 1
-    _validate(tpl.recurrence_type, tpl.weekdays, tpl.duration_days, tpl.required_count, tpl.start_time, tpl.end_time)
+    _validate(tpl.recurrence_type, tpl.weekdays, tpl.duration_days, tpl.required_count, tpl.start_time, tpl.end_time, tpl.auto_roll_until)
     write_audit(
         session,
         actor_id=actor_id,
@@ -262,7 +271,11 @@ def roll_horizon(
     actor_id: uuid.UUID | None = None,
 ) -> int:
     """Materialise the next `horizon_days` days of shifts for every active auto_roll
-    template. Idempotent (relies on generate_shifts). Returns total shifts created."""
+    template. Idempotent (relies on generate_shifts). Returns total shifts created.
+
+    Templates with `auto_roll_until` set have their generation window clamped to that
+    date; templates whose `auto_roll_until` has already passed are skipped entirely.
+    """
     base = today or date.today()
     range_end = base + timedelta(days=horizon_days - 1)
     templates = session.execute(
@@ -272,8 +285,13 @@ def roll_horizon(
     ).scalars().all()
     total = 0
     for tpl in templates:
+        if tpl.auto_roll_until is not None and tpl.auto_roll_until < base:
+            continue
+        tpl_range_end = range_end
+        if tpl.auto_roll_until is not None and tpl.auto_roll_until < tpl_range_end:
+            tpl_range_end = tpl.auto_roll_until
         created = generate_shifts(
-            session, tpl=tpl, range_start=base, range_end=range_end, actor_id=actor_id
+            session, tpl=tpl, range_start=base, range_end=tpl_range_end, actor_id=actor_id
         )
         total += len(created)
     return total
