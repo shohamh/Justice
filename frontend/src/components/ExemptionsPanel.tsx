@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
 import { formatDate } from "../utils/formatDate";
+import Combobox from "./Combobox";
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -206,10 +207,13 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
       {/* Grant form */}
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2 pt-2 border-t dark:border-gray-600" data-testid="grant-form">
-          <select className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={typeId} onChange={(e) => setTypeId(e.target.value)} required data-testid="grant-type">
-            <option value="">{t("exemptions.type")}</option>
-            {types.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
-          </select>
+          <Combobox
+            items={types.map(tp => ({ id: tp.id, name: tp.name }))}
+            value={typeId}
+            onChange={setTypeId}
+            placeholder={t("exemptions.type")}
+            testId="grant-type"
+          />
           <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
           <div className="flex items-center gap-2">
             <input
