@@ -238,7 +238,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
             </label>
           </div>
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="grant-submit">{t("exemptions.grant")}</button>
+          <button type="submit" disabled={!typeId} className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" data-testid="grant-submit">{t("exemptions.grant")}</button>
         </form>
       )}
     </div>

@@ -348,7 +348,7 @@ export default function MyRequestsPage() {
             <button
               type="submit"
               className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
-              disabled={erSubmitting || (isMedical && uploadFiles.length === 0)}
+              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0)}
               data-testid="er-submit"
             >
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
