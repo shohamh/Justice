@@ -49,7 +49,9 @@ test("admin onboards a soldier, grants an exemption, then revokes it", async ({ 
   await expect(page.getByTestId("manage-exemptions")).toBeVisible();
 
   // Grant an exemption.
-  await page.getByTestId("grant-type").selectOption({ label: etName });
+  await page.getByTestId("grant-type").click();
+  await page.getByTestId("grant-type").fill(etName);
+  await page.getByRole("option", { name: etName }).click();
   const futureStart = new Date();
   futureStart.setDate(futureStart.getDate() + 30);
   await page.getByTestId("grant-start").fill(futureStart.toISOString().slice(0, 10));
