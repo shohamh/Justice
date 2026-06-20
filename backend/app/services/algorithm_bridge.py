@@ -894,6 +894,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.commit()
                     return
 
+                _phase("solver_input_snapshot: start")
                 job.solver_input_snapshot = serialize_solver_inputs(
                     job_id=job.id,
                     planning_start=planning_start,
@@ -905,6 +906,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     block_to_shift_map=block_to_shift_map,
                 )
                 session.commit()
+                _phase("solver_input_snapshot: done")
 
                 hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
 
