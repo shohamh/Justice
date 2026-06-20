@@ -17,7 +17,8 @@ import { setEmail } from "../api/auth";
 import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
 import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref, CommanderScope } from "../api/notifications";
 import { fetchTree, NodeDTO } from "../api/hierarchy";
-import { sortNodesByTree, indentedNodeLabel } from "../utils/sortNodesByTree";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
+import Combobox from "../components/Combobox";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -235,19 +236,17 @@ export default function ProfilePage() {
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.rank")}</label>
-            <select value={rankReq} onChange={e => setRankReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
-              <option value="">—</option>
-              {ranks.enlisted.length > 0 && (
-                <optgroup label={t("soldier_profile.enlisted")}>
-                  {ranks.enlisted.map(r => <option key={r} value={r}>{r}</option>)}
-                </optgroup>
-              )}
-              {ranks.officers.length > 0 && (
-                <optgroup label={t("soldier_profile.officers")}>
-                  {ranks.officers.map(r => <option key={r} value={r}>{r}</option>)}
-                </optgroup>
-              )}
-            </select>
+            <div className="flex-1">
+              <Combobox
+                items={[
+                  ...ranks.enlisted.map(r => ({ id: r, name: r, group: t("soldier_profile.enlisted") })),
+                  ...ranks.officers.map(r => ({ id: r, name: r, group: t("soldier_profile.officers") })),
+                ]}
+                value={rankReq}
+                onChange={setRankReq}
+                placeholder="—"
+              />
+            </div>
             <button type="button" onClick={() => requestUpdate("rank", rankReq)} disabled={!rankReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
@@ -450,19 +449,14 @@ export default function ProfilePage() {
           <form onSubmit={handleAddScope} className="flex flex-wrap gap-2 items-end pt-2 border-t dark:border-gray-600">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500">{t("notifications.scope_node")}</label>
-              <select
-                value={addNodeId}
-                onChange={(e) => setAddNodeId(e.target.value)}
-                required
-                className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-[180px]"
-              >
-                <option value="">— בחר ענף —</option>
-                {sortNodesByTree(hierarchyNodes).map(({ node, depth }) => (
-                  <option key={node.id} value={node.id}>
-                    {indentedNodeLabel(node, depth)}
-                  </option>
-                ))}
-              </select>
+              <div className="min-w-[180px]">
+                <Combobox
+                  items={sortNodesByTree(hierarchyNodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                  value={addNodeId}
+                  onChange={setAddNodeId}
+                  placeholder="— בחר ענף —"
+                />
+              </div>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500">{t("notifications.scope_depth")}</label>
