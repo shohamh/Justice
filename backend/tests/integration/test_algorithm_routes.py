@@ -660,3 +660,58 @@ def test_get_job_returns_batch_results(client, admin_session):
     assert len(body["batch_results"]) == 1
     assert body["batch_results"][0]["outcome"] == "OPTIMAL"
     assert body["batch_results"][0]["assigned_count"] == 2
+
+
+def test_export_inputs_replays_completed_published_job(client, admin_session):
+    """Regression test: export-inputs must return the duties that were actually
+    solved, even after the job's shifts are fully staffed (published/drafted).
+
+    Before the solver_input_snapshot fix, export-inputs re-derived duties from
+    live DB state (load_duty_blocks_from_shifts subtracts already-filled slots),
+    so a completed job's export came back with duties=[] — useless for replay.
+    """
+    dm, _node = _setup_dm(admin_session, "route_alg_export")
+    shift, _dt, _loc = _make_shift(admin_session, "route_export", "2027-11-01")
+    create_soldier(admin_session, personal_number="route_soldier_export", role="soldier")
+
+    create_resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(shift.id)],
+            "mode": "shadow",
+            "settings": {"T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 10},
+        },
+        headers=auth_headers(dm),
+    )
+    assert create_resp.status_code == 202, create_resp.text
+    job_id = create_resp.json()["id"]
+
+    poll = None
+    for _ in range(15):
+        poll = client.get(f"/api/algorithm/jobs/{job_id}", headers=auth_headers(dm))
+        if poll.json()["status"] == "done":
+            break
+        time.sleep(2)
+    assert poll is not None and poll.json()["status"] == "done", poll.json() if poll else "no response"
+
+    proposals = poll.json().get("proposals", [])
+    if not proposals:
+        pytest.skip("solver returned no proposals")
+
+    # Publish the proposal — this is what makes the shift "fully staffed" and
+    # is exactly the state that broke export-inputs before the fix.
+    asgn_id = proposals[0]["assignment_id"]
+    accept_resp = client.post(
+        f"/api/algorithm/jobs/{job_id}/proposals/{asgn_id}/accept",
+        headers=auth_headers(dm),
+    )
+    assert accept_resp.status_code == 200
+
+    export_resp = client.get(
+        f"/api/algorithm/jobs/{job_id}/export-inputs",
+        headers=auth_headers(dm),
+    )
+    assert export_resp.status_code == 200
+    dump = export_resp.json()
+    assert len(dump["duties"]) > 0, "export-inputs returned no duties for a completed job — snapshot fix regressed"
+    assert dump["duties"][0]["shift_id"] == str(shift.id)
