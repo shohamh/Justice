@@ -5,6 +5,7 @@ import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
+import Combobox from "../components/Combobox";
 
 const ALL_RANKS = [
   "טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג",
@@ -148,10 +149,12 @@ export default function RegisterPage() {
               </select>
             </label>
             <label className="block text-sm">דרגה
-              <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.rank} onChange={e => set("rank", e.target.value)}>
-                <option value="">בחר</option>
-                {ALL_RANKS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
+              <Combobox
+                items={ALL_RANKS.map(r => ({ id: r, name: r }))}
+                value={form.rank}
+                onChange={v => set("rank", v)}
+                placeholder="בחר"
+              />
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.is_officer} onChange={e => set("is_officer", e.target.checked)} /> קצין
