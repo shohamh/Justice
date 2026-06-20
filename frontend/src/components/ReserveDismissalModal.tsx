@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarShift, CalendarShiftAssignee, dismissReserve } from "../api/calendar";
 import { ReserveCandidate, getReserveCandidates } from "../api/reserves";
+import Combobox from "./Combobox";
 
 interface Props {
   shift: CalendarShift;
@@ -154,26 +155,24 @@ export default function ReserveDismissalModal({ shift, reserve, onClose, onDone 
             {candidates.length === 0 ? (
               <p className="text-xs text-gray-400 italic">{t("dismiss_modal.no_reserves", "אין כוננים פנויים — המערכת תחלץ אוטומטית")}</p>
             ) : (
-              <select
-                value={selectedCandidateId}
-                onChange={e => setSelectedCandidateId(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-amber-300 focus:border-amber-400 outline-none"
-              >
-                {(() => {
+              <Combobox
+                items={(() => {
                   const minDist = Math.min(...candidates.map(c => c.distance));
                   return candidates.map((c) => {
                     const a = assigneeById[c.assignment_id];
                     const name = a?.soldier_name ?? c.soldier_id;
                     const calledUp = c.called_up_from != null;
                     const recommended = c.distance === minDist;
-                    return (
-                      <option key={c.assignment_id} value={c.assignment_id} disabled={calledUp}>
-                        {recommended ? "★ " : ""}{name} — {t("distance_label", "מרחק")}: {c.distance}{calledUp ? ` (${t("reserve_called_up", "בהקפצה")})` : ""}
-                      </option>
-                    );
+                    return {
+                      id: c.assignment_id,
+                      name: `${recommended ? "★ " : ""}${name} — ${t("distance_label", "מרחק")}: ${c.distance}${calledUp ? ` (${t("reserve_called_up", "בהקפצה")})` : ""}`,
+                      disabled: calledUp,
+                    };
                   });
                 })()}
-              </select>
+                value={selectedCandidateId}
+                onChange={setSelectedCandidateId}
+              />
             )}
           </div>
         )}
