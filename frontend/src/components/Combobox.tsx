@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface ComboboxItem {
@@ -35,10 +35,12 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
   // is already selected shows the full list, rather than fuzzy-filtering by the selected name.
   const [filterQuery, setFilterQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const listboxId = useId();
 
-  const fuse = new Fuse(allItems, { keys: ["name"], threshold: 0.4 });
+  const fuse = useMemo(() => new Fuse(allItems, { keys: ["name"], threshold: 0.4 }), [allItems]);
   const results = filterQuery.trim() === "" ? allItems : fuse.search(filterQuery).map(r => r.item);
 
   useLayoutEffect(() => {
@@ -51,6 +53,51 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
     if (match) setQuery(match.name);
   }, [value, allItems]);
 
+  // Reset the highlight whenever the result list changes or the dropdown opens/closes,
+  // so a stale index from a previous filter pass never lingers.
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [open, results.length, filterQuery]);
+
+  const selectItem = (item: ComboboxItem) => {
+    if (item.disabled) return;
+    onChange(item.id);
+    setQuery(item.name);
+    setOpen(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        for (let i = prev + 1; i < results.length; i++) {
+          if (!results[i].disabled) return i;
+        }
+        return prev;
+      });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex(prev => {
+        for (let i = prev - 1; i >= 0; i--) {
+          if (!results[i].disabled) return i;
+        }
+        return prev;
+      });
+    } else if (e.key === "Enter") {
+      if (highlightedIndex >= 0 && highlightedIndex < results.length) {
+        const item = results[highlightedIndex];
+        if (!item.disabled) {
+          e.preventDefault();
+          selectItem(item);
+        }
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
+
   return (
     <div>
       {label && <span className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">{label}</span>}
@@ -60,21 +107,34 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         value={query}
         autoComplete="off"
         data-testid={testId}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
         onChange={e => { setQuery(e.target.value); setFilterQuery(e.target.value); setOpen(true); }}
         onFocus={() => { setOpen(true); setFilterQuery(""); if (inputRef.current) setRect(inputRef.current.getBoundingClientRect()); }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={handleKeyDown}
         className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
       />
       {open && results.length > 0 && rect && createPortal(
         <ul
+          id={listboxId}
+          role="listbox"
           style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
           className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto"
         >
           {results.map((item, idx) => {
             const showGroup = item.group !== undefined && (idx === 0 || results[idx - 1].group !== item.group);
             const depth = item.depth ?? 0;
+            const highlighted = idx === highlightedIndex;
             return (
-              <li key={item.id}>
+              <li
+                key={item.id}
+                role="option"
+                aria-selected={value === item.id}
+                aria-disabled={item.disabled || undefined}
+              >
                 {showGroup && (
                   <div className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase">
                     {item.group}
@@ -86,15 +146,13 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
                   onPointerDown={e => {
                     if (item.disabled) return;
                     e.preventDefault(); // keep input focused so blur doesn't fire before onChange
-                    onChange(item.id);
-                    setQuery(item.name);
-                    setOpen(false);
+                    selectItem(item);
                   }}
                   style={depth > 0 ? { paddingRight: `${0.75 + depth * 1.25}rem` } : undefined}
                   className={`w-full flex items-center gap-1 text-right px-3 py-2 text-sm ${
                     item.disabled
                       ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
-                      : `hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                      : `hover:bg-gray-50 dark:hover:bg-gray-700 ${highlighted ? "bg-gray-100 dark:bg-gray-700" : ""} ${
                           value === item.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-gray-700 dark:text-gray-200"
                         }`
                   }`}
