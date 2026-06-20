@@ -21,6 +21,7 @@ _VALID_RECURRENCE = {"daily", "weekdays", "weekly"}
 _ISRAELI_WORKWEEK = [7, 1, 2, 3, 4]
 
 
+# SYNC: mirrored in frontend/src/components/ShiftTemplateFormModal.tsx (countAutoRollInstances).
 def _effective_weekdays(recurrence_type: str, weekdays: list[int]) -> set[int]:
     if recurrence_type == "daily":
         return _VALID_WEEKDAYS

@@ -38,7 +38,8 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Mirrors the backend's _effective_weekdays rule in shift_templates.py.
+// SYNC: duplicates backend recurrence logic (not RPC'd — template may not exist yet on create).
+// If you change _effective_weekdays/expand_dates in backend/app/services/shift_templates.py, update this too.
 function countAutoRollInstances(
   recurrenceType: RecurrenceType,
   startDow: number | null,
