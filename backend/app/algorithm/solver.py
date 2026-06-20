@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 
-from ortools.sat.python.cp_model import CpSolver, IntVar
+from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallback, IntVar
 
 from app.algorithm.model import (
     _block_score,
@@ -29,11 +29,70 @@ from app.algorithm.types import (
 # algorithm runs are reproducible by default.
 DEFAULT_SOLVER_SEED = 42
 
+# Stop a solve early once no IMPROVING solution has been found for this many
+# seconds, instead of always exhausting the full time budget. The fairness
+# objective is highly symmetric whenever multiple soldiers are interchangeable
+# (same eligibility/effort profile), so CP-SAT typically finds a near-optimal
+# assignment in well under a second but then spends the *entire* remaining
+# time limit failing to prove no better one exists — burning 30-60s on
+# problems with a handful of duties. Once the search stalls this long, further
+# time is overwhelmingly likely to be spent proving optimality, not finding a
+# better assignment, so cutting it short trades a negligible amount of
+# fairness-optimality for a large, reliable speedup.
+STALL_SECONDS = 5.0
+
 
 def _watch_cancel(solver: CpSolver, event: threading.Event) -> None:
     """Daemon thread: calls StopSearch when the cancel event fires."""
     event.wait()
     solver.StopSearch()
+
+
+class _StallTracker(CpSolverSolutionCallback):
+    """Records the wall-clock time of the most recent improving solution."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lock = threading.Lock()
+        self.last_improvement = time.monotonic()
+        self.has_solution = False
+
+    def on_solution_callback(self) -> None:
+        with self.lock:
+            self.has_solution = True
+            self.last_improvement = time.monotonic()
+
+
+def _watch_stall(
+    solver: CpSolver, tracker: _StallTracker, stall_seconds: float, stop_event: threading.Event
+) -> None:
+    """Daemon thread: calls StopSearch once no solution has improved for stall_seconds."""
+    while not stop_event.is_set():
+        stop_event.wait(0.25)
+        with tracker.lock:
+            if not tracker.has_solution:
+                continue
+            idle = time.monotonic() - tracker.last_improvement
+        if idle > stall_seconds:
+            solver.StopSearch()
+            return
+
+
+def _solve_with_stall_guard(
+    solver: CpSolver, model: CpModel, cancel_event: threading.Event | None
+) -> int:
+    """Solve, stopping early on cancellation or once the search stalls (see STALL_SECONDS)."""
+    tracker = _StallTracker()
+    stop_event = threading.Event()
+    threading.Thread(
+        target=_watch_stall, args=(solver, tracker, STALL_SECONDS, stop_event), daemon=True
+    ).start()
+    if cancel_event is not None:
+        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
+    try:
+        return solver.Solve(model, tracker)
+    finally:
+        stop_event.set()
 
 
 ProgressCb = Callable[[int, int], None]  # (batches_done, batches_total)
@@ -325,9 +384,7 @@ def _solve_soft_coverage(
     # Stage 1: maximize number of covered duties. Replaces the fairness
     # objective that build_model installed.
     model.Maximize(covered)
-    if cancel_event is not None:
-        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
-    st1 = solver.Solve(model)
+    st1 = _solve_with_stall_guard(solver, model, cancel_event)
     if cancel_event is not None and cancel_event.is_set():
         return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
     if solver.StatusName(st1) not in ("OPTIMAL", "FEASIBLE"):
@@ -348,9 +405,7 @@ def _solve_soft_coverage(
     if x:
         model.Add(covered >= best)
     build_fairness_objective(model, x, duties, settings, reserve_dist, terms)
-    if cancel_event is not None:
-        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
-    st2 = solver.Solve(model)
+    st2 = _solve_with_stall_guard(solver, model, cancel_event)
     if cancel_event is not None and cancel_event.is_set():
         return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
     if solver.StatusName(st2) in ("OPTIMAL", "FEASIBLE"):
@@ -383,9 +438,7 @@ def _solve_with_settings(
     # on CPU scheduling, not the seed. Callers may override seed via settings.seed.
     solver.parameters.random_seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
     solver.parameters.num_search_workers = settings.num_workers
-    if cancel_event is not None:
-        threading.Thread(target=_watch_cancel, args=(solver, cancel_event), daemon=True).start()
-    status = solver.Solve(model)
+    status = _solve_with_stall_guard(solver, model, cancel_event)
     return solver, x, status
 
 

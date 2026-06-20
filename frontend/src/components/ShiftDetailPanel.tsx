@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
-import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
+import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import DismissalModal from "./DismissalModal";
@@ -57,6 +57,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimTarget, setGimelimTarget] = useState<CalendarShiftAssignee | null>(null);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
+  const [canOfferReplace, setCanOfferReplace] = useState(true);
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -93,6 +94,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       setSwapsByAssignment(map);
     });
   }, [shift]);
+
+  useEffect(() => {
+    if (!user) return;
+    const someAssignmentId = shift.assignees[0]?.assignment_id;
+    if (!someAssignmentId) {
+      setCanOfferReplace(true);
+      return;
+    }
+    checkCoverEligibility(someAssignmentId)
+      .then((result) => setCanOfferReplace(result.eligible))
+      .catch(() => setCanOfferReplace(true));
+  }, [shift, user]);
 
   async function handleOpenCoverModal(swap: SwapRequest) {
     setCoverSwap(swap);
@@ -201,7 +214,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     </div>
                     {!isCalledUp && (
                       <div className="flex items-center gap-1">
-                        {a.soldier_id !== user?.id && (
+                        {a.soldier_id !== user?.id && canOfferReplace && (
                           <button
                             className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
                             onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}
@@ -326,7 +339,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {a.soldier_id !== user?.id && (
+                    {a.soldier_id !== user?.id && canOfferReplace && (
                       <button
                         className="text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded hover:bg-indigo-200"
                         onClick={() => setOfferSwapTarget({ soldierId: a.soldier_id, soldierName: a.soldier_name, assignmentId: a.assignment_id })}

@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "frontend", "dev"],
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "dev.ps1", "-NoBot"],
       "port": 5173,
       "autoPort": true
     }

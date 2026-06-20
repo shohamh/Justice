@@ -195,7 +195,7 @@ def test_inject_effort_scores():
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 7),
         score_per_day=Decimal("0.5"),
     )
-    # unit_score_milli = int(0.5 * 7 * 1000) = 3500
+    # end_date is exclusive, so duration = 6 days: unit_score_milli = int(0.5 * 6 * 1000) = 3000
     # effort data: effort_score=0.1, C_over_D=0.5
     effort_map = {
         sid: EffortData(
@@ -205,8 +205,8 @@ def test_inject_effort_scores():
     }
     inject_effort_scores([s], [block], effort_map)
     assert s.effort_offset == int(Decimal("0.1") * EFFORT_SCALE)
-    # effort_per_milli = int(0.5 / 3500 × EFFORT_SCALE) = int(142857) = 142857
-    expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
+    # effort_per_milli = int(0.5 / 3000 × EFFORT_SCALE) = int(166666) = 166666
+    expected = int(Decimal("0.5") / 3000 * EFFORT_SCALE)
     assert s.effort_per_milli == expected
 
 

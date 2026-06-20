@@ -29,7 +29,7 @@ def test_transparency_reflects_assignment(client: TestClient, admin_session: Ses
             "duty_type_id": str(dt.id),
             "duty_location_id": str(loc.id),
             "start_date": "2026-10-01",
-            "end_date": "2026-10-02",
+            "end_date": "2026-10-03",
         },
     )
     r = client.get("/api/scoring/transparency", headers=auth_headers(admin))

@@ -45,11 +45,22 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Skip the large-scale CP-SAT tests by default — the 8 @pytest.mark.slow cases
-# (n≈100, m≈200) take ~11 min combined and dominate every run. Run them on
-# demand with `pytest -m slow`, or the whole suite with `pytest -m "slow or not slow"`.
-addopts = "-ra -q -m 'not slow'"
+# Default run is the fast suite, parallel across CPU cores (~2 min). The 8
+# @pytest.mark.slow large-scale CP-SAT cases (n≈100, m≈200, ~11 min combined)
+# are deselected by a conftest.py hook unless --slow is passed.
+# Area markers (algorithm, auth, hierarchy, duty, scoring, notifications,
+# soldiers, misc) are assigned automatically by the same hook based on test
+# file name — run a slice with e.g. `pytest -m algorithm`.
+addopts = "-ra -q -n auto"
 asyncio_mode = "auto"
 markers = [
-  "slow: large-scale CP-SAT tests (n≈100, m≈200); excluded by default, run with: pytest -m slow",
+  "slow: large-scale CP-SAT tests (n≈100, m≈200); deselected by default, run with: pytest --slow",
+  "algorithm: CP-SAT solver, scheduling model, fairness/effort scoring inputs",
+  "auth: login, JWT, password policy, RBAC, registration/enrollment, security hardening",
+  "hierarchy: hierarchy nodes (corps/division/unit/...) and duty-manager scope",
+  "duty: assignments, shifts, swaps, constraints, exemptions, gimelim, hakpaza, duty config",
+  "scoring: cumulative score / transparency / effort-score reporting",
+  "notifications: notifications, email, Telegram, bot actions",
+  "soldiers: soldier profile, soldier listing, Excel import",
+  "misc: health check, audit log, settings loader",
 ]

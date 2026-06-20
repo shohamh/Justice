@@ -552,7 +552,7 @@ def test_partial_job_reports_reasons(client, admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=far,
-        end_date=far,
+        end_date=far + timedelta(days=1),
         required_count=3,
     )
     admin_session.add(oversubscribed)
@@ -564,7 +564,7 @@ def test_partial_job_reports_reasons(client, admin_session):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date=far2,
-        end_date=far2,
+        end_date=far2 + timedelta(days=1),
         required_count=1,
     )
     admin_session.add(fillable)

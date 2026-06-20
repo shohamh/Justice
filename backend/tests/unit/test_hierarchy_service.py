@@ -49,8 +49,8 @@ def test_move_allows_any_level_below(admin_session):
     assert g1.parent_id == d2.id
 
 
-def test_create_root_must_be_division(admin_session):
-    node = create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
+def test_create_root_must_be_corps(admin_session):
+    node = create_node(admin_session, level="corps", name="כלל המסגרת", parent_id=None, actor_id=None)
     admin_session.commit()
     assert node.parent_id is None
     assert node.path_ids == [node.id]
@@ -58,7 +58,7 @@ def test_create_root_must_be_division(admin_session):
 
 def test_non_top_level_root_rejected(admin_session):
     with pytest.raises(HierarchyError):
-        create_node(admin_session, level="branch", name="ענף", parent_id=None, actor_id=None)
+        create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
 
 
 def test_create_child_allows_any_level_below(admin_session):
@@ -71,7 +71,7 @@ def test_create_child_allows_any_level_below(admin_session):
 
 
 def test_create_writes_audit(admin_session):
-    create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
+    create_node(admin_session, level="corps", name="כלל המסגרת", parent_id=None, actor_id=None)
     admin_session.commit()
     row = admin_session.execute(
         text(
