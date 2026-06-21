@@ -179,13 +179,6 @@ def test_soldier_input_has_effort_fields():
 
 def test_inject_effort_scores():
     """After injection, SoldierInput has nonzero effort_per_milli when unit_score > 0."""
-    from app.services.effort_score import EFFORT_SCALE, EffortData
-    from app.algorithm.types import SoldierInput, DutyBlock
-    from app.services.algorithm_bridge import inject_effort_scores
-    import uuid
-    from datetime import date
-    from decimal import Decimal
-
     sid = uuid.uuid4()
     s = SoldierInput(
         id=sid, enrolled_at=date(2026, 1, 1),
