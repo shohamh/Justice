@@ -572,6 +572,9 @@ class AlgorithmJob(Base):
     result_metadata: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True, default=None
     )
+    solver_input_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

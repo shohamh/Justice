@@ -153,10 +153,10 @@ def test_infeasibility_relaxation() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
                   score_per_day=Decimal("1.00")),
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 2),
+                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 3),
                   score_per_day=Decimal("1.00")),
     ]
     # Force infeasibility: 1 soldier must cover both duties (coverage constraint),
@@ -346,7 +346,7 @@ def test_does_not_concentrate_duties_on_lowest_effort_soldier() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
@@ -376,7 +376,7 @@ def test_equal_effort_soldiers_split_evenly() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
@@ -408,7 +408,7 @@ def test_low_marginal_effort_soldier_absorbs_more() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
@@ -647,7 +647,7 @@ def test_relaxation_relaxes_R_before_T() -> None:
     base = date(2026, 6, 1)
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=base + timedelta(days=i), end_date=base + timedelta(days=i),
+                  start_date=base + timedelta(days=i), end_date=base + timedelta(days=i + 1),
                   score_per_day=Decimal("1.00"), is_reserve=False)
         for i in range(8)  # 8 real duty-days in a 14-day window
     ]
@@ -977,3 +977,41 @@ def test_effort_rounds_two_groups_cover_all() -> None:
     from app.algorithm.solver import _effort_round_solve
     res = _effort_round_solve(soldiers, duties, [], SolverSettings(round_soldier_count=2, batch_time_limit_seconds=10), reserve_dist=None, cancel_event=None)
     assert len(res.assignments) == 8
+
+
+def test_spreads_duties_evenly_when_soldiers_outnumber_duties() -> None:
+    """Regression for the 105%-CV production bug: with uniform effort rates and
+    duties < soldiers, the fair split gives everyone at most 1 duty (5 get none,
+    unavoidably, since there are only 15 duties for 20 soldiers) — never some
+    soldiers at 0 while others get doubled up, which is what a too-weak
+    count-spread tiebreaker (count_w) allowed before this fix."""
+    duty_type = uuid4()
+    loc = uuid4()
+    soldiers = [
+        _eff_soldier(uuid4(), offset=0, per_milli=1000)
+        for _ in range(20)
+    ]
+    base = date(2026, 6, 1)
+    duties = []
+    for i in range(10):
+        d = base + timedelta(days=i * 6)
+        duties.append(DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                                 start_date=d, end_date=d + timedelta(days=1), score_per_day=Decimal("4.00")))
+    for i in range(5):
+        d = base + timedelta(days=i * 11)
+        duties.append(DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
+                                 start_date=d, end_date=d + timedelta(days=8), score_per_day=Decimal("4.00")))
+
+    settings = SolverSettings(T=8, Wt=14, R=15, Wr=28, time_limit_seconds=5,
+                               decomposition="none", batching_enabled=False)
+    result = solve(soldiers, duties, [], settings)
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 15
+
+    counts: dict = {s.id: 0 for s in soldiers}
+    for a in result.assignments:
+        counts[a.soldier_id] += 1
+    counts_list = sorted(counts.values())
+
+    assert max(counts_list) <= 1, f"no soldier should be doubled up while another sits idle, got {counts_list}"
+    assert counts_list.count(0) == 5, f"exactly 5 soldiers should be idle (15 duties / 20 soldiers), got {counts_list}"

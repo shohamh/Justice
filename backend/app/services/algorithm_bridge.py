@@ -894,6 +894,20 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.commit()
                     return
 
+                _phase("solver_input_snapshot: start")
+                job.solver_input_snapshot = serialize_solver_inputs(
+                    job_id=job.id,
+                    planning_start=planning_start,
+                    planning_end=planning_end,
+                    settings=settings,
+                    soldiers=soldiers,
+                    duties=duties,
+                    existing=existing,
+                    block_to_shift_map=block_to_shift_map,
+                )
+                session.commit()
+                _phase("solver_input_snapshot: done")
+
                 hier_parent, hier_children, soldier_node, node_soldiers = build_hierarchy_maps(session)
 
                 _phase("compute_reserve_dist: start")
@@ -1084,8 +1098,91 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
         _cancel_events.pop(str(job_id), None)
 
 
+def serialize_solver_inputs(
+    *,
+    job_id: uuid.UUID,
+    planning_start: date,
+    planning_end: date,
+    settings: SolverSettings,
+    soldiers: list[SoldierInput],
+    duties: list[DutyBlock],
+    existing: list[ExistingAssignment],
+    block_to_shift_map: dict[uuid.UUID, uuid.UUID],
+) -> dict:
+    """Build the JSON-serializable solver-input dump shape.
+
+    Shared by run_algorithm_job (to persist a snapshot at solve time) and
+    export_solver_inputs (to return it later, or to live-reconstruct for jobs
+    that predate the snapshot).
+    """
+
+    def _soldier_dict(s: SoldierInput) -> dict:
+        return {
+            "id": str(s.id),
+            "enrolled_at": s.enrolled_at.isoformat(),
+            "cumulative_score": float(s.cumulative_score),
+            "active_days": s.active_days,
+            "hierarchy_node_id": str(s.hierarchy_node_id) if s.hierarchy_node_id else None,
+            "approved_constraint_dates": [
+                [a.isoformat(), b.isoformat()] for a, b in s.approved_constraint_dates
+            ],
+            "exempted_duty_type_ids": [str(e) for e in s.exempted_duty_type_ids],
+            "effort_offset": s.effort_offset,
+            "effort_per_milli": s.effort_per_milli,
+        }
+
+    def _duty_dict(d: DutyBlock) -> dict:
+        return {
+            "id": str(d.id),
+            "duty_type_id": str(d.duty_type_id),
+            "duty_location_id": str(d.duty_location_id),
+            "start_date": d.start_date.isoformat(),
+            "end_date": d.end_date.isoformat(),
+            "score_per_day": float(d.score_per_day),
+            "is_reserve": d.is_reserve,
+            "eligible_node_ids": [str(n) for n in d.eligible_node_ids] if d.eligible_node_ids else None,
+            "shift_id": str(block_to_shift_map[d.id]) if d.id in block_to_shift_map else None,
+        }
+
+    def _existing_dict(e: ExistingAssignment) -> dict:
+        return {
+            "soldier_id": str(e.soldier_id),
+            "duty_type_id": str(e.duty_type_id),
+            "start_date": e.start_date.isoformat(),
+            "end_date": e.end_date.isoformat(),
+            "is_reserve": e.is_reserve,
+        }
+
+    settings_dict = dataclasses.asdict(settings)
+    settings_dict["alpha"] = float(settings_dict["alpha"])
+    settings_dict["reserve_hierarchy_weight"] = float(settings_dict["reserve_hierarchy_weight"])
+
+    return {
+        "job_id": str(job_id),
+        "planning_start": planning_start.isoformat(),
+        "planning_end": planning_end.isoformat(),
+        "exported_at": datetime.now(tz=UTC).isoformat(),
+        "settings": settings_dict,
+        "soldiers": [_soldier_dict(s) for s in soldiers],
+        "duties": [_duty_dict(d) for d in duties],
+        "existing_assignments": [_existing_dict(e) for e in existing],
+    }
+
+
 def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
-    """Reconstruct solver inputs from a stored job and return as a JSON-serializable dict."""
+    """Return this job's solver inputs.
+
+    If a snapshot was captured at run time (jobs created after the
+    solver_input_snapshot column was added), return it verbatim with a fresh
+    exported_at timestamp — this is the only path that reflects the duties
+    actually solved, since by the time a job is done, load_duty_blocks_from_shifts
+    no longer finds anything to (re)generate (its slots are filled). For
+    legacy jobs with no snapshot, fall back to live reconstruction (best-effort;
+    will return empty duties for a completed legacy job whose shifts are filled).
+    """
+    if job.solver_input_snapshot is not None:
+        return {**job.solver_input_snapshot, "exported_at": datetime.now(tz=UTC).isoformat()}
+
     from app.services.settings_loader import get_setting
 
     settings = resolve_solver_settings(session, job.settings_json)
@@ -1136,54 +1233,13 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         W=settings.Wr,
     )
 
-    def _soldier_dict(s: SoldierInput) -> dict:
-        return {
-            "id": str(s.id),
-            "enrolled_at": s.enrolled_at.isoformat(),
-            "cumulative_score": float(s.cumulative_score),
-            "active_days": s.active_days,
-            "hierarchy_node_id": str(s.hierarchy_node_id) if s.hierarchy_node_id else None,
-            "approved_constraint_dates": [
-                [a.isoformat(), b.isoformat()] for a, b in s.approved_constraint_dates
-            ],
-            "exempted_duty_type_ids": [str(e) for e in s.exempted_duty_type_ids],
-            "effort_offset": s.effort_offset,
-            "effort_per_milli": s.effort_per_milli,
-        }
-
-    def _duty_dict(d: DutyBlock) -> dict:
-        return {
-            "id": str(d.id),
-            "duty_type_id": str(d.duty_type_id),
-            "duty_location_id": str(d.duty_location_id),
-            "start_date": d.start_date.isoformat(),
-            "end_date": d.end_date.isoformat(),
-            "score_per_day": float(d.score_per_day),
-            "is_reserve": d.is_reserve,
-            "eligible_node_ids": [str(n) for n in d.eligible_node_ids] if d.eligible_node_ids else None,
-            "shift_id": str(block_to_shift_map[d.id]) if d.id in block_to_shift_map else None,
-        }
-
-    def _existing_dict(e: ExistingAssignment) -> dict:
-        return {
-            "soldier_id": str(e.soldier_id),
-            "duty_type_id": str(e.duty_type_id),
-            "start_date": e.start_date.isoformat(),
-            "end_date": e.end_date.isoformat(),
-            "is_reserve": e.is_reserve,
-        }
-
-    settings_dict = dataclasses.asdict(settings)
-    settings_dict["alpha"] = float(settings_dict["alpha"])
-    settings_dict["reserve_hierarchy_weight"] = float(settings_dict["reserve_hierarchy_weight"])
-
-    return {
-        "job_id": str(job.id),
-        "planning_start": planning_start.isoformat(),
-        "planning_end": planning_end.isoformat(),
-        "exported_at": datetime.now(tz=UTC).isoformat(),
-        "settings": settings_dict,
-        "soldiers": [_soldier_dict(s) for s in soldiers],
-        "duties": [_duty_dict(d) for d in duties],
-        "existing_assignments": [_existing_dict(e) for e in existing],
-    }
+    return serialize_solver_inputs(
+        job_id=job.id,
+        planning_start=planning_start,
+        planning_end=planning_end,
+        settings=settings,
+        soldiers=soldiers,
+        duties=duties,
+        existing=existing,
+        block_to_shift_map=block_to_shift_map,
+    )

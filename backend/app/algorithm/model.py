@@ -121,7 +121,12 @@ def build_fairness_objective(
         # Tiers (each ≫ the next): L1 ≫ prior ≫ count-spread ≫ reserve proximity.
         l1_w = 100_000_000_000  # 1e11
         prior_w = 1_000_000     # 1e6
-        count_w = 10_000        # 1e4 — above the per-move reserve-distance term
+        # 1e5 — empirically the minimum that reliably breaks L1-tied ties toward
+        # an even count split instead of CP-SAT settling on a lopsided
+        # near-tied allocation (verified: 1e4 leaves some soldiers at 0 while
+        # others double up even given 3x the normal time budget with no stall
+        # cutoff; 1e5 finds the genuinely even split). Still ≪ prior_w.
+        count_w = 100_000        # 1e5 — above the per-move reserve-distance term
         n_elig = len(eligible_total_exprs)
         mu_const = (sum(eligible_offsets) + total_new_weight) // n_elig
 

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.services.algorithm_bridge import resolve_solver_settings
+import uuid
+from datetime import date
+from decimal import Decimal
+
+from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
+from app.services.algorithm_bridge import resolve_solver_settings, serialize_solver_inputs
 from app.services.settings_loader import set_setting
 
 
@@ -52,3 +57,138 @@ def test_resolve_solver_settings_decomposition_override(admin_session):
     s = resolve_solver_settings(admin_session, {"decomposition": "calendar", "round_soldier_count": 30})
     assert s.decomposition == "calendar"
     assert s.round_soldier_count == 30
+
+
+def test_serialize_solver_inputs_shape():
+    job_id = uuid.uuid4()
+    soldier_id = uuid.uuid4()
+    hierarchy_node_id = uuid.uuid4()
+    exempted_duty_type_id = uuid.uuid4()
+    duty_id = uuid.uuid4()
+    duty_type_id = uuid.uuid4()
+    duty_location_id = uuid.uuid4()
+    eligible_node_id = uuid.uuid4()
+    shift_id = uuid.uuid4()
+    existing_soldier_id = uuid.uuid4()
+    existing_duty_type_id = uuid.uuid4()
+
+    constraint_start = date(2026, 1, 5)
+    constraint_end = date(2026, 1, 7)
+
+    soldier = SoldierInput(
+        id=soldier_id,
+        enrolled_at=date(2024, 3, 1),
+        cumulative_score=Decimal("12.5"),
+        active_days=300,
+        hierarchy_node_id=hierarchy_node_id,
+        approved_constraint_dates=[(constraint_start, constraint_end)],
+        exempted_duty_type_ids={exempted_duty_type_id},
+        effort_offset=10,
+        effort_per_milli=3,
+    )
+
+    duty = DutyBlock(
+        id=duty_id,
+        duty_type_id=duty_type_id,
+        duty_location_id=duty_location_id,
+        start_date=date(2026, 2, 1),
+        end_date=date(2026, 2, 3),
+        score_per_day=Decimal("2.0"),
+        is_reserve=True,
+        eligible_node_ids=[eligible_node_id],
+    )
+
+    existing = ExistingAssignment(
+        soldier_id=existing_soldier_id,
+        duty_type_id=existing_duty_type_id,
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 2),
+        is_reserve=False,
+    )
+
+    settings = SolverSettings(alpha=Decimal("1.75"), reserve_hierarchy_weight=Decimal("0.35"))
+
+    result = serialize_solver_inputs(
+        job_id=job_id,
+        planning_start=date(2026, 2, 1),
+        planning_end=date(2026, 2, 3),
+        settings=settings,
+        soldiers=[soldier],
+        duties=[duty],
+        existing=[existing],
+        block_to_shift_map={duty.id: shift_id},
+    )
+
+    assert set(result.keys()) == {
+        "job_id",
+        "planning_start",
+        "planning_end",
+        "exported_at",
+        "settings",
+        "soldiers",
+        "duties",
+        "existing_assignments",
+    }
+    assert result["job_id"] == str(job_id)
+
+    soldier_dict = result["soldiers"][0]
+    assert soldier_dict["id"] == str(soldier_id)
+    assert soldier_dict["enrolled_at"] == "2024-03-01"
+    assert soldier_dict["cumulative_score"] == 12.5
+    assert isinstance(soldier_dict["cumulative_score"], float)
+    assert soldier_dict["active_days"] == 300
+    assert soldier_dict["hierarchy_node_id"] == str(hierarchy_node_id)
+    assert soldier_dict["approved_constraint_dates"] == [
+        [constraint_start.isoformat(), constraint_end.isoformat()]
+    ]
+    assert soldier_dict["exempted_duty_type_ids"] == [str(exempted_duty_type_id)]
+    assert soldier_dict["effort_offset"] == 10
+    assert soldier_dict["effort_per_milli"] == 3
+
+    duty_dict = result["duties"][0]
+    assert duty_dict["id"] == str(duty_id)
+    assert duty_dict["duty_type_id"] == str(duty_type_id)
+    assert duty_dict["duty_location_id"] == str(duty_location_id)
+    assert duty_dict["start_date"] == "2026-02-01"
+    assert duty_dict["end_date"] == "2026-02-03"
+    assert duty_dict["score_per_day"] == 2.0
+    assert duty_dict["is_reserve"] is True
+    assert duty_dict["eligible_node_ids"] == [str(eligible_node_id)]
+    assert duty_dict["shift_id"] == str(shift_id)
+
+    existing_dict = result["existing_assignments"][0]
+    assert existing_dict["soldier_id"] == str(existing_soldier_id)
+    assert existing_dict["duty_type_id"] == str(existing_duty_type_id)
+    assert existing_dict["start_date"] == "2026-01-01"
+    assert existing_dict["end_date"] == "2026-01-02"
+    assert existing_dict["is_reserve"] is False
+
+    assert isinstance(result["settings"]["alpha"], float)
+    assert result["settings"]["alpha"] == 1.75
+    assert isinstance(result["settings"]["reserve_hierarchy_weight"], float)
+    assert result["settings"]["reserve_hierarchy_weight"] == 0.35
+
+
+def test_serialize_solver_inputs_duty_with_no_shift_mapping():
+    duty_id = uuid.uuid4()
+    duty = DutyBlock(
+        id=duty_id,
+        duty_type_id=uuid.uuid4(),
+        duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 2, 1),
+        end_date=date(2026, 2, 3),
+        score_per_day=Decimal("2.0"),
+    )
+
+    result = serialize_solver_inputs(
+        job_id=uuid.uuid4(),
+        planning_start=date(2026, 2, 1),
+        planning_end=date(2026, 2, 3),
+        settings=SolverSettings(),
+        soldiers=[],
+        duties=[duty],
+        existing=[],
+        block_to_shift_map={},
+    )
+
+    assert result["duties"][0]["shift_id"] is None
