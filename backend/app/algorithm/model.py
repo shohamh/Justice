@@ -12,6 +12,7 @@ from typing import Literal, overload
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
+from app.algorithm.duration import score_days
 from app.algorithm.types import (
     EFFORT_SCALE,
     DutyBlock,
@@ -23,7 +24,7 @@ from app.algorithm.types import (
 
 def _block_score(d: DutyBlock) -> int:
     """Total score for completing the entire block, in milli-units (x1000 for integer math)."""
-    days = (d.end_date - d.start_date).days
+    days = score_days(d.start_date, d.end_date, d.start_time, d.end_time)
     return int(d.score_per_day * Decimal(days) * 1000)
 
 
