@@ -153,10 +153,10 @@ def test_infeasibility_relaxation() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
                   score_per_day=Decimal("1.00")),
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 2),
+                  start_date=date(2026, 6, 2), end_date=date(2026, 6, 3),
                   score_per_day=Decimal("1.00")),
     ]
     # Force infeasibility: 1 soldier must cover both duties (coverage constraint),
@@ -346,7 +346,7 @@ def test_does_not_concentrate_duties_on_lowest_effort_soldier() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
@@ -408,7 +408,7 @@ def test_low_marginal_effort_soldier_absorbs_more() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
@@ -647,7 +647,7 @@ def test_relaxation_relaxes_R_before_T() -> None:
     base = date(2026, 6, 1)
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=uuid4(),
-                  start_date=base + timedelta(days=i), end_date=base + timedelta(days=i),
+                  start_date=base + timedelta(days=i), end_date=base + timedelta(days=i + 1),
                   score_per_day=Decimal("1.00"), is_reserve=False)
         for i in range(8)  # 8 real duty-days in a 14-day window
     ]
