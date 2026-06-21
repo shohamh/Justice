@@ -1,15 +1,15 @@
 """add solver_input_snapshot to algorithm_jobs
 
-Revision ID: 0054
-Revises: 0053
+Revision ID: 0057
+Revises: 0056
 Create Date: 2026-06-20
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0054"
-down_revision = "0053"
+revision = "0057"
+down_revision = "0056"
 branch_labels = None
 depends_on = None
 
