@@ -376,7 +376,7 @@ def test_equal_effort_soldiers_split_evenly() -> None:
     ]
     duties = [
         DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
-                  start_date=date(2026, 6, d), end_date=date(2026, 6, d),
+                  start_date=date(2026, 6, d), end_date=date(2026, 6, d) + timedelta(days=1),
                   score_per_day=Decimal("4.00"))
         for d in range(1, 7)
     ]
