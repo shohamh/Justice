@@ -98,6 +98,8 @@ def create_shift(
     duty_location_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    start_time: str = "00:00",
+    end_time: str = "23:59",
     required_count: int = 1,
     notes: str | None = None,
     reserve_count_override: int | None = None,
@@ -107,11 +109,19 @@ def create_shift(
         raise ShiftError("end_before_start")
     if required_count < 1:
         raise ShiftError("invalid_required_count")
+    for t in (start_time, end_time):
+        parts = t.split(":")
+        if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+            raise ShiftError("invalid_time")
+    if (end_date - start_date).days == 1 and end_time <= start_time:
+        raise ShiftError("invalid_time_order")
     shift = DutyShift(
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id,
         start_date=start_date,
         end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
         required_count=required_count,
         notes=notes,
         reserve_count_override=reserve_count_override,

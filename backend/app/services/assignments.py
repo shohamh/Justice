@@ -11,6 +11,7 @@ from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
     DutyLocation,
+    DutyShift,
     DutyType,
     ExemptionDutyTypeMap,
     NotificationType,
@@ -96,12 +97,19 @@ def create_assignment(
         end_date=end_date,
     ):
         raise AssignmentError("exempted")
+    start_time, end_time = "00:00", "23:59"
+    if duty_shift_id is not None:
+        shift = session.get(DutyShift, duty_shift_id)
+        if shift is not None:
+            start_time, end_time = shift.start_time, shift.end_time
     a = DutyAssignment(
         soldier_id=soldier_id,
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id,
         start_date=start_date,
         end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
         notes=notes,
         duty_shift_id=duty_shift_id,
         is_reserve=is_reserve,

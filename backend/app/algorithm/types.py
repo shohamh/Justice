@@ -38,6 +38,8 @@ class DutyBlock:
     score_per_day: Decimal
     is_reserve: bool = False
     eligible_node_ids: list[uuid.UUID] | None = None
+    start_time: str = "00:00"
+    end_time: str = "23:59"
 
 
 @dataclass

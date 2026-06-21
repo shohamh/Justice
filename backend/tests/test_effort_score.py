@@ -8,6 +8,8 @@ from decimal import Decimal
 
 import pytest
 
+from app.algorithm.types import DutyBlock, SoldierInput
+from app.services.algorithm_bridge import inject_effort_scores
 from app.services.effort_score import (
     EFFORT_SCALE,
     EffortData,
@@ -177,13 +179,6 @@ def test_soldier_input_has_effort_fields():
 
 def test_inject_effort_scores():
     """After injection, SoldierInput has nonzero effort_per_milli when unit_score > 0."""
-    from app.services.effort_score import EFFORT_SCALE, EffortData
-    from app.algorithm.types import SoldierInput, DutyBlock
-    from app.services.algorithm_bridge import inject_effort_scores
-    import uuid
-    from datetime import date
-    from decimal import Decimal
-
     sid = uuid.uuid4()
     s = SoldierInput(
         id=sid, enrolled_at=date(2026, 1, 1),
@@ -207,6 +202,31 @@ def test_inject_effort_scores():
     assert s.effort_offset == int(Decimal("0.1") * EFFORT_SCALE)
     # effort_per_milli = int(0.5 / 3000 × EFFORT_SCALE) = int(166666) = 166666
     expected = int(Decimal("0.5") / 3000 * EFFORT_SCALE)
+    assert s.effort_per_milli == expected
+
+
+def test_inject_effort_scores_uses_score_days_not_calendar_days_touched():
+    """A block touching 8 calendar days but spanning exactly 7*24h should contribute
+    unit_score_milli as if it were 7 days, not 8."""
+    sid = uuid.uuid4()
+    s = SoldierInput(
+        id=sid, enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"), active_days=90,
+    )
+    block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 9),  # 8 calendar days touched
+        score_per_day=Decimal("0.5"), start_time="14:00", end_time="14:00",  # exactly 7*24h
+    )
+    effort_map = {
+        sid: EffortData(
+            effort_score=Decimal("0.1"), C_over_D=Decimal("0.5"),
+            effort_offset=int(Decimal("0.1") * EFFORT_SCALE),
+        )
+    }
+    inject_effort_scores([s], [block], effort_map)
+    # unit_score_milli = int(0.5 * 7 * 1000) = 3500 (score_days=7), not int(0.5*8*1000)=4000
+    expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
     assert s.effort_per_milli == expected
 
 

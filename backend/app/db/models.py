@@ -247,6 +247,8 @@ class DutyAssignment(Base):
     )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
+    start_time: Mapped[str] = mapped_column(Text, server_default=text("'00:00'"), default="00:00")  # "HH:MM"
+    end_time: Mapped[str] = mapped_column(Text, server_default=text("'23:59'"), default="23:59")    # "HH:MM"
     status: Mapped[str] = mapped_column(
         Text, server_default=text("'published'"), default="published"
     )
@@ -318,6 +320,8 @@ class DutyShift(Base):
     )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
+    start_time: Mapped[str] = mapped_column(Text, server_default=text("'00:00'"), default="00:00")  # "HH:MM"
+    end_time: Mapped[str] = mapped_column(Text, server_default=text("'23:59'"), default="23:59")    # "HH:MM"
     required_count: Mapped[int] = mapped_column(server_default=text("1"), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     generated_from_template_id: Mapped[uuid.UUID | None] = mapped_column(

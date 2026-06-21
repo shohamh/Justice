@@ -73,6 +73,8 @@ def _validate(
         parts = t.split(":")
         if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
             raise TemplateError("invalid_time")
+    if duration_days == 1 and end_time <= start_time:
+        raise TemplateError("invalid_time_order")
     if auto_roll_until is not None and auto_roll_until < date.today():
         raise TemplateError("invalid_auto_roll_until")
 
@@ -243,6 +245,8 @@ def generate_shifts(
             duty_location_id=tpl.duty_location_id,
             start_date=d,
             end_date=d + timedelta(days=tpl.duration_days),
+            start_time=tpl.start_time,
+            end_time=tpl.end_time,
             required_count=tpl.required_count,
             notes=tpl.notes,
             created_by=actor_id,

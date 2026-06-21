@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.algorithm.model import build_model
+from app.algorithm.model import _block_score, build_model
 from app.algorithm.types import EFFORT_SCALE, DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
 from ortools.sat.python.cp_model import CpSolver
 
@@ -185,3 +185,15 @@ def test_dual_window_wr_wider_than_wt():
     # existing_all_fixed = 7 (days 1-7), so 7 + 1 (reserve) = 8 <= R=8 — FEASIBLE.
     assigned = _solve([s], [reserve_d], existing=existing, T=8, Wt=14, R=8, Wr=28)
     assert reserve_d.id in assigned.values() or reserve_d.id in assigned
+
+
+def test_block_score_uses_score_days_not_calendar_days_touched():
+    # Monday -> following Monday, 14:00-14:00: touches 8 calendar days but is
+    # exactly 168 hours = 7*24h -> should score as 7 days, not 8.
+    block = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 9),
+        score_per_day=Decimal("2"), start_time="14:00", end_time="14:00",
+    )
+    # _block_score returns milli-units (x1000): 7 days * score_per_day(2) * 1000
+    assert _block_score(block) == 7 * 2 * 1000

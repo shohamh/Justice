@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import score_days
 from app.algorithm.types import (
     AssignmentExplanation as AlgoExplanation,
 )
@@ -303,6 +304,7 @@ def load_duty_blocks_from_shifts(
         if effective_start > shift.end_date:
             # Shift is entirely in the past — nothing left to assign
             continue
+        block_start_time = shift.start_time if effective_start == shift.start_date else "00:00"
         # Only generate blocks for UNFILLED slots. Subtract assignments that already
         # occupy this shift (published or pending draft) so re-running a fully-assigned
         # schedule is a no-op instead of regenerating slots and competing against its own
@@ -332,6 +334,8 @@ def load_duty_blocks_from_shifts(
                 duty_location_id=shift.duty_location_id,
                 start_date=effective_start,
                 end_date=shift.end_date,
+                start_time=block_start_time,
+                end_time=shift.end_time,
                 score_per_day=score,
                 is_reserve=False,
                 eligible_node_ids=shift.eligible_node_ids,
@@ -348,6 +352,8 @@ def load_duty_blocks_from_shifts(
                 duty_location_id=shift.duty_location_id,
                 start_date=effective_start,
                 end_date=shift.end_date,
+                start_time=block_start_time,
+                end_time=shift.end_time,
                 score_per_day=r_score,
                 is_reserve=True,
                 eligible_node_ids=shift.eligible_node_ids,
@@ -371,7 +377,7 @@ def inject_effort_scores(
     effort_offset value throughout the entire run (including worst-case accumulation).
     """
     unit_score_milli = sum(
-        int(float(b.score_per_day) * ((b.end_date - b.start_date).days) * 1000)
+        int(float(b.score_per_day) * score_days(b.start_date, b.end_date, b.start_time, b.end_time) * 1000)
         for b in duty_blocks
     )
     for s in soldiers:
@@ -596,6 +602,8 @@ def persist_results(
             duty_location_id=block.duty_location_id,
             start_date=block.start_date,
             end_date=block.end_date,
+            start_time=block.start_time,
+            end_time=block.end_time,
             status="algorithm_draft",
             created_by=actor_id,
             notes=None,

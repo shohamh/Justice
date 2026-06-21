@@ -52,6 +52,49 @@ def test_effective_days_basic_block(admin_session):
     assert len(days) == 3
 
 
+def test_effective_duty_days_spreads_score_days_evenly_across_touched_days(admin_session):
+    from app.db.models import DutyAssignment
+
+    s = create_soldier(admin_session, personal_number="8400201")
+    dt = _dt(admin_session, "dt_scoring_spread", "10.00")
+    loc = _loc(admin_session, "loc_scoring_spread")
+
+    a = DutyAssignment(
+        soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 9),
+        start_time="14:00", end_time="14:00", status="published",
+    )
+    admin_session.add(a)
+    admin_session.flush()
+
+    rows = [r for r in effective_duty_days(admin_session) if r[1] == s.id]
+    assert len(rows) == 8  # calendar_days_touched unchanged
+    total_score = sum(dt.score_per_day * mult for _day, _eff, _dtid, mult in rows)
+    assert total_score == Decimal("70")  # 10 * score_days(7), not 10 * 8 = 80
+
+
+def test_effective_duty_days_zero_day_assignment_does_not_crash(admin_session):
+    """start_date == end_date is not rejected by create_assignment's validation (only
+    end_date < start_date is). Under the exclusive-end-date convention this yields
+    calendar_days_touched == 0, so day_weight must not raise ZeroDivisionError."""
+    s = create_soldier(admin_session, personal_number="8400301")
+    dt = _dt(admin_session, "dt_zero_day", "5.00")
+    loc = _loc(admin_session, "loc_zero_day")
+    create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 1),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    rows = [r for r in effective_duty_days(admin_session) if r[1] == s.id]
+    assert rows == []
+
+
 def test_cumulative_with_override_and_adjustment(admin_session):
     s = create_soldier(admin_session, personal_number="8400002")
     repl = create_soldier(admin_session, personal_number="8400003")

@@ -600,6 +600,8 @@ def commit_gimelim(
                     duty_location_id=primary_a.duty_location_id,
                     start_date=future_shift.start_date,
                     end_date=future_shift.end_date,
+                    start_time=future_shift.start_time,
+                    end_time=future_shift.end_time,
                     status="published",
                     is_reserve=False,
                     duty_shift_id=future_shift_id,
