@@ -18,7 +18,9 @@ def _seed(session):
 def test_gimelim_promotion_copies_future_shift_times(admin_session):
     """When A is dismissed via gimelim and rolled onto a future shift (promoting
     A and demoting C), the new primary assignment must copy the future shift's
-    start_time/end_time rather than defaulting to 00:00/23:59."""
+    start_time/end_time, not the current shift's (current_shift and future_shift
+    use deliberately different times so this also proves it isn't defaulting to
+    00:00/23:59 nor copying current_shift's/primary_a's times)."""
     session = admin_session
     dt, loc = _seed(session)
 
@@ -30,7 +32,7 @@ def test_gimelim_promotion_copies_future_shift_times(admin_session):
     current_shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 2),
-        start_time="08:00", end_time="17:00",
+        start_time="06:00", end_time="14:00",
     )
     session.add(current_shift)
     session.flush()
@@ -94,5 +96,7 @@ def test_gimelim_promotion_copies_future_shift_times(admin_session):
 
     a_new = session.get(DutyAssignment, result.future_primary_assignment_id)
     assert a_new is not None
-    assert a_new.start_time == "08:00"
-    assert a_new.end_time == "17:00"
+    # Must match future_shift's times specifically, not current_shift's ("06:00"/"14:00")
+    # nor the 00:00/23:59 default.
+    assert a_new.start_time == future_shift.start_time == "08:00"
+    assert a_new.end_time == future_shift.end_time == "17:00"
