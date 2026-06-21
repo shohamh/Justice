@@ -233,3 +233,13 @@ def test_create_shift_rejects_end_time_before_start_time_when_single_day(admin_s
             start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
             start_time="17:00", end_time="08:00",
         )
+
+
+def test_create_shift_rejects_malformed_time_format(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    with pytest.raises(shifts_svc.ShiftError):
+        shifts_svc.create_shift(
+            admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+            start_time="8:00", end_time="17:00",
+        )

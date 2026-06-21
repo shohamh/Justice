@@ -109,6 +109,10 @@ def create_shift(
         raise ShiftError("end_before_start")
     if required_count < 1:
         raise ShiftError("invalid_required_count")
+    for t in (start_time, end_time):
+        parts = t.split(":")
+        if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+            raise ShiftError("invalid_time")
     if (end_date - start_date).days == 1 and end_time <= start_time:
         raise ShiftError("invalid_time_order")
     shift = DutyShift(
