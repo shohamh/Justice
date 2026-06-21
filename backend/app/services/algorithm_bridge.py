@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import score_days
 from app.algorithm.types import (
     AssignmentExplanation as AlgoExplanation,
 )
@@ -376,7 +377,7 @@ def inject_effort_scores(
     effort_offset value throughout the entire run (including worst-case accumulation).
     """
     unit_score_milli = sum(
-        int(float(b.score_per_day) * ((b.end_date - b.start_date).days) * 1000)
+        int(float(b.score_per_day) * score_days(b.start_date, b.end_date, b.start_time, b.end_time) * 1000)
         for b in duty_blocks
     )
     for s in soldiers:
