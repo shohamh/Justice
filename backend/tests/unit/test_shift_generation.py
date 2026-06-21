@@ -165,3 +165,39 @@ def test_roll_horizon_skips_template_past_auto_roll_until(admin_session):
     assert total == 0
     rolled = admin_session.query(DutyShift).filter(DutyShift.generated_from_template_id == tpl.id).count()
     assert rolled == 0
+
+
+def test_create_template_rejects_end_time_before_start_time_when_single_day(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    with pytest.raises(svc.TemplateError):
+        svc.create_template(
+            admin_session, name="bad_order", duty_type_id=dt.id, duty_location_id=loc.id,
+            recurrence_type="daily", weekdays=[], duration_days=1,
+            start_time="17:00", end_time="08:00",
+        )
+
+
+def test_create_template_allows_any_end_time_when_multi_day(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="overnight_multi", duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="daily", weekdays=[], duration_days=2,
+        start_time="23:00", end_time="01:00",
+    )
+    assert tpl.duration_days == 2
+
+
+def test_generate_shifts_copies_template_times_onto_shift(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    tpl = svc.create_template(
+        admin_session, name="timed", duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="daily", weekdays=[], duration_days=1,
+        start_time="08:00", end_time="17:00",
+    )
+    admin_session.flush()
+    created = svc.generate_shifts(
+        admin_session, tpl=tpl, range_start=date(2026, 6, 1), range_end=date(2026, 6, 1),
+    )
+    assert len(created) == 1
+    assert created[0].start_time == "08:00"
+    assert created[0].end_time == "17:00"
