@@ -247,6 +247,8 @@ class DutyAssignment(Base):
     )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
+    start_time: Mapped[str] = mapped_column(Text, server_default=text("'00:00'"), default="00:00")  # "HH:MM"
+    end_time: Mapped[str] = mapped_column(Text, server_default=text("'23:59'"), default="23:59")    # "HH:MM"
     status: Mapped[str] = mapped_column(
         Text, server_default=text("'published'"), default="published"
     )
