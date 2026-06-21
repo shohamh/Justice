@@ -21,7 +21,7 @@ Tests come in two tiers:
 
   • Large   (@pytest.mark.slow) — n ≈ 100, m ≈ 200, duties on consecutive
     days.  Solver timeout is 120 s; total suite ≈ 5–8 min.  Run explicitly:
-        pytest -m slow tests/unit/test_fairness_e2e.py
+        pytest --slow -m slow tests/unit/test_fairness_e2e.py
 
     Large cases use T=14, W=14 with daily duty spacing so the density
     constraint spans only ~m days instead of ~m×14 days, keeping build time
@@ -322,7 +322,7 @@ def test_e2e_extreme_gap_low_absorbs_all(n_low: int, n_high: int, m: int, seed: 
 # LARGE-SCALE TESTS  (@pytest.mark.slow)
 #
 # Same three properties checked at n ≈ 100, m ≈ 200.
-# Run with:  pytest -m slow tests/unit/test_fairness_e2e.py
+# Run with:  pytest --slow -m slow tests/unit/test_fairness_e2e.py
 #
 # Settings differ from the normal suite:
 #   • duties spaced 1 day apart (gap_days=1) so the density-constraint

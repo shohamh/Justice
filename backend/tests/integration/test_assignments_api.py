@@ -108,7 +108,7 @@ def test_effective_endpoint_reflects_override(client: TestClient, admin_session:
             "duty_type_id": str(dt.id),
             "duty_location_id": str(loc.id),
             "start_date": "2026-12-01",
-            "end_date": "2026-12-03",
+            "end_date": "2026-12-04",
         },
     ).json()["id"]
     client.put(

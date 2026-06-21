@@ -55,10 +55,10 @@ frontend/src/
 
 ```bash
 # Backend — activate venv first: backend\.venv\Scripts\activate (Windows)
-pytest -q                          # fast suite (excludes @pytest.mark.slow; serial)
-pytest -n 8 -q                     # fast suite in parallel (each xdist worker gets its own throwaway Postgres container)
-pytest -m slow -q                  # only the 8 large-scale CP-SAT tests (~11 min)
-pytest -m "slow or not slow" -n 8  # EVERYTHING (slow + fast) in parallel — run locally before a release (CI skips slow)
+pytest -q                          # fast suite, parallel by default (-n auto baked into addopts; ~2 min)
+pytest --slow -q                   # EVERYTHING incl. the 8 large-scale CP-SAT tests (~11 min added) — run before a release (CI skips slow)
+pytest -m algorithm -q             # just one system area: algorithm | auth | hierarchy | duty | scoring | notifications | soldiers | misc
+pytest -m "duty or scoring" -q     # combine areas
 alembic revision -m "description"  # new migration
 alembic upgrade head               # apply migrations
 

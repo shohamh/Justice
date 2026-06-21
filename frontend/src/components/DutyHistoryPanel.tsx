@@ -5,7 +5,7 @@ import { TimelineEvent, getSoldierDutyHistory } from "../api/dutyHistory";
 import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
 import { approveConstraint, rejectConstraint } from "../api/constraints";
 import { acceptProposalDirect, rejectProposalDirect } from "../api/algorithm";
-import { SwapRequest, listSwapsForAssignment } from "../api/swaps";
+import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
@@ -112,6 +112,7 @@ function EventCard({
   openSwaps,
   onCover,
   onOfferSwap,
+  canOfferSwap = true,
   onAcceptDraft,
   onRejectDraft,
   dutyType,
@@ -128,6 +129,7 @@ function EventCard({
   openSwaps?: SwapRequest[];
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  canOfferSwap?: boolean;
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyType?: DutyType | null;
@@ -198,7 +200,7 @@ function EventCard({
           </div>
         </div>
 
-        {e.event_type === "assignment" && e.status !== "algorithm_draft" && onOfferSwap && (
+        {e.event_type === "assignment" && e.status !== "algorithm_draft" && onOfferSwap && canOfferSwap && (
           <div className="mt-1.5" onClick={(ev) => ev.stopPropagation()}>
             <button
               onClick={(ev) => { ev.stopPropagation(); onOfferSwap(e); }}
@@ -368,6 +370,7 @@ function Timeline({
   swapsByAssignment,
   onCover,
   onOfferSwap,
+  eligibilityByAssignment,
   onAcceptDraft,
   onRejectDraft,
   dutyTypeById,
@@ -384,6 +387,7 @@ function Timeline({
   swapsByAssignment?: Record<string, SwapRequest[]>;
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
+  eligibilityByAssignment?: Record<string, boolean>;
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyTypeById: Record<string, DutyType>;
@@ -407,6 +411,7 @@ function Timeline({
             openSwaps={swapsByAssignment?.[e.id]}
             onCover={onCover}
             onOfferSwap={onOfferSwap}
+            canOfferSwap={eligibilityByAssignment?.[e.id] ?? true}
             onAcceptDraft={onAcceptDraft}
             onRejectDraft={onRejectDraft}
             dutyType={e.metadata.duty_type_id ? (dutyTypeById[e.metadata.duty_type_id] ?? null) : null}
@@ -433,6 +438,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
   const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
   const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
+  const [eligibilityByAssignment, setEligibilityByAssignment] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -488,6 +494,15 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
         if (swaps.length > 0) map[id] = swaps;
       }
       setSwapsByAssignment(map);
+    });
+    Promise.all(
+      upcomingAssignments.map((e) =>
+        checkCoverEligibility(e.id)
+          .then((result) => ({ id: e.id, eligible: result.eligible }))
+          .catch(() => ({ id: e.id, eligible: true }))
+      )
+    ).then((results) => {
+      setEligibilityByAssignment(Object.fromEntries(results.map((r) => [r.id, r.eligible])));
     });
   }, [events, isActive, soldierId, user?.id]);
 
@@ -640,6 +655,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     swapsByAssignment,
     onCover: handleOpenCoverModal,
     onOfferSwap: isOtherSoldier ? setOfferSwapEvent : undefined,
+    eligibilityByAssignment,
     onAcceptDraft: handleAcceptDraft,
     onRejectDraft: handleRejectDraft,
     dutyTypeById,

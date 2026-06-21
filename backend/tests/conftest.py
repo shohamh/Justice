@@ -8,6 +8,116 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
+# Test file stem -> system-area marker. Applied automatically in
+# pytest_collection_modifyitems so individual test files don't need decorators.
+# Run a slice with e.g. `pytest -m algorithm` or `pytest -m "duty or scoring"`.
+_AREA_MARKERS: dict[str, str] = {
+    # algorithm: CP-SAT solver, scheduling model, fairness/effort inputs
+    "test_algorithm_cancel": "algorithm",
+    "test_algorithm_jobs_list": "algorithm",
+    "test_algorithm_notification": "algorithm",
+    "test_algorithm_routes": "algorithm",
+    "test_algorithm_shifts": "algorithm",
+    "test_algorithm_bridge": "algorithm",
+    "test_algorithm_bridge_shifts": "algorithm",
+    "test_algorithm_proposals": "algorithm",
+    "test_model": "algorithm",
+    "test_model_effort": "algorithm",
+    "test_fairness": "algorithm",
+    "test_fairness_components": "algorithm",
+    "test_fairness_e2e": "algorithm",
+    "test_effort_score": "algorithm",
+    "test_effort_future_published": "algorithm",
+    # auth: login, JWT, password policy, RBAC, registration/enrollment, security hardening
+    "test_login": "auth",
+    "test_change_password": "auth",
+    "test_forgot_password": "auth",
+    "test_jwt_tokens": "auth",
+    "test_password": "auth",
+    "test_password_policy": "auth",
+    "test_authz": "auth",
+    "test_action_tokens": "auth",
+    "test_rbac_matrix": "auth",
+    "test_registration_routes": "auth",
+    "test_invite_code_routes": "auth",
+    "test_enrollment_routes": "auth",
+    "test_security_hardening": "auth",
+    "test_security_hardening_2": "auth",
+    # hierarchy: hierarchy nodes and duty-manager scope
+    "test_hierarchy_api": "hierarchy",
+    "test_hierarchy_service": "hierarchy",
+    "test_dm_scope_routes": "hierarchy",
+    # duty: assignments, shifts, swaps, constraints, exemptions, gimelim, hakpaza, duty config
+    "test_assignments_api": "duty",
+    "test_assignments_service": "duty",
+    "test_calendar_api": "duty",
+    "test_constraints_api": "duty",
+    "test_constraints_service": "duty",
+    "test_duty_config_api": "duty",
+    "test_duty_config_service": "duty",
+    "test_eligibility": "duty",
+    "test_exemptions_api": "duty",
+    "test_exemptions_service": "duty",
+    "test_gimelim_api": "duty",
+    "test_gimelim_service": "duty",
+    "test_hakpaza": "duty",
+    "test_reserves": "duty",
+    "test_score_adjustments_api": "duty",
+    "test_adjustments_service": "duty",
+    "test_shift_generation": "duty",
+    "test_shifts_routes": "duty",
+    "test_shifts_service": "duty",
+    "test_swap_eligibility": "duty",
+    "test_swaps": "duty",
+    "test_swaps_eligibility": "duty",
+    "test_system_settings_density": "duty",
+    # scoring: cumulative score / transparency / effort-score reporting
+    "test_scoring_api": "scoring",
+    "test_scoring_service": "scoring",
+    "test_scoring_reserve": "scoring",
+    "test_transparency_export": "scoring",
+    # notifications: notifications, email, Telegram, bot actions
+    "test_notifications_api": "notifications",
+    "test_email_notifications": "notifications",
+    "test_email_render": "notifications",
+    "test_telegram_notifications": "notifications",
+    "test_bot_actions": "notifications",
+    # soldiers: soldier profile, soldier listing, Excel import
+    "test_soldier_profile": "soldiers",
+    "test_soldiers_api": "soldiers",
+    "test_import_excel": "soldiers",
+    # misc: health check, audit log, settings loader
+    "test_health": "misc",
+    "test_audit_append_only": "misc",
+    "test_settings_loader": "misc",
+}
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--slow",
+        action="store_true",
+        default=False,
+        help="also run @pytest.mark.slow large-scale CP-SAT tests (~11 min); "
+        "excluded by default so a plain `pytest` run stays fast",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if not config.getoption("--slow"):
+        keep, deselected = [], []
+        for item in items:
+            (deselected if "slow" in item.keywords else keep).append(item)
+        if deselected:
+            config.hook.pytest_deselected(items=deselected)
+            items[:] = keep
+
+    for item in items:
+        stem = item.nodeid.split("::", 1)[0].rsplit("/", 1)[-1].removesuffix(".py")
+        area = _AREA_MARKERS.get(stem)
+        if area is not None:
+            item.add_marker(getattr(pytest.mark, area))
+
 # All data tables in dependency order (referenced-by-FK tables first so CASCADE handles the rest)
 _ALL_DATA_TABLES = [
     "audit_log",

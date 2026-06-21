@@ -5,11 +5,13 @@ from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def test_admin_creates_division_then_unit(client: TestClient, admin_session: Session):
+    corps = create_node(admin_session, level="corps", name="כלל המסגרת")
+    admin_session.commit()
     admin = create_soldier(admin_session, personal_number="5000001", role="admin")
     r = client.post(
         "/api/hierarchy/nodes",
         headers=auth_headers(admin),
-        json={"level": "division", "name": "מערך", "parent_id": None},
+        json={"level": "division", "name": "מערך", "parent_id": str(corps.id)},
     )
     assert r.status_code == 201
     div_id = r.json()["id"]
@@ -19,7 +21,7 @@ def test_admin_creates_division_then_unit(client: TestClient, admin_session: Ses
         json={"level": "unit", "name": "יחידה", "parent_id": div_id},
     )
     assert r2.status_code == 201
-    assert r2.json()["path_ids"] == [div_id, r2.json()["id"]]
+    assert r2.json()["path_ids"] == [str(corps.id), div_id, r2.json()["id"]]
 
 
 def test_create_any_level_below_allowed(client: TestClient, admin_session: Session):

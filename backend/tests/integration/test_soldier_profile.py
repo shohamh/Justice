@@ -73,13 +73,13 @@ def test_soldier_submits_field_update(client, admin_session):
     assert profile.json()["last_mitvahim_date"] == "2026-05-01"
 
 
-def test_soldier_cannot_update_rank_directly(client, admin_session):
+def test_soldier_cannot_update_is_officer_directly(client, admin_session):
     _, node = _setup_dm(admin_session, "prof_dm_004")
     s = create_soldier(admin_session, personal_number="prof_s_004", hierarchy_node_id=node.id)
 
     resp = client.post(
         f"/api/soldiers/{s.id}/field-updates",
-        json={"field_name": "rank", "new_value": "סרן"},
+        json={"field_name": "is_officer", "new_value": "true"},
         headers=auth_headers(s),
     )
     assert resp.status_code == 400
