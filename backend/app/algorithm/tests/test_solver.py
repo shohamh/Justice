@@ -1002,7 +1002,7 @@ def test_spreads_duties_evenly_when_soldiers_outnumber_duties() -> None:
         duties.append(DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc,
                                  start_date=d, end_date=d + timedelta(days=8), score_per_day=Decimal("4.00")))
 
-    settings = SolverSettings(T=8, Wt=14, R=15, Wr=28, time_limit_seconds=20,
+    settings = SolverSettings(T=8, Wt=14, R=15, Wr=28, time_limit_seconds=5,
                                decomposition="none", batching_enabled=False)
     result = solve(soldiers, duties, [], settings)
     assert result.status in ("OPTIMAL", "FEASIBLE")
