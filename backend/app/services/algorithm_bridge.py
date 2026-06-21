@@ -303,6 +303,7 @@ def load_duty_blocks_from_shifts(
         if effective_start > shift.end_date:
             # Shift is entirely in the past — nothing left to assign
             continue
+        block_start_time = shift.start_time if effective_start == shift.start_date else "00:00"
         # Only generate blocks for UNFILLED slots. Subtract assignments that already
         # occupy this shift (published or pending draft) so re-running a fully-assigned
         # schedule is a no-op instead of regenerating slots and competing against its own
@@ -332,6 +333,8 @@ def load_duty_blocks_from_shifts(
                 duty_location_id=shift.duty_location_id,
                 start_date=effective_start,
                 end_date=shift.end_date,
+                start_time=block_start_time,
+                end_time=shift.end_time,
                 score_per_day=score,
                 is_reserve=False,
                 eligible_node_ids=shift.eligible_node_ids,
@@ -348,6 +351,8 @@ def load_duty_blocks_from_shifts(
                 duty_location_id=shift.duty_location_id,
                 start_date=effective_start,
                 end_date=shift.end_date,
+                start_time=block_start_time,
+                end_time=shift.end_time,
                 score_per_day=r_score,
                 is_reserve=True,
                 eligible_node_ids=shift.eligible_node_ids,
