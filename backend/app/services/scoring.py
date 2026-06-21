@@ -70,7 +70,11 @@ def effective_duty_days(
     out: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]] = []
     for a in assignments:
         touched = calendar_days_touched(a.start_date, a.end_date)
-        day_weight = Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
+        day_weight = (
+            Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
+            if touched > 0
+            else Decimal("1")
+        )
         day = a.start_date
         while day < a.end_date:
             if date_to is not None and day > date_to:
@@ -349,7 +353,11 @@ def _duty_stats_by_soldier(
 
     for a in assignments:
         touched = calendar_days_touched(a.start_date, a.end_date)
-        day_weight = Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
+        day_weight = (
+            Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
+            if touched > 0
+            else Decimal("1")
+        )
         day = a.start_date
         while day < a.end_date:
             ov = overrides.get((a.id, day))
