@@ -21,6 +21,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
+from app.algorithm.duration import calendar_days_touched, score_days
 from app.services.eligibility import inferred_service_type
 
 _UNSET: object = object()
@@ -68,6 +69,8 @@ def effective_duty_days(
 
     out: list[tuple[date, uuid.UUID, uuid.UUID, Decimal]] = []
     for a in assignments:
+        touched = calendar_days_touched(a.start_date, a.end_date)
+        day_weight = Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
         day = a.start_date
         while day < a.end_date:
             if date_to is not None and day > date_to:
@@ -90,7 +93,7 @@ def effective_duty_days(
                             mult = dismissed_mult
                         else:
                             mult = Decimal("1.0")
-                    out.append((day, eff, a.duty_type_id, mult))
+                    out.append((day, eff, a.duty_type_id, mult * day_weight))
             day += timedelta(days=1)
     return out
 
@@ -345,6 +348,8 @@ def _duty_stats_by_soldier(
     assignment_sets: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
 
     for a in assignments:
+        touched = calendar_days_touched(a.start_date, a.end_date)
+        day_weight = Decimal(score_days(a.start_date, a.end_date, a.start_time, a.end_time)) / Decimal(touched)
         day = a.start_date
         while day < a.end_date:
             ov = overrides.get((a.id, day))
@@ -367,7 +372,7 @@ def _duty_stats_by_soldier(
                         mult = dismissed_mult
                     else:
                         mult = Decimal("1.0")
-                duty_scores[eff] += type_scores.get(a.duty_type_id, Decimal("0")) * mult
+                duty_scores[eff] += type_scores.get(a.duty_type_id, Decimal("0")) * mult * day_weight
                 assignment_sets[eff].add(a.id)
             day += timedelta(days=1)
 
