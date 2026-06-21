@@ -644,11 +644,11 @@ Run:
 ls app/services/tests/test_assignments.py
 ```
 
-If it exists, read it first to match its fixture conventions before adding tests. If it doesn't exist, create it following the pattern in `app/services/tests/test_shift_templates.py` (a `dt`/`loc` seed helper, `admin_session` fixture).
+If it exists, read it first to match its fixture conventions before adding tests, and adapt the `_seed`/`_soldier` helpers below to match what it already has rather than duplicating. If it doesn't exist, create it as shown below.
 
 - [ ] **Step 2: Write the failing tests**
 
-Add (creating the file if needed) `backend/app/services/tests/test_assignments.py`:
+Add (creating the file if needed) `backend/app/services/tests/test_assignments.py`. Use the existing `create_soldier` test helper from `tests/helpers.py` (already used by `tests/unit/test_scoring_service.py` and others) rather than constructing `Soldier` by hand:
 
 ```python
 from datetime import date
@@ -656,6 +656,7 @@ from decimal import Decimal
 
 from app.db.models import DutyLocation, DutyShift, DutyType
 from app.services import assignments as svc
+from tests.helpers import create_soldier
 
 
 def _seed(session):
@@ -669,9 +670,7 @@ def _seed(session):
 
 def test_create_assignment_without_shift_defaults_to_full_day_times(admin_session):
     dt, loc = _seed(admin_session)
-    soldier = admin_session.execute(
-        __import__("sqlalchemy").select(__import__("app.db.models", fromlist=["Soldier"]).Soldier)
-    ).scalars().first()
+    soldier = create_soldier(admin_session, personal_number="8400101")
     a = svc.create_assignment(
         admin_session, soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
@@ -682,9 +681,7 @@ def test_create_assignment_without_shift_defaults_to_full_day_times(admin_sessio
 
 def test_create_assignment_copies_times_from_linked_shift(admin_session):
     dt, loc = _seed(admin_session)
-    from sqlalchemy import select
-    from app.db.models import Soldier
-    soldier = admin_session.execute(select(Soldier)).scalars().first()
+    soldier = create_soldier(admin_session, personal_number="8400102")
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
@@ -699,8 +696,6 @@ def test_create_assignment_copies_times_from_linked_shift(admin_session):
     assert a.start_time == "08:00"
     assert a.end_time == "17:00"
 ```
-
-This relies on `admin_session` already having at least one `Soldier` row available — check `backend/tests/conftest.py`'s `admin_session` fixture for how it seeds the admin soldier (it's used by every other test file via `select(Soldier)` patterns elsewhere — if no soldier exists in the fixture, create one inline: `soldier = Soldier(full_name="Test Soldier", phone=f"050{uuid.uuid4().hex[:7]}"` — check `Soldier`'s required fields in `models.py` first and adjust accordingly before relying on a query).
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
@@ -776,26 +771,23 @@ git commit -m "feat: resolve assignment start_time/end_time from linked shift"
 - Modify: `backend/app/services/gimelim.py:597-609`
 - Test: find the existing gimelim test file (search `ls app/services/tests/test_gimelim.py` or similar — adjust path if different) and add to it.
 
-- [ ] **Step 1: Locate the existing gimelim test file**
+- [ ] **Step 1: Confirm there is no existing test file for `apply_gimelim`**
 
 ```bash
-find . -iname "*gimelim*test*" -o -iname "*test*gimelim*"
+grep -rl "apply_gimelim" app/services/tests app/routes/tests tests 2>/dev/null
 ```
 
-Read whichever file(s) this finds to learn the existing fixture/setup conventions for testing `apply_gimelim` before writing a new test.
+This returns nothing today (confirmed during planning) — `apply_gimelim` has no existing unit test coverage in this repo. Read `backend/app/services/gimelim.py` in full first to understand `apply_gimelim`'s signature and what state it needs (it operates on a `primary_a` `DutyAssignment` and a `future_shift_id`/`future_shift` pair already loaded earlier in the function — read the ~50 lines above line 597 to see exactly how `primary_a` and `future_shift` are loaded/selected before reaching the promotion branch, so your test setup creates data that satisfies those same lookups).
 
-- [ ] **Step 2: Write a failing test**
+- [ ] **Step 2: Write a minimal targeted test**
 
-Using the patterns found in Step 1, add a test asserting that after `apply_gimelim` promotes a reserve to primary on a `future_shift` with explicit `start_time`/`end_time` (e.g. `"08:00"`/`"17:00"`), the newly created `DutyAssignment` (the one with `notes` starting with `"גלגול גימלים"`) has matching `start_time`/`end_time`. The exact test code depends on that file's existing setup helpers — mirror its style rather than introducing a new pattern. At minimum it must:
-1. Create a `DutyShift` (the "future_shift") with non-default `start_time`/`end_time`.
-2. Drive whatever setup `apply_gimelim` needs to reach the "Promote A" branch (the one constructing `a_new`).
-3. Query the resulting `DutyAssignment` and assert its `start_time`/`end_time` match the shift's.
+Add a new file `backend/app/services/tests/test_gimelim.py`. Build the minimum fixtures `apply_gimelim` needs to reach the "Promote A" branch (the one constructing `a_new`) — this requires, at minimum: a primary `DutyAssignment` (`primary_a`), a reserve `DutyAssignment` linked to it via whatever `DutyReserveLink`/lookup `apply_gimelim` uses to find `future_shift_id`, and a future `DutyShift` with non-default `start_time`/`end_time` (e.g. `"08:00"`/`"17:00"`). Use the exact field names and lookup pattern you find in Step 1's read — do not guess at the linking mechanism; copy it from the real preceding code in `gimelim.py`.
 
-If the existing test setup for `apply_gimelim` is too complex to reach the promotion branch easily in isolation, it's acceptable to write a narrower test that directly calls whatever helper function contains the promotion logic, as long as it exercises the real code path (not a reimplementation). Flag this with status `DONE_WITH_CONCERNS` if so, and note exactly why.
+If after reading the function the minimum setup to reach the promotion branch is large (e.g. requires a full hierarchy/reserve-chain), it is acceptable to write a smaller test that constructs the `DutyAssignment`/`DutyShift` objects directly and calls `apply_gimelim` (or, if that's still impractical, the smallest enclosing function that performs the promotion) rather than spending excessive time replicating unrelated setup. Report status `DONE_WITH_CONCERNS` with the specific reason if you take this narrower path.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run the specific test with `pytest <path> -k <test_name> -v`. Expected: FAIL — the new assignment's `start_time`/`end_time` are `"00:00"`/`"23:59"` (the default), not the shift's actual values.
+Run the specific test with `pytest app/services/tests/test_gimelim.py -v`. Expected: FAIL — the new assignment's `start_time`/`end_time` are `"00:00"`/`"23:59"` (the default), not the shift's actual values.
 
 - [ ] **Step 4: Copy the times**
 
@@ -839,10 +831,10 @@ Add `start_time`/`end_time`:
 
 Re-run the same test command from Step 3. Expected: PASS.
 
-- [ ] **Step 6: Run the full gimelim test file to check for regressions**
+- [ ] **Step 6: Run the new test file to check for regressions**
 
 ```bash
-pytest <the file you found in Step 1> -v
+pytest app/services/tests/test_gimelim.py -v
 ```
 
 Expected: all PASS.
@@ -850,7 +842,7 @@ Expected: all PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/app/services/gimelim.py <the test file you modified>
+git add backend/app/services/gimelim.py backend/app/services/tests/test_gimelim.py
 git commit -m "feat: copy shift times onto gimelim-promoted assignment"
 ```
 
@@ -1080,21 +1072,27 @@ git commit -m "feat: populate DutyBlock times from source shift, handling trunca
 - Modify: `backend/app/services/algorithm_bridge.py:593-604`
 - Test: find the existing `persist_results` test (search `grep -rl persist_results tests/ app/`) and add to it.
 
-- [ ] **Step 1: Locate the existing `persist_results` test coverage**
+- [ ] **Step 1: Confirm there is no existing test file for `persist_results`**
 
 ```bash
 grep -rl "persist_results" tests/ app/services/tests/ app/routes/tests/ 2>/dev/null
 ```
 
-Read whichever file(s) this finds to learn the setup pattern (likely constructs a `SolverResult`/`DutyBlock` list and calls `persist_results` directly) before adding a new test.
+This returns only `tests/test_effort_score.py` (which tests `inject_effort_scores`, a different function in the same file — not `persist_results` itself). There is no existing direct test for `persist_results`. Read `backend/app/services/algorithm_bridge.py`'s `persist_results` signature (already shown in this task) and `AlgorithmJob`/`SolverResult`/`Assignment`/`ExplanationData` in `app/algorithm/types.py` and wherever `AlgorithmJob` is defined (`grep -n "class AlgorithmJob" app/db/models.py`) to see exactly what minimal objects it needs.
 
-- [ ] **Step 2: Write a failing test**
+- [ ] **Step 2: Write a minimal targeted test**
 
-Following the pattern found in Step 1, add a test that: builds a `DutyBlock` with explicit non-default `start_time`/`end_time` (e.g. `"08:00"`/`"17:00"`), includes it in a minimal `SolverResult.assignments` list assigning it to some soldier, calls `persist_results(...)`, then queries the resulting `DutyAssignment` and asserts `start_time == "08:00"` and `end_time == "17:00"`.
+Create `backend/app/services/tests/test_algorithm_bridge_persist.py`. Build the minimum needed: a `DutyType`/`DutyLocation` and a `Soldier` via `create_soldier` from `tests.helpers` (same helper used in Task 6), a `DutyBlock` with explicit non-default `start_time`/`end_time` (e.g. `"08:00"`/`"17:00"`), a `SolverResult` with one `Assignment(duty_id=block.id, soldier_id=soldier.id)`, an empty `ExplanationData()`, and whatever minimal `AlgorithmJob` row `persist_results` requires (read its first few lines — if it only reads `job.id` or similar, a bare `AlgorithmJob(...)` with required fields filled in is enough; don't fabricate fields that don't exist). Call `persist_results(session, job=job, result=result, explanation_data=explanation_data, duty_blocks=[block], soldier_names={soldier.id: soldier.full_name}, actor_id=None)`, then query the resulting `DutyAssignment` (`status == "algorithm_draft"`) and assert `start_time == "08:00"` and `end_time == "17:00"`.
+
+If `AlgorithmJob` or another dependency turns out to need substantially more setup than expected once you read it, it's acceptable to narrow scope: report `DONE_WITH_CONCERNS` with the specific blocker rather than spending excessive time replicating unrelated job-lifecycle setup.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run the specific test. Expected: FAIL — the new assignment's `start_time`/`end_time` are the `DutyAssignment` model defaults (`"00:00"`/`"23:59"`), not the block's values.
+```bash
+pytest app/services/tests/test_algorithm_bridge_persist.py -v
+```
+
+Expected: FAIL — the new assignment's `start_time`/`end_time` are the `DutyAssignment` model defaults (`"00:00"`/`"23:59"`), not the block's values.
 
 - [ ] **Step 4: Copy the fields**
 
@@ -1134,18 +1132,18 @@ Add `start_time`/`end_time`:
         )
 ```
 
-- [ ] **Step 5: Run the test to verify it passes, then the full file for regressions**
+- [ ] **Step 5: Run the test to verify it passes**
 
 ```bash
-pytest <the file from Step 1> -v
+pytest app/services/tests/test_algorithm_bridge_persist.py -v
 ```
 
-Expected: all PASS.
+Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/services/algorithm_bridge.py <the test file you modified>
+git add backend/app/services/algorithm_bridge.py backend/app/services/tests/test_algorithm_bridge_persist.py
 git commit -m "feat: copy DutyBlock times onto persisted algorithm-draft assignments"
 ```
 
@@ -1157,17 +1155,13 @@ git commit -m "feat: copy DutyBlock times onto persisted algorithm-draft assignm
 - Modify: `backend/app/algorithm/model.py:24-27`
 - Test: `backend/app/algorithm/tests/test_model.py` if it exists, else `backend/tests/unit/test_model.py`
 
-- [ ] **Step 1: Locate the right test file**
+- [ ] **Step 1: Test file**
 
-```bash
-grep -rl "_block_score\|from app.algorithm.model import" tests/unit/test_model.py app/algorithm/tests/ 2>/dev/null
-```
-
-Use whichever file already imports from `app.algorithm.model` for solver-internals tests.
+`backend/tests/unit/test_model.py` already imports from `app.algorithm.model` (`from app.algorithm.model import build_model`) — add the new test there.
 
 - [ ] **Step 2: Write the failing test**
 
-Add to that file:
+Add to `backend/tests/unit/test_model.py`:
 
 ```python
 from datetime import date
@@ -1231,7 +1225,7 @@ Expected: all PASS. Every existing test constructs `DutyBlock`s without explicit
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/algorithm/model.py <the test file you modified>
+git add backend/app/algorithm/model.py backend/tests/unit/test_model.py
 git commit -m "feat: solver block score uses score_days instead of calendar days touched"
 ```
 
@@ -1243,38 +1237,46 @@ git commit -m "feat: solver block score uses score_days instead of calendar days
 - Modify: `backend/app/services/algorithm_bridge.py:373-376`
 - Test: `backend/tests/unit/test_algorithm_bridge.py` or wherever `inject_effort_scores` is already tested
 
-- [ ] **Step 1: Locate existing test coverage**
+- [ ] **Step 1: Existing test coverage**
 
-```bash
-grep -rl "inject_effort_scores" tests/ app/ 2>/dev/null
-```
+`backend/tests/test_effort_score.py::test_inject_effort_scores` already directly tests `inject_effort_scores` by constructing a `SoldierInput` + one `DutyBlock` + an `effort_map`, calling it, and asserting on `s.effort_per_milli`. Follow this exact established pattern for the new test.
 
-- [ ] **Step 2: Write a failing test**
+- [ ] **Step 2: Write the failing test**
 
-In the file found above, add a test constructing a `DutyBlock` list containing one block with `start_time="14:00"`, `end_time="14:00"`, `start_date=date(2026,6,1)`, `end_date=date(2026,6,9)` (the same 7-day-not-8-day example), call `inject_effort_scores([], [block], {})`, and assert the computed `unit_score_milli`-derived behavior reflects 7 days, not 8. Since `unit_score_milli` is a local variable not directly returned, the most direct test is to construct two `SoldierInput`s with known `effort_per_milli`/`effort_offset` inputs and assert on the returned `(range_min, range_max)` tuple, OR — simpler — extract the exact sum independently in the test:
+Add to `backend/tests/test_effort_score.py`, right after the existing `test_inject_effort_scores`:
 
 ```python
-from datetime import date
-from decimal import Decimal
-import uuid
+def test_inject_effort_scores_uses_score_days_not_calendar_days_touched():
+    """A block touching 8 calendar days but spanning exactly 7*24h should contribute
+    unit_score_milli as if it were 7 days, not 8."""
+    from app.services.effort_score import EFFORT_SCALE, EffortData
+    from app.algorithm.types import SoldierInput, DutyBlock
+    from app.services.algorithm_bridge import inject_effort_scores
+    import uuid
+    from datetime import date
+    from decimal import Decimal
 
-from app.algorithm.duration import score_days
-from app.algorithm.types import DutyBlock
-
-
-def test_unit_score_milli_uses_score_days():
+    sid = uuid.uuid4()
+    s = SoldierInput(
+        id=sid, enrolled_at=date(2026, 1, 1),
+        cumulative_score=Decimal("0"), active_days=90,
+    )
     block = DutyBlock(
         id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
-        start_date=date(2026, 6, 1), end_date=date(2026, 6, 9),
-        score_per_day=Decimal("2"), start_time="14:00", end_time="14:00",
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 9),  # 8 calendar days touched
+        score_per_day=Decimal("0.5"), start_time="14:00", end_time="14:00",  # exactly 7*24h
     )
-    expected = int(float(block.score_per_day) * score_days(
-        block.start_date, block.end_date, block.start_time, block.end_time
-    ) * 1000)
-    assert expected == 7 * 2 * 1000  # sanity-check the expectation itself
+    effort_map = {
+        sid: EffortData(
+            effort_score=Decimal("0.1"), C_over_D=Decimal("0.5"),
+            effort_offset=int(Decimal("0.1") * EFFORT_SCALE),
+        )
+    }
+    inject_effort_scores([s], [block], effort_map)
+    # unit_score_milli = int(0.5 * 7 * 1000) = 3500 (score_days=7), not int(0.5*8*1000)=4000
+    expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
+    assert s.effort_per_milli == expected
 ```
-
-This test only pins down the expected formula; Step 4 verifies `algorithm_bridge.py` actually uses it. If this repo's test conventions call `inject_effort_scores` directly and assert on its return value instead, prefer that style — check the file found in Step 1 for the established pattern and follow it rather than introducing a new style.
 
 - [ ] **Step 3: Run the test, confirm current behavior, then update the source**
 
@@ -1305,15 +1307,15 @@ from app.algorithm.duration import score_days
 - [ ] **Step 4: Run the full file's test suite for regressions**
 
 ```bash
-pytest <the file from Step 1> -v
+pytest tests/test_effort_score.py -v
 ```
 
-Expected: all PASS — existing tests use default-timed blocks, so `score_days` reproduces the old formula exactly for them.
+Expected: all PASS — existing tests use default-timed blocks, so `score_days` reproduces the old formula exactly for them, including the pre-existing `test_inject_effort_scores`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/app/services/algorithm_bridge.py <the test file you modified>
+git add backend/app/services/algorithm_bridge.py backend/tests/test_effort_score.py
 git commit -m "feat: effort-score unit calculation uses score_days instead of calendar days touched"
 ```
 
@@ -1323,21 +1325,17 @@ git commit -m "feat: effort-score unit calculation uses score_days instead of ca
 
 **Files:**
 - Modify: `backend/app/services/scoring.py`
-- Test: find or create a unit test file for `scoring.py` (`grep -rl "effective_duty_days" tests/`)
+- Test: `backend/tests/unit/test_scoring_service.py` (already exists and already tests `effective_duty_days` — see `test_effective_days_basic_block`)
 
 This is the one place where per-day score attribution changes while the per-day calendar-date *expansion* itself stays exactly as-is (preserving quarter-boundary splitting and any duty-history timeline display that relies on "which days was this soldier on duty").
 
-- [ ] **Step 1: Locate existing test coverage**
+- [ ] **Step 1: Existing conventions**
 
-```bash
-grep -rl "effective_duty_days\|_duty_stats_by_soldier" tests/ 2>/dev/null
-```
-
-Read whichever file(s) this finds. If none exist, create `backend/tests/unit/test_scoring.py` following the `admin_session`/`_seed_type_and_location`-style fixtures used in `test_shift_generation.py`.
+`backend/tests/unit/test_scoring_service.py` already imports `effective_duty_days` from `app.services.scoring` and `create_soldier` from `tests.helpers`, and has local `_dt`/`_loc` helpers for seeding a `DutyType`/`DutyLocation` (used by `test_effective_days_basic_block`). Reuse those helpers rather than redefining them.
 
 - [ ] **Step 2: Write the failing test**
 
-Add a test that: creates a `DutyType` with a known `score_per_day` (e.g. `Decimal("10")`), creates a published `DutyAssignment` spanning Monday 14:00 to the following Monday 14:00 (`start_date=Mon`, `end_date=Mon+8`, `start_time="14:00"`, `end_time="14:00"` — `score_days` = 7, `calendar_days_touched` = 8), calls `effective_duty_days(session)`, and asserts:
+Add to `backend/tests/unit/test_scoring_service.py`, a test that: creates a `DutyType` with a known `score_per_day` (e.g. `Decimal("10")`), creates a published `DutyAssignment` spanning Monday 14:00 to the following Monday 14:00 (`start_date=Mon`, `end_date=Mon+8`, `start_time="14:00"`, `end_time="14:00"` — `score_days` = 7, `calendar_days_touched` = 8), calls `effective_duty_days(session)`, and asserts:
 1. There are exactly 8 rows for this assignment (one per calendar day touched — unchanged).
 2. The sum of `score_per_day * mult` across all 8 rows equals `10 * 7` (the corrected total), not `10 * 8` (the old, overcounted total).
 
@@ -1345,40 +1343,34 @@ Add a test that: creates a `DutyType` with a known `score_per_day` (e.g. `Decima
 from datetime import date
 from decimal import Decimal
 
-from app.db.models import DutyAssignment, DutyType, DutyLocation, Soldier
-from app.services.scoring import effective_duty_days
+from app.db.models import DutyAssignment
 
 
 def test_effective_duty_days_spreads_score_days_evenly_across_touched_days(admin_session):
-    from sqlalchemy import select
-    dt = DutyType(name="dt_scoring_test", score_per_day=Decimal("10"))
-    loc = DutyLocation(name="loc_scoring_test")
-    admin_session.add(dt)
-    admin_session.add(loc)
-    admin_session.flush()
-    soldier = admin_session.execute(select(Soldier)).scalars().first()
+    s = create_soldier(admin_session, personal_number="8400201")
+    dt = _dt(admin_session, "dt_scoring_spread", "10.00")
+    loc = _loc(admin_session, "loc_scoring_spread")
 
     a = DutyAssignment(
-        soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
         start_date=date(2026, 6, 1), end_date=date(2026, 6, 9),
         start_time="14:00", end_time="14:00", status="published",
     )
     admin_session.add(a)
     admin_session.flush()
-    admin_session.commit()
 
-    rows = [r for r in effective_duty_days(admin_session) if r[1] == soldier.id]
+    rows = [r for r in effective_duty_days(admin_session) if r[1] == s.id]
     assert len(rows) == 8  # calendar_days_touched unchanged
     total_score = sum(dt.score_per_day * mult for _day, _eff, _dtid, mult in rows)
     assert total_score == Decimal("70")  # 10 * score_days(7), not 10 * 8 = 80
 ```
 
-If `admin_session` has no `Soldier` row available by default, check `backend/tests/conftest.py` for how other tests obtain one and follow that pattern instead of querying blindly.
+Check the exact signature of the existing `_dt`/`_loc` helpers in this file (argument order/types for `score_per_day` — string vs. `Decimal`) and adjust the call above to match exactly; the literal values above follow the pattern visible in `test_cumulative_with_override_and_adjustment`'s `_dt(admin_session, "שמירה-sc2", "2.00")` call.
 
 - [ ] **Step 3: Run the test to verify it fails**
 
 ```bash
-pytest <wherever you placed the test> -k spreads_score_days -v
+pytest tests/unit/test_scoring_service.py -k spreads_score_days -v
 ```
 
 Expected: FAIL — `total_score == Decimal("80")` (8 days × flat `score_per_day`), not `70`.
@@ -1526,7 +1518,7 @@ Note: `effective_duty_spans` (the third loop in this file) is intentionally NOT 
 - [ ] **Step 5: Run the test to verify it passes, then the full scoring-related suite for regressions**
 
 ```bash
-pytest <wherever you placed the test> tests/test_effort_score.py tests/unit/test_fairness.py tests/unit/test_fairness_e2e.py -v
+pytest tests/unit/test_scoring_service.py tests/test_effort_score.py tests/unit/test_fairness.py tests/unit/test_fairness_e2e.py -v
 ```
 
 Expected: all PASS — every existing assignment in these tests uses default full-day times, so `day_weight` evaluates to exactly `1` for all of them (since `score_days == calendar_days_touched` when times are `"00:00"`/`"23:59"`), reproducing today's exact totals.
@@ -1534,7 +1526,7 @@ Expected: all PASS — every existing assignment in these tests uses default ful
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/services/scoring.py <the test file you added/modified>
+git add backend/app/services/scoring.py backend/tests/unit/test_scoring_service.py
 git commit -m "feat: weight per-day effort score by score_days/calendar_days_touched ratio"
 ```
 
