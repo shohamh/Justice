@@ -41,6 +41,8 @@ class CreateShiftRequest(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
+    start_time: str = "00:00"
+    end_time: str = "23:59"
     required_count: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     reserve_count_override: int | None = Field(default=None, ge=0)
@@ -113,6 +115,8 @@ def create_shift(
             duty_location_id=body.duty_location_id,
             start_date=body.start_date,
             end_date=body.end_date,
+            start_time=body.start_time,
+            end_time=body.end_time,
             required_count=body.required_count,
             notes=body.notes,
             reserve_count_override=body.reserve_count_override,

@@ -4,6 +4,7 @@ import pytest
 
 from app.db.models import DutyLocation, DutyShift, DutyType
 from app.services import shift_templates as svc
+from app.services import shifts as shifts_svc
 
 
 def _seed_type_and_location(session):
@@ -201,3 +202,34 @@ def test_generate_shifts_copies_template_times_onto_shift(admin_session):
     assert len(created) == 1
     assert created[0].start_time == "08:00"
     assert created[0].end_time == "17:00"
+
+
+def test_create_shift_defaults_to_full_day_times(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    shift = shifts_svc.create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+    )
+    assert shift.start_time == "00:00"
+    assert shift.end_time == "23:59"
+
+
+def test_create_shift_accepts_explicit_times(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    shift = shifts_svc.create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_time="08:00", end_time="17:00",
+    )
+    assert shift.start_time == "08:00"
+    assert shift.end_time == "17:00"
+
+
+def test_create_shift_rejects_end_time_before_start_time_when_single_day(admin_session):
+    dt, loc = _seed_type_and_location(admin_session)
+    with pytest.raises(shifts_svc.ShiftError):
+        shifts_svc.create_shift(
+            admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+            start_time="17:00", end_time="08:00",
+        )
