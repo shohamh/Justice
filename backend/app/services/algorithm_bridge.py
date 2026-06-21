@@ -601,6 +601,8 @@ def persist_results(
             duty_location_id=block.duty_location_id,
             start_date=block.start_date,
             end_date=block.end_date,
+            start_time=block.start_time,
+            end_time=block.end_time,
             status="algorithm_draft",
             created_by=actor_id,
             notes=None,
