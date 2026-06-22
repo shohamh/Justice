@@ -1,4 +1,4 @@
-# Project: callofduty2
+# Project: justice
 
 Army duty management system. Hebrew UI, English code. See README.md for full context.
 

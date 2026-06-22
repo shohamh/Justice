@@ -25,7 +25,7 @@ export function downloadDutyICS(
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//CallOfDuty//HE",
+    "PRODID:-//Justice//HE",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
     `UID:${uid}`,
