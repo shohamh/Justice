@@ -103,6 +103,23 @@ class BatchShiftFill:
 
 
 @dataclass
+class SaturationCluster:
+    """Diagnostic: a group of date-overlapping duties left unassigned because
+    every eligible soldier is already committed elsewhere on those exact dates.
+
+    Raising R/T density ceilings cannot fix this — it's a proven structural
+    shortfall (free_count == 0), reached only after the relaxation search
+    (see solver._search_relaxation_ladder) has exhausted the ceiling.
+    """
+    date_from: date
+    date_to: date
+    shift_ids: list[uuid.UUID]
+    eligible_pool_size: int
+    free_count: int
+    competing_duty_types: list[tuple[uuid.UUID, int]]
+
+
+@dataclass
 class BatchResult:
     """Diagnostic record for one calendar-window batch."""
     batch_index: int          # global sequential index across all components
@@ -117,6 +134,7 @@ class BatchResult:
     relaxations: list[str]    # e.g. ["R→17", "R→19"]
     wall_time_seconds: float
     shifts: list[BatchShiftFill] = field(default_factory=list)
+    saturation_clusters: list[SaturationCluster] = field(default_factory=list)
 
 
 @dataclass
