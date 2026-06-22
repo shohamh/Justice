@@ -45,7 +45,7 @@ cd frontend && npx playwright test tests/e2e/hierarchy.spec.ts
 ```
 
 ## Known State
-- Dev servers run from **main repo** (`callofduty2/`), not worktree
+- Dev servers run from **main repo** (`justice/`), not worktree
 - `.env` changes (rate limit) are local-only, untracked
 - Database must be re-seeded with `--force` before each test run to clear leftover data
 - Backend restart currently doesn't auto-load seed; manual `--force` seed is required
