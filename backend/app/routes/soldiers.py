@@ -309,12 +309,26 @@ def list_all_pending_field_updates(
     all_pending = session.execute(
         select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
     ).scalars().all()
+    if not all_pending:
+        return []
+    soldier_ids = {upd.soldier_id for upd in all_pending}
+    soldiers_by_id = {
+        s.id: s for s in session.execute(
+            select(Soldier).where(Soldier.id.in_(soldier_ids))
+        ).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = {
+        n.id: n for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+        ).scalars().all()
+    } if node_ids else {}
+    from app.auth.authz import can
     result = []
     for upd in all_pending:
-        s = session.get(Soldier, upd.soldier_id)
+        s = soldiers_by_id.get(upd.soldier_id)
         if s:
-            node = _node_of(session, s)
-            from app.auth.authz import can
+            node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 result.append(_fu_out(upd))
     return result
@@ -336,12 +350,26 @@ def count_pending_field_updates(
     all_pending = session.execute(
         select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
     ).scalars().all()
+    if not all_pending:
+        return {"count": 0}
+    soldier_ids = {upd.soldier_id for upd in all_pending}
+    soldiers_by_id = {
+        s.id: s for s in session.execute(
+            select(Soldier).where(Soldier.id.in_(soldier_ids))
+        ).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = {
+        n.id: n for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+        ).scalars().all()
+    } if node_ids else {}
+    from app.auth.authz import can
     total = 0
     for upd in all_pending:
-        s = session.get(Soldier, upd.soldier_id)
+        s = soldiers_by_id.get(upd.soldier_id)
         if s:
-            node = _node_of(session, s)
-            from app.auth.authz import can
+            node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 total += 1
     return {"count": total}
