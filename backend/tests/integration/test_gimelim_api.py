@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -19,6 +20,14 @@ from tests.helpers import auth_headers, create_node, create_soldier
 
 
 # ── Shared setup helpers ──────────────────────────────────────────────────────
+
+def _today_str() -> str:
+    return date.today().isoformat()
+
+
+def _future_str(days: int) -> str:
+    return (date.today() + timedelta(days=days)).isoformat()
+
 
 def _make_dt_loc(session: Session, suffix: str):
     dt = DutyType(name=f"dt_{suffix}", score_per_day=Decimal("1.00"))
@@ -116,7 +125,7 @@ def test_preview_returns_400_no_reserve_linked(client: TestClient, admin_session
     admin = create_soldier(admin_session, personal_number="gim002_adm", role="admin", hierarchy_node_id=node.id)
     soldier_a = create_soldier(admin_session, personal_number="gim002_a", hierarchy_node_id=node.id)
     dt, loc = _make_dt_loc(admin_session, "gim002")
-    shift = _make_shift(admin_session, dt, loc, "2030-04-01", "2030-04-05")
+    shift = _make_shift(admin_session, dt, loc, _today_str(), _future_str(4))
     primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, shift)
     # Intentionally no reserve linked
     admin_session.commit()
@@ -138,7 +147,7 @@ def test_preview_no_future_slot(client: TestClient, admin_session: Session):
     soldier_a = create_soldier(admin_session, personal_number="gim003_a", hierarchy_node_id=node.id)
     soldier_b = create_soldier(admin_session, personal_number="gim003_b", hierarchy_node_id=node.id)
     dt, loc = _make_dt_loc(admin_session, "gim003")
-    shift = _make_shift(admin_session, dt, loc, "2030-05-01", "2030-05-05")
+    shift = _make_shift(admin_session, dt, loc, _today_str(), _future_str(4))
     primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, shift, is_reserve=False)
     reserve_b = _make_assignment(admin_session, soldier_b.id, dt, loc, shift, is_reserve=True)
     _link_reserve(admin_session, primary_a, reserve_b)
@@ -169,13 +178,13 @@ def test_preview_then_commit(client: TestClient, admin_session: Session):
     dt, loc = _make_dt_loc(admin_session, "gim004")
 
     # Current shift: A (primary) + B (reserve)
-    current_shift = _make_shift(admin_session, dt, loc, "2030-06-01", "2030-06-05")
+    current_shift = _make_shift(admin_session, dt, loc, _today_str(), _future_str(4))
     primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, current_shift, is_reserve=False)
     reserve_b = _make_assignment(admin_session, soldier_b.id, dt, loc, current_shift, is_reserve=True)
     _link_reserve(admin_session, primary_a, reserve_b)
 
     # Future shift: C (primary) + D (reserve)
-    future_shift = _make_shift(admin_session, dt, loc, "2030-08-01", "2030-08-05")
+    future_shift = _make_shift(admin_session, dt, loc, _future_str(20), _future_str(24))
     primary_c = _make_assignment(admin_session, soldier_c.id, dt, loc, future_shift, is_reserve=False)
     reserve_d = _make_assignment(admin_session, soldier_d.id, dt, loc, future_shift, is_reserve=True)
     _link_reserve(admin_session, primary_c, reserve_d)

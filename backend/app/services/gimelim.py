@@ -291,6 +291,7 @@ def preview_gimelim(
     rest_days: int,
     reason: str | None,
     actor_id: uuid.UUID,
+    from_date: date | None = None,
 ) -> GimelimPreview:
     """Compute a gimelim proposal without writing anything."""
     # Load primary assignment
@@ -309,6 +310,11 @@ def preview_gimelim(
     shift = session.get(DutyShift, shift_id)
     if shift is None:
         raise GimelimError("shift_not_found")
+
+    if from_date is None:
+        from_date = date.today()
+    if from_date < primary_a.start_date or from_date >= primary_a.end_date:
+        raise GimelimError("date_out_of_range")
 
     # Load reserve (B) — must be linked
     link = session.execute(
@@ -388,6 +394,7 @@ def preview_gimelim(
         "primary_status_snapshot": primary_a.status,
         "reserve_status_snapshot": reserve_b.status,
         "rest_days": rest_days,
+        "from_date": from_date.isoformat(),
         "reason": reason,
         "duty_type_id": str(primary_a.duty_type_id),
         "current_shift_end": primary_a.end_date.isoformat(),

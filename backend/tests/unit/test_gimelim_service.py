@@ -127,13 +127,13 @@ def test_preview_raises_if_no_reserve_linked(admin_session):
     actor = _make_soldier(admin_session, "act01", "Actor")
     soldier_a = _make_soldier(admin_session, "gim01", "A")
     shift = DutyShift(duty_type_id=dt.id, duty_location_id=loc.id,
-                      start_date=date(2026, 6, 10), end_date=date(2026, 6, 12),
+                      start_date=date.today() - timedelta(days=2), end_date=date.today() + timedelta(days=2),
                       required_count=1)
     admin_session.add(shift)
     admin_session.flush()
     primary = DutyAssignment(
         soldier_id=soldier_a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 6, 10), end_date=date(2026, 6, 12),
+        start_date=date.today() - timedelta(days=2), end_date=date.today() + timedelta(days=2),
         status="published", is_reserve=False, duty_shift_id=shift.id,
     )
     admin_session.add(primary)
@@ -158,7 +158,7 @@ def test_preview_no_future_slot_gives_warning(admin_session):
 
     shift, primary, reserve = _make_shift_with_primary_and_reserve(
         admin_session, dt, loc,
-        start=date(2026, 6, 10), end=date(2026, 6, 12),
+        start=date.today() - timedelta(days=2), end=date.today() + timedelta(days=2),
         primary_soldier=soldier_a, reserve_soldier=soldier_b,
     )
 
@@ -187,14 +187,14 @@ def test_preview_finds_future_slot(admin_session):
     # Current shift
     shift, primary, reserve = _make_shift_with_primary_and_reserve(
         admin_session, dt, loc,
-        start=date(2026, 6, 10), end=date(2026, 6, 12),
+        start=date.today() - timedelta(days=2), end=date.today() + timedelta(days=2),
         primary_soldier=soldier_a, reserve_soldier=soldier_b,
     )
 
     # Future shift with C as primary and D as reserve
     future_shift, c_primary, d_reserve = _make_shift_with_primary_and_reserve(
         admin_session, dt, loc,
-        start=date(2026, 6, 20), end=date(2026, 6, 22),
+        start=date.today() + timedelta(days=10), end=date.today() + timedelta(days=12),
         primary_soldier=soldier_c, reserve_soldier=soldier_d,
     )
 
@@ -210,6 +210,111 @@ def test_preview_finds_future_slot(admin_session):
     assert preview.future_assignment is not None
     assert preview.future_assignment.demoted_assignment_id == c_primary.id
     assert "no_future_slot_found" not in preview.warnings
+
+
+def test_preview_defaults_from_date_to_today(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd1", "ActorFD1")
+    soldier_a = _make_soldier(admin_session, "gimfd1", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd2", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date.today() - timedelta(days=2), end=date.today() + timedelta(days=2),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="medical leave",
+        actor_id=actor.id,
+    )
+
+    token_entry = preview.preview_token
+    assert token_entry is not None
+    # from_date defaults to today when not passed
+    from app.services.gimelim import _PREVIEW_STORE
+    _, payload = _PREVIEW_STORE[token_entry]
+    assert payload["from_date"] == date.today().isoformat()
+
+
+def test_preview_accepts_backdated_from_date(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd2", "ActorFD2")
+    soldier_a = _make_soldier(admin_session, "gimfd3", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd4", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    backdated = date(2026, 6, 11)
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="medical leave",
+        actor_id=actor.id,
+        from_date=backdated,
+    )
+
+    from app.services.gimelim import _PREVIEW_STORE
+    _, payload = _PREVIEW_STORE[preview.preview_token]
+    assert payload["from_date"] == backdated.isoformat()
+
+
+def test_preview_rejects_from_date_before_shift_start(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd3", "ActorFD3")
+    soldier_a = _make_soldier(admin_session, "gimfd5", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd6", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    with pytest.raises(GimelimError, match="date_out_of_range"):
+        preview_gimelim(
+            admin_session,
+            shift_id=shift.id,
+            primary_assignment_id=primary.id,
+            rest_days=7,
+            reason="medical leave",
+            actor_id=actor.id,
+            from_date=date(2026, 6, 9),
+        )
+
+
+def test_preview_rejects_from_date_on_or_after_shift_end(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd4", "ActorFD4")
+    soldier_a = _make_soldier(admin_session, "gimfd7", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd8", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    with pytest.raises(GimelimError, match="date_out_of_range"):
+        preview_gimelim(
+            admin_session,
+            shift_id=shift.id,
+            primary_assignment_id=primary.id,
+            rest_days=7,
+            reason="medical leave",
+            actor_id=actor.id,
+            from_date=date(2026, 6, 15),  # == end_date, invalid (must be < end_date)
+        )
 
 
 # ── Commit tests ──────────────────────────────────────────────────────────────
@@ -234,14 +339,16 @@ def test_commit_full_flow(admin_session):
     soldier_c = _make_soldier(admin_session, "gim10", "C")
     soldier_d = _make_soldier(admin_session, "gim11", "D")
 
+    shift_start = date.today() - timedelta(days=2)
+    shift_end = date.today() + timedelta(days=2)
     shift, primary, reserve = _make_shift_with_primary_and_reserve(
         admin_session, dt, loc,
-        start=date(2026, 6, 10), end=date(2026, 6, 12),
+        start=shift_start, end=shift_end,
         primary_soldier=soldier_a, reserve_soldier=soldier_b,
     )
     future_shift, c_primary, d_reserve = _make_shift_with_primary_and_reserve(
         admin_session, dt, loc,
-        start=date(2026, 6, 20), end=date(2026, 6, 22),
+        start=date.today() + timedelta(days=10), end=date.today() + timedelta(days=12),
         primary_soldier=soldier_c, reserve_soldier=soldier_d,
     )
 
@@ -280,7 +387,7 @@ def test_commit_full_flow(admin_session):
 
     # Verify reserve B was called up
     admin_session.refresh(reserve)
-    assert reserve.called_up_from == date(2026, 6, 10)
+    assert reserve.called_up_from == shift_start
 
     # Verify token is consumed (second commit should fail)
     with pytest.raises(GimelimError, match="token_not_found"):
@@ -309,19 +416,19 @@ def _make_full_gimelim_scene(session):
 
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7), required_count=1,
+        start_date=date.today() - timedelta(days=2), end_date=date.today() + timedelta(days=4), required_count=1,
     )
     session.add(shift)
     session.flush()
 
     primary = DutyAssignment(
         soldier_id=soldier_a.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7),
+        start_date=date.today() - timedelta(days=2), end_date=date.today() + timedelta(days=4),
         status="published", is_reserve=False, duty_shift_id=shift.id,
     )
     reserve = DutyAssignment(
         soldier_id=soldier_b.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 7),
+        start_date=date.today() - timedelta(days=2), end_date=date.today() + timedelta(days=4),
         status="published", is_reserve=True, duty_shift_id=shift.id,
     )
     session.add_all([primary, reserve])
@@ -339,7 +446,7 @@ def test_preview_gimelim_warns_when_reserve_over_cap(admin_session):
     # Saturate B's window: give them 14 existing reserve days in the same 30-day window
     extra = DutyAssignment(
         soldier_id=soldier_b.id, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 8), end_date=date(2026, 9, 21),
+        start_date=date.today() + timedelta(days=5), end_date=date.today() + timedelta(days=18),
         status="published", is_reserve=True, duty_shift_id=shift.id,
     )
     admin_session.add(extra)
