@@ -235,3 +235,65 @@ def test_commit_returns_400_on_unknown_token(client: TestClient, admin_session: 
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert "token" in detail  # covers both error strings
+
+
+# ── Test: from_date defaults to today, and rejects out-of-range values ───────
+
+def test_preview_from_date_out_of_range_returns_400(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="branch", name="n_gim006")
+    admin = create_soldier(admin_session, personal_number="gim006_adm", role="admin", hierarchy_node_id=node.id)
+    soldier_a = create_soldier(admin_session, personal_number="gim006_a", hierarchy_node_id=node.id)
+    soldier_b = create_soldier(admin_session, personal_number="gim006_b", hierarchy_node_id=node.id)
+    dt, loc = _make_dt_loc(admin_session, "gim006")
+    shift = _make_shift(admin_session, dt, loc, "2030-09-01", "2030-09-05")
+    primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, shift, is_reserve=False)
+    reserve_b = _make_assignment(admin_session, soldier_b.id, dt, loc, shift, is_reserve=True)
+    _link_reserve(admin_session, primary_a, reserve_b)
+    admin_session.commit()
+
+    resp = client.post(
+        f"/api/shifts/{shift.id}/gimelim/preview",
+        json={
+            "primary_assignment_id": str(primary_a.id),
+            "reason": "medical leave",
+            "from_date": "2030-08-31",  # before shift start
+        },
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 400
+    assert "date_out_of_range" in resp.json()["detail"]
+
+
+def test_preview_then_commit_with_backdated_from_date(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="branch", name="n_gim007")
+    admin = create_soldier(admin_session, personal_number="gim007_adm", role="admin", hierarchy_node_id=node.id)
+    soldier_a = create_soldier(admin_session, personal_number="gim007_a", hierarchy_node_id=node.id)
+    soldier_b = create_soldier(admin_session, personal_number="gim007_b", hierarchy_node_id=node.id)
+    dt, loc = _make_dt_loc(admin_session, "gim007")
+    shift = _make_shift(admin_session, dt, loc, "2030-10-01", "2030-10-05")
+    primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, shift, is_reserve=False)
+    reserve_b = _make_assignment(admin_session, soldier_b.id, dt, loc, shift, is_reserve=True)
+    _link_reserve(admin_session, primary_a, reserve_b)
+    admin_session.commit()
+
+    preview_resp = client.post(
+        f"/api/shifts/{shift.id}/gimelim/preview",
+        json={
+            "primary_assignment_id": str(primary_a.id),
+            "reason": "medical leave",
+            "from_date": "2030-10-02",
+        },
+        headers=auth_headers(admin),
+    )
+    assert preview_resp.status_code == 200, preview_resp.text
+    token = preview_resp.json()["preview_token"]
+
+    commit_resp = client.post(
+        f"/api/shifts/{shift.id}/gimelim/commit",
+        json={"preview_token": token},
+        headers=auth_headers(admin),
+    )
+    assert commit_resp.status_code == 200, commit_resp.text
+
+    admin_session.refresh(reserve_b)
+    assert str(reserve_b.called_up_from) == "2030-10-02"
