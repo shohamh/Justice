@@ -159,9 +159,9 @@ _ALL_DATA_TABLES = [
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[PostgresContainer]:
     # Match the prod database/role names so migration 0001's hardcoded
-    # `GRANT CONNECT ON DATABASE cod2` and the 'app'/'app_pw' role line apply cleanly.
+    # `GRANT CONNECT ON DATABASE justice` and the 'app'/'app_pw' role line apply cleanly.
     with PostgresContainer(
-        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="cod2"
+        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
     ) as pg:
         yield pg
 
