@@ -44,7 +44,7 @@ export interface GimelimCommitResult {
 
 export async function previewGimelim(
   shiftId: string,
-  body: { primary_assignment_id: string; rest_days: number; reason?: string }
+  body: { primary_assignment_id: string; rest_days: number; reason?: string; from_date: string }
 ): Promise<GimelimPreview> {
   return (await api.post<GimelimPreview>(`/shifts/${shiftId}/gimelim/preview`, body)).data;
 }
