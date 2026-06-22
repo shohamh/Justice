@@ -459,6 +459,27 @@ def _relax_step(current: SolverSettings) -> str | None:
     return None
 
 
+def _ladder_positions(settings: SolverSettings) -> list[tuple[list[str], SolverSettings]]:
+    """Cumulative relaxation steps from `settings`' base R/T up to its ceilings.
+
+    Reuses `_relax_step` so labels/order exactly match the existing graduated
+    ladder (R first in hops of 2 to relax_r_ceiling, then T to relax_t_ceiling).
+    Returns [(cumulative_labels, settings_at_that_position), ...]. Position 0
+    (the unrelaxed base) is NOT included — callers try that separately first,
+    since it's the cheap/common case and needs no ladder at all.
+    """
+    positions: list[tuple[list[str], SolverSettings]] = []
+    current = dataclasses.replace(settings)
+    labels: list[str] = []
+    while True:
+        label = _relax_step(current)
+        if label is None:
+            break
+        labels = labels + [label]
+        positions.append((labels, dataclasses.replace(current)))
+    return positions
+
+
 def _effort_round_solve(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
