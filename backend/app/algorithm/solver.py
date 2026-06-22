@@ -14,6 +14,7 @@ from app.algorithm.model import (
     build_fairness_objective,
     build_model,
 )
+from app.algorithm.saturation import analyze_saturation
 from app.algorithm.types import (
     Assignment,
     BatchResult,
@@ -789,6 +790,11 @@ def _effort_round_solve(
             comp_outcome = "FEASIBLE"
         else:
             comp_outcome = "OPTIMAL"
+        still_unassigned = [d for d in component_duties if d.id not in assigned_ids_here]
+        saturation_clusters = (
+            analyze_saturation(still_unassigned, full_pool, all_assignments, carry, duty_by_id)
+            if still_unassigned else []
+        )
         batch_results.append(BatchResult(
             batch_index=len(batch_results),
             component_index=done - 1,
@@ -805,6 +811,7 @@ def _effort_round_solve(
                 BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
                 for d in component_duties
             ],
+            saturation_clusters=saturation_clusters,
         ))
         relaxed.extend(component_relaxed)
 
