@@ -97,19 +97,43 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     void (async () => {
-      const [soldiers, tree] = await Promise.all([listSoldiers(), fetchTree()]);
+      const [soldiers, tree, constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
+        listSoldiers(),
+        fetchTree(),
+        listPendingApprovals(),
+        listPendingExemptionRequests(),
+        listPendingFieldUpdates(),
+        listPendingSwaps(),
+        listPendingEnrollments(),
+      ]);
       setSoldierMap(new Map(soldiers.map(s => [s.id, s])));
       setNodeMap(flattenTree(tree));
+      setItems(constraints);
+      setErItems(exemptionReqs);
+      setFuItems(fieldUpdates);
+      setSwapItems(swaps);
+      setEnrollItems(enrollments);
+      for (const req of exemptionReqs) {
+        listExemptionFiles(req.id)
+          .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
+          .catch(() => {});
+      }
     })();
   }, []);
 
   const refresh = useCallback(async () => {
-    setItems(await listPendingApprovals());
-    const exemptionReqs = await listPendingExemptionRequests();
+    const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
+      listPendingApprovals(),
+      listPendingExemptionRequests(),
+      listPendingFieldUpdates(),
+      listPendingSwaps(),
+      listPendingEnrollments(),
+    ]);
+    setItems(constraints);
     setErItems(exemptionReqs);
-    setFuItems(await listPendingFieldUpdates());
-    setSwapItems(await listPendingSwaps());
-    setEnrollItems(await listPendingEnrollments());
+    setFuItems(fieldUpdates);
+    setSwapItems(swaps);
+    setEnrollItems(enrollments);
     // Load files for all exemption requests
     for (const req of exemptionReqs) {
       listExemptionFiles(req.id)
@@ -117,10 +141,6 @@ export default function ApprovalsPage() {
         .catch(() => {});
     }
   }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   async function onApprove(id: string) {
     await approveConstraint(id);
