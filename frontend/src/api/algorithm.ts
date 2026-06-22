@@ -31,6 +31,20 @@ export interface BatchShiftFill {
   assigned_count: number;
 }
 
+export interface SaturationClusterCompeting {
+  duty_type_id: string;
+  count: number;
+}
+
+export interface SaturationCluster {
+  date_from: string;
+  date_to: string;
+  shift_ids: string[];
+  eligible_pool_size: number;
+  free_count: number;
+  competing_duty_types: SaturationClusterCompeting[];
+}
+
 export interface BatchResult {
   batch_index: number;
   component_index: number;
@@ -44,6 +58,7 @@ export interface BatchResult {
   relaxations: string[];
   wall_time_seconds: number;
   shifts: BatchShiftFill[];
+  saturation_clusters: SaturationCluster[];
 }
 
 export interface ProposalRow {
