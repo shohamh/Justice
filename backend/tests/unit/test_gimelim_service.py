@@ -269,6 +269,33 @@ def test_preview_accepts_backdated_from_date(admin_session):
     assert payload["from_date"] == backdated.isoformat()
 
 
+def test_preview_accepts_from_date_equal_to_shift_start(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd5", "ActorFD5")
+    soldier_a = _make_soldier(admin_session, "gimfd9b", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd10b", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="medical leave",
+        actor_id=actor.id,
+        from_date=date(2026, 6, 10),  # == start_date, the earliest legal value
+    )
+
+    from app.services.gimelim import _PREVIEW_STORE
+    _, payload = _PREVIEW_STORE[preview.preview_token]
+    assert payload["from_date"] == date(2026, 6, 10).isoformat()
+
+
 def test_preview_rejects_from_date_before_shift_start(admin_session):
     dt, loc = _seed_base(admin_session)
     actor = _make_soldier(admin_session, "actfd3", "ActorFD3")
