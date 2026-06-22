@@ -117,6 +117,7 @@ function EventCard({
   onCover,
   onOfferSwap,
   canOfferSwap = true,
+  coverIneligibleReason = null,
   onAcceptDraft,
   onRejectDraft,
   dutyType,
@@ -134,6 +135,7 @@ function EventCard({
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
   canOfferSwap?: boolean;
+  coverIneligibleReason?: string | null;
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyType?: DutyType | null;
@@ -228,8 +230,10 @@ function EventCard({
           >
             <span className="text-orange-700 flex-1">{t("unit_calendar.swap_requests_has")}</span>
             <button
-              onClick={(ev) => { ev.stopPropagation(); onCover?.(swap); }}
-              className="bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600"
+              onClick={canOfferSwap ? (ev) => { ev.stopPropagation(); onCover?.(swap); } : undefined}
+              disabled={!canOfferSwap}
+              title={!canOfferSwap ? (coverIneligibleReason ?? undefined) : undefined}
+              className={`px-2 py-0.5 rounded text-xs ${!canOfferSwap ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-orange-500 text-white hover:bg-orange-600"}`}
             >
               {t("swaps.cover")}
             </button>
@@ -396,7 +400,7 @@ function Timeline({
   swapsByAssignment?: Record<string, SwapRequest[]>;
   onCover?: (swap: SwapRequest) => void;
   onOfferSwap?: (e: TimelineEvent) => void;
-  eligibilityByAssignment?: Record<string, boolean>;
+  eligibilityByAssignment?: Record<string, { eligible: boolean; reason: string | null }>;
   onAcceptDraft?: (id: string) => void;
   onRejectDraft?: (id: string) => void;
   dutyTypeById: Record<string, DutyType>;
@@ -420,7 +424,8 @@ function Timeline({
             openSwaps={swapsByAssignment?.[e.id]}
             onCover={onCover}
             onOfferSwap={onOfferSwap}
-            canOfferSwap={eligibilityByAssignment?.[e.id] ?? true}
+            canOfferSwap={eligibilityByAssignment?.[e.id]?.eligible ?? true}
+            coverIneligibleReason={eligibilityByAssignment?.[e.id]?.eligible === false ? (eligibilityByAssignment[e.id].reason ?? null) : null}
             onAcceptDraft={onAcceptDraft}
             onRejectDraft={onRejectDraft}
             dutyType={e.metadata.duty_type_id ? (dutyTypeById[e.metadata.duty_type_id] ?? null) : null}
@@ -447,7 +452,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   const [dutyTypeNames, setDutyTypeNames] = useState<Record<string, string>>({});
   const [dutyTypeById, setDutyTypeById] = useState<Record<string, DutyType>>({});
   const [offerSwapEvent, setOfferSwapEvent] = useState<TimelineEvent | null>(null);
-  const [eligibilityByAssignment, setEligibilityByAssignment] = useState<Record<string, boolean>>({});
+  const [eligibilityByAssignment, setEligibilityByAssignment] = useState<Record<string, { eligible: boolean; reason: string | null }>>({});
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -507,11 +512,11 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     Promise.all(
       upcomingAssignments.map((e) =>
         checkCoverEligibility(e.id)
-          .then((result) => ({ id: e.id, eligible: result.eligible }))
-          .catch(() => ({ id: e.id, eligible: true }))
+          .then((result) => ({ id: e.id, eligible: result.eligible, reason: result.reason ?? null }))
+          .catch(() => ({ id: e.id, eligible: true, reason: null }))
       )
     ).then((results) => {
-      setEligibilityByAssignment(Object.fromEntries(results.map((r) => [r.id, r.eligible])));
+      setEligibilityByAssignment(Object.fromEntries(results.map((r) => [r.id, { eligible: r.eligible, reason: r.reason }])));
     });
   }, [events, isActive, soldierId, user?.id]);
 

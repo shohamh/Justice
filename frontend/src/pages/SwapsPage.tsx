@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
   listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
+  CoverEligibilityResult, checkCoverEligibility,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
@@ -242,8 +243,21 @@ export default function SwapsPage() {
   const [askSwapDuty, setAskSwapDuty] = useState<EffectiveDuty | null>(null);
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [requireManagerApproval, setRequireManagerApproval] = useState(false);
+  const [coverEligibility, setCoverEligibility] = useState<Record<string, CoverEligibilityResult>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
+
+  async function fetchEligibilities(swaps: SwapRequest[]) {
+    const ids = [...new Set(swaps.map((s) => s.duty_assignment_id))];
+    const results = await Promise.all(
+      ids.map((id) =>
+        checkCoverEligibility(id)
+          .then((r) => [id, r] as const)
+          .catch(() => [id, { eligible: true, reason: null }] as const)
+      )
+    );
+    setCoverEligibility((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+  }
 
   async function handleShiftClick(shiftId: string | null) {
     if (!shiftId) return;
@@ -264,6 +278,7 @@ export default function SwapsPage() {
     try {
       const board = await listBoard(filters);
       setBoardSwaps(board);
+      void fetchEligibilities(board);
     } finally {
       setBoardLoading(false);
     }
@@ -294,6 +309,7 @@ export default function SwapsPage() {
       setHierarchyNodes(nodes);
       setRequireManagerApproval(config.require_manager_approval);
       setBoardFilters({});
+      void fetchEligibilities([...board, ...incoming]);
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setLoadError(detail ?? "שגיאה בטעינת נתוני ההחלפות");
@@ -357,49 +373,67 @@ export default function SwapsPage() {
     </li>
   );
 
-  const renderBoardCard = (swap: SwapRequest) => (
-    <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
-      <div className="flex items-start justify-between gap-2">
-        <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
-        <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
-          {t(statusKey(swap.status))}
-        </span>
-      </div>
-      {swap.requesting_soldier_name && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {swap.requesting_soldier_name}
-          {swap.requesting_soldier_node_name && (
-            <span className="mr-1 text-gray-400 dark:text-gray-500"> · {swap.requesting_soldier_node_name}</span>
-          )}
-        </p>
-      )}
-      {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
-      {swap.status === "open" && (
-        <button type="button" onClick={() => setCoverSwap(swap)}
-          className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">
-          {t("swaps.cover")}
-        </button>
-      )}
-    </li>
-  );
+  const renderBoardCard = (swap: SwapRequest) => {
+    const elig = coverEligibility[swap.duty_assignment_id];
+    const coverDisabled = elig != null && !elig.eligible;
+    return (
+      <li key={swap.id} className="border rounded p-3 text-sm space-y-1.5 dark:border-gray-600">
+        <div className="flex items-start justify-between gap-2">
+          <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
+          <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
+            {t(statusKey(swap.status))}
+          </span>
+        </div>
+        {swap.requesting_soldier_name && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {swap.requesting_soldier_name}
+            {swap.requesting_soldier_node_name && (
+              <span className="mr-1 text-gray-400 dark:text-gray-500"> · {swap.requesting_soldier_node_name}</span>
+            )}
+          </p>
+        )}
+        {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
+        {swap.status === "open" && (
+          <button
+            type="button"
+            onClick={coverDisabled ? undefined : () => setCoverSwap(swap)}
+            disabled={coverDisabled}
+            title={coverDisabled ? (elig.reason ?? undefined) : undefined}
+            className={`px-2 py-1 rounded text-xs ${coverDisabled ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
+          >
+            {t("swaps.cover")}
+          </button>
+        )}
+      </li>
+    );
+  };
 
-  const renderIncomingCard = (swap: SwapRequest) => (
-    <li key={swap.id}
-      className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
-      <div className="flex items-start justify-between gap-2">
-        <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
-        <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
-          {t(statusKey(swap.status))}
-        </span>
-      </div>
-      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
-      {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
-      <button type="button" onClick={() => setCoverSwap(swap)}
-        className="bg-indigo-600 text-white px-2 py-1 rounded text-xs hover:bg-indigo-700">
-        {t("swaps.accept_cover")}
-      </button>
-    </li>
-  );
+  const renderIncomingCard = (swap: SwapRequest) => {
+    const elig = coverEligibility[swap.duty_assignment_id];
+    const coverDisabled = elig != null && !elig.eligible;
+    return (
+      <li key={swap.id}
+        className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
+          <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
+            {t(statusKey(swap.status))}
+          </span>
+        </div>
+        <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+        {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
+        <button
+          type="button"
+          onClick={coverDisabled ? undefined : () => setCoverSwap(swap)}
+          disabled={coverDisabled}
+          title={coverDisabled ? (elig.reason ?? undefined) : undefined}
+          className={`px-2 py-1 rounded text-xs ${coverDisabled ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
+        >
+          {t("swaps.accept_cover")}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <Layout>

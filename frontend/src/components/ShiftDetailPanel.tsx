@@ -59,6 +59,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
   const [canOfferReplace, setCanOfferReplace] = useState(true);
+  const [coverIneligibleReason, setCoverIneligibleReason] = useState<string | null>(null);
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -104,8 +105,11 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
       return;
     }
     checkCoverEligibility(someAssignmentId)
-      .then((result) => setCanOfferReplace(result.eligible))
-      .catch(() => setCanOfferReplace(true));
+      .then((result) => {
+        setCanOfferReplace(result.eligible);
+        setCoverIneligibleReason(result.eligible ? null : (result.reason ?? null));
+      })
+      .catch(() => { setCanOfferReplace(true); setCoverIneligibleReason(null); });
   }, [shift, user]);
 
   async function handleOpenCoverModal(swap: SwapRequest) {
@@ -272,8 +276,10 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         )}
                       </span>
                       <button
-                        onClick={() => void handleOpenCoverModal(swap)}
-                        className="bg-orange-500 text-white px-2 py-0.5 rounded hover:bg-orange-600"
+                        onClick={canOfferReplace ? () => void handleOpenCoverModal(swap) : undefined}
+                        disabled={!canOfferReplace}
+                        title={!canOfferReplace ? (coverIneligibleReason ?? undefined) : undefined}
+                        className={`px-2 py-0.5 rounded text-xs ${!canOfferReplace ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-orange-500 text-white hover:bg-orange-600"}`}
                       >
                         {t("swaps.cover")}
                       </button>
