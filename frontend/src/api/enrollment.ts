@@ -5,6 +5,7 @@ export interface EnrollmentRequestDTO {
   soldier_id: string;
   soldier_name: string;
   requested_node_id: string;
+  requested_node_name: string | null;
   status: string;
   decided_by: string | null;
   decision_note: string | null;

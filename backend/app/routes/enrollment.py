@@ -21,6 +21,7 @@ class EnrollmentRequestOut(BaseModel):
     soldier_id: uuid.UUID
     soldier_name: str
     requested_node_id: uuid.UUID
+    requested_node_name: str | None = None
     status: str
     decided_by: uuid.UUID | None
     decision_note: str | None
@@ -49,11 +50,19 @@ def list_pending(
             select(Soldier).where(Soldier.id.in_(soldier_ids))
         ).scalars().all()
     }
+    node_ids = {r.requested_node_id for r in reqs}
+    nodes = {
+        n.id: n
+        for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+        ).scalars().all()
+    }
     return [
         EnrollmentRequestOut(
             id=r.id, soldier_id=r.soldier_id,
             soldier_name=soldiers[r.soldier_id].full_name if r.soldier_id in soldiers else str(r.soldier_id)[:8],
             requested_node_id=r.requested_node_id,
+            requested_node_name=nodes[r.requested_node_id].name if r.requested_node_id in nodes else None,
             status=r.status, decided_by=r.decided_by, decision_note=r.decision_note,
         )
         for r in reqs

@@ -29,6 +29,8 @@ router = APIRouter(tags=["exemption-requests"])
 class ExemptionRequestOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_name: str = ""
+    node_name: str | None = None
     exemption_type_id: uuid.UUID
     start_date: str
     end_date: str | None
@@ -57,10 +59,12 @@ class ExemptionFileOut(BaseModel):
     created_at: str
 
 
-def _out(req: ExemptionRequest) -> ExemptionRequestOut:
+def _out(req: ExemptionRequest, soldier_name: str = "", node_name: str | None = None) -> ExemptionRequestOut:
     return ExemptionRequestOut(
         id=req.id,
         soldier_id=req.soldier_id,
+        soldier_name=soldier_name,
+        node_name=node_name,
         exemption_type_id=req.exemption_type_id,
         start_date=req.start_date.isoformat(),
         end_date=req.end_date.isoformat() if req.end_date else None,
@@ -121,7 +125,36 @@ def get_pending_exemption_requests(
         .scalars()
         .all()
     )
-    return [_out(r) for r in list_pending_requests(session, soldier_ids)]
+    reqs = list_pending_requests(session, soldier_ids)
+    if not reqs:
+        return []
+    req_soldier_ids = {r.soldier_id for r in reqs}
+    soldiers_by_id = {
+        s.id: s
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(req_soldier_ids))).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = (
+        {
+            n.id: n
+            for n in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+            ).scalars().all()
+        }
+        if node_ids
+        else {}
+    )
+    result = []
+    for r in reqs:
+        s = soldiers_by_id.get(r.soldier_id)
+        soldier_name = s.full_name if s else str(r.soldier_id)[:8]
+        node_name = (
+            nodes_by_id[s.hierarchy_node_id].name
+            if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
+            else None
+        )
+        result.append(_out(r, soldier_name=soldier_name, node_name=node_name))
+    return result
 
 
 @router.get("/exemption-requests/pending/count")

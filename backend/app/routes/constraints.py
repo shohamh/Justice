@@ -23,6 +23,8 @@ router = APIRouter(tags=["constraints"])
 class ConstraintOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_name: str = ""
+    node_name: str | None = None
     start_date: date
     end_date: date
     reason: str
@@ -54,10 +56,12 @@ class PendingCountOut(BaseModel):
 # ── Helpers ──
 
 
-def _out(c: PersonalConstraint) -> ConstraintOut:
+def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None) -> ConstraintOut:
     return ConstraintOut(
         id=c.id,
         soldier_id=c.soldier_id,
+        soldier_name=soldier_name,
+        node_name=node_name,
         start_date=c.start_date,
         end_date=c.end_date,
         reason=c.reason,
@@ -144,6 +148,41 @@ def list_for_soldier(
 # ── Approval management ──
 
 
+def _attach_names(
+    session: Session, rows: list[PersonalConstraint]
+) -> list[ConstraintOut]:
+    """Bulk-load soldier and node names then build ConstraintOut list."""
+    if not rows:
+        return []
+    soldier_ids = {c.soldier_id for c in rows}
+    soldiers_by_id = {
+        s.id: s
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(soldier_ids))).scalars().all()
+    }
+    node_ids = {s.hierarchy_node_id for s in soldiers_by_id.values() if s.hierarchy_node_id}
+    nodes_by_id = (
+        {
+            n.id: n
+            for n in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+            ).scalars().all()
+        }
+        if node_ids
+        else {}
+    )
+    result = []
+    for c in rows:
+        s = soldiers_by_id.get(c.soldier_id)
+        soldier_name = s.full_name if s else str(c.soldier_id)[:8]
+        node_name = (
+            nodes_by_id[s.hierarchy_node_id].name
+            if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
+            else None
+        )
+        result.append(_out(c, soldier_name=soldier_name, node_name=node_name))
+    return result
+
+
 @router.get("/constraints/pending", response_model=list[ConstraintOut])
 def pending_list(
     session: Session = Depends(get_session),
@@ -162,8 +201,8 @@ def pending_list(
             .scalars()
             .all()
         )
-        return [_out(c) for c in rows]
-    return [_out(c) for c in svc.list_pending_approvals(session, node_ids=roots)]
+        return _attach_names(session, rows)
+    return _attach_names(session, svc.list_pending_approvals(session, node_ids=roots))
 
 
 @router.get("/constraints/pending/count", response_model=PendingCountOut)

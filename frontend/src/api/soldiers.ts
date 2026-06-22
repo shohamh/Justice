@@ -33,6 +33,8 @@ export interface OnboardResult extends SoldierDTO {
 export interface FieldUpdateDTO {
   id: string;
   soldier_id: string;
+  soldier_name: string;
+  node_name: string | null;
   field_name: string;
   previous_value: string | null;
   new_value: string;
