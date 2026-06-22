@@ -13,7 +13,7 @@ export function downloadDutyICS(
   dutyTypeName: string,
   locationName: string,
 ): void {
-  const uid = `duty-${duty.assignment_id}@callofduty`;
+  const uid = `duty-${duty.assignment_id}@justice`;
   const dtstart = formatICSDate(duty.start_date);
   // duty.end_date is already exclusive (the day after the last day), which is
   // exactly what ICS DTEND;VALUE=DATE expects -- no +1 day needed here.
@@ -25,7 +25,7 @@ export function downloadDutyICS(
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//CallOfDuty//HE",
+    "PRODID:-//Justice//HE",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
     `UID:${uid}`,

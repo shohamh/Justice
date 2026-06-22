@@ -1,4 +1,4 @@
-# User Guide — Call of Duty 2
+# User Guide — Justice
 
 How to use the duty-management system, organised by role. The interface is in
 **Hebrew (RTL)**; this guide names each screen in Hebrew with an English gloss so

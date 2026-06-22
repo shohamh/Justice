@@ -76,7 +76,7 @@ jobs:
         env:
           POSTGRES_USER: db_admin
           POSTGRES_PASSWORD: db_admin_pw
-          POSTGRES_DB: cod2
+          POSTGRES_DB: justice
         ports:
           - 5432:5432
         options: >-
@@ -86,8 +86,8 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql+psycopg://app:app_pw@localhost:5432/cod2
-      DB_ADMIN_URL: postgresql+psycopg://db_admin:db_admin_pw@localhost:5432/cod2
+      DATABASE_URL: postgresql+psycopg://app:app_pw@localhost:5432/justice
+      DB_ADMIN_URL: postgresql+psycopg://db_admin:db_admin_pw@localhost:5432/justice
       JWT_SECRET: ci-secret-at-least-32-chars-long!!
       ALLOWED_ORIGINS: http://localhost:5173
       LOGIN_RATE_LIMIT: "10000/minute"

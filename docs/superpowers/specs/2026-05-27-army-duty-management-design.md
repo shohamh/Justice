@@ -1,4 +1,4 @@
-# Army Duty Management System — Design
+﻿# Army Duty Management System — Design
 
 **Date:** 2026-05-27
 **Status:** Draft for review
@@ -567,7 +567,7 @@ Changing any setting writes a `before`/`after` audit row.
 ### 10.1 Repository layout
 
 ```
-callofduty2/
+justice/
 ├── README.md
 ├── docker-compose.yml
 ├── docker-compose.prod.yml

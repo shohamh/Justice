@@ -1,4 +1,4 @@
-# v2: Shift Templates + Duty Swaps Implementation Plan
+﻿# v2: Shift Templates + Duty Swaps Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -2027,7 +2027,7 @@ Expected: tsc clean, build succeeds, existing tests pass.
 - [ ] **Step 8: Update docs + memory**
 
 - In `backend/app/scripts/seed.py`, optionally add one demo `ShiftTemplate` (active, auto_roll=False) and set `swaps.require_manager_approval` so the dev DB exercises both features. (Match the existing seed style; if seed is large, add minimally.)
-- Update the project memory `project_callofduty2.md`: record v2 (shift templates + swaps), migrations now at **0024**, and the new tables/routes.
+- Update the project memory `project_justice.md`: record v2 (shift templates + swaps), migrations now at **0024**, and the new tables/routes.
 
 - [ ] **Step 9: Commit**
 

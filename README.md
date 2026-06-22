@@ -1,4 +1,4 @@
-# Call of Duty 2 — Army Duty Management System
+# Justice — Army Duty Management System
 
 A self-hostable system for assigning duties (**תורנויות**) to soldiers fairly,
 with audit-logged workflows and a fairness-aware CP-SAT optimisation core.
@@ -216,7 +216,7 @@ PR.
 ## Repo layout
 
 ```
-callofduty2/
+justice/
 ├── README.md                ← you are here
 ├── docker-compose.yml       ← Postgres for local dev (app/frontend run on host)
 ├── .env.example             ← copy to .env

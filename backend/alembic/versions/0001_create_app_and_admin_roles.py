@@ -29,7 +29,7 @@ def upgrade() -> None:
         $$;
         """
     )
-    op.execute("GRANT CONNECT ON DATABASE cod2 TO app;")
+    op.execute("GRANT CONNECT ON DATABASE justice TO app;")
     op.execute("GRANT USAGE ON SCHEMA public TO app;")
     op.execute(
         "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app;"
@@ -41,5 +41,5 @@ def downgrade() -> None:
     op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM app;")
     op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM app;")
     op.execute("REVOKE USAGE ON SCHEMA public FROM app;")
-    op.execute("REVOKE CONNECT ON DATABASE cod2 FROM app;")
+    op.execute("REVOKE CONNECT ON DATABASE justice FROM app;")
     op.execute("DROP ROLE IF EXISTS app;")

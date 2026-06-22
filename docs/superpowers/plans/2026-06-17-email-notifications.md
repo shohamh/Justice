@@ -1,4 +1,4 @@
-# Email Notifications Implementation Plan
+﻿# Email Notifications Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -816,7 +816,7 @@ In `create_app()`, pass `lifespan=lifespan` to the `FastAPI(...)` constructor:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Call of Duty 2 API", version="0.1.0",
+        title="Justice API", version="0.1.0",
         docs_url=None, redoc_url=None, openapi_url=None,
         lifespan=lifespan,
     )

@@ -1,4 +1,4 @@
-# Algorithm Job Cancellation and Timer Implementation Plan
+﻿# Algorithm Job Cancellation and Timer Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -165,15 +165,15 @@ def _infeasibility_relaxation_chain(
 - [ ] **Step 2: Run existing backend tests to verify no regressions**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\backend && uv run pytest tests/unit/test_algorithm_bridge_shifts.py tests/integration/test_algorithm_shifts.py -v 2>&1 | tail -15
+cd C:\Users\Shoham\workspace\justice\backend && uv run pytest tests/unit/test_algorithm_bridge_shifts.py tests/integration/test_algorithm_shifts.py -v 2>&1 | tail -15
 ```
 Expected: all existing tests pass.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git -C C:\Users\Shoham\workspace\callofduty2 add backend/app/algorithm/solver.py
-git -C C:\Users\Shoham\workspace\callofduty2 commit -m "feat: add cancel_event support to CP-SAT solver"
+git -C C:\Users\Shoham\workspace\justice add backend/app/algorithm/solver.py
+git -C C:\Users\Shoham\workspace\justice commit -m "feat: add cancel_event support to CP-SAT solver"
 ```
 
 ---
@@ -279,7 +279,7 @@ def test_cancel_returns_409_for_done_job(client, admin_session):
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\backend && uv run pytest tests/integration/test_algorithm_cancel.py::test_cancel_sets_failed_and_finished_at -v 2>&1 | tail -10
+cd C:\Users\Shoham\workspace\justice\backend && uv run pytest tests/integration/test_algorithm_cancel.py::test_cancel_sets_failed_and_finished_at -v 2>&1 | tail -10
 ```
 Expected: FAIL — `assert job.finished_at is not None` (finished_at not yet set by cancel endpoint)
 
@@ -513,22 +513,22 @@ def cancel_job(
 - [ ] **Step 5: Run the tests to verify they pass**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\backend && uv run pytest tests/integration/test_algorithm_cancel.py -v 2>&1 | tail -15
+cd C:\Users\Shoham\workspace\justice\backend && uv run pytest tests/integration/test_algorithm_cancel.py -v 2>&1 | tail -15
 ```
 Expected: Both tests PASS (first test ~2–5s, second ~20s).
 
 - [ ] **Step 6: Run the full existing backend test suite to check for regressions**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\backend && uv run pytest tests/integration/test_algorithm_jobs_list.py tests/integration/test_algorithm_notification.py tests/integration/test_algorithm_shifts.py -v 2>&1 | tail -15
+cd C:\Users\Shoham\workspace\justice\backend && uv run pytest tests/integration/test_algorithm_jobs_list.py tests/integration/test_algorithm_notification.py tests/integration/test_algorithm_shifts.py -v 2>&1 | tail -15
 ```
 Expected: All pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git -C C:\Users\Shoham\workspace\callofduty2 add backend/app/services/algorithm_bridge.py backend/app/routes/algorithm.py backend/tests/integration/test_algorithm_cancel.py
-git -C C:\Users\Shoham\workspace\callofduty2 commit -m "feat: cancel algorithm job and interrupt CP-SAT solver via threading.Event"
+git -C C:\Users\Shoham\workspace\justice add backend/app/services/algorithm_bridge.py backend/app/routes/algorithm.py backend/tests/integration/test_algorithm_cancel.py
+git -C C:\Users\Shoham\workspace\justice commit -m "feat: cancel algorithm job and interrupt CP-SAT solver via threading.Event"
 ```
 
 ---
@@ -659,20 +659,20 @@ Replace with:
 - [ ] **Step 4: Verify TypeScript compiles**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\frontend && pnpm exec tsc --noEmit --skipLibCheck 2>&1 | head -20
+cd C:\Users\Shoham\workspace\justice\frontend && pnpm exec tsc --noEmit --skipLibCheck 2>&1 | head -20
 ```
 Expected: no new errors.
 
 - [ ] **Step 5: Run frontend tests**
 
 ```bash
-cd C:\Users\Shoham\workspace\callofduty2\frontend && pnpm test 2>&1 | tail -10
+cd C:\Users\Shoham\workspace\justice\frontend && pnpm test 2>&1 | tail -10
 ```
 Expected: 18/18 tests pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C C:\Users\Shoham\workspace\callofduty2 add frontend/src/api/algorithm.ts frontend/src/pages/AlgorithmPage.tsx frontend/src/i18n/he.json
-git -C C:\Users\Shoham\workspace\callofduty2 commit -m "feat: add cancel button and elapsed timer to algorithm job panel"
+git -C C:\Users\Shoham\workspace\justice add frontend/src/api/algorithm.ts frontend/src/pages/AlgorithmPage.tsx frontend/src/i18n/he.json
+git -C C:\Users\Shoham\workspace\justice commit -m "feat: add cancel button and elapsed timer to algorithm job panel"
 ```
