@@ -121,6 +121,8 @@ class JobSummaryOut(BaseModel):
     started_at: Any
     finished_at: Any
     error_message: str | None
+    total_duties: int = 0
+    assigned_duties: int = 0
 
 
 class JobListOut(BaseModel):
@@ -493,6 +495,13 @@ def list_jobs(
         .offset(offset)
     ).scalars().all()
 
+    def _duty_totals(job: AlgorithmJob) -> tuple[int, int]:
+        brs = job.batch_results or []
+        return (
+            sum(br.get("duty_count", 0) for br in brs),
+            sum(br.get("assigned_count", 0) for br in brs),
+        )
+
     return JobListOut(
         items=[
             JobSummaryOut(
@@ -506,6 +515,8 @@ def list_jobs(
                 started_at=j.started_at,
                 finished_at=j.finished_at,
                 error_message=j.error_message,
+                total_duties=_duty_totals(j)[0],
+                assigned_duties=_duty_totals(j)[1],
             )
             for j in jobs
         ],

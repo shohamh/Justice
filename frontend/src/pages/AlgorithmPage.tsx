@@ -179,7 +179,14 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                   {STATUS_LABEL[job.status] ?? job.status}
                 </span>
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">{job.shift_count} משמרות · {job.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}</div>
+              <div className="text-xs text-gray-500 mt-0.5">
+                {job.shift_count} משמרות · {job.mode === "shadow" ? t("algorithm.shadow_mode") : t("algorithm.dm_reviewed_mode")}
+                {job.total_duties > 0 && (
+                  <span className={`mr-1 ${job.assigned_duties < job.total_duties ? "text-red-500 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                    · {job.assigned_duties}/{job.total_duties}
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>

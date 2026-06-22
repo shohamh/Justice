@@ -70,6 +70,10 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
 
   const meta = job.result_metadata;
 
+  const totalDuties = job.batch_results.reduce((s, br) => s + br.duty_count, 0);
+  const assignedDuties = job.batch_results.reduce((s, br) => s + br.assigned_count, 0);
+  const hasDutyCount = totalDuties > 0;
+
   const outcomeLabel: Record<string, string> = {
     OPTIMAL: "אופטימלי ✓",
     FEASIBLE: "כדאי (לא מוכח אופטימלי)",
@@ -92,6 +96,11 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
               <span className={`inline-flex items-center px-2.5 py-1 rounded border text-xs font-semibold ${outcomeClass[meta.outcome] ?? outcomeClass.FEASIBLE}`}>
                 {outcomeLabel[meta.outcome] ?? meta.outcome}
               </span>
+              {hasDutyCount && (
+                <span className={`text-xs font-medium tabular-nums ${assignedDuties < totalDuties ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
+                  {assignedDuties}/{totalDuties}
+                </span>
+              )}
               {meta.solver_metrics?.wall_time != null && (
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   זמן: {meta.solver_metrics.wall_time.toFixed(1)}s

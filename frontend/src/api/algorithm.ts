@@ -122,6 +122,8 @@ export interface JobSummaryOut {
   started_at: string | null;
   finished_at: string | null;
   error_message: string | null;
+  total_duties: number;
+  assigned_duties: number;
 }
 
 export interface JobListOut {
