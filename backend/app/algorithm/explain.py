@@ -43,12 +43,12 @@ def build_explanations(
             if duty.duty_type_id in s.exempted_duty_type_ids:
                 blocking.append("exemption")
             for cs, ce in s.approved_constraint_dates:
-                if cs <= duty.end_date and ce >= duty.start_date:
+                if cs < duty.end_date and ce >= duty.start_date:
                     blocking.append("personal_constraint")
                     break
             for other_duty_id, other_duty in soldier_duties.get(s.id, []):
                 if other_duty_id != a.duty_id:
-                    if other_duty.start_date <= duty.end_date and other_duty.end_date >= duty.start_date:
+                    if other_duty.start_date < duty.end_date and other_duty.end_date > duty.start_date:
                         blocking.append("overlap")
                         break
 

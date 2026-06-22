@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { SwapRequest } from "../../api/swaps";
-import { formatDateRange } from "../../utils/formatDate";
+import { formatDateRange, formatDutyRange } from "../../utils/formatDate";
 
 interface Props {
   swaps: SwapRequest[];
@@ -41,7 +41,7 @@ export default function SwapStatusWidget({ swaps }: Props) {
               </div>
               <div className="text-gray-500 text-xs">
                 {s.duty_start_date && s.duty_end_date
-                  ? formatDateRange(s.duty_start_date, s.duty_end_date)
+                  ? formatDutyRange(s.duty_start_date, s.duty_end_date)
                   : formatDateRange(s.duty_date, s.duty_date)}
               </div>
               {s.reason && <div className="text-gray-400 text-xs">{s.reason}</div>}

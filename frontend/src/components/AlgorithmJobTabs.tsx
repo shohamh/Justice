@@ -7,6 +7,7 @@ import { DutyShift, listShifts } from "../api/shifts";
 import AlgorithmProposalTable from "./AlgorithmProposalTable";
 import BatchesTab from "./BatchesTab";
 import IssuesTab from "./IssuesTab";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   job: AlgorithmJob;
@@ -50,7 +51,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
   const shiftNames: Record<string, string> = Object.fromEntries(
     Object.values(shiftsById).map(s => [
       s.id,
-      `${typeName(s.duty_type_id)} · ${s.start_date}–${s.end_date}`,
+      `${typeName(s.duty_type_id)} · ${s.start_date}–${lastDutyDay(s.end_date)}`,
     ])
   );
 

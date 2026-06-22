@@ -137,7 +137,7 @@ def _apply_cover(
         raise SwapError("assignment_not_found")
     first_ov = None
     current = assignment.start_date
-    while current <= assignment.end_date:
+    while current < assignment.end_date:  # end_date is exclusive
         try:
             ov = assignments_svc.set_day_override(
                 session,

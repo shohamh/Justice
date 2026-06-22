@@ -27,14 +27,14 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
 
   const dutyEvents = useMemo(() =>
     duties.map((d) => {
-      const endDate = new Date(d.end_date + "T00:00:00");
-      endDate.setDate(endDate.getDate() + 1);
+      // d.end_date is already exclusive (the day after the last day), matching
+      // FullCalendar's own exclusive `end` convention -- no +1 day needed here.
       const color = dutyTypeColor(d.duty_type_id);
       return {
         id: d.assignment_id,
         title: typeNames[d.duty_type_id] ?? "תורנות",
         start: d.start_date,
-        end: endDate.toISOString().split("T")[0],
+        end: d.end_date,
         backgroundColor: color,
         borderColor: color,
         extendedProps: { duty: d },

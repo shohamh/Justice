@@ -21,8 +21,8 @@ export default function DismissalModal({ shift, primary, onClose, onDone }: Prop
   const allDates = useMemo(() => {
     const dates: string[] = [];
     const d = new Date(shift.start_date);
-    const stop = new Date(shift.end_date);
-    while (d <= stop) {
+    const stop = new Date(shift.end_date); // exclusive end_date -- the first day NOT touched
+    while (d < stop) {
       dates.push(d.toISOString().slice(0, 10));
       d.setDate(d.getDate() + 1);
     }

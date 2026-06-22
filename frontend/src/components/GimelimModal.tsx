@@ -8,6 +8,7 @@ import {
 } from "../api/gimelim";
 import { CalendarShiftAssignee } from "../api/calendar";
 import SoldierLink from "./SoldierLink";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   shiftId: string;
@@ -244,7 +245,7 @@ export default function GimelimModal({
               <div>
                 <span className="text-gray-500">משוחרר:</span>{" "}
                 <SoldierLink id={preview.soldier_a.id} name={preview.soldier_a.name} />
-                {" "}({preview.current_shift.start_date} — {preview.current_shift.end_date})
+                {" "}({preview.current_shift.start_date} — {lastDutyDay(preview.current_shift.end_date)})
               </div>
               <div>
                 <span className="text-gray-500">מוקפץ לכיסוי:</span>{" "}

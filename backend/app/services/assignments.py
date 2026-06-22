@@ -38,8 +38,8 @@ def _has_overlap(
     q = select(DutyAssignment.id).where(
         DutyAssignment.soldier_id == soldier_id,
         DutyAssignment.status != "cancelled",
-        DutyAssignment.start_date <= end_date,
-        DutyAssignment.end_date >= start_date,
+        DutyAssignment.start_date < end_date,
+        DutyAssignment.end_date > start_date,
     )
     if exclude_id is not None:
         q = q.where(DutyAssignment.id != exclude_id)
@@ -60,7 +60,7 @@ def _has_blocking_exemption(
     q = select(SoldierExemption.id).where(
         SoldierExemption.soldier_id == soldier_id,
         SoldierExemption.exemption_type_id.in_(covering),
-        SoldierExemption.start_date <= end_date,
+        SoldierExemption.start_date < end_date,
         or_(SoldierExemption.end_date.is_(None), SoldierExemption.end_date >= start_date),
     )
     return session.execute(q).first() is not None
@@ -174,7 +174,7 @@ def _day_busy(
         DutyAssignment.soldier_id == soldier_id,
         DutyAssignment.status != "cancelled",
         DutyAssignment.start_date <= on_date,
-        DutyAssignment.end_date >= on_date,
+        DutyAssignment.end_date > on_date,
     )
     if exclude_assignment_id is not None:
         q = q.where(DutyAssignment.id != exclude_assignment_id)
@@ -190,7 +190,7 @@ def set_day_override(
     reason: str,
     actor_id: uuid.UUID | None = None,
 ) -> DutyDayOverride:
-    if not (assignment.start_date <= date <= assignment.end_date):
+    if not (assignment.start_date <= date < assignment.end_date):
         raise AssignmentError("date_out_of_range")
     if reason not in _OVERRIDE_REASONS:
         raise AssignmentError("bad_reason")
@@ -296,7 +296,7 @@ def list_assignments(
     if soldier_id is not None:
         q = q.where(DutyAssignment.soldier_id == soldier_id)
     if date_from is not None:
-        q = q.where(DutyAssignment.end_date >= date_from)
+        q = q.where(DutyAssignment.end_date > date_from)
     if date_to is not None:
         q = q.where(DutyAssignment.start_date <= date_to)
     return list(session.execute(q.order_by(DutyAssignment.start_date)).scalars().all())
@@ -315,7 +315,7 @@ def list_assignments_for_soldiers(
         DutyAssignment.status != "cancelled", DutyAssignment.soldier_id.in_(soldier_ids)
     )
     if date_from is not None:
-        q = q.where(DutyAssignment.end_date >= date_from)
+        q = q.where(DutyAssignment.end_date > date_from)
     if date_to is not None:
         q = q.where(DutyAssignment.start_date <= date_to)
     return list(session.execute(q.order_by(DutyAssignment.start_date)).scalars().all())

@@ -234,7 +234,7 @@ def list_shifts(
 ) -> list[ShiftWithFill]:
     q = select(DutyShift)
     if date_from is not None:
-        q = q.where(DutyShift.end_date >= date_from)
+        q = q.where(DutyShift.end_date > date_from)
     if date_to is not None:
         q = q.where(DutyShift.start_date <= date_to)
     if duty_type_id is not None:

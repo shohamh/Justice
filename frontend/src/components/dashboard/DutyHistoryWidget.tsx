@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
 import { TransparencyRow } from "../../api/scoring";
-import { formatDateRange } from "../../utils/formatDate";
+import { formatDutyRange } from "../../utils/formatDate";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -90,7 +90,7 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
           <tbody>
             {past.map((d) => (
               <tr key={d.assignment_id} className="border-b dark:border-gray-600 last:border-0">
-                <td className="py-2">{formatDateRange(d.start_date, d.end_date)}</td>
+                <td className="py-2">{formatDutyRange(d.start_date, d.end_date)}</td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
                 <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>
               </tr>

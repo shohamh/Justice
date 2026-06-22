@@ -74,13 +74,13 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       extendedProps: { shiftId: string; dutyTypeId: string; swapCount: number };
     }[] = [];
     for (const s of filteredShifts) {
-      const endDate = new Date(s.end_date);
-      endDate.setDate(endDate.getDate() + 1);
+      // s.end_date is already exclusive (the day after the last day), matching
+      // FullCalendar's own exclusive `end` convention -- no +1 day needed here.
       out.push({
         id: s.id,
         title: `${s.duty_type_name} — ${s.duty_location_name}`,
         start: s.start_date,
-        end: endDate.toISOString().slice(0, 10),
+        end: s.end_date,
         backgroundColor: s.duty_type_color,
         borderColor: s.duty_type_color,
         classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],

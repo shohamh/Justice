@@ -15,9 +15,9 @@ export function downloadDutyICS(
 ): void {
   const uid = `duty-${duty.assignment_id}@callofduty`;
   const dtstart = formatICSDate(duty.start_date);
-  const endDate = new Date(duty.end_date);
-  endDate.setDate(endDate.getDate() + 1);
-  const dtend = endDate.toISOString().slice(0, 10).replace(/-/g, "");
+  // duty.end_date is already exclusive (the day after the last day), which is
+  // exactly what ICS DTEND;VALUE=DATE expects -- no +1 day needed here.
+  const dtend = formatICSDate(duty.end_date);
   const summary = escapeICS(`תורנות: ${dutyTypeName}`);
   const location = escapeICS(locationName);
   const now = new Date().toISOString().replace(/[-:.]/g, "").slice(0, 15) + "Z";

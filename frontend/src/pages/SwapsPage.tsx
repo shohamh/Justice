@@ -14,6 +14,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import type { DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { api } from "../api/client";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface HierarchyNode {
   id: string;
@@ -105,8 +106,9 @@ function PendingApprovalCard({
 }
 
 function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClick?: () => void }) {
-  const dateLabel = swap.duty_start_date && swap.duty_end_date && swap.duty_start_date !== swap.duty_end_date
-    ? `${swap.duty_start_date} → ${swap.duty_end_date}`
+  const dutyEnd = swap.duty_end_date ? lastDutyDay(swap.duty_end_date) : swap.duty_end_date;
+  const dateLabel = swap.duty_start_date && dutyEnd && swap.duty_start_date !== dutyEnd
+    ? `${swap.duty_start_date} → ${dutyEnd}`
     : (swap.duty_start_date ?? swap.duty_date);
 
   const inner = (
@@ -182,7 +184,10 @@ function AskSwapModal({
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3" dir="ltr">
-          {duty.start_date === duty.end_date ? duty.start_date : `${duty.start_date} → ${duty.end_date}`}
+          {(() => {
+            const last = lastDutyDay(duty.end_date);
+            return duty.start_date === last ? duty.start_date : `${duty.start_date} → ${last}`;
+          })()}
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -420,7 +425,10 @@ export default function SwapsPage() {
                     >
                       <span className="font-medium dark:text-gray-100">{dutyTypes[d.duty_type_id] ?? d.duty_type_id}</span>
                       <span className="text-gray-500 mr-2 text-xs" dir="ltr">
-                        {d.start_date === d.end_date ? d.start_date : `${d.start_date} → ${d.end_date}`}
+                        {(() => {
+                          const last = lastDutyDay(d.end_date);
+                          return d.start_date === last ? d.start_date : `${d.start_date} → ${last}`;
+                        })()}
                       </span>
                     </button>
                     <button type="button" onClick={() => setAskSwapDuty(d)}

@@ -1,5 +1,5 @@
 import { EffectiveDuty } from "../../api/assignments";
-import { formatDateRange } from "../../utils/formatDate";
+import { formatDutyRange } from "../../utils/formatDate";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -45,7 +45,7 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
                 }}
                 title="פתח פרטים"
               >
-                <td className="py-2">{formatDateRange(d.start_date, d.end_date)}</td>
+                <td className="py-2">{formatDutyRange(d.start_date, d.end_date)}</td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
                 <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>
                 <td className="py-2 text-gray-400 text-xs">›</td>

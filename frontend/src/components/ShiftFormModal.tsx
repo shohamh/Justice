@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 import Combobox from "./Combobox";
+import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -18,7 +19,9 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [dtId, setDtId] = useState(existing?.duty_type_id ?? dutyTypes[0]?.id ?? "");
   const [locId, setLocId] = useState(existing?.duty_location_id ?? initialLocations[0]?.id ?? "");
   const [startDate, setStartDate] = useState(existing?.start_date ?? "");
-  const [endDate, setEndDate] = useState(existing?.end_date ?? "");
+  // `endDate` here is the INCLUSIVE last duty day shown to the user; the backend's
+  // DutyShift.end_date is exclusive (the first day NOT touched), converted at submit time.
+  const [endDate, setEndDate] = useState(existing ? lastDutyDay(existing.end_date) : "");
   const [count, setCount] = useState(existing?.required_count ?? 1);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [reserveOverride, setReserveOverride] = useState(existing?.reserve_count_override?.toString() ?? "");
@@ -46,10 +49,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     e.preventDefault();
     setError(null);
     try {
+      const exclusiveEndDate = toExclusiveEndDate(endDate);
       if (existing) {
         await updateShift(existing.id, {
           start_date: startDate,
-          end_date: endDate,
+          end_date: exclusiveEndDate,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
@@ -59,7 +63,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           duty_type_id: dtId,
           duty_location_id: locId,
           start_date: startDate,
-          end_date: endDate,
+          end_date: exclusiveEndDate,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),

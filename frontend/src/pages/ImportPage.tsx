@@ -7,6 +7,7 @@ import {
   applyImport,
   previewImport,
 } from "../api/importExcel";
+import { lastDutyDay } from "../utils/formatDate";
 
 type Step = "upload" | "review" | "done";
 
@@ -252,7 +253,7 @@ export default function ImportPage() {
                       <td className="py-1">{row.personal_number}</td>
                       <td className="py-1">{row.duty_type_name}</td>
                       <td className="py-1">
-                        {row.start_date} – {row.end_date}
+                        {row.start_date} – {row.end_date ? lastDutyDay(row.end_date) : row.end_date}
                       </td>
                       <td className="py-1">
                         <span

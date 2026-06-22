@@ -256,8 +256,8 @@ def get_shift_candidates(
         session.execute(
             select(DutyAssignment.soldier_id).where(
                 DutyAssignment.status.in_(["published", "algorithm_draft"]),
-                DutyAssignment.start_date <= shift.end_date,
-                DutyAssignment.end_date >= shift.start_date,
+                DutyAssignment.start_date < shift.end_date,
+                DutyAssignment.end_date > shift.start_date,
             )
         ).scalars().all()
     )
@@ -282,7 +282,7 @@ def get_shift_candidates(
             continue
 
         has_constraint = any(
-            c_start <= shift.end_date and c_end >= shift.start_date
+            c_start < shift.end_date and c_end >= shift.start_date
             for c_start, c_end in si.approved_constraint_dates
         )
         blocked = has_constraint or si.id in blocked_by_assignment

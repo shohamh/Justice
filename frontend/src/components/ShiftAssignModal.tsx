@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { DutyShift, assignBatch } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   shift: DutyShift;
@@ -153,7 +154,7 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
           <div>
             <h3 className="text-lg font-semibold">{t("shifts.assign_modal_title")}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {dutyTypeName} · {shift.start_date} עד {shift.end_date}
+              {dutyTypeName} · {shift.start_date} עד {lastDutyDay(shift.end_date)}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">✕</button>

@@ -201,14 +201,14 @@ def get_duty_type_usage(
         select(func.count(DutyAssignment.id)).where(
             DutyAssignment.duty_type_id == duty_type_id,
             DutyAssignment.status != "cancelled",
-            DutyAssignment.end_date < today,
+            DutyAssignment.end_date <= today,
         )
     ).scalar_one()
     future_count = session.execute(
         select(func.count(DutyAssignment.id)).where(
             DutyAssignment.duty_type_id == duty_type_id,
             DutyAssignment.status != "cancelled",
-            DutyAssignment.end_date >= today,
+            DutyAssignment.end_date > today,
         )
     ).scalar_one()
     template_count = session.execute(

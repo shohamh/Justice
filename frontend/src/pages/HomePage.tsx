@@ -24,6 +24,7 @@ import { TransparencyRow, Breakdown, getTransparency, getBreakdown } from "../ap
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
+import { lastDutyDay } from "../utils/formatDate";
 
 function offsetDate(days: number): string {
   const d = new Date();
@@ -31,10 +32,11 @@ function offsetDate(days: number): string {
   return d.toISOString().split("T")[0];
 }
 
+// end_date is exclusive (the first day NOT touched), so no +1 here.
 function dayCount(d: { start_date: string; end_date: string }): number {
   const [sy, sm, sd] = d.start_date.split("-").map(Number);
   const [ey, em, ed] = d.end_date.split("-").map(Number);
-  return (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+  return (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000;
 }
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -185,11 +187,13 @@ export default function HomePage() {
           d.end_date >= currentMonthStart
       )
       .reduce((sum, d) => {
+        const dutyLastDay = lastDutyDay(d.end_date);
         const start = d.start_date < currentMonthStart ? currentMonthStart : d.start_date;
-        const end = d.end_date > currentMonthEnd ? currentMonthEnd : d.end_date;
+        const end = dutyLastDay > currentMonthEnd ? currentMonthEnd : dutyLastDay;
         const [sy, sm, sd] = start.split("-").map(Number);
         const [ey, em, ed] = end.split("-").map(Number);
-        return sum + (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+        const days = (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+        return sum + Math.max(0, days);
       }, 0);
   }, [duties, currentMonthStart, currentMonthEnd]);
 
@@ -204,11 +208,13 @@ export default function HomePage() {
           d.end_date >= yearStart
       )
       .reduce((sum, d) => {
+        const dutyLastDay = lastDutyDay(d.end_date);
         const start = d.start_date < yearStart ? yearStart : d.start_date;
-        const end = d.end_date > yearEnd ? yearEnd : d.end_date;
+        const end = dutyLastDay > yearEnd ? yearEnd : dutyLastDay;
         const [sy, sm, sd] = start.split("-").map(Number);
         const [ey, em, ed] = end.split("-").map(Number);
-        return sum + (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+        const days = (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000 + 1;
+        return sum + Math.max(0, days);
       }, 0);
   }, [duties]);
 

@@ -139,6 +139,26 @@ def test_not_blocked_by_non_published_assignment(admin_session):
     assert ok is True
 
 
+def test_not_blocked_by_back_to_back_assignment(admin_session):
+    """A duty ending exactly when another begins (adjacent, not overlapping)
+    must not be treated as a scheduling conflict. `a` runs 7/10-7/11 (exclusive
+    end), so an existing duty 7/9-7/10 ends the moment `a` starts -- no overlap."""
+    _owner, cover, dt, loc, _a = _base(admin_session)
+    a = DutyAssignment(
+        soldier_id=_owner.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 7, 10), end_date=date(2026, 7, 11), status="published",
+    )
+    admin_session.add(a)
+    admin_session.add(DutyAssignment(
+        soldier_id=cover.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 7, 9), end_date=date(2026, 7, 10), status="published",
+    ))
+    admin_session.flush()
+    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    assert ok is True
+    assert reason is None
+
+
 def test_exclude_assignment_id_skips_conflict(admin_session):
     _owner, cover, dt, loc, a = _base(admin_session)
     conflict = DutyAssignment(

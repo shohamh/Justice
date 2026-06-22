@@ -37,7 +37,7 @@ def eligible_duties(
         select(DutyAssignment).where(
             DutyAssignment.soldier_id == actor.id,
             DutyAssignment.status == "published",
-            DutyAssignment.end_date >= today,
+            DutyAssignment.end_date > today,
         )
     ).scalars().all()
 
