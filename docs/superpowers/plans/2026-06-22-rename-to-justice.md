@@ -1,8 +1,8 @@
-# Rename Project: callofduty2/cod2 → justice
+﻿# Rename Project: justice/cod2 → justice
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename every in-repo reference to "callofduty2", "cod2", or "Call of Duty 2" to "justice" / "Justice" across config, code, migrations, and docs.
+**Goal:** Rename every in-repo reference to "justice", "cod2", or "Justice" to "justice" / "Justice" across config, code, migrations, and docs.
 
 **Architecture:** Pure search-and-replace across config files, source files, and docs. The only structural complexity is the PostgreSQL database rename, which cannot run inside Alembic (you can't rename the database you're connected to), so it is a one-time manual DBA step for existing installations; fresh installs just pick up the new name from config.
 
@@ -20,9 +20,9 @@
 | `.github/workflows/ci.yml` | `POSTGRES_DB: cod2` + DB URL env vars |
 | `backend/alembic/versions/0001_create_app_and_admin_roles.py` | SQL string `cod2` → `justice` |
 | `backend/tests/conftest.py` | `dbname="cod2"` → `justice` |
-| `backend/pyproject.toml` | `name = "cod2-backend"` → `justice-backend` |
+| `backend/pyproject.toml` | `name = "justice-backend"` → `justice-backend` |
 | `backend/app/main.py` | FastAPI `title=` string |
-| `frontend/package.json` | `"name": "cod2-frontend"` → `justice-frontend` |
+| `frontend/package.json` | `"name": "justice-frontend"` → `justice-frontend` |
 | `frontend/src/utils/icsCalendar.ts` | UID suffix `@callofduty` → `@justice` |
 | `CLAUDE.md` | Project name header |
 | `README.md` | Title line |
@@ -48,13 +48,7 @@ DATABASE_URL=postgresql+psycopg://app:app_pw@db:5432/justice
 DB_ADMIN_URL=postgresql+psycopg://db_admin:db_admin_pw@db:5432/justice
 ```
 
-And:
-
-```
-TELEGRAM_BOT_USERNAME=justicebot
-```
-
-> Note: The Telegram bot username (`justicebot`) is what the app displays — the actual bot registered with Telegram still uses the old username until you rename it manually in BotFather. Updating the env var now lets you test the rename without blocking on Telegram.
+The `TELEGRAM_BOT_USERNAME` line stays unchanged (`call_of_duty2bot`) — the Telegram bot identity is not being renamed.
 
 - [ ] **Step 2: Update `.env.example`**
 
@@ -122,7 +116,7 @@ ALTER DATABASE cod2 RENAME TO justice;
 Using docker exec:
 
 ```powershell
-docker exec -it callofduty2-db-1 psql -U db_admin -d postgres -c "ALTER DATABASE cod2 RENAME TO justice;"
+docker exec -it justice-db-1 psql -U db_admin -d postgres -c "ALTER DATABASE cod2 RENAME TO justice;"
 ```
 
 Skip this step if you are setting up from scratch (fresh Docker volume).
@@ -185,7 +179,7 @@ git commit -m "chore: rename database from cod2 to justice in migration and test
 
 - [ ] **Step 1: Update `backend/pyproject.toml`**
 
-Find `name = "cod2-backend"` (line ~9) and change to:
+Find `name = "justice-backend"` (line ~9) and change to:
 
 ```toml
 name = "justice-backend"
@@ -237,7 +231,7 @@ cd frontend
 npm install
 ```
 
-This updates the two `"name": "cod2-frontend"` occurrences in `package-lock.json` automatically.
+This updates the two `"name": "justice-frontend"` occurrences in `package-lock.json` automatically.
 
 - [ ] **Step 3: Verify**
 
@@ -307,7 +301,7 @@ git commit -m "chore: update ICS calendar UID domain from callofduty to justice"
 - [ ] **Step 3: Verify no remaining old names in these two files**
 
 ```powershell
-Select-String -Path "CLAUDE.md", "README.md" -Pattern "callofduty2|cod2|call.of.duty" -CaseSensitive:$false
+Select-String -Path "CLAUDE.md", "README.md" -Pattern "justice|cod2|call.of.duty" -CaseSensitive:$false
 ```
 
 Expected: no matches.
@@ -335,11 +329,11 @@ $files = Get-ChildItem -Path "docs\superpowers" -Recurse -Filter "*.md"
 foreach ($f in $files) {
     $content = Get-Content $f.FullName -Raw -Encoding utf8
     $updated = $content `
-        -replace 'callofduty2', 'justice' `
-        -replace 'cod2-backend', 'justice-backend' `
-        -replace 'cod2-frontend', 'justice-frontend' `
+        -replace 'justice', 'justice' `
+        -replace 'justice-backend', 'justice-backend' `
+        -replace 'justice-frontend', 'justice-frontend' `
         -replace 'cod2', 'justice' `
-        -replace 'Call of Duty 2', 'Justice' `
+        -replace 'Justice', 'Justice' `
         -replace 'call_of_duty2bot', 'justicebot'
     if ($updated -ne $content) {
         Set-Content $f.FullName $updated -Encoding utf8 -NoNewline
@@ -351,7 +345,7 @@ foreach ($f in $files) {
 - [ ] **Step 2: Verify the bulk replace**
 
 ```powershell
-Select-String -Path "docs\superpowers\**\*.md" -Pattern "callofduty2|cod2|call.of.duty" -CaseSensitive:$false
+Select-String -Path "docs\superpowers\**\*.md" -Pattern "justice|cod2|call.of.duty" -CaseSensitive:$false
 ```
 
 Expected: no matches (or only legitimate false-positives like historical commit SHA references).
@@ -362,13 +356,13 @@ Expected: no matches (or only legitimate false-positives like historical commit 
 Select-String -Path "docs\superpowers\specs\2026-06-07-ci-design.md" -Pattern "justice"
 ```
 
-Expected: lines that previously said `cod2` or `callofduty2` now say `justice`.
+Expected: lines that previously said `cod2` or `justice` now say `justice`.
 
 - [ ] **Step 4: Commit**
 
 ```powershell
 git add docs/
-git commit -m "docs: rename callofduty2/cod2 to justice across all superpowers docs"
+git commit -m "docs: rename justice/cod2 to justice across all superpowers docs"
 ```
 
 ---
@@ -379,7 +373,7 @@ These require actions outside the repository. Do them after all in-repo commits 
 
 - [ ] **Step 1: Rename the GitHub repository**
 
-Go to **https://github.com/shohamh/callofduty2 → Settings → Repository name → `justice`**.
+Go to **https://github.com/shohamh/justice → Settings → Repository name → `justice`**.
 
 After renaming, GitHub redirects the old URL automatically, but update your local remote:
 
@@ -392,17 +386,17 @@ git remote set-url origin https://github.com/shohamh/justice.git
 Close all terminals and editors that have the directory open, then:
 
 ```powershell
-Rename-Item -Path "C:\Users\Shoham\workspace\callofduty2" -NewName "justice"
+Rename-Item -Path "C:\Users\Shoham\workspace\justice" -NewName "justice"
 ```
 
 Update VS Code workspace / any pinned shells to point to `C:\Users\Shoham\workspace\justice`.
 
 - [ ] **Step 3: Migrate Claude Code memory files**
 
-The memory directory `C:\Users\Shoham\.claude\projects\C--Users-Shoham-workspace-callofduty2\` is keyed by the project path. After renaming the directory, copy the memory files to the new path-keyed location:
+The memory directory `C:\Users\Shoham\.claude\projects\C--Users-Shoham-workspace-justice\` is keyed by the project path. After renaming the directory, copy the memory files to the new path-keyed location:
 
 ```powershell
-$old = "$env:USERPROFILE\.claude\projects\C--Users-Shoham-workspace-callofduty2"
+$old = "$env:USERPROFILE\.claude\projects\C--Users-Shoham-workspace-justice"
 $new = "$env:USERPROFILE\.claude\projects\C--Users-Shoham-workspace-justice"
 New-Item -ItemType Directory -Force $new
 Copy-Item "$old\*" $new -Recurse
@@ -410,24 +404,7 @@ Copy-Item "$old\*" $new -Recurse
 
 Then open a new Claude Code session in the renamed directory to verify memory loads.
 
-- [ ] **Step 4: Rename the Telegram bot in BotFather**
-
-In the Telegram app, open **@BotFather** and send `/mybots` → select the bot → **Edit Bot** → **Edit Name** / **Edit Username**.
-
-Set the username to `justicebot` (or `justice_bot` if taken). After renaming, update `.env`:
-
-```
-TELEGRAM_BOT_USERNAME=justicebot
-```
-
-Commit this final `.env` change:
-
-```powershell
-git add .env
-git commit -m "chore: update Telegram bot username to justicebot"
-```
-
-- [ ] **Step 5: Push the branch and open a PR**
+- [ ] **Step 4: Push the branch and open a PR**
 
 ```powershell
 git push -u origin rename-to-justice
@@ -443,7 +420,7 @@ After all tasks are done, run this final sweep to confirm nothing was missed:
 
 ```powershell
 # In the renamed project directory (C:\Users\Shoham\workspace\justice)
-Select-String -Path "." -Recurse -Pattern "callofduty2|cod2|call.of.duty" `
+Select-String -Path "." -Recurse -Pattern "justice|cod2|call.of.duty" `
     -CaseSensitive:$false `
     -Exclude "*.lock", "*.pyc", "MEMORY.md" `
     | Where-Object { $_.Path -notmatch "\\.git\\" } `

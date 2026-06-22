@@ -1,4 +1,4 @@
-# Slice 1: Foundation & First Login — Implementation Plan
+﻿# Slice 1: Foundation & First Login — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -17,7 +17,7 @@ This slice corresponds to Sections 3 (architecture), 4.1 (audit_log, system_sett
 ## File structure produced by this slice
 
 ```
-callofduty2/
+justice/
 ├── .gitignore
 ├── .env.example
 ├── README.md
@@ -152,7 +152,7 @@ callofduty2/
 - [ ] **Step 1: Initialise the repo**
 
 Run: `git init`
-Expected: `Initialized empty Git repository in C:/Users/Shoham/workspace/callofduty2/.git/`
+Expected: `Initialized empty Git repository in C:/Users/Shoham/workspace/justice/.git/`
 
 - [ ] **Step 2: Create `.gitignore`**
 
@@ -214,7 +214,7 @@ VITE_API_BASE=http://localhost:8000/api
 - [ ] **Step 4: Create `README.md`**
 
 ```markdown
-# Call of Duty 2 — Army Duty Management System
+# Justice — Army Duty Management System
 
 Self-hostable system for assigning duties (תורנויות) to soldiers fairly,
 with audit-logged manual workflows in v1 and a fairness-aware CP-SAT
@@ -303,7 +303,7 @@ git commit -m "chore: add docker-compose for local postgres"
 
 ```toml
 [project]
-name = "cod2-backend"
+name = "justice-backend"
 version = "0.1.0"
 description = "Army duty management backend"
 requires-python = ">=3.12"
@@ -1486,7 +1486,7 @@ from app.settings import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Justice API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -1843,7 +1843,7 @@ from app.settings import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Justice API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(
@@ -2027,8 +2027,8 @@ tests
 
 - [ ] **Step 3: Build it to verify the file works**
 
-Run: `docker build -t cod2-backend:dev backend/`
-Expected: successful build ending in `naming to docker.io/library/cod2-backend:dev`.
+Run: `docker build -t justice-backend:dev backend/`
+Expected: successful build ending in `naming to docker.io/library/justice-backend:dev`.
 
 - [ ] **Step 4: Commit**
 
@@ -2055,7 +2055,7 @@ git commit -m "chore(backend): production dockerfile"
 
 ```json
 {
-  "name": "cod2-frontend",
+  "name": "justice-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -2769,7 +2769,7 @@ test-results
 
 - [ ] **Step 3: Build to verify**
 
-Run: `docker build -t cod2-frontend:dev frontend/`
+Run: `docker build -t justice-frontend:dev frontend/`
 Expected: successful multi-stage build.
 
 - [ ] **Step 4: Commit**

@@ -1,4 +1,4 @@
-# Slice 2: Hierarchy & Soldiers — Implementation Plan
+﻿# Slice 2: Hierarchy & Soldiers — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -98,7 +98,7 @@ frontend/
 - Frontend commands run from `frontend/` with `pnpm`.
 - "Run X. Expected: Y." — actually run it and confirm before continuing.
 - TDD: write the failing test, see it fail, implement, see it pass, commit. One commit per task (small).
-- Repo root is `C:\Users\Shoham\workspace\callofduty2`. Work happens on branch `slice-2-hierarchy-and-soldiers` (already created off `master`).
+- Repo root is `C:\Users\Shoham\workspace\justice`. Work happens on branch `slice-2-hierarchy-and-soldiers` (already created off `master`).
 
 ---
 
