@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="Call of Duty 2 API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None,
+        title="Justice API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None,
         lifespan=lifespan,
     )
     app.state.limiter = limiter

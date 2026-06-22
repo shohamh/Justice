@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "bot*"]
 
 [project]
-name = "cod2-backend"
+name = "justice-backend"
 version = "0.1.0"
 description = "Army duty management backend"
 requires-python = ">=3.12"
