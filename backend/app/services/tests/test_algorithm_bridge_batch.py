@@ -5,6 +5,7 @@ from datetime import date
 from app.algorithm.types import (
     BatchResult,
     BatchShiftFill,
+    SaturationCluster,
 )
 from app.services.algorithm_bridge import _postprocess_batch_results
 
@@ -76,3 +77,42 @@ def test_postprocess_partial_fill():
     sf = processed[0].shifts[0]
     assert sf.required_count == 2
     assert sf.assigned_count == 1
+
+
+def test_postprocess_remaps_saturation_cluster_shift_ids():
+    """SaturationCluster.shift_ids hold block UUIDs (same as BatchShiftFill.shift_id)
+    until the bridge remaps them to real DutyShift UUIDs."""
+    shift_id = uuid.uuid4()
+    block_a = uuid.uuid4()
+    competing_type = uuid.uuid4()
+    block_to_shift = {block_a: shift_id}
+
+    br = BatchResult(
+        batch_index=0,
+        component_index=0,
+        date_from=date(2026, 7, 6),
+        date_to=date(2026, 7, 14),
+        duty_count=1,
+        soldier_count=2,
+        assigned_count=0,
+        unassigned_count=1,
+        outcome="FEASIBLE",
+        relaxations=["R→20"],
+        wall_time_seconds=0.1,
+        shifts=[BatchShiftFill(shift_id=block_a, required_count=1, assigned_count=0)],
+        saturation_clusters=[
+            SaturationCluster(
+                date_from=date(2026, 7, 6), date_to=date(2026, 7, 14),
+                shift_ids=[block_a], eligible_pool_size=57, free_count=0,
+                competing_duty_types=[(competing_type, 42)],
+            )
+        ],
+    )
+
+    processed = _postprocess_batch_results([br], block_to_shift)
+
+    assert len(processed[0].saturation_clusters) == 1
+    cluster = processed[0].saturation_clusters[0]
+    assert cluster.shift_ids == [shift_id]
+    assert cluster.eligible_pool_size == 57
+    assert cluster.competing_duty_types == [(competing_type, 42)]

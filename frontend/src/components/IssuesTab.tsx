@@ -1,4 +1,4 @@
-import { AlgorithmJob, BatchResult } from "../api/algorithm";
+import { AlgorithmJob, BatchResult, SaturationCluster } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { DutyShift } from "../api/shifts";
 import FailurePanel from "./FailurePanel";
@@ -23,18 +23,44 @@ interface UnfilledShift {
   reason: string;
 }
 
+function buildClusterMap(batchResults: BatchResult[]): Map<string, SaturationCluster> {
+  const map = new Map<string, SaturationCluster>();
+  for (const br of batchResults) {
+    for (const sc of br.saturation_clusters ?? []) {
+      for (const sid of sc.shift_ids) {
+        map.set(sid, sc);
+      }
+    }
+  }
+  return map;
+}
+
+function describeCluster(cluster: SaturationCluster, dutyTypeNames: Record<string, string>): string {
+  const competing = cluster.competing_duty_types
+    .map((c) => `${c.count} ב${dutyTypeNames[c.duty_type_id] ?? c.duty_type_id.slice(0, 8)}`)
+    .join(", ");
+  const base = `${cluster.eligible_pool_size} חיילים כשירים לתקופה זו (${cluster.date_from} – ${cluster.date_to}) משובצים כבר במלואם`;
+  return competing
+    ? `${base} (${competing}) — שקול לשנות את תאריכי המשמרת או להרחיב את הכשירות`
+    : `${base} — שקול לשנות את תאריכי המשמרת או להרחיב את הכשירות`;
+}
+
 function collectUnfilledShifts(
   batchResults: BatchResult[],
   shiftNames: Record<string, string>,
   shiftsById: Record<string, DutyShift>,
+  clusterMap: Map<string, SaturationCluster>,
+  dutyTypeNames: Record<string, string>,
 ): UnfilledShift[] {
   const result: UnfilledShift[] = [];
   for (const br of batchResults) {
     for (const sf of br.shifts) {
       const missing = sf.required_count - sf.assigned_count;
       if (missing <= 0) continue;
+      const cluster = sf.shift_id ? clusterMap.get(sf.shift_id) : undefined;
       let reason = "לא ידוע";
-      if (br.outcome === "INFEASIBLE") reason = "אין פתרון אפשרי — חסרים חיילים כשירים או קיימים אילוצים מנוגדים";
+      if (cluster) reason = describeCluster(cluster, dutyTypeNames);
+      else if (br.outcome === "INFEASIBLE") reason = "אין פתרון אפשרי — חסרים חיילים כשירים או קיימים אילוצים מנוגדים";
       else if (br.relaxations.length > 0) reason = `מגבלות הוגמשו (${br.relaxations.join(", ")}) אך לא נמצאו מספיק חיילים`;
       else reason = "אין מספיק חיילים כשירים לאותה תקופה";
       const shift = sf.shift_id ? shiftsById[sf.shift_id] : undefined;
@@ -71,6 +97,8 @@ function analyzeBatches(batchResults: BatchResult[]): DiagnosticResult {
 
   for (const br of batchResults) {
     if (br.outcome === "INFEASIBLE") infeasibleCount++;
+    const saturated = (br.saturation_clusters ?? []).length > 0;
+    if (saturated) continue;
     for (const rel of br.relaxations) {
       const rMatch = rel.match(/^R→(\d+)$/);
       const tMatch = rel.match(/^T→(\d+)$/);
@@ -89,9 +117,11 @@ function analyzeBatches(batchResults: BatchResult[]): DiagnosticResult {
   return { rCeilingHitCount, tCeilingHitCount, infeasibleCount, currentRCeiling: maxR, currentTCeiling: maxT };
 }
 
-export default function IssuesTab({ job, dutyTypes: _dutyTypes, shiftNames, shiftsById, onRerun }: Props) {
+export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRerun }: Props) {
   const batchResults = job.batch_results ?? [];
-  const unfilledShifts = collectUnfilledShifts(batchResults, shiftNames, shiftsById);
+  const dutyTypeNames = Object.fromEntries(dutyTypes.map((dt) => [dt.id, dt.name]));
+  const clusterMap = buildClusterMap(batchResults);
+  const unfilledShifts = collectUnfilledShifts(batchResults, shiftNames, shiftsById, clusterMap, dutyTypeNames);
   const diagnostics = analyzeBatches(batchResults);
 
   const hasAnyIssue =

@@ -765,7 +765,15 @@ def _postprocess_batch_results(
             )
             for sid, req in shift_required.items()
         ]
-        processed.append(dataclasses.replace(br, shifts=aggregated_shifts))
+        remapped_clusters = [
+            dataclasses.replace(
+                sc, shift_ids=[block_to_shift.get(sid, sid) for sid in sc.shift_ids]
+            )
+            for sc in br.saturation_clusters
+        ]
+        processed.append(dataclasses.replace(
+            br, shifts=aggregated_shifts, saturation_clusters=remapped_clusters,
+        ))
     return processed
 
 
@@ -790,6 +798,19 @@ def _br_to_dict(br) -> dict:
                 "assigned_count": sf.assigned_count,
             }
             for sf in br.shifts
+        ],
+        "saturation_clusters": [
+            {
+                "date_from": sc.date_from.isoformat(),
+                "date_to": sc.date_to.isoformat(),
+                "shift_ids": [str(sid) for sid in sc.shift_ids],
+                "eligible_pool_size": sc.eligible_pool_size,
+                "free_count": sc.free_count,
+                "competing_duty_types": [
+                    {"duty_type_id": str(dt), "count": count} for dt, count in sc.competing_duty_types
+                ],
+            }
+            for sc in br.saturation_clusters
         ],
     }
 

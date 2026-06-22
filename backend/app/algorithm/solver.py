@@ -14,6 +14,7 @@ from app.algorithm.model import (
     build_fairness_objective,
     build_model,
 )
+from app.algorithm.saturation import analyze_saturation
 from app.algorithm.types import (
     Assignment,
     BatchResult,
@@ -459,6 +460,210 @@ def _relax_step(current: SolverSettings) -> str | None:
     return None
 
 
+def _ladder_positions(settings: SolverSettings) -> list[tuple[list[str], SolverSettings]]:
+    """Cumulative relaxation steps from `settings`' base R/T up to its ceilings.
+
+    Reuses `_relax_step` so labels/order exactly match the existing graduated
+    ladder (R first in hops of 2 to relax_r_ceiling, then T to relax_t_ceiling).
+    Returns [(cumulative_labels, settings_at_that_position), ...]. Position 0
+    (the unrelaxed base) is NOT included — callers try that separately first,
+    since it's the cheap/common case and needs no ladder at all.
+    """
+    positions: list[tuple[list[str], SolverSettings]] = []
+    current = dataclasses.replace(settings)
+    labels: list[str] = []
+    while True:
+        label = _relax_step(current)
+        if label is None:
+            break
+        labels = labels + [label]
+        positions.append((labels, dataclasses.replace(current)))
+    return positions
+
+
+RemapRdFn = Callable[[Sequence[SoldierInput], Sequence[DutyBlock]], dict[tuple[int, int], int] | None]
+
+
+def _solve_component_once(
+    full_pool: Sequence[SoldierInput],
+    component_duties: Sequence[DutyBlock],
+    carry: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    remap_rd: RemapRdFn,
+    cancel_event: threading.Event | None,
+) -> SolverResult:
+    """One complete attempt to cover `component_duties` at `settings`' R/T.
+
+    Phase 0: whole-component hard `==1` solve (cheap path when fully coverable).
+    Phase 1: disjoint effort-sorted rounds at the same R/T (no relaxation).
+    Phase 2: one soft-coverage pass over whatever's still unassigned — also no
+    relaxation here; trying a *higher* R/T is the caller's job (see
+    `_search_relaxation_ladder`), which calls this function again from scratch.
+
+    Pure: does not mutate `full_pool` or `carry`. Returns assignments
+    referencing the original duty/soldier ids, scoped to this attempt only.
+    """
+    pool = [dataclasses.replace(s) for s in full_pool]
+    soldier_by_id = {s.id: s for s in pool}
+    duty_by_id = {d.id: d for d in component_duties}
+    local_carry = list(carry)
+    residual = list(component_duties)
+    assignments: list[Assignment] = []
+    seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
+
+    def _absorb_local(result: SolverResult) -> None:
+        for a in result.assignments:
+            d = duty_by_id[a.duty_id]
+            local_carry.append(ExistingAssignment(
+                soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
+                start_date=d.start_date, end_date=d.end_date, is_reserve=d.is_reserve,
+            ))
+            s = soldier_by_id[a.soldier_id]
+            s.effort_offset += s.effort_per_milli * _block_score(d)
+            assignments.append(a)
+        covered = {a.duty_id for a in result.assignments}
+        residual[:] = [d for d in residual if d.id not in covered]
+
+    # ── Phase 0: single hard-coverage solve of the WHOLE component ─────────
+    solver0, x0, st0 = _solve_with_settings(
+        pool, residual, local_carry, settings, reserve_dist=remap_rd(pool, residual),
+        cancel_event=cancel_event,
+    )
+    if cancel_event is not None and cancel_event.is_set():
+        return SolverResult(assignments=[], status="CANCELLED", seed=seed, relaxed=[])
+    if solver0.StatusName(st0) in ("OPTIMAL", "FEASIBLE"):
+        phase0 = [
+            Assignment(duty_id=residual[di].id, soldier_id=pool[si].id)
+            for (di, si), v in x0.items() if solver0.Value(v)
+        ]
+        _absorb_local(SolverResult(assignments=phase0, status=solver0.StatusName(st0), seed=seed, relaxed=[]))
+        return SolverResult(assignments=assignments, status="OPTIMAL", seed=seed, relaxed=[])
+
+    # ── Phase 1: disjoint effort-sorted rounds at this attempt's R/T ───────
+    base_settings = dataclasses.replace(settings, time_limit_seconds=settings.batch_time_limit_seconds)
+    group_pool = sorted(pool, key=lambda s: (s.effort_offset, str(s.id)))
+    rsc = max(1, settings.round_soldier_count)
+    for gi in range(0, len(group_pool), rsc):
+        if not residual:
+            break
+        group = group_pool[gi:gi + rsc]
+        res = _solve_soft_coverage(
+            group, residual, local_carry, base_settings, reserve_dist=remap_rd(group, residual),
+            cancel_event=cancel_event,
+        )
+        if res.status == "CANCELLED":
+            return SolverResult(assignments=[], status="CANCELLED", seed=res.seed, relaxed=[])
+        _absorb_local(res)
+
+    # ── Phase 2: full pool, one soft-coverage pass over the leftover ───────
+    if residual:
+        res = _solve_soft_coverage(
+            pool, residual, local_carry, base_settings, reserve_dist=remap_rd(pool, residual),
+            cancel_event=cancel_event,
+        )
+        if res.status == "CANCELLED":
+            return SolverResult(assignments=[], status="CANCELLED", seed=res.seed, relaxed=[])
+        if res.assignments:
+            _absorb_local(res)
+
+    if not assignments:
+        status = "INFEASIBLE" if component_duties else "OPTIMAL"
+    elif residual:
+        status = "FEASIBLE"
+    else:
+        status = "OPTIMAL"
+    return SolverResult(assignments=assignments, status=status, seed=seed, relaxed=[])
+
+
+def _probe_with_retry(
+    full_pool: Sequence[SoldierInput],
+    component_duties: Sequence[DutyBlock],
+    carry: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    remap_rd: RemapRdFn,
+    cancel_event: threading.Event | None,
+) -> SolverResult:
+    """Probe at `settings`' R/T; if it falls short of full coverage, retry once
+    with doubled time budgets before accepting the shortfall. This guards
+    against wall-clock jitter near a time limit producing a false "can't be
+    covered" verdict for this ladder position (don't accept 1-duty noise).
+    """
+    result = _solve_component_once(full_pool, component_duties, carry, settings, remap_rd, cancel_event)
+    if result.status == "CANCELLED" or len(result.assignments) == len(component_duties):
+        return result
+    extended = dataclasses.replace(
+        settings,
+        time_limit_seconds=settings.time_limit_seconds * 2,
+        batch_time_limit_seconds=settings.batch_time_limit_seconds * 2,
+    )
+    retry = _solve_component_once(full_pool, component_duties, carry, extended, remap_rd, cancel_event)
+    if retry.status == "CANCELLED":
+        return retry
+    return retry if len(retry.assignments) > len(result.assignments) else result
+
+
+def _search_relaxation_ladder(
+    full_pool: Sequence[SoldierInput],
+    component_duties: Sequence[DutyBlock],
+    carry: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    remap_rd: RemapRdFn,
+    cancel_event: threading.Event | None,
+) -> tuple[SolverResult, list[str]]:
+    """Binary-search the graduated R/T relaxation ladder for the lowest position
+    that fully covers `component_duties`, doing a full Phase0+1+2 restart per
+    probe (not a residual patch — see `_solve_component_once`). Each probe gets
+    an extended-time retry (see `_probe_with_retry`) before its result is
+    trusted. Returns (best_result, relax_labels_used); `best_result` never
+    regresses to a worse attempt even while searching for a cheaper position.
+    """
+    def better(a: SolverResult, b: SolverResult) -> SolverResult:
+        total = len(component_duties)
+        if len(a.assignments) == total:
+            return a
+        if len(b.assignments) == total:
+            return b
+        return a if len(a.assignments) >= len(b.assignments) else b
+
+    base_result = _probe_with_retry(full_pool, component_duties, carry, settings, remap_rd, cancel_event)
+    if base_result.status == "CANCELLED":
+        return base_result, []
+    best = base_result
+    if len(best.assignments) == len(component_duties):
+        return best, []
+
+    ladder = _ladder_positions(settings)
+    if not ladder:
+        return best, []
+
+    top_labels, top_settings = ladder[-1]
+    top_result = _probe_with_retry(full_pool, component_duties, carry, top_settings, remap_rd, cancel_event)
+    if top_result.status == "CANCELLED":
+        return top_result, []
+    best = better(best, top_result)
+    if len(top_result.assignments) < len(component_duties):
+        # Proven (after retry) shortfall even at the ceiling — searching the
+        # middle of the ladder can only do worse than the ceiling did.
+        return best, top_labels
+
+    # Ceiling fully covers — binary-search [0, len(ladder)-2] for a cheaper position.
+    chosen_labels, chosen_result = top_labels, top_result
+    lo, hi = 0, len(ladder) - 2
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        labels, mid_settings = ladder[mid]
+        mid_result = _probe_with_retry(full_pool, component_duties, carry, mid_settings, remap_rd, cancel_event)
+        if mid_result.status == "CANCELLED":
+            return mid_result, []
+        best = better(best, mid_result)
+        if len(mid_result.assignments) == len(component_duties):
+            chosen_labels, chosen_result = labels, mid_result
+            hi = mid - 1
+        else:
+            lo = mid + 1
+    return chosen_result, chosen_labels
+
+
 def _effort_round_solve(
     soldiers: Sequence[SoldierInput],
     duties: Sequence[DutyBlock],
@@ -485,10 +690,6 @@ def _effort_round_solve(
     # Index maps for reserve_dist remapping (global→local within any sub-problem).
     global_duty_idx: dict[object, int] = {d.id: i for i, d in enumerate(duties)}
     global_sol_idx: dict[object, int] = {s.id: i for i, s in enumerate(work)}
-
-    base_settings = dataclasses.replace(
-        settings, time_limit_seconds=settings.batch_time_limit_seconds
-    )
 
     pairs = _eligible_pairs(work, duties)
     components = _connected_components(len(duties), len(work), pairs)
@@ -557,120 +758,31 @@ def _effort_round_solve(
             continue
 
         t0 = time.monotonic()
-        assignments_before = len(all_assignments)
-        component_relaxed: list[str] = []
-
         full_pool = [work[si] for si in soldier_idxs]
-        residual = [duties[di] for di in duty_idxs]
 
-        def _absorb(result: SolverResult) -> None:
-            for a in result.assignments:
-                d = duty_by_id[a.duty_id]
-                carry.append(ExistingAssignment(
-                    soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
-                    start_date=d.start_date, end_date=d.end_date,
-                    is_reserve=d.is_reserve,
-                ))
-                s = soldier_by_id[a.soldier_id]
-                s.effort_offset += s.effort_per_milli * _block_score(d)
-                all_assignments.append(a)
-            covered = {a.duty_id for a in result.assignments}
-            residual[:] = [d for d in residual if d.id not in covered]
-
-        # ── Phase 0: single hard-coverage solve of the WHOLE component ────────
-        # If the component is fully coverable at base caps, a single hard `==1`
-        # solve assigns every duty fast — far cheaper than the soft rounds. Uses
-        # the FULL time budget (settings, not base_settings). On INFEASIBLE or
-        # timeout we absorb nothing and fall through to the soft rounds.
-        solver0, x0, st0 = _solve_with_settings(
-            full_pool, residual, carry, settings,
-            reserve_dist=_remap_rd(full_pool, residual),
-            cancel_event=cancel_event,
+        component_result, component_relaxed = _search_relaxation_ladder(
+            full_pool, component_duties, carry, settings, _remap_rd, cancel_event,
         )
-        if cancel_event is not None and cancel_event.is_set():
+        if component_result.status == "CANCELLED":
             return SolverResult(
                 assignments=[], status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed,
                 batch_results=batch_results,
             )
-        if solver0.StatusName(st0) in ("OPTIMAL", "FEASIBLE"):
-            # Hard ==1 means every component duty is assigned.
-            phase0 = [
-                Assignment(duty_id=residual[di].id, soldier_id=full_pool[si].id)
-                for (di, si), v in x0.items()
-                if solver0.Value(v)
-            ]
-            _absorb(SolverResult(
-                assignments=phase0, status=solver0.StatusName(st0),
-                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
-                relaxed=[],
+
+        assigned_ids_here = {a.duty_id for a in component_result.assignments}
+        for a in component_result.assignments:
+            d = duty_by_id[a.duty_id]
+            carry.append(ExistingAssignment(
+                soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
+                start_date=d.start_date, end_date=d.end_date, is_reserve=d.is_reserve,
             ))
-            assigned_here = len(all_assignments) - assignments_before
-            assigned_ids_here = {a.duty_id for a in all_assignments[assignments_before:]}
-            batch_results.append(BatchResult(
-                batch_index=len(batch_results),
-                component_index=done - 1,
-                date_from=min(d.start_date for d in component_duties),
-                date_to=max(d.end_date for d in component_duties),
-                duty_count=len(component_duties),
-                soldier_count=len(full_pool),
-                assigned_count=assigned_here,
-                unassigned_count=len(component_duties) - assigned_here,
-                outcome=solver0.StatusName(st0),
-                relaxations=[],
-                wall_time_seconds=round(time.monotonic() - t0, 3),
-                shifts=[
-                    BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
-                    for d in component_duties
-                ],
-            ))
-            if progress_cb:
-                progress_cb(done, n_components)
-            continue
-        # INFEASIBLE / UNKNOWN / timeout: absorb nothing, run the soft rounds.
+            s = soldier_by_id[a.soldier_id]
+            s.effort_offset += s.effort_per_milli * _block_score(d)
+            all_assignments.append(a)
 
-        # ── Phase 1: disjoint effort-sorted rounds at hard BASE caps ──────────
-        group_pool = sorted(full_pool, key=lambda s: (s.effort_offset, str(s.id)))
-        rsc = max(1, settings.round_soldier_count)
-        for gi in range(0, len(group_pool), rsc):
-            if not residual:
-                break
-            group = group_pool[gi:gi + rsc]
-            res = _solve_soft_coverage(
-                group, residual, carry, base_settings, reserve_dist=_remap_rd(group, residual),
-                cancel_event=cancel_event,
-            )
-            if res.status == "CANCELLED":
-                return SolverResult(
-                    assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
-                    batch_results=batch_results,
-                )
-            _absorb(res)
-
-        # ── Phase 2: full pool + graduated relaxation on residual ─────────────
-        if residual:
-            current = dataclasses.replace(base_settings)
-            while residual:
-                res = _solve_soft_coverage(
-                    full_pool, residual, carry, current, reserve_dist=_remap_rd(full_pool, residual),
-                    cancel_event=cancel_event,
-                )
-                if res.status == "CANCELLED":
-                    return SolverResult(
-                        assignments=[], status="CANCELLED", seed=res.seed, relaxed=relaxed,
-                        batch_results=batch_results,
-                    )
-                if res.assignments:
-                    _absorb(res)
-                    if not residual:
-                        break
-                label = _relax_step(current)
-                if label is None:
-                    break
-                component_relaxed.append(label)
-
-        assigned_here = len(all_assignments) - assignments_before
+        assigned_here = len(component_result.assignments)
         total_here = len(component_duties)
         if assigned_here == 0 and total_here > 0:
             comp_outcome = "INFEASIBLE"
@@ -678,7 +790,11 @@ def _effort_round_solve(
             comp_outcome = "FEASIBLE"
         else:
             comp_outcome = "OPTIMAL"
-        assigned_ids_here = {a.duty_id for a in all_assignments[assignments_before:]}
+        still_unassigned = [d for d in component_duties if d.id not in assigned_ids_here]
+        saturation_clusters = (
+            analyze_saturation(still_unassigned, full_pool, all_assignments, carry, duty_by_id)
+            if still_unassigned else []
+        )
         batch_results.append(BatchResult(
             batch_index=len(batch_results),
             component_index=done - 1,
@@ -695,6 +811,7 @@ def _effort_round_solve(
                 BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=1 if d.id in assigned_ids_here else 0)
                 for d in component_duties
             ],
+            saturation_clusters=saturation_clusters,
         ))
         relaxed.extend(component_relaxed)
 

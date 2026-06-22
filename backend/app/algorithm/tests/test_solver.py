@@ -979,6 +979,34 @@ def test_effort_rounds_two_groups_cover_all() -> None:
     assert len(res.assignments) == 8
 
 
+def test_effort_round_solve_attaches_saturation_clusters_on_shortfall() -> None:
+    # 1 soldier, 1 existing commitment covering the same window as 1 unassignable
+    # duty (same duty_type both real, T cap of 1 already consumed) — the
+    # eligible pool (1 soldier) is fully busy, so the leftover duty must carry
+    # a saturation cluster naming the soldier's existing duty type.
+    competing_type = uuid4()
+    saturated_type = uuid4()
+    soldier_id = uuid4()
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100)]
+    base = date(2026, 6, 1)
+    existing = [ExistingAssignment(soldier_id=soldier_id, duty_type_id=competing_type,
+                                   start_date=base, end_date=base + timedelta(days=1), is_reserve=False)]
+    duties = [_single_day_duty(base, saturated_type, is_reserve=False)]
+    from app.algorithm.solver import _effort_round_solve
+    res = _effort_round_solve(
+        soldiers, duties, existing,
+        SolverSettings(T=1, Wt=2, R=1, Wr=2, relax_t_ceiling=1, relax_r_ceiling=1,
+                      round_soldier_count=50, batch_time_limit_seconds=10, time_limit_seconds=10),
+        reserve_dist=None, cancel_event=None,
+    )
+    assert len(res.assignments) == 0
+    assert len(res.batch_results) == 1
+    clusters = res.batch_results[0].saturation_clusters
+    assert len(clusters) == 1
+    assert clusters[0].free_count == 0
+    assert dict(clusters[0].competing_duty_types) == {competing_type: 1}
+
+
 def test_spreads_duties_evenly_when_soldiers_outnumber_duties() -> None:
     """Regression for the 105%-CV production bug: with uniform effort rates and
     duties < soldiers, the fair split gives everyone at most 1 duty (5 get none,
