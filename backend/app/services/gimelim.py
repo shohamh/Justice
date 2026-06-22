@@ -494,13 +494,14 @@ def commit_gimelim(
 
     rest_days: int = payload["rest_days"]
     reason: str | None = payload["reason"]
+    from_date_stored = date.fromisoformat(payload["from_date"])
     notifications_queued = 0
 
     # ── Step 1: Dismiss primary A ──────────────────────────────────────────
     dismissal = dismiss_primary(
         session,
         assignment=primary_a,
-        from_date=primary_a.start_date,
+        from_date=from_date_stored,
         to_date=primary_a.end_date - timedelta(days=1),
         reason=reason,
         actor_id=actor_id,
@@ -522,7 +523,7 @@ def commit_gimelim(
     call_up_reserve(
         session,
         assignment=reserve_b,
-        from_date=primary_a.start_date,
+        from_date=from_date_stored,
         to_date=call_up_last,
         actor_id=actor_id,
     )

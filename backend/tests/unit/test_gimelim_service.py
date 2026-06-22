@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.db.models import (
     DutyAssignment,
+    DutyDismissal,
     DutyLocation,
     DutyReserveLink,
     DutyShift,
@@ -412,9 +413,10 @@ def test_commit_full_flow(admin_session):
     assert new_a.duty_shift_id == future_shift.id
     assert new_a.is_reserve is False
 
-    # Verify reserve B was called up
+    # Verify reserve B was called up (from_date defaults to today when not
+    # passed to preview_gimelim)
     admin_session.refresh(reserve)
-    assert reserve.called_up_from == shift_start
+    assert reserve.called_up_from == date.today()
 
     # Verify token is consumed (second commit should fail)
     with pytest.raises(GimelimError, match="token_not_found"):
@@ -424,6 +426,45 @@ def test_commit_full_flow(admin_session):
             preview_token=preview.preview_token,
             actor_id=actor.id,
         )
+
+
+def test_commit_uses_backdated_from_date(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd9", "ActorFD9")
+    soldier_a = _make_soldier(admin_session, "gimfd9", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd10", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    backdated = date(2026, 6, 11)
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="medical leave",
+        actor_id=actor.id,
+        from_date=backdated,
+    )
+
+    result = commit_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        preview_token=preview.preview_token,
+        actor_id=actor.id,
+    )
+
+    admin_session.refresh(reserve)
+    assert reserve.called_up_from == backdated
+    assert reserve.called_up_to == date(2026, 6, 14)  # shift.end_date - 1 day, unchanged
+
+    dismissal = admin_session.get(DutyDismissal, result.dismissal_id)
+    assert dismissal.dismissed_from == backdated
+    assert dismissal.dismissed_to == date(2026, 6, 14)
 
 
 # ── Cap warning tests ─────────────────────────────────────────────────────────
