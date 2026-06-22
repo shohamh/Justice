@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import (
+    AuditLog,
     DutyAssignment,
     DutyDismissal,
     DutyLocation,
@@ -465,6 +466,46 @@ def test_commit_uses_backdated_from_date(admin_session):
     dismissal = admin_session.get(DutyDismissal, result.dismissal_id)
     assert dismissal.dismissed_from == backdated
     assert dismissal.dismissed_to == date(2026, 6, 14)
+
+
+def test_commit_audit_log_uses_backdated_from_date(admin_session):
+    dt, loc = _seed_base(admin_session)
+    actor = _make_soldier(admin_session, "actfd11", "ActorFD11")
+    soldier_a = _make_soldier(admin_session, "gimfd11", "A")
+    soldier_b = _make_soldier(admin_session, "gimfd12", "B")
+
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc,
+        start=date(2026, 6, 10), end=date(2026, 6, 15),
+        primary_soldier=soldier_a, reserve_soldier=soldier_b,
+    )
+
+    backdated = date(2026, 6, 11)
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="medical leave",
+        actor_id=actor.id,
+        from_date=backdated,
+    )
+
+    commit_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        preview_token=preview.preview_token,
+        actor_id=actor.id,
+    )
+
+    audit_entry = admin_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "gimelim.call_up",
+            AuditLog.entity_id == reserve.id,
+        )
+    ).scalar_one()
+    assert audit_entry.after["called_up_from"] == backdated.isoformat()
+    assert audit_entry.after["called_up_to"] == date(2026, 6, 14).isoformat()
 
 
 # ── Cap warning tests ─────────────────────────────────────────────────────────

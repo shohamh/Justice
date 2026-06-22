@@ -534,7 +534,7 @@ def commit_gimelim(
         action="gimelim.call_up",
         entity_type="duty_assignment",
         entity_id=reserve_b.id,
-        after={"called_up_from": primary_a.start_date.isoformat(), "called_up_to": call_up_last.isoformat()},
+        after={"called_up_from": from_date_stored.isoformat(), "called_up_to": call_up_last.isoformat()},
     )
 
     # Handle reserve_fate setting for B
