@@ -386,20 +386,129 @@ def pending(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[SwapOut]:
-    # Only DMs and admins may use this endpoint at all.
     if user.role not in ("admin", "duty_manager", "commander"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     all_pending = svc.list_pending_approval(session)
-    if user.role == "admin":
-        return [_out(r, session) for r in all_pending]
-    # Filter to swaps where the requester is in the caller's scope.
-    roots = scope_root_ids(session, user)
-    out = []
+    if not all_pending:
+        return []
+
+    # Batch-load all related data in a few queries instead of N*8 session.get() calls.
+    soldier_ids = set()
+    assignment_ids = set()
     for r in all_pending:
-        node = _swap_request_node(session, r.id)
-        if can(user, Action.SWAP_APPROVE, target_node=node, roots=roots):
-            out.append(_out(r, session))
-    return out
+        soldier_ids.add(r.requesting_soldier_id)
+        if r.covering_soldier_id:
+            soldier_ids.add(r.covering_soldier_id)
+        assignment_ids.add(r.duty_assignment_id)
+
+    soldiers = {s.id: s for s in session.execute(
+        select(Soldier).where(Soldier.id.in_(soldier_ids))
+    ).scalars().all()}
+
+    node_ids = {s.hierarchy_node_id for s in soldiers.values() if s.hierarchy_node_id}
+    nodes = {n.id: n for n in session.execute(
+        select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+    ).scalars().all()} if node_ids else {}
+
+    # Also load commanders referenced by nodes.
+    commander_ids = {n.commander_id for n in nodes.values() if n.commander_id} - soldier_ids
+    if commander_ids:
+        commanders = {s.id: s for s in session.execute(
+            select(Soldier).where(Soldier.id.in_(commander_ids))
+        ).scalars().all()}
+        soldiers.update(commanders)
+
+    assignments = {a.id: a for a in session.execute(
+        select(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids))
+    ).scalars().all()}
+
+    dt_ids = {a.duty_type_id for a in assignments.values()}
+    duty_types = {dt.id: dt for dt in session.execute(
+        select(DutyType).where(DutyType.id.in_(dt_ids))
+    ).scalars().all()} if dt_ids else {}
+
+    loc_ids = {a.duty_location_id for a in assignments.values()}
+    duty_locations = {loc.id: loc for loc in session.execute(
+        select(DutyLocation).where(DutyLocation.id.in_(loc_ids))
+    ).scalars().all()} if loc_ids else {}
+
+    def _requester_node(r: SwapRequest) -> HierarchyNode | None:
+        s = soldiers.get(r.requesting_soldier_id)
+        if s is None or s.hierarchy_node_id is None:
+            return None
+        return nodes.get(s.hierarchy_node_id)
+
+    if user.role == "admin":
+        return [_out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations) for r in all_pending]
+
+    roots = scope_root_ids(session, user)
+    return [
+        _out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations)
+        for r in all_pending
+        if can(user, Action.SWAP_APPROVE, target_node=_requester_node(r), roots=roots)
+    ]
+
+
+def _out_bulk(
+    r: SwapRequest,
+    soldiers: dict,
+    nodes: dict,
+    assignments: dict,
+    duty_types: dict,
+    duty_locations: dict,
+    warnings: list[str] | None = None,
+) -> SwapOut:
+    """Build SwapOut from pre-loaded dicts — zero session.get() calls."""
+    def _soldier_name(sid):
+        s = soldiers.get(sid)
+        return s.full_name if s else None
+
+    def _commander_name(sid):
+        s = soldiers.get(sid)
+        if s is None or s.hierarchy_node_id is None:
+            return None
+        node = nodes.get(s.hierarchy_node_id)
+        if node is None or node.commander_id is None or node.commander_id == sid:
+            return None
+        commander = soldiers.get(node.commander_id)
+        return commander.full_name if commander else None
+
+    def _node_name(sid):
+        s = soldiers.get(sid)
+        if s is None or s.hierarchy_node_id is None:
+            return None
+        node = nodes.get(s.hierarchy_node_id)
+        return node.name if node else None
+
+    assignment = assignments.get(r.duty_assignment_id)
+    dt = duty_types.get(assignment.duty_type_id) if assignment else None
+    loc = duty_locations.get(assignment.duty_location_id) if assignment else None
+
+    return SwapOut(
+        id=r.id, duty_assignment_id=r.duty_assignment_id, duty_date=r.duty_date,
+        requesting_soldier_id=r.requesting_soldier_id,
+        target_soldier_id=r.target_soldier_id,
+        covering_soldier_id=r.covering_soldier_id,
+        status=r.status, reason=r.reason,
+        requester_side_approved=r.requester_side_approved,
+        covering_side_approved=r.covering_side_approved,
+        decision_note=r.decision_note,
+        offered_assignment_ids=[str(x) for x in (r.offered_assignment_ids or [])],
+        created_at=r.created_at,
+        duty_type_name=dt.name if dt else None,
+        duty_location_name=loc.name if loc else None,
+        duty_type_id=assignment.duty_type_id if assignment else None,
+        duty_location_id=assignment.duty_location_id if assignment else None,
+        duty_start_date=assignment.start_date if assignment else None,
+        duty_end_date=assignment.end_date if assignment else None,
+        duty_shift_id=assignment.duty_shift_id if assignment else None,
+        warnings=warnings or [],
+        requesting_soldier_name=_soldier_name(r.requesting_soldier_id),
+        covering_soldier_name=_soldier_name(r.covering_soldier_id),
+        requesting_commander_name=_commander_name(r.requesting_soldier_id),
+        covering_commander_name=_commander_name(r.covering_soldier_id),
+        requesting_soldier_node_name=_node_name(r.requesting_soldier_id),
+    )
 
 
 def _load_swap_and_node(
