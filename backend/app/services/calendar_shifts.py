@@ -88,7 +88,7 @@ def get_calendar_shifts(
 
     shift_query = select(DutyShift).where(DutyShift.id.in_(subtree_shift_ids))
     if date_from:
-        shift_query = shift_query.where(DutyShift.end_date >= date_from)
+        shift_query = shift_query.where(DutyShift.end_date > date_from)
     if date_to:
         shift_query = shift_query.where(DutyShift.start_date <= date_to)
     shifts = session.execute(shift_query).scalars().all()

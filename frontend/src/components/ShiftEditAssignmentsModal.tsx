@@ -4,6 +4,7 @@ import { DutyShift, assignBatch, removeShiftAssignment } from "../api/shifts";
 import { DutyType } from "../api/dutyConfig";
 import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   shift: DutyShift;
@@ -280,7 +281,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           <div>
             <h3 className="text-lg font-semibold">ערוך שיבוצים</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {dutyTypeName} · {shift.start_date} עד {shift.end_date}
+              {dutyTypeName} · {shift.start_date} עד {lastDutyDay(shift.end_date)}
             </p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">✕</button>

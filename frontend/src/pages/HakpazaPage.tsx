@@ -4,7 +4,7 @@ import { SoldierDTO, listSoldiers } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
-import { formatDate, formatDateRange } from "../utils/formatDate";
+import { formatDate, formatDutyRange, lastDutyDay } from "../utils/formatDate";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -258,7 +258,7 @@ export default function HakpazaPage() {
                         setPullDate(a.start_date >= today ? a.start_date : today);
                       }}
                     />
-                    <span className="text-sm">{formatDateRange(a.start_date, a.end_date)}</span>
+                    <span className="text-sm">{formatDutyRange(a.start_date, a.end_date)}</span>
                   </label>
                 ))}
               </div>
@@ -272,7 +272,7 @@ export default function HakpazaPage() {
                 <input
                   type="date"
                   min={today}
-                  max={selectedAssignment.end_date}
+                  max={lastDutyDay(selectedAssignment.end_date)}
                   value={pullDate}
                   onChange={(e) => setPullDate(e.target.value)}
                   className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -366,7 +366,7 @@ export default function HakpazaPage() {
               </p>
               <p>
                 <span className="text-gray-500">תורנות: </span>
-                {formatDateRange(pullDate || selectedAssignment.start_date, selectedAssignment.end_date)}
+                {formatDutyRange(pullDate || selectedAssignment.start_date, selectedAssignment.end_date)}
               </p>
               <p>
                 <span className="text-gray-500">ימים: </span>

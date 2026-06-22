@@ -170,7 +170,7 @@ def check_soldier_for_assignment(
     exemptions = session.execute(
         select(SoldierExemption).where(
             SoldierExemption.soldier_id == soldier_id,
-            SoldierExemption.start_date <= assignment.end_date,
+            SoldierExemption.start_date < assignment.end_date,
             or_(
                 SoldierExemption.end_date.is_(None),
                 SoldierExemption.end_date >= assignment.start_date,
@@ -195,7 +195,7 @@ def check_soldier_for_assignment(
         select(PersonalConstraint).where(
             PersonalConstraint.soldier_id == soldier_id,
             PersonalConstraint.status == "approved",
-            PersonalConstraint.start_date <= assignment.end_date,
+            PersonalConstraint.start_date < assignment.end_date,
             PersonalConstraint.end_date >= assignment.start_date,
         )
     ).first() is not None:
@@ -205,8 +205,8 @@ def check_soldier_for_assignment(
     conflict_q = select(DutyAssignment).where(
         DutyAssignment.soldier_id == soldier_id,
         DutyAssignment.status == "published",
-        DutyAssignment.start_date <= assignment.end_date,
-        DutyAssignment.end_date >= assignment.start_date,
+        DutyAssignment.start_date < assignment.end_date,
+        DutyAssignment.end_date > assignment.start_date,
     )
     if exclude_assignment_id is not None:
         conflict_q = conflict_q.where(DutyAssignment.id != exclude_assignment_id)

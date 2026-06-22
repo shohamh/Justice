@@ -12,6 +12,7 @@ import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import GimelimModal from "./GimelimModal";
+import { formatDutyRange } from "../utils/formatDate";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -144,7 +145,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="font-bold text-lg">{shift.duty_type_name} — {shift.duty_location_name}</h3>
-            <p className="text-sm text-gray-500">{shift.start_date} — {shift.end_date}</p>
+            <p className="text-sm text-gray-500">{formatDutyRange(shift.start_date, shift.end_date)}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
         </div>

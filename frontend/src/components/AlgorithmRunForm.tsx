@@ -6,6 +6,7 @@ import { DutyType } from "../api/dutyConfig";
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 import Combobox from "./Combobox";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -52,7 +53,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
 
   const typeName = (id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8);
   const shiftLabel = (shift: DutyShift) =>
-    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${shift.end_date} (ראשי: ${shift.assigned_count}/${shift.required_count}, רזרבה: ${shift.reserve_assigned_count ?? 0})`;
+    `${typeName(shift.duty_type_id)} — ${shift.start_date} עד ${lastDutyDay(shift.end_date)} (ראשי: ${shift.assigned_count}/${shift.required_count}, רזרבה: ${shift.reserve_assigned_count ?? 0})`;
 
   const loadShifts = useCallback(async () => {
     const ss = await listShifts({

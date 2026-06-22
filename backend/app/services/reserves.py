@@ -466,7 +466,7 @@ def reallocate_orphaned_primaries(
 
     # Filter to primaries overlapping the call-up range
     affected = [
-        p for p in primaries if p.start_date <= called_up_to and p.end_date >= called_up_from
+        p for p in primaries if p.start_date <= called_up_to and p.end_date > called_up_from
     ]
     if not affected:
         return []

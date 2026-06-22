@@ -52,7 +52,7 @@ def test_list_shifts_with_fill(client, admin_session):
         "duty_type_id": str(dt.id),
         "duty_location_id": str(loc.id),
         "start_date": "2026-08-01",
-        "end_date": "2026-08-01",
+        "end_date": "2026-08-02",
         "required_count": 3,
     }, headers=auth_headers(dm))
     resp = client.get("/api/shifts?date_from=2026-08-01&date_to=2026-08-31", headers=auth_headers(dm))

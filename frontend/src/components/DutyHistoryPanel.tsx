@@ -11,7 +11,11 @@ import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
-import { formatDate } from "../utils/formatDate";
+import { formatDate, lastDutyDay } from "../utils/formatDate";
+
+// Only "assignment"/"cancellation" events carry DutyAssignment's exclusive end_date;
+// every other event type (dismissal, call_up, exemption, constraint) is already inclusive.
+const EXCLUSIVE_END_DATE_EVENT_TYPES = new Set(["assignment", "cancellation"]);
 
 type FilterType =
   | "all"
@@ -163,7 +167,12 @@ function EventCard({
           <div>
             <p className="font-medium">{e.title}</p>
             <p className="text-xs text-gray-500">
-              {formatDate(e.date)}{e.end_date && e.end_date !== e.date ? ` – ${formatDate(e.end_date)}` : ""}
+              {(() => {
+                const end = e.end_date && EXCLUSIVE_END_DATE_EVENT_TYPES.has(e.event_type)
+                  ? lastDutyDay(e.end_date)
+                  : e.end_date;
+                return `${formatDate(e.date)}${end && end !== e.date ? ` – ${formatDate(end)}` : ""}`;
+              })()}
             </p>
             <div className="flex gap-1 mt-1 flex-wrap">
               {e.metadata.is_reserve === "true" && (

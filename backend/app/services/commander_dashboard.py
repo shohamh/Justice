@@ -128,7 +128,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
                 DutyAssignment.status == "published",
                 DutyAssignment.soldier_id.in_(soldier_ids),
                 DutyAssignment.start_date <= next_week,
-                DutyAssignment.end_date >= today,
+                DutyAssignment.end_date > today,
             )
         )
         .scalars()
@@ -149,7 +149,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
 
     unfilled_gaps = 0
     for shift in shifts_in_subtree:
-        if shift.start_date <= next_week and shift.end_date >= today:
+        if shift.start_date <= next_week and shift.end_date > today:
             assigned = (
                 session.execute(
                     select(func.count(DutyAssignment.id)).where(

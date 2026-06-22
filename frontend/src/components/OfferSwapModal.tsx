@@ -4,25 +4,27 @@ import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, getEligibleDuties, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface Props {
   targetSoldierId: string;
   targetSoldierName: string;
   targetAssignmentId: string;
   targetDutyStart: string;
-  targetDutyEnd: string;
+  targetDutyEnd: string; // exclusive end_date, per DutyShift/DutyAssignment convention
   targetDutyTypeId?: string;
   onClose: () => void;
   onDone: () => void;
 }
 
+// start/end are exclusive end_date ranges: [start, end).
 function daysBetween(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
-  return Math.round(ms / 86400000) + 1;
+  return Math.round(ms / 86400000);
 }
 
 function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return aStart <= bEnd && aEnd >= bStart;
+  return aStart < bEnd && bStart < aEnd;
 }
 
 export default function OfferSwapModal({
@@ -200,7 +202,10 @@ export default function OfferSwapModal({
 
         {/* Target shift info */}
         <div className="text-xs text-gray-500 dark:text-gray-400 mb-3" dir="ltr">
-          {targetDutyStart === targetDutyEnd ? targetDutyStart : `${targetDutyStart} → ${targetDutyEnd}`}
+          {(() => {
+            const last = lastDutyDay(targetDutyEnd);
+            return targetDutyStart === last ? targetDutyStart : `${targetDutyStart} → ${last}`;
+          })()}
           {days > 1 && <span className="mr-1">({days} {t("swaps.days")})</span>}
         </div>
 
@@ -310,7 +315,7 @@ export default function OfferSwapModal({
                     />
                     <span className="dark:text-gray-300">
                       {dutyTypeNames[d.duty_type_id] ?? d.duty_type_id} — {d.start_date}
-                      {d.end_date !== d.start_date ? ` → ${d.end_date}` : ""}
+                      {lastDutyDay(d.end_date) !== d.start_date ? ` → ${lastDutyDay(d.end_date)}` : ""}
                     </span>
                   </label>
                 );

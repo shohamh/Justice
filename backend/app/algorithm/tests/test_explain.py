@@ -66,6 +66,32 @@ def test_explain_overlap_blocking() -> None:
     assert not candidate_a_d1.blocked
 
 
+def test_explain_adjacent_duties_not_blocked() -> None:
+    """Back-to-back duties (one's exclusive end_date == the other's start_date)
+    don't actually overlap and must not be flagged as a conflict."""
+    s_a = uuid4()
+    s_b = uuid4()
+    dt = uuid4()
+    loc = uuid4()
+    duty1 = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                      start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+                      score_per_day=Decimal("1"))
+    duty2 = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                      start_date=date(2026, 6, 2), end_date=date(2026, 6, 3),
+                      score_per_day=Decimal("1"))
+    soldiers = [
+        SoldierInput(id=s_a, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100),
+        SoldierInput(id=s_b, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100),
+    ]
+    assignments = [Assignment(duty_id=duty1.id, soldier_id=s_a),
+                   Assignment(duty_id=duty2.id, soldier_id=s_b)]
+    result = build_explanations(soldiers, [duty1, duty2], assignments, {}, {}, 0)
+    entry_d2 = next(e for e in result.per_assignment if e.duty_id == duty2.id)
+    candidate_a = next(c for c in entry_d2.candidates if c.soldier_id == s_a)
+    assert not candidate_a.blocked
+    assert "overlap" not in candidate_a.blocking_constraints
+
+
 def test_explain_blocked_candidate() -> None:
     soldier_a = uuid4()
     soldier_b = uuid4()

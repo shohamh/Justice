@@ -8,6 +8,7 @@ import {
   getExplanationByAssignment,
 } from "../api/algorithm";
 import { DataTable, type ColDef } from "./DataTable";
+import { lastDutyDay } from "../utils/formatDate";
 
 interface RankedCandidate {
   soldier_id: string;
@@ -89,7 +90,7 @@ export default function ExplanationModal({ jobId, assignmentId, onClose }: Props
           <div className="bg-gray-50 dark:bg-gray-700 rounded px-3 py-2 text-xs text-gray-600 dark:text-gray-300 flex flex-wrap gap-x-4 gap-y-1">
             <span><span className="text-gray-400">{t("algorithm.col_soldier")}:</span> <strong>{ctx.soldier_name}</strong></span>
             <span><span className="text-gray-400">{t("algorithm.col_type")}:</span> <strong>{ctx.duty_type_name}</strong></span>
-            <span><span className="text-gray-400">{t("algorithm.col_date")}:</span> <strong>{ctx.start_date}{ctx.end_date !== ctx.start_date ? ` – ${ctx.end_date}` : ""}</strong></span>
+            <span><span className="text-gray-400">{t("algorithm.col_date")}:</span> <strong>{ctx.start_date}{lastDutyDay(ctx.end_date) !== ctx.start_date ? ` – ${lastDutyDay(ctx.end_date)}` : ""}</strong></span>
           </div>
         )}
 

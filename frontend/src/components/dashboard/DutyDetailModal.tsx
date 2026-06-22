@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { EffectiveDuty } from "../../api/assignments";
 import { CalendarShift, CalendarShiftAssignee, getCalendarShift } from "../../api/calendar";
 import { DutyType, listDutyTypes } from "../../api/dutyConfig";
-import { formatDateRange } from "../../utils/formatDate";
+import { formatDutyRange } from "../../utils/formatDate";
 import { useAuth } from "../../auth/AuthContext";
 import { useSoldierModal } from "../../contexts/SoldierModalContext";
 import ShiftDetailPanel from "../ShiftDetailPanel";
@@ -79,7 +79,7 @@ export default function DutyDetailModal({ duty, typeNames, locationNames, onClos
                 {typeNames[duty.duty_type_id] ?? "—"}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                {formatDateRange(duty.start_date, duty.end_date)}
+                {formatDutyRange(duty.start_date, duty.end_date)}
                 {time && <span className="mr-2 text-xs">· {time}</span>}
               </p>
             </div>
