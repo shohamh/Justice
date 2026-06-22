@@ -216,7 +216,7 @@ PR.
 ## Repo layout
 
 ```
-callofduty2/
+justice/
 ├── README.md                ← you are here
 ├── docker-compose.yml       ← Postgres for local dev (app/frontend run on host)
 ├── .env.example             ← copy to .env
