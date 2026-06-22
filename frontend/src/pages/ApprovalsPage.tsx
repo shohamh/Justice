@@ -11,11 +11,9 @@ import {
   rejectConstraint,
 } from "../api/constraints";
 import {
-  ExemptionFile,
   ExemptionRequest,
   approveExemptionRequest,
   exemptionFileDownloadUrl,
-  listExemptionFiles,
   listPendingExemptionRequests,
   rejectExemptionRequest,
 } from "../api/exemptions";
@@ -74,7 +72,6 @@ export default function ApprovalsPage() {
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
   const [enrollItems, setEnrollItems] = useState<EnrollmentRequestDTO[]>([]);
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
-  const [requestFiles, setRequestFiles] = useState<Record<string, ExemptionFile[]>>({});
 
   useEffect(() => {
     void (async () => {
@@ -90,11 +87,6 @@ export default function ApprovalsPage() {
       setFuItems(fieldUpdates);
       setSwapItems(swaps);
       setEnrollItems(enrollments);
-      for (const req of exemptionReqs) {
-        listExemptionFiles(req.id)
-          .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
-          .catch(() => {});
-      }
     })();
   }, []);
 
@@ -111,12 +103,6 @@ export default function ApprovalsPage() {
     setFuItems(fieldUpdates);
     setSwapItems(swaps);
     setEnrollItems(enrollments);
-    // Load files for all exemption requests
-    for (const req of exemptionReqs) {
-      listExemptionFiles(req.id)
-        .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
-        .catch(() => {});
-    }
   }, []);
 
   async function onApprove(id: string) {
@@ -288,9 +274,9 @@ export default function ApprovalsPage() {
                     <DaysBadge start={er.start_date} end={er.end_date} />
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
-                  {(requestFiles[er.id] ?? []).length > 0 && (
+                  {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {(requestFiles[er.id] ?? []).map(f => (
+                      {er.files.map(f => (
                         <a
                           key={f.id}
                           href={exemptionFileDownloadUrl(er.id, f.id)}

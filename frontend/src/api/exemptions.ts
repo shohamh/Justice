@@ -33,6 +33,7 @@ export interface ExemptionRequest {
   decided_by: string | null;
   decision_note: string | null;
   created_at: string;
+  files: ExemptionFile[];
 }
 
 export async function listMyExemptionRequests(): Promise<ExemptionRequest[]> {

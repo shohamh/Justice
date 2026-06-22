@@ -39,6 +39,7 @@ class ExemptionRequestOut(BaseModel):
     decided_by: uuid.UUID | None
     decision_note: str | None
     created_at: str
+    files: list[ExemptionFileOut] = []
 
 
 class CreateExemptionRequest(BaseModel):
@@ -59,7 +60,12 @@ class ExemptionFileOut(BaseModel):
     created_at: str
 
 
-def _out(req: ExemptionRequest, soldier_name: str = "", node_name: str | None = None) -> ExemptionRequestOut:
+def _out(
+    req: ExemptionRequest,
+    soldier_name: str = "",
+    node_name: str | None = None,
+    files: list[ExemptionFileOut] | None = None,
+) -> ExemptionRequestOut:
     return ExemptionRequestOut(
         id=req.id,
         soldier_id=req.soldier_id,
@@ -73,6 +79,7 @@ def _out(req: ExemptionRequest, soldier_name: str = "", node_name: str | None = 
         decided_by=req.decided_by,
         decision_note=req.decision_note,
         created_at=req.created_at.isoformat(),
+        files=files or [],
     )
 
 
@@ -144,6 +151,15 @@ def get_pending_exemption_requests(
         if node_ids
         else {}
     )
+    req_ids = [r.id for r in reqs]
+    all_files = session.execute(
+        select(ExemptionRequestFile).where(ExemptionRequestFile.exemption_request_id.in_(req_ids))
+    ).scalars().all()
+    files_by_req: dict[uuid.UUID, list[ExemptionFileOut]] = {}
+    for f in all_files:
+        files_by_req.setdefault(f.exemption_request_id, []).append(
+            ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+        )
     result = []
     for r in reqs:
         s = soldiers_by_id.get(r.soldier_id)
@@ -153,7 +169,7 @@ def get_pending_exemption_requests(
             if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
             else None
         )
-        result.append(_out(r, soldier_name=soldier_name, node_name=node_name))
+        result.append(_out(r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, [])))
     return result
 
 
