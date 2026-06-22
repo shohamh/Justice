@@ -83,7 +83,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     settings: [
       { key: "algorithm.batching_enabled", label: "פירוק ואצווה", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולאצוות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
       { key: "algorithm.batch_size", label: "גודל אצווה (תורנויות)", description: "מספר התורנויות המרבי באצווה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
-      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לאצווה (שניות)", description: "תקציב זמן הפותר לכל אצווה.", type: "number", defaultValue: 10 },
+      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לאצווה (שניות)", description: "תקציב זמן הפותר לכל אצווה.", type: "number", defaultValue: 120 },
     ],
   },
   {

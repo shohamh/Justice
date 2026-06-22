@@ -83,7 +83,7 @@ class SolverSettings:
     # Decomposition + chronological calendar-window batching.
     batching_enabled: bool = True
     batch_window_days: int = 28
-    batch_time_limit_seconds: int = 60
+    batch_time_limit_seconds: int = 120
     # Decomposition strategy: "effort_rounds" (default) | "calendar" | "none".
     decomposition: str = "effort_rounds"
     # Disjoint Phase-1 group size for effort-round decomposition.

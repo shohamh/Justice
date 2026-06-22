@@ -97,7 +97,7 @@ def _parse_settings(raw: dict, overrides: dict) -> SolverSettings:
         relax_t_ceiling=merged.get("relax_t_ceiling", 10),
         batching_enabled=merged.get("batching_enabled", True),
         batch_window_days=merged.get("batch_window_days", 28),
-        batch_time_limit_seconds=merged.get("batch_time_limit_seconds", 60),
+        batch_time_limit_seconds=merged.get("batch_time_limit_seconds", 120),
         decomposition=merged.get("decomposition", "effort_rounds"),
         round_soldier_count=merged.get("round_soldier_count", 20),
     )

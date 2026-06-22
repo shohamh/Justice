@@ -726,7 +726,7 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         effort_resolution=_setting_int("fairness.effort_resolution", 1_000),
         batching_enabled=_setting_bool("algorithm.batching_enabled", True),
         batch_window_days=_setting_int("algorithm.batch_window_days", 28),
-        batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 60),
+        batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 120),
         relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
         relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
         decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
