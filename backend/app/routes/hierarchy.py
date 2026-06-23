@@ -262,6 +262,9 @@ def delete_level_type_route(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
+    level_type = session.get(HierarchyLevelType, level_type_id)
+    if level_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     authorize(session, user, Action.HIERARCHY_LEVEL_TYPE_MANAGE, target_node=None)
     try:
         svc.delete_level_type(session, id=level_type_id, actor_id=user.id)

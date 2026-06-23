@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -110,6 +112,12 @@ def test_delete_level_type_in_use_409(client: TestClient, admin_session: Session
     ).scalar_one()
     r = client.delete(f"/api/hierarchy/level-types/{branch_id}", headers=auth_headers(admin))
     assert r.status_code == 409
+
+
+def test_delete_level_type_not_found_404(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000019", role="admin")
+    r = client.delete(f"/api/hierarchy/level-types/{uuid.uuid4()}", headers=auth_headers(admin))
+    assert r.status_code == 404
 
 
 def test_reorder_level_types_violation_returns_409_with_violations(
