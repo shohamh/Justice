@@ -219,13 +219,54 @@ def _job_id_for_assignment(session: Session, assignment_id: uuid.UUID) -> uuid.U
 
 
 def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]:
-    """Load proposals created for this job, identified via the audit log."""
+    """Load proposals created for this job."""
     if job.status not in ("done", "published"):
         return []
 
+    # Fast path: new jobs have algorithm_job_id set directly on assignments.
+    fast_rows = (
+        session.execute(
+            select(DutyAssignment).where(DutyAssignment.algorithm_job_id == job.id)
+        )
+        .scalars()
+        .all()
+    )
+
+    if fast_rows:
+        assignment_ids = {a.id for a in fast_rows}
+        reserve_links = (
+            session.execute(
+                select(DutyReserveLink).where(
+                    DutyReserveLink.primary_assignment_id.in_(assignment_ids)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        reserve_map = {lk.primary_assignment_id: lk.reserve_assignment_id for lk in reserve_links}
+        return [
+            ProposalOut(
+                assignment_id=a.id,
+                soldier_id=a.soldier_id,
+                duty_type_id=a.duty_type_id,
+                duty_location_id=a.duty_location_id,
+                start_date=a.start_date,
+                end_date=a.end_date,
+                status=a.status,
+                reserve_assignment_id=reserve_map.get(a.id),
+                norm_score_before=a.norm_score_before,
+                norm_score_after=a.norm_score_after,
+                duty_shift_id=a.duty_shift_id,
+                candidate_rank=a.candidate_rank,
+                candidate_pool_size=a.candidate_pool_size,
+                batch_index=a.batch_index,
+            )
+            for a in fast_rows
+        ]
+
+    # Fallback: old jobs without algorithm_job_id — audit-log path.
     from app.db.models import AuditLog
 
-    # Find assignment IDs created for this specific job via audit log entries
     audit_rows = session.execute(
         select(AuditLog.entity_id).where(
             AuditLog.action == "algorithm.proposal.create",
@@ -281,23 +322,27 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
                     norm_before = c.get("pre_norm_score")
                     norm_after = c.get("post_norm_score")
                     break
-            candidate_rank, candidate_pool_size = _compute_candidate_rank(candidates, str(a.soldier_id), payload=payload)
-        proposals.append(ProposalOut(
-            assignment_id=a.id,
-            soldier_id=a.soldier_id,
-            duty_type_id=a.duty_type_id,
-            duty_location_id=a.duty_location_id,
-            start_date=a.start_date,
-            end_date=a.end_date,
-            status=a.status,
-            reserve_assignment_id=reserve_map.get(a.id),
-            norm_score_before=norm_before,
-            norm_score_after=norm_after,
-            duty_shift_id=a.duty_shift_id,
-            candidate_rank=candidate_rank,
-            candidate_pool_size=candidate_pool_size,
-            batch_index=a.batch_index,
-        ))
+            candidate_rank, candidate_pool_size = _compute_candidate_rank(
+                candidates, str(a.soldier_id), payload=payload
+            )
+        proposals.append(
+            ProposalOut(
+                assignment_id=a.id,
+                soldier_id=a.soldier_id,
+                duty_type_id=a.duty_type_id,
+                duty_location_id=a.duty_location_id,
+                start_date=a.start_date,
+                end_date=a.end_date,
+                status=a.status,
+                reserve_assignment_id=reserve_map.get(a.id),
+                norm_score_before=norm_before,
+                norm_score_after=norm_after,
+                duty_shift_id=a.duty_shift_id,
+                candidate_rank=candidate_rank,
+                candidate_pool_size=candidate_pool_size,
+                batch_index=a.batch_index,
+            )
+        )
     return proposals
 
 
@@ -495,13 +540,6 @@ def list_jobs(
         .offset(offset)
     ).scalars().all()
 
-    def _duty_totals(job: AlgorithmJob) -> tuple[int, int]:
-        brs = job.batch_results or []
-        return (
-            sum(br.get("duty_count", 0) for br in brs),
-            sum(br.get("assigned_count", 0) for br in brs),
-        )
-
     return JobListOut(
         items=[
             JobSummaryOut(
@@ -515,8 +553,8 @@ def list_jobs(
                 started_at=j.started_at,
                 finished_at=j.finished_at,
                 error_message=j.error_message,
-                total_duties=_duty_totals(j)[0],
-                assigned_duties=_duty_totals(j)[1],
+                total_duties=j.total_duties,
+                assigned_duties=j.assigned_duties,
             )
             for j in jobs
         ],
