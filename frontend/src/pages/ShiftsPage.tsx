@@ -60,6 +60,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
     setError(null);
     try {
       await clearAllAssignments();
+      setResultMsg("כל השיבוצים נוקו בהצלחה ✓");
       onClearedAll();
     } catch {
       setError("שגיאה בניקוי שיבוצים");
