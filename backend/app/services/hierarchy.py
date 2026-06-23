@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -192,3 +192,48 @@ def delete_node(session: Session, *, node_id: uuid.UUID, actor_id: uuid.UUID | N
         before={"name": node.name, "level": node.level},
     )
     session.delete(node)
+
+
+def create_level_type(
+    session: Session, *, key: str, label: str, actor_id: uuid.UUID | None = None
+) -> HierarchyLevelType:
+    existing = session.execute(
+        select(HierarchyLevelType.id).where(HierarchyLevelType.key == key)
+    ).first()
+    if existing is not None:
+        raise HierarchyError(f"level type key already exists: {key}")
+    max_rank = session.execute(select(func.max(HierarchyLevelType.rank))).scalar_one() or 0
+    level_type = HierarchyLevelType(key=key, label=label, rank=max_rank + 1)
+    session.add(level_type)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_level_type.create",
+        entity_type="hierarchy_level_type",
+        entity_id=level_type.id,
+        after={"key": key, "label": label, "rank": level_type.rank},
+    )
+    return level_type
+
+
+def delete_level_type(
+    session: Session, *, id: uuid.UUID, actor_id: uuid.UUID | None = None
+) -> None:
+    level_type = session.get(HierarchyLevelType, id)
+    if level_type is None:
+        raise HierarchyError("level type not found")
+    in_use = session.execute(
+        select(HierarchyNode.id).where(HierarchyNode.level == level_type.key).limit(1)
+    ).first()
+    if in_use is not None:
+        raise HierarchyError("cannot delete a level type that is in use")
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_level_type.delete",
+        entity_type="hierarchy_level_type",
+        entity_id=level_type.id,
+        before={"key": level_type.key, "label": level_type.label},
+    )
+    session.delete(level_type)

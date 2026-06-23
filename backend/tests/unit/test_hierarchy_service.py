@@ -1,10 +1,12 @@
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
-from app.db.models import HierarchyNode
+from app.db.models import HierarchyLevelType, HierarchyNode
 from app.services.hierarchy import (
     HierarchyError,
+    create_level_type,
     create_node,
+    delete_level_type,
     delete_node,
     move_node,
     rename_node,
@@ -131,3 +133,31 @@ def test_delete_empty_node(admin_session):
     delete_node(admin_session, node_id=d.id, actor_id=None)
     admin_session.commit()
     assert admin_session.get(HierarchyNode, d.id) is None
+
+
+def test_create_level_type_appends_at_max_rank_plus_one(admin_session):
+    lt = create_level_type(admin_session, key="platoon", label="מחלקה", actor_id=None)
+    admin_session.commit()
+    assert lt.rank == 8  # 7 seeded types, ranks 1..7
+
+
+def test_create_level_type_rejects_duplicate_key(admin_session):
+    with pytest.raises(HierarchyError):
+        create_level_type(admin_session, key="branch", label="ענף 2", actor_id=None)
+
+
+def test_delete_level_type_rejected_if_in_use(admin_session):
+    branch_type = admin_session.execute(
+        select(HierarchyLevelType).where(HierarchyLevelType.key == "branch")
+    ).scalar_one()
+    seed_node(admin_session, level="branch", name="b")
+    with pytest.raises(HierarchyError):
+        delete_level_type(admin_session, id=branch_type.id, actor_id=None)
+
+
+def test_delete_level_type_succeeds_when_unused(admin_session):
+    lt = create_level_type(admin_session, key="platoon", label="מחלקה", actor_id=None)
+    admin_session.commit()
+    delete_level_type(admin_session, id=lt.id, actor_id=None)
+    admin_session.commit()
+    assert admin_session.get(HierarchyLevelType, lt.id) is None
