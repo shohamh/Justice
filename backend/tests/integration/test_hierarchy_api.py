@@ -172,6 +172,21 @@ def test_patch_node_rejects_level_violating_position(client: TestClient, admin_s
     assert r.json()["detail"] == "invalid_level_for_position"
 
 
+def test_patch_node_rejects_level_violating_child_position(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000020", role="admin")
+    dept = create_node(admin_session, level="department", name="d")
+    branch = create_node(admin_session, level="branch", name="b", parent=dept)
+    create_node(admin_session, level="group", name="g", parent=branch)
+    admin_session.commit()
+    r = client.patch(
+        f"/api/hierarchy/nodes/{branch.id}",
+        headers=auth_headers(admin),
+        json={"level": "team"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "invalid_level_for_position"
+
+
 def test_create_node_with_custom_level_type(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5000018", role="admin")
     dept = create_node(admin_session, level="department", name="d")
