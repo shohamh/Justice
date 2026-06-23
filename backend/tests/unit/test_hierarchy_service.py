@@ -206,3 +206,31 @@ def test_reorder_level_types_detects_tree_violation(admin_session):
     assert len(exc_info.value.violations) == 1
     assert exc_info.value.violations[0]["parent"] == "d (מרכז)"
     assert exc_info.value.violations[0]["child"] == "b (ענף)"
+
+
+def test_reorder_level_types_detects_multiple_violations(admin_session):
+    d1 = seed_node(admin_session, level="department", name="d1")  # rank 4
+    seed_node(admin_session, level="branch", name="b1", parent=d1)  # rank 5
+    d2 = seed_node(admin_session, level="department", name="d2")  # rank 4
+    seed_node(admin_session, level="branch", name="b2", parent=d2)  # rank 5
+    types = {
+        t.key: t
+        for t in admin_session.execute(select(HierarchyLevelType)).scalars().all()
+    }
+    # Move "branch" (currently rank 5) above "department" (rank 4) -> inverts both pairs.
+    ordered = sorted(types.values(), key=lambda t: t.rank)
+    ordered_ids = [t.id for t in ordered]
+    dept_pos = next(i for i, t in enumerate(ordered) if t.key == "department")
+    branch_pos = next(i for i, t in enumerate(ordered) if t.key == "branch")
+    ordered_ids[dept_pos], ordered_ids[branch_pos] = ordered_ids[branch_pos], ordered_ids[dept_pos]
+    with pytest.raises(ReorderViolation) as exc_info:
+        reorder_level_types(admin_session, ordered_ids=ordered_ids, actor_id=None)
+    assert len(exc_info.value.violations) == 2
+    actual_pairs = {
+        (v["parent"], v["child"]) for v in exc_info.value.violations
+    }
+    expected_pairs = {
+        ("d1 (מרכז)", "b1 (ענף)"),
+        ("d2 (מרכז)", "b2 (ענף)"),
+    }
+    assert actual_pairs == expected_pairs
