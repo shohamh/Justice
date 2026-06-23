@@ -74,19 +74,8 @@ def get_calendar_shifts(
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
 
-    subtree_shift_ids = (
-        session.execute(
-            select(DutyAssignment.duty_shift_id)
-            .where(DutyAssignment.soldier_id.in_(soldier_id_set))
-            .distinct()
-        )
-        .scalars()
-        .all()
-    )
-    if not subtree_shift_ids:
-        return []
-
-    shift_query = select(DutyShift).where(DutyShift.id.in_(subtree_shift_ids))
+    # All active shifts in the date range (includes template-generated shifts with no assignments)
+    shift_query = select(DutyShift).where(DutyShift.status == "active")
     if date_from:
         shift_query = shift_query.where(DutyShift.end_date > date_from)
     if date_to:
@@ -109,9 +98,6 @@ def get_calendar_shifts(
         .scalars()
         .all()
     )
-
-    if not assignments:
-        return []
 
     assignment_ids = [a.id for a in assignments]
     primary_ids = [a.id for a in assignments if not a.is_reserve]
@@ -249,8 +235,6 @@ def get_calendar_shifts(
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
-        if not assignees:
-            continue
         dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
         primary_count = sum(1 for a_ in assignees if not a_["is_reserve"])
         reserve_count = sum(

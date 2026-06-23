@@ -164,6 +164,7 @@ def set_commander(
             HierarchyNode.id != node_id,
         ).update({"commander_id": None})
         soldier.hierarchy_node_id = node_id
+        soldier.role = "commander"
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
     write_audit(

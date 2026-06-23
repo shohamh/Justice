@@ -136,7 +136,7 @@ export default function NotificationBell() {
                     ) : (
                       <p className="text-sm font-medium truncate">{n.title}</p>
                     )}
-                    {n.body && <p className="text-xs text-gray-500 truncate">{n.body}</p>}
+                    {n.body && <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{n.body}</p>}
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => handleMarkRead(n.id)} className="text-xs text-gray-400 hover:text-gray-600" title={t("notifications.mark_read")}>✓</button>

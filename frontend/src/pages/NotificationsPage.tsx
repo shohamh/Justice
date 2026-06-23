@@ -73,8 +73,8 @@ export default function NotificationsPage() {
               <div key={n.id} className={`flex items-start gap-3 p-3 rounded border dark:border-gray-600 ${n.is_read ? "bg-gray-50 dark:bg-gray-700" : "bg-white dark:bg-gray-800"}`}>
                 <span className="text-xl">{typeLabels[n.type] || "🔔"}</span>
                 <div className="flex-1">
-                  <p className={`${n.is_read ? "text-gray-600" : "font-semibold"}`}>{n.title}</p>
-                  {n.body && <p className="text-sm text-gray-500">{n.body}</p>}
+                  <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{n.title}</p>
+                  {n.body && <p className="text-sm text-gray-500 dark:text-gray-400">{n.body}</p>}
                   <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString("he-IL")}</p>
                 </div>
                 <div className="flex gap-1">

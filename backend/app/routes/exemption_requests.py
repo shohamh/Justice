@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier
+from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
 from app.services.settings_loader import exemptions_require_rasn
 from app.services.exemption_requests import (
@@ -125,13 +125,24 @@ def get_pending_exemption_requests(
         .where(HierarchyNode.path_ids.overlap(list(root_ids)))
         .subquery()
     )
-    soldier_ids = list(
+    enrolled_ids = set(
         session.execute(
             select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
         )
         .scalars()
         .all()
     )
+    pending_enrollment_ids = set(
+        session.execute(
+            select(SoldierEnrollmentRequest.soldier_id).where(
+                SoldierEnrollmentRequest.status == "pending",
+                SoldierEnrollmentRequest.requested_node_id.in_(select(subq.c.id)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    soldier_ids = list(enrolled_ids | pending_enrollment_ids)
     reqs = list_pending_requests(session, soldier_ids)
     if not reqs:
         return []
@@ -186,13 +197,24 @@ def get_pending_exemption_count(
         .where(HierarchyNode.path_ids.overlap(list(root_ids)))
         .subquery()
     )
-    soldier_ids = list(
+    enrolled_ids = set(
         session.execute(
             select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
         )
         .scalars()
         .all()
     )
+    pending_enrollment_ids = set(
+        session.execute(
+            select(SoldierEnrollmentRequest.soldier_id).where(
+                SoldierEnrollmentRequest.status == "pending",
+                SoldierEnrollmentRequest.requested_node_id.in_(select(subq.c.id)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    soldier_ids = list(enrolled_ids | pending_enrollment_ids)
     return {"count": count_pending_requests(session, soldier_ids)}
 
 

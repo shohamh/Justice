@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { DataTable, type ColDef } from "../components/DataTable";
 import Layout from "../components/Layout";
 import HierarchyTree from "../components/HierarchyTree";
-import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -23,7 +22,6 @@ export default function TeamHierarchyPage() {
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
-  const [showAddRoot, setShowAddRoot] = useState(false);
   const isAdmin = user?.role === "admin";
 
   async function refresh() {
@@ -57,6 +55,11 @@ export default function TeamHierarchyPage() {
   }
 
   async function onRemove(id: string) {
+    const commandedNode = nodes.find((n) => n.commander_id === id);
+    if (commandedNode) {
+      alert(`${t("team.cannot_delete_commander")} "${commandedNode.name}". ${t("team.reassign_commander_first")}`);
+      return;
+    }
     if (!confirm(t("team.remove") + "?")) return;
     await softDeleteSoldier(id);
     await refresh();
@@ -69,11 +72,6 @@ export default function TeamHierarchyPage() {
 
         <div className="flex items-center gap-3">
           <h3 className="font-medium">{t("team.title")}</h3>
-          {isAdmin && (
-            <button onClick={() => setShowAddRoot(true)} className="text-sm text-indigo-600 dark:text-indigo-300" data-testid="add-department">
-              {t("team.add_node")}
-            </button>
-          )}
         </div>
         <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} user={user} />
 
@@ -185,9 +183,7 @@ export default function TeamHierarchyPage() {
         </div>
       </section>
 
-      {showAddRoot && (
-        <AddRootNodeDialog onClose={() => setShowAddRoot(false)} onCreated={refresh} />
-      )}
+
 
     </Layout>
   );

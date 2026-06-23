@@ -85,8 +85,8 @@ export async function register(payload: RegisterPayload): Promise<LoginResponse>
   return r.data;
 }
 
-export async function fetchRegisterNodes(): Promise<NodeOut[]> {
-  const r = await api.get<NodeOut[]>("/auth/register/nodes");
+export async function fetchRegisterNodes(inviteCode: string): Promise<NodeOut[]> {
+  const r = await api.get<NodeOut[]>(`/auth/register/nodes?invite_code=${encodeURIComponent(inviteCode)}`);
   return r.data;
 }
 

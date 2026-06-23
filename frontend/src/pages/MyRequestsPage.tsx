@@ -218,6 +218,9 @@ export default function MyRequestsPage() {
                     <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                     {statusBadge(c.status)}
                   </div>
+                  {c.decision_note && (
+                    <p className="text-xs text-red-700 dark:text-red-400 mt-1">{t("my_requests.decision_note")}: {c.decision_note}</p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -361,14 +364,19 @@ export default function MyRequestsPage() {
           {exemptionRequests.length === 0 && <p className="text-sm text-gray-500 mt-2">{t("exemption_requests.none")}</p>}
           <ul className="text-sm space-y-1 mt-2" data-testid="er-list">
             {exemptionRequests.map((er) => (
-              <li key={er.id} className="flex items-center gap-3">
-                <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
-                <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
-                {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
-                <span className={`text-xs ${
-                  er.status === "approved" ? "text-green-600 dark:text-green-400" :
-                  er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
-                }`}>{t(`exemption_requests.${er.status}`)}</span>
+              <li key={er.id} className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-3">
+                  <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
+                  <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
+                  {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
+                  <span className={`text-xs ${
+                    er.status === "approved" ? "text-green-600 dark:text-green-400" :
+                    er.status === "rejected" ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"
+                  }`}>{t(`exemption_requests.${er.status}`)}</span>
+                </div>
+                {er.status === "rejected" && er.decision_note && (
+                  <p className="text-xs text-red-700 dark:text-red-400">{t("my_requests.decision_note")}: {er.decision_note}</p>
+                )}
               </li>
             ))}
           </ul>

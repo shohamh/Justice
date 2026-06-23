@@ -156,7 +156,8 @@ export default function ApprovalsPage() {
     await refresh();
   }
 
-  async function onEnrollApprove(id: string) {
+  async function onEnrollApprove(id: string, soldierName: string, nodeName: string) {
+    if (!window.confirm(t("enrollment.confirm_approve", { soldier: soldierName, node: nodeName }))) return;
     await approveEnrollment(id);
     await refresh();
   }
@@ -248,7 +249,7 @@ export default function ApprovalsPage() {
                       onClick={() => onReject(c.id)}
                       data-testid={`reject-${c.id}`}
                     >
-                      {t("approvals.reject")}
+                      {t("approvals.reject_constraint")}
                     </button>
                   </div>
                 </li>
@@ -406,10 +407,11 @@ export default function ApprovalsPage() {
                 <div key={req.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
                     <strong><SoldierLink id={req.soldier_id} name={req.soldier_name} /></strong>
+                    <span className="text-xs text-gray-400">{t("enrollment.click_to_view_profile")}</span>
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
                   <div className="flex gap-2 items-center">
-                    <button onClick={() => onEnrollApprove(req.id)}
+                    <button onClick={() => onEnrollApprove(req.id, req.soldier_name, nodeName)}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs">
                       {t("enrollment.approve")}
                     </button>

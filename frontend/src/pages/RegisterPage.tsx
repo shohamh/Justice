@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
@@ -11,6 +11,7 @@ const ALL_RANKS = [
   "טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג",
   "קמא","סגמ","סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף",
 ];
+const OFFICER_RANKS = new Set(["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"]);
 
 interface ExemptionRow { exemption_type_id: string; start_date: string; end_date: string; reason: string; }
 interface ConstraintRow { start_date: string; end_date: string; reason: string; }
@@ -45,7 +46,7 @@ export default function RegisterPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
 
-  useEffect(() => { fetchRegisterNodes().then(setNodes).catch(() => {}); }, []);
+  // Nodes are fetched after invite code is validated (see checkCode)
 
   const fuse = new Fuse(nodes, { keys: ["name", "commander_name"], threshold: 0.4 });
   const searchResults = nodeSearch ? fuse.search(nodeSearch).map(r => r.item) : nodes.slice(0, 20);
@@ -57,6 +58,9 @@ export default function RegisterPage() {
   async function checkCode() {
     const valid = await validateInviteCode(form.invite_code);
     setCodeValid(valid);
+    if (valid) {
+      fetchRegisterNodes(form.invite_code).then(setNodes).catch(() => {});
+    }
     return valid;
   }
 
@@ -145,14 +149,17 @@ export default function RegisterPage() {
             ))}
             <label className="block text-sm">מגדר
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
-                <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option>
+                <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
               </select>
             </label>
             <label className="block text-sm">דרגה
               <Combobox
                 items={ALL_RANKS.map(r => ({ id: r, name: r }))}
                 value={form.rank}
-                onChange={v => set("rank", v)}
+                onChange={v => {
+                  const isOfficer = OFFICER_RANKS.has(v);
+                  setForm(prev => ({ ...prev, rank: v, is_officer: isOfficer, bahad1_graduate: isOfficer }));
+                }}
                 placeholder="בחר"
               />
             </label>
@@ -165,6 +172,12 @@ export default function RegisterPage() {
             <label className="block text-sm">סיסמה
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
             </label>
+            {form.password.length > 0 && form.password.length < 10 && (
+              <p className="text-amber-600 dark:text-amber-400 text-xs">{`${form.password.length}/10 תווים — נדרשים לפחות 10`}</p>
+            )}
+            {form.password.length >= 10 && (
+              <p className="text-green-600 dark:text-green-400 text-xs">✓ אורך סיסמה תקין</p>
+            )}
             <label className="block text-sm">אימות סיסמה
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
             </label>
