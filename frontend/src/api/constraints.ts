@@ -3,6 +3,8 @@ import { api } from "./client";
 export interface PersonalConstraint {
   id: string;
   soldier_id: string;
+  soldier_name: string;
+  node_name: string | null;
   start_date: string;
   end_date: string;
   reason: string;

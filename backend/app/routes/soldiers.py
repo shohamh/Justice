@@ -106,6 +106,8 @@ class FieldUpdateDecisionRequest(BaseModel):
 class FieldUpdateOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
+    soldier_name: str = ""
+    node_name: str | None = None
     field_name: str
     previous_value: str | None
     new_value: str
@@ -201,10 +203,12 @@ def _out(
     )
 
 
-def _fu_out(u: SoldierFieldUpdate) -> FieldUpdateOut:
+def _fu_out(u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None) -> FieldUpdateOut:
     return FieldUpdateOut(
         id=u.id,
         soldier_id=u.soldier_id,
+        soldier_name=soldier_name,
+        node_name=node_name,
         field_name=u.field_name,
         previous_value=u.previous_value,
         new_value=u.new_value,
@@ -298,14 +302,6 @@ def list_all_pending_field_updates(
     user: Soldier = Depends(require_password_changed),
 ) -> list[FieldUpdateOut]:
     """Returns pending field updates for soldiers in the caller's scope."""
-    if user.role == "admin":
-        rows = session.execute(
-            select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
-        ).scalars().all()
-        return [_fu_out(r) for r in rows]
-    roots = scope_root_ids(session, user)
-    if not roots:
-        return []
     all_pending = session.execute(
         select(SoldierFieldUpdate).where(SoldierFieldUpdate.status == "pending")
     ).scalars().all()
@@ -323,6 +319,21 @@ def list_all_pending_field_updates(
             select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
         ).scalars().all()
     } if node_ids else {}
+    if user.role == "admin":
+        result = []
+        for upd in all_pending:
+            s = soldiers_by_id.get(upd.soldier_id)
+            soldier_name = s.full_name if s else str(upd.soldier_id)[:8]
+            node_name = (
+                nodes_by_id[s.hierarchy_node_id].name
+                if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
+                else None
+            )
+            result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name))
+        return result
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return []
     from app.auth.authz import can
     result = []
     for upd in all_pending:
@@ -330,7 +341,9 @@ def list_all_pending_field_updates(
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
-                result.append(_fu_out(upd))
+                soldier_name = s.full_name
+                node_name = node.name if node else None
+                result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name))
     return result
 
 

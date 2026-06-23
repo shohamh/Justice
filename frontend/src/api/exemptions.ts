@@ -23,6 +23,8 @@ export async function revokeExemption(soldierId: string, exemptionId: string): P
 export interface ExemptionRequest {
   id: string;
   soldier_id: string;
+  soldier_name: string;
+  node_name: string | null;
   exemption_type_id: string;
   start_date: string;
   end_date: string | null;
@@ -31,6 +33,7 @@ export interface ExemptionRequest {
   decided_by: string | null;
   decision_note: string | null;
   created_at: string;
+  files: ExemptionFile[];
 }
 
 export async function listMyExemptionRequests(): Promise<ExemptionRequest[]> {

@@ -11,23 +11,18 @@ import {
   rejectConstraint,
 } from "../api/constraints";
 import {
-  ExemptionFile,
   ExemptionRequest,
   approveExemptionRequest,
   exemptionFileDownloadUrl,
-  listExemptionFiles,
   listPendingExemptionRequests,
   rejectExemptionRequest,
 } from "../api/exemptions";
 import {
   FieldUpdateDTO,
   approveFieldUpdate,
-  listSoldiers,
   rejectFieldUpdate,
   listPendingFieldUpdates,
-  SoldierDTO,
 } from "../api/soldiers";
-import { fetchTree, NodeDTO } from "../api/hierarchy";
 import {
   SwapRequest,
   approveSwapSide,
@@ -57,20 +52,6 @@ function DaysBadge({ start, end }: { start: string; end: string | null | undefin
 
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
 
-function flattenTree(nodes: NodeDTO[]): Map<string, NodeDTO> {
-  const map = new Map<string, NodeDTO>();
-  function walk(list: NodeDTO[]) {
-    for (const n of list) {
-      map.set(n.id, n);
-      if ((n as unknown as { children?: NodeDTO[] }).children) {
-        walk((n as unknown as { children: NodeDTO[] }).children);
-      }
-    }
-  }
-  walk(nodes);
-  return map;
-}
-
 const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment"];
 
 export default function ApprovalsPage() {
@@ -91,33 +72,21 @@ export default function ApprovalsPage() {
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
   const [enrollItems, setEnrollItems] = useState<EnrollmentRequestDTO[]>([]);
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
-  const [soldierMap, setSoldierMap] = useState<Map<string, SoldierDTO>>(new Map());
-  const [nodeMap, setNodeMap] = useState<Map<string, NodeDTO>>(new Map());
-  const [requestFiles, setRequestFiles] = useState<Record<string, ExemptionFile[]>>({});
 
   useEffect(() => {
     void (async () => {
-      const [soldiers, tree, constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
-        listSoldiers(),
-        fetchTree(),
+      const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
         listPendingApprovals(),
         listPendingExemptionRequests(),
         listPendingFieldUpdates(),
         listPendingSwaps(),
         listPendingEnrollments(),
       ]);
-      setSoldierMap(new Map(soldiers.map(s => [s.id, s])));
-      setNodeMap(flattenTree(tree));
       setItems(constraints);
       setErItems(exemptionReqs);
       setFuItems(fieldUpdates);
       setSwapItems(swaps);
       setEnrollItems(enrollments);
-      for (const req of exemptionReqs) {
-        listExemptionFiles(req.id)
-          .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
-          .catch(() => {});
-      }
     })();
   }, []);
 
@@ -134,12 +103,6 @@ export default function ApprovalsPage() {
     setFuItems(fieldUpdates);
     setSwapItems(swaps);
     setEnrollItems(enrollments);
-    // Load files for all exemption requests
-    for (const req of exemptionReqs) {
-      listExemptionFiles(req.id)
-        .then(files => { if (files.length > 0) setRequestFiles(prev => ({ ...prev, [req.id]: files })); })
-        .catch(() => {});
-    }
   }, []);
 
   async function onApprove(id: string) {
@@ -179,15 +142,6 @@ export default function ApprovalsPage() {
     if (!note) return;
     await rejectFieldUpdate(item.soldier_id, item.id, note);
     await refresh();
-  }
-
-  function soldierDisplay(id: string): { name: string; node: string } {
-    const s = soldierMap.get(id);
-    const nodeName = s && nodeMap.get(s.hierarchy_node_id ?? "")?.name;
-    return {
-      name: s?.full_name ?? id.slice(0, 8),
-      node: nodeName ?? "",
-    };
   }
 
   async function onSwapApproveSide(id: string, side: "requester" | "covering") {
@@ -266,12 +220,11 @@ export default function ApprovalsPage() {
             {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {items.map((c) => {
-                const sd = soldierDisplay(c.soldier_id);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <strong className="text-sm"><SoldierLink id={c.soldier_id} name={sd.name} /></strong>
-                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                    <strong className="text-sm"><SoldierLink id={c.soldier_id} name={c.soldier_name || c.soldier_id.slice(0, 8)} /></strong>
+                    {c.node_name && <span className="text-xs text-gray-400">{c.node_name}</span>}
                   </div>
                   <p className="text-sm flex items-center gap-2" dir="ltr">
                     <span>{c.start_date} → {c.end_date ?? "—"}</span>
@@ -310,21 +263,20 @@ export default function ApprovalsPage() {
             {erItems.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
               {erItems.map((er) => {
-                const sd = soldierDisplay(er.soldier_id);
                 return (
                 <li key={er.id} className="border dark:border-gray-600 rounded p-3" data-testid={`er-approval-row-${er.id}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <strong className="text-sm"><SoldierLink id={er.soldier_id} name={sd.name} /></strong>
-                    {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                    <strong className="text-sm"><SoldierLink id={er.soldier_id} name={er.soldier_name || er.soldier_id.slice(0, 8)} /></strong>
+                    {er.node_name && <span className="text-xs text-gray-400">{er.node_name}</span>}
                   </div>
                   <p className="text-sm flex items-center gap-2" dir="ltr">
                     <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
                     <DaysBadge start={er.start_date} end={er.end_date} />
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
-                  {(requestFiles[er.id] ?? []).length > 0 && (
+                  {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {(requestFiles[er.id] ?? []).map(f => (
+                      {er.files.map(f => (
                         <a
                           key={f.id}
                           href={exemptionFileDownloadUrl(er.id, f.id)}
@@ -368,12 +320,11 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuItems.map(item => {
-              const sd = soldierDisplay(item.soldier_id);
               return (
               <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">
-                  <strong><SoldierLink id={item.soldier_id} name={sd.name} /></strong>
-                  {sd.node && <span className="text-xs text-gray-400">{sd.node}</span>}
+                  <strong><SoldierLink id={item.soldier_id} name={item.soldier_name || item.soldier_id.slice(0, 8)} /></strong>
+                  {item.node_name && <span className="text-xs text-gray-400">{item.node_name}</span>}
                   <span className="text-gray-400">—</span>
                   <span>{t(`soldier_profile.${item.field_name}`)}</span>
                 </div>
@@ -399,19 +350,17 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {swapItems.map(swap => {
-              const requesterSd = soldierDisplay(swap.requesting_soldier_id);
-              const coveringSd = swap.covering_soldier_id ? soldierDisplay(swap.covering_soldier_id) : null;
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
                     <strong>{t("swaps.requester")}:</strong>
-                    <span><SoldierLink id={swap.requesting_soldier_id} name={requesterSd.name} /></span>
-                    {requesterSd.node && <span className="text-xs text-gray-400">{requesterSd.node}</span>}
+                    <span><SoldierLink id={swap.requesting_soldier_id} name={swap.requesting_soldier_name || swap.requesting_soldier_id.slice(0, 8)} /></span>
+                    {swap.requesting_soldier_node_name && <span className="text-xs text-gray-400">{swap.requesting_soldier_node_name}</span>}
                   </div>
-                  {coveringSd && (
+                  {swap.covering_soldier_id && (
                     <div className="flex items-center gap-2">
                       <strong>{t("swaps.covering")}:</strong>
-                      <span><SoldierLink id={swap.covering_soldier_id!} name={coveringSd.name} /></span>
+                      <span><SoldierLink id={swap.covering_soldier_id} name={swap.covering_soldier_name || swap.covering_soldier_id.slice(0, 8)} /></span>
                     </div>
                   )}
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
@@ -452,7 +401,7 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
             {enrollItems.map(req => {
-              const nodeName = nodeMap.get(req.requested_node_id)?.name ?? req.requested_node_id.slice(0, 8);
+              const nodeName = req.requested_node_name ?? req.requested_node_id.slice(0, 8);
               return (
                 <div key={req.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
