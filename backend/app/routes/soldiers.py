@@ -510,7 +510,7 @@ def update(
         )
     session.commit()
     session.refresh(s)
-    return _out(s)
+    return _out(s, include_private=can_see_private(session, user, s))
 
 
 @router.patch("/{soldier_id}/profile", response_model=SoldierOut)
