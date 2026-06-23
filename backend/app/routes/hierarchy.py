@@ -34,7 +34,7 @@ class NodeOut(BaseModel):
 
 
 class CreateNodeRequest(BaseModel):
-    level: str = Field(pattern="^(division|unit|department|branch|group|team)$")
+    level: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=200)
     parent_id: uuid.UUID | None = None
 
@@ -42,6 +42,7 @@ class CreateNodeRequest(BaseModel):
 class UpdateNodeRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     commander_id: uuid.UUID | None = None
+    level: str | None = Field(default=None, min_length=1, max_length=50)
 
 
 class MoveNodeRequest(BaseModel):
@@ -122,6 +123,8 @@ def update_node(
             svc.set_commander(
                 session, node_id=node_id, commander_id=body.commander_id, actor_id=user.id
             )
+        if body.level is not None:
+            svc.change_node_level(session, node_id=node_id, level=body.level, actor_id=user.id)
     except svc.HierarchyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()

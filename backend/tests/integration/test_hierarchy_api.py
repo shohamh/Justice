@@ -142,3 +142,49 @@ def test_reorder_level_types_violation_returns_409_with_violations(
     assert r.status_code == 409
     assert r.json()["detail"]["detail"] == "reorder_would_violate_tree"
     assert len(r.json()["detail"]["violations"]) == 1
+
+
+def test_patch_node_changes_level_when_valid(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000016", role="admin")
+    dept = create_node(admin_session, level="department", name="d")
+    branch = create_node(admin_session, level="branch", name="b", parent=dept)
+    admin_session.commit()
+    r = client.patch(
+        f"/api/hierarchy/nodes/{branch.id}",
+        headers=auth_headers(admin),
+        json={"level": "group"},
+    )
+    assert r.status_code == 200
+    assert r.json()["level"] == "group"
+
+
+def test_patch_node_rejects_level_violating_position(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000017", role="admin")
+    dept = create_node(admin_session, level="department", name="d")
+    branch = create_node(admin_session, level="branch", name="b", parent=dept)
+    admin_session.commit()
+    r = client.patch(
+        f"/api/hierarchy/nodes/{branch.id}",
+        headers=auth_headers(admin),
+        json={"level": "corps"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "invalid_level_for_position"
+
+
+def test_create_node_with_custom_level_type(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5000018", role="admin")
+    dept = create_node(admin_session, level="department", name="d")
+    admin_session.commit()
+    r0 = client.post(
+        "/api/hierarchy/level-types",
+        headers=auth_headers(admin),
+        json={"key": "platoon", "label": "מחלקה"},
+    )
+    assert r0.status_code == 201
+    r = client.post(
+        "/api/hierarchy/nodes",
+        headers=auth_headers(admin),
+        json={"level": "platoon", "name": "מחלקה א", "parent_id": str(dept.id)},
+    )
+    assert r.status_code == 201

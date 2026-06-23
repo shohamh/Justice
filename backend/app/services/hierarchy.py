@@ -239,6 +239,44 @@ def delete_level_type(
     session.delete(level_type)
 
 
+def change_node_level(
+    session: Session, *, node_id: uuid.UUID, level: str, actor_id: uuid.UUID | None = None
+) -> HierarchyNode:
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HierarchyError("node not found")
+    new_rank = _get_level_rank(session, level)
+    if new_rank is None:
+        raise HierarchyError("unknown level: " + level)
+
+    if node.parent_id is not None:
+        parent = session.get(HierarchyNode, node.parent_id)
+        parent_rank = _get_level_rank(session, parent.level) if parent else None
+        if parent_rank is None or new_rank <= parent_rank:
+            raise HierarchyError("invalid_level_for_position")
+
+    children = session.execute(
+        select(HierarchyNode).where(HierarchyNode.parent_id == node_id)
+    ).scalars().all()
+    if children:
+        child_ranks = [_get_level_rank(session, c.level) for c in children]
+        if any(r is None for r in child_ranks) or new_rank >= min(child_ranks):
+            raise HierarchyError("invalid_level_for_position")
+
+    before = {"level": node.level}
+    node.level = level
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_node.change_level",
+        entity_type="hierarchy_node",
+        entity_id=node.id,
+        before=before,
+        after={"level": level},
+    )
+    return node
+
+
 class ReorderViolation(HierarchyError):
     def __init__(self, violations: list[dict[str, str]]):
         self.violations = violations
