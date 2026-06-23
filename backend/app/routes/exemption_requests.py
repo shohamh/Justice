@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, can_see_private, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier
 from app.db.session import get_session
@@ -31,10 +31,10 @@ class ExemptionRequestOut(BaseModel):
     soldier_id: uuid.UUID
     soldier_name: str = ""
     node_name: str | None = None
-    exemption_type_id: uuid.UUID
+    exemption_type_id: uuid.UUID | None    # None when viewer cannot see private fields
     start_date: str
     end_date: str | None
-    reason: str | None
+    reason: str | None                      # None when viewer cannot see private fields
     status: str
     decided_by: uuid.UUID | None
     decision_note: str | None
@@ -65,16 +65,17 @@ def _out(
     soldier_name: str = "",
     node_name: str | None = None,
     files: list[ExemptionFileOut] | None = None,
+    include_sensitive: bool = True,
 ) -> ExemptionRequestOut:
     return ExemptionRequestOut(
         id=req.id,
         soldier_id=req.soldier_id,
         soldier_name=soldier_name,
         node_name=node_name,
-        exemption_type_id=req.exemption_type_id,
+        exemption_type_id=req.exemption_type_id if include_sensitive else None,
         start_date=req.start_date.isoformat(),
         end_date=req.end_date.isoformat() if req.end_date else None,
-        reason=req.reason,
+        reason=req.reason if include_sensitive else None,
         status=req.status,
         decided_by=req.decided_by,
         decision_note=req.decision_note,
@@ -101,7 +102,7 @@ def create_exemption_request(
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
-    return _out(req)
+    return _out(req, include_sensitive=True)
 
 
 @router.get("/me/exemption-requests", response_model=list[ExemptionRequestOut])
@@ -109,7 +110,7 @@ def get_my_exemption_requests(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ExemptionRequestOut]:
-    return [_out(r) for r in list_own_requests(session, user.id)]
+    return [_out(r, include_sensitive=True) for r in list_own_requests(session, user.id)]
 
 
 @router.get("/exemption-requests/pending", response_model=list[ExemptionRequestOut])
@@ -169,7 +170,8 @@ def get_pending_exemption_requests(
             if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
             else None
         )
-        result.append(_out(r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, [])))
+        include_sensitive = s is not None and can_see_private(session, user, s)
+        result.append(_out(r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, []), include_sensitive=include_sensitive))
     return result
 
 
@@ -221,7 +223,7 @@ def approve_exemption_request(
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
-    return _out(result)
+    return _out(result, include_sensitive=True)
 
 
 @router.post("/exemption-requests/{request_id}/reject", response_model=ExemptionRequestOut)
@@ -249,7 +251,7 @@ def reject_exemption_request(
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
-    return _out(result)
+    return _out(result, include_sensitive=True)
 
 
 @router.post(
