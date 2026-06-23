@@ -99,15 +99,24 @@ class SystemSetting(Base):
     )
 
 
+class HierarchyLevelType(Base):
+    __tablename__ = "hierarchy_level_types"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    key: Mapped[str] = mapped_column(String(50), unique=True)
+    label: Mapped[str] = mapped_column(String(200))
+    rank: Mapped[int] = mapped_column(Integer, unique=True)
+
+
 class HierarchyNode(Base):
     __tablename__ = "hierarchy_nodes"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
-    level: Mapped[str] = mapped_column(
-        Enum("corps", "division", "unit", "department", "branch", "group", "team", name="hierarchy_level")
-    )
+    level: Mapped[str] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(Text)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id"), nullable=True, default=None
