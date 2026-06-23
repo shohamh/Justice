@@ -6,22 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import HierarchyNode, Soldier
-
-# Top (index 0) to bottom. A child must be at any level below the parent.
-LEVEL_ORDER = ["corps", "division", "unit", "department", "branch", "group", "team"]
+from app.db.models import HierarchyLevelType, HierarchyNode, Soldier
 
 
 class HierarchyError(Exception):
-    """Raised on an invalid hierarchy operation (bad level nesting, cycle, guard)."""
+    """Raised on an invalid hierarchy operation (cycle, guard)."""
 
 
-def _validate_child_level(parent_level: str, child_level: str) -> bool:
-    """Return True if child_level is any level below parent_level."""
-    try:
-        return LEVEL_ORDER.index(child_level) > LEVEL_ORDER.index(parent_level)
-    except ValueError:
-        return False
+def _get_level_rank(session: Session, level_key: str) -> int | None:
+    return session.execute(
+        select(HierarchyLevelType.rank).where(HierarchyLevelType.key == level_key)
+    ).scalar_one_or_none()
 
 
 def create_node(
@@ -33,20 +28,18 @@ def create_node(
     commander_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> HierarchyNode:
-    if level not in LEVEL_ORDER:
+    level_rank = _get_level_rank(session, level)
+    if level_rank is None:
         raise HierarchyError(f"unknown level: {level}")
     if parent_id is None:
-        if level != LEVEL_ORDER[0]:
-            raise HierarchyError(f"root nodes must be '{LEVEL_ORDER[0]}'")
         parent = None
     else:
         parent = session.get(HierarchyNode, parent_id)
         if parent is None:
             raise HierarchyError("parent not found")
-        if not _validate_child_level(parent.level, level):
-            raise HierarchyError(
-                f"a {parent.level} cannot contain {level} nodes"
-            )
+        parent_rank = _get_level_rank(session, parent.level)
+        if parent_rank is None or level_rank <= parent_rank:
+            raise HierarchyError("child level must rank below parent level")
 
     node = HierarchyNode(
         level=level, name=name, parent_id=parent_id, commander_id=commander_id, path_ids=[]
@@ -78,8 +71,6 @@ def move_node(
         raise HierarchyError("node not found")
 
     if new_parent_id is None:
-        if node.level != LEVEL_ORDER[0]:
-            raise HierarchyError(f"only {LEVEL_ORDER[0]} nodes can be roots")
         new_base: list[uuid.UUID] = []
     else:
         if new_parent_id == node_id:
@@ -89,10 +80,10 @@ def move_node(
             raise HierarchyError("parent not found")
         if node.id in parent.path_ids:
             raise HierarchyError("cannot move a node under its own descendant")
-        if not _validate_child_level(parent.level, node.level):
-            raise HierarchyError(
-                f"a {parent.level} cannot contain {node.level} nodes"
-            )
+        node_rank = _get_level_rank(session, node.level)
+        parent_rank = _get_level_rank(session, parent.level)
+        if node_rank is None or parent_rank is None or node_rank <= parent_rank:
+            raise HierarchyError("node level must rank below new parent level")
         new_base = list(parent.path_ids)
 
     old_path = list(node.path_ids)

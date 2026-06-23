@@ -49,16 +49,30 @@ def test_move_allows_any_level_below(admin_session):
     assert g1.parent_id == d2.id
 
 
-def test_create_root_must_be_corps(admin_session):
-    node = create_node(admin_session, level="corps", name="כלל המסגרת", parent_id=None, actor_id=None)
+def test_move_rejects_rank_not_below_new_parent(admin_session):
+    dept = seed_node(admin_session, level="department", name="d")  # rank 4
+    branch = seed_node(admin_session, level="branch", name="b", parent=dept)  # rank 5
+    other_branch = seed_node(admin_session, level="branch", name="b2")  # rank 5
+    with pytest.raises(HierarchyError):
+        move_node(admin_session, node_id=branch.id, new_parent_id=other_branch.id, actor_id=None)  # 5 <= 5
+
+
+def test_create_root_allows_any_level(admin_session):
+    node = create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
     admin_session.commit()
     assert node.parent_id is None
     assert node.path_ids == [node.id]
 
 
-def test_non_top_level_root_rejected(admin_session):
+def test_create_child_rejects_rank_not_below_parent(admin_session):
+    branch = seed_node(admin_session, level="branch", name="b")  # rank 5
     with pytest.raises(HierarchyError):
-        create_node(admin_session, level="division", name="מערך", parent_id=None, actor_id=None)
+        create_node(admin_session, level="department", name="d", parent_id=branch.id, actor_id=None)  # rank 4 <= 5
+
+
+def test_create_node_rejects_unknown_level(admin_session):
+    with pytest.raises(HierarchyError):
+        create_node(admin_session, level="not_a_real_level", name="x", parent_id=None, actor_id=None)
 
 
 def test_create_child_allows_any_level_below(admin_session):
