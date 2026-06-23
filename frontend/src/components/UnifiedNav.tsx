@@ -13,7 +13,8 @@ import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { listJobs } from "../api/algorithm";
-import NavSheet from "./NavSheet";
+import { computeRunBadgeCounts, RunBadgeCounts } from "../utils/algorithmRunBadges";
+import NavSheet, { BadgeColor } from "./NavSheet";
 
 interface NavTab {
   label: string;
@@ -21,7 +22,22 @@ interface NavTab {
   to?: string;
   onClick?: () => void;
   badge?: number;
+  badgeColor?: BadgeColor;
   testId: string;
+}
+
+const BADGE_COLOR_CLASSES: Record<BadgeColor, string> = {
+  red: "bg-red-500 text-white",
+  blue: "bg-blue-500 text-white",
+  yellow: "bg-yellow-500 text-gray-900",
+  green: "bg-green-500 text-white",
+};
+
+function pickBadgeColor(counts: RunBadgeCounts): BadgeColor {
+  if (counts.failed > 0) return "red";
+  if (counts.running > 0) return "blue";
+  if (counts.draft > 0) return "yellow";
+  return "green";
 }
 
 export default function UnifiedNav() {
@@ -35,6 +51,7 @@ export default function UnifiedNav() {
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
   const [algorithmBadgeCount, setAlgorithmBadgeCount] = useState(0);
+  const [algorithmBadgeColor, setAlgorithmBadgeColor] = useState<BadgeColor>("red");
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
 
@@ -65,9 +82,9 @@ export default function UnifiedNav() {
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
-        // The list endpoint already excludes published jobs, so all returned items need attention.
-        const count = result.items.length;
-        setAlgorithmBadgeCount(count);
+        const counts = computeRunBadgeCounts(result.items);
+        setAlgorithmBadgeCount(counts.running + counts.draft + counts.done + counts.failed);
+        setAlgorithmBadgeColor(pickBadgeColor(counts));
       } catch {
         // ignore
       }
@@ -115,6 +132,7 @@ export default function UnifiedNav() {
     icon: <Wrench size={20} />,
     onClick: () => setPlanningSheetOpen(true),
     badge: algorithmBadgeCount,
+    badgeColor: algorithmBadgeColor,
     testId: "nav-planning",
   };
 
@@ -132,7 +150,7 @@ export default function UnifiedNav() {
   ];
 
   const planningItems = [
-    { label: t("nav.planning_shifts"), to: "/planning/shifts", badge: algorithmBadgeCount, testId: "nav-shifts-management" },
+    { label: t("nav.planning_shifts"), to: "/planning/shifts", badge: algorithmBadgeCount, badgeColor: algorithmBadgeColor, testId: "nav-shifts-management" },
     { label: t("nav.planning_config"), to: "/planning/config", testId: "nav-duty-config" },
     { label: t("nav.score_adjustments"), to: "/planning/score-adjustments", testId: "nav-score-adjustments" },
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
@@ -149,7 +167,7 @@ export default function UnifiedNav() {
       {tab.icon}
       {tab.badge != null && tab.badge > 0 && (
         <span
-          className="absolute top-1 right-1/4 md:top-2 md:left-3 bg-red-500 text-white text-[10px] rounded-full px-1.5 leading-5"
+          className={`absolute top-1 right-1/4 md:top-2 md:left-3 ${BADGE_COLOR_CLASSES[tab.badgeColor ?? "red"]} text-[10px] rounded-full px-1.5 leading-5`}
           data-testid="pending-badge"
         >
           {tab.badge}

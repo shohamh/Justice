@@ -30,10 +30,24 @@ vi.mock("../api/swaps", () => ({
   getIncomingSwapCount: vi.fn(() => Promise.resolve(0)),
 }));
 
+const mockListJobs = vi.fn();
+vi.mock("../api/algorithm", () => ({
+  listJobs: (...args: unknown[]) => mockListJobs(...args),
+}));
+
 vi.mock("./NavSheet", () => ({
   default: ({ open, testId }: { open: boolean; testId?: string }) =>
     open ? <div data-testid={testId ?? "nav-sheet-open"} /> : null,
 }));
+
+function job(status: string, mode: string, error_message: string | null = null) {
+  return { status, mode, error_message };
+}
+
+beforeEach(() => {
+  mockListJobs.mockReset();
+  mockListJobs.mockResolvedValue({ items: [], total: 0 });
+});
 
 describe("UnifiedNav — soldier role", () => {
   beforeEach(() => {
@@ -122,5 +136,51 @@ describe("UnifiedNav — admin role", () => {
     render(<UnifiedNav />);
     expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+});
+
+describe("UnifiedNav — algorithm badge color", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager" } });
+  });
+
+  test("shows red when any job failed, even with other statuses present", async () => {
+    mockListJobs.mockResolvedValue({
+      items: [job("running", "shadow"), job("failed", "dm_reviewed", "solver_timeout")],
+      total: 2,
+    });
+    render(<UnifiedNav />);
+    const badge = await screen.findAllByTestId("pending-badge");
+    expect(badge.some((el) => el.className.includes("bg-red-500"))).toBe(true);
+  });
+
+  test("shows blue when running but nothing failed", async () => {
+    mockListJobs.mockResolvedValue({
+      items: [job("pending", "shadow"), job("done", "dm_reviewed")],
+      total: 2,
+    });
+    render(<UnifiedNav />);
+    const badge = await screen.findAllByTestId("pending-badge");
+    expect(badge.some((el) => el.className.includes("bg-blue-500"))).toBe(true);
+  });
+
+  test("shows yellow when only drafts are pending review", async () => {
+    mockListJobs.mockResolvedValue({
+      items: [job("done", "shadow")],
+      total: 1,
+    });
+    render(<UnifiedNav />);
+    const badge = await screen.findAllByTestId("pending-badge");
+    expect(badge.some((el) => el.className.includes("bg-yellow-500"))).toBe(true);
+  });
+
+  test("excludes cancelled jobs from the badge count", async () => {
+    mockListJobs.mockResolvedValue({
+      items: [job("failed", "shadow", "cancelled_by_user")],
+      total: 1,
+    });
+    render(<UnifiedNav />);
+    await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
+    expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
   });
 });

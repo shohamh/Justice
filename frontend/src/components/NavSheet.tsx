@@ -1,9 +1,19 @@
 import { Link } from "react-router-dom";
 
+export type BadgeColor = "red" | "blue" | "yellow" | "green";
+
+const BADGE_COLOR_CLASSES: Record<BadgeColor, string> = {
+  red: "bg-red-500 text-white",
+  blue: "bg-blue-500 text-white",
+  yellow: "bg-yellow-500 text-gray-900",
+  green: "bg-green-500 text-white",
+};
+
 interface NavSheetItem {
   label: string;
   to: string;
   badge?: number;
+  badgeColor?: BadgeColor;
   testId?: string;
 }
 
@@ -52,7 +62,7 @@ export default function NavSheet({ open, onClose, items, testId }: NavSheetProps
           >
             <span>{item.label}</span>
             {item.badge != null && item.badge > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 leading-4 min-w-[1.25rem] text-center">
+              <span className={`${BADGE_COLOR_CLASSES[item.badgeColor ?? "red"]} text-xs rounded-full px-2 py-0.5 leading-4 min-w-[1.25rem] text-center`}>
                 {item.badge}
               </span>
             )}
