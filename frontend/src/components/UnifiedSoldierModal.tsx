@@ -459,7 +459,9 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     {t(`my_requests.${c.status}`)}
                   </span>
                 </div>
-                {c.reason && <p className="text-gray-700 dark:text-gray-300">{c.reason}</p>}
+                <p className="text-gray-700 dark:text-gray-300">
+                  {c.reason ?? "מידע פרטי"}
+                </p>
                 {c.decision_note && <p className="text-gray-500 dark:text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
                 {(isAdmin || isDutyManager) && c.status === "pending" && (
                   <div className="flex gap-2 mt-1">
