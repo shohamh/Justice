@@ -12,6 +12,7 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
+import { listJobs } from "../api/algorithm";
 import NavSheet from "./NavSheet";
 
 interface NavTab {
@@ -33,6 +34,7 @@ export default function UnifiedNav() {
 
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
+  const [algorithmBadgeCount, setAlgorithmBadgeCount] = useState(0);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
 
@@ -56,6 +58,27 @@ export default function UnifiedNav() {
       setSwapIncomingCount(count);
     })();
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!canPlan) return;
+
+    async function fetchAlgorithmBadge() {
+      try {
+        const result = await listJobs(50);
+        const count = result.items.filter(
+          (j) => j.status === "pending" || j.status === "running" || j.status === "done" || j.status === "failed"
+        ).length;
+        setAlgorithmBadgeCount(count);
+      } catch {
+        // ignore
+      }
+    }
+
+    void fetchAlgorithmBadge();
+
+    const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
+    return () => clearInterval(interval);
+  }, [canPlan, location.pathname]);
 
   useEffect(() => {
     const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;
@@ -92,6 +115,7 @@ export default function UnifiedNav() {
     label: t("nav.planning"),
     icon: <Wrench size={20} />,
     onClick: () => setPlanningSheetOpen(true),
+    badge: algorithmBadgeCount,
     testId: "nav-planning",
   };
 
@@ -109,8 +133,7 @@ export default function UnifiedNav() {
   ];
 
   const planningItems = [
-    { label: t("nav.planning_shifts"), to: "/planning/shifts", testId: "nav-shifts-management" },
-    { label: t("nav.planning_assignment"), to: "/planning/assignment", testId: "nav-assignment" },
+    { label: t("nav.planning_shifts"), to: "/planning/shifts", badge: algorithmBadgeCount, testId: "nav-shifts-management" },
     { label: t("nav.planning_config"), to: "/planning/config", testId: "nav-duty-config" },
     { label: t("nav.score_adjustments"), to: "/planning/score-adjustments", testId: "nav-score-adjustments" },
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
