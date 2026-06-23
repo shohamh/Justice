@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useTranslation } from "react-i18next";
-import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, rejectProposal, resetDrafts, resetPublished } from "../api/algorithm";
+import { AlgorithmJob, ProposalRow, acceptProposal, bulkAcceptProposals, bulkRejectProposals, rejectProposal } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { SoldierDTO } from "../api/soldiers";
 import Combobox from "./Combobox";
@@ -22,12 +22,6 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
   const { t } = useTranslation();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explanationTarget, setExplanationTarget] = useState<{ jobId: string; assignmentId: string } | null>(null);
-  const [resetPublishedDays, setResetPublishedDays] = useState(30);
-  const [resetDraftsDays, setResetDraftsDays] = useState(30);
-  const [resetPublishedMsg, setResetPublishedMsg] = useState<string | null>(null);
-  const [resetDraftsMsg, setResetDraftsMsg] = useState<string | null>(null);
-  const [resetPublishedLoading, setResetPublishedLoading] = useState(false);
-  const [resetDraftsLoading, setResetDraftsLoading] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
@@ -142,44 +136,6 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       setRejectError(apiErrorMsg(e));
     } finally {
       setRejecting(false);
-    }
-  }
-
-  async function handleResetPublished() {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + resetPublishedDays);
-    const dateStr = cutoff.toISOString().slice(0, 10);
-    if (!window.confirm(t("algorithm.reset_confirm_published", { date: dateStr }))) return;
-    setResetPublishedLoading(true);
-    setResetPublishedMsg(null);
-    try {
-      const result = await resetPublished(resetPublishedDays);
-      setResetPublishedMsg(
-        result.cancelled === 0 ? t("algorithm.reset_none") : t("algorithm.reset_result_cancelled", { count: result.cancelled })
-      );
-    } catch {
-      setResetPublishedMsg(t("errors.generic"));
-    } finally {
-      setResetPublishedLoading(false);
-    }
-  }
-
-  async function handleResetDrafts() {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() + resetDraftsDays);
-    const dateStr = cutoff.toISOString().slice(0, 10);
-    if (!window.confirm(t("algorithm.reset_confirm_drafts", { date: dateStr }))) return;
-    setResetDraftsLoading(true);
-    setResetDraftsMsg(null);
-    try {
-      const result = await resetDrafts(resetDraftsDays);
-      setResetDraftsMsg(
-        result.rejected === 0 ? t("algorithm.reset_none") : t("algorithm.reset_result_rejected", { count: result.rejected })
-      );
-    } catch {
-      setResetDraftsMsg(t("errors.generic"));
-    } finally {
-      setResetDraftsLoading(false);
     }
   }
 
@@ -362,27 +318,6 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
           />
         </>
       )}
-
-      <div className="border-t dark:border-gray-600 pt-3 space-y-3">
-        <div className="flex items-center gap-2 text-sm flex-wrap">
-          <span className="text-gray-700">{t("algorithm.reset_published_label")}</span>
-          <input type="number" min={1} value={resetPublishedDays} onChange={e => setResetPublishedDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-          <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
-          <button type="button" onClick={handleResetPublished} disabled={resetPublishedLoading} className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 disabled:opacity-50">
-            {t("algorithm.reset_published_btn")}
-          </button>
-          {resetPublishedMsg && <span className="text-xs text-gray-600">{resetPublishedMsg}</span>}
-        </div>
-        <div className="flex items-center gap-2 text-sm flex-wrap">
-          <span className="text-gray-700">{t("algorithm.reset_drafts_label")}</span>
-          <input type="number" min={1} value={resetDraftsDays} onChange={e => setResetDraftsDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-16 border rounded p-1 text-sm text-center dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-          <span className="text-gray-700">{t("algorithm.reset_days_suffix")}</span>
-          <button type="button" onClick={handleResetDrafts} disabled={resetDraftsLoading} className="bg-amber-600 text-white px-3 py-1 rounded text-xs hover:bg-amber-700 disabled:opacity-50">
-            {t("algorithm.reset_drafts_btn")}
-          </button>
-          {resetDraftsMsg && <span className="text-xs text-gray-600">{resetDraftsMsg}</span>}
-        </div>
-      </div>
 
       {explanationTarget && (
         <ExplanationModal
