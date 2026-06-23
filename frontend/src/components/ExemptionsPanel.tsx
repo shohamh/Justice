@@ -109,7 +109,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         ) : (
           <ul className="space-y-2" data-testid="exemptions-list">
             {activeItems.map((ex) => {
-              const names = dutyTypeMap[ex.exemption_type_id] ?? [];
+              const names = ex.exemption_type_id ? (dutyTypeMap[ex.exemption_type_id] ?? []) : [];
               const isExpanded = expanded.has(ex.id);
               return (
                 <li
@@ -121,7 +121,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-0.5">
                       <p className="font-medium text-sm text-indigo-900 dark:text-indigo-100">
-                        {typeName(ex.exemption_type_id)}
+                        {ex.exemption_type_id ? typeName(ex.exemption_type_id) : "מידע פרטי"}
                       </p>
                       <p className="text-xs text-indigo-700 dark:text-indigo-300">
                         {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : t("exemptions.forever")}
@@ -162,7 +162,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
           </h4>
           <ul className="space-y-1 text-sm" data-testid="exemptions-list-past">
             {expiredItems.map((ex) => {
-              const names = dutyTypeMap[ex.exemption_type_id] ?? [];
+              const names = ex.exemption_type_id ? (dutyTypeMap[ex.exemption_type_id] ?? []) : [];
               const isExpanded = expanded.has(ex.id);
               return (
                 <li
@@ -172,7 +172,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
                   data-testid={`exemption-row-${ex.id}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{typeName(ex.exemption_type_id)}</span>
+                    <span className="font-medium">{ex.exemption_type_id ? typeName(ex.exemption_type_id) : "מידע פרטי"}</span>
                     <span className="text-gray-500 dark:text-gray-400 text-xs">
                       {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}
                     </span>
