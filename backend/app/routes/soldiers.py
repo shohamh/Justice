@@ -564,7 +564,8 @@ def list_field_updates(
         select(SoldierFieldUpdate).where(SoldierFieldUpdate.soldier_id == soldier_id)
         .order_by(SoldierFieldUpdate.created_at.desc())
     ).scalars().all()
-    return [_fu_out(r) for r in rows]
+    include_values = can_see_private(session, user, s)
+    return [_fu_out(r, include_values=include_values) for r in rows]
 
 
 @router.post("/{soldier_id}/field-updates/{update_id}/approve", response_model=FieldUpdateOut)
@@ -586,7 +587,7 @@ def approve_update(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
-    return _fu_out(upd)
+    return _fu_out(upd, include_values=can_see_private(session, user, s))
 
 
 @router.post("/{soldier_id}/field-updates/{update_id}/reject", response_model=FieldUpdateOut)
@@ -608,7 +609,7 @@ def reject_update(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
-    return _fu_out(upd)
+    return _fu_out(upd, include_values=can_see_private(session, user, s))
 
 
 @router.post("/{soldier_id}/reset-password")
