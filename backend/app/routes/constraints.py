@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, scope_root_ids, can_see_private
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
@@ -27,7 +27,7 @@ class ConstraintOut(BaseModel):
     node_name: str | None = None
     start_date: date
     end_date: date
-    reason: str
+    reason: str | None          # None when viewer cannot see private field
     status: str
     decided_by: uuid.UUID | None = None
     decided_at: datetime | None = None
@@ -56,7 +56,7 @@ class PendingCountOut(BaseModel):
 # ── Helpers ──
 
 
-def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None) -> ConstraintOut:
+def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None, include_reason: bool = True) -> ConstraintOut:
     return ConstraintOut(
         id=c.id,
         soldier_id=c.soldier_id,
@@ -64,7 +64,7 @@ def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = 
         node_name=node_name,
         start_date=c.start_date,
         end_date=c.end_date,
-        reason=c.reason,
+        reason=c.reason if include_reason else None,
         status=c.status,
         decided_by=c.decided_by,
         decided_at=c.decided_at,
@@ -142,14 +142,15 @@ def list_for_soldier(
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.CONSTRAINT_READ, target_node=_node_of(session, s))
-    return [_out(c) for c in svc.list_constraints(session, soldier_id=soldier_id)]
+    include_reason = can_see_private(session, user, s)
+    return [_out(c, include_reason=include_reason) for c in svc.list_constraints(session, soldier_id=soldier_id)]
 
 
 # ── Approval management ──
 
 
 def _attach_names(
-    session: Session, rows: list[PersonalConstraint]
+    session: Session, rows: list[PersonalConstraint], user: Soldier
 ) -> list[ConstraintOut]:
     """Bulk-load soldier and node names then build ConstraintOut list."""
     if not rows:
@@ -179,7 +180,8 @@ def _attach_names(
             if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
             else None
         )
-        result.append(_out(c, soldier_name=soldier_name, node_name=node_name))
+        include_reason = s is not None and can_see_private(session, user, s)
+        result.append(_out(c, soldier_name=soldier_name, node_name=node_name, include_reason=include_reason))
     return result
 
 
@@ -201,8 +203,8 @@ def pending_list(
             .scalars()
             .all()
         )
-        return _attach_names(session, rows)
-    return _attach_names(session, svc.list_pending_approvals(session, node_ids=roots))
+        return _attach_names(session, rows, user)
+    return _attach_names(session, svc.list_pending_approvals(session, node_ids=roots), user)
 
 
 @router.get("/constraints/pending/count", response_model=PendingCountOut)
@@ -249,7 +251,7 @@ def approve(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
-    return _out(c)
+    return _out(c, include_reason=True)
 
 
 @router.post("/constraints/{constraint_id}/reject", response_model=ConstraintOut)
@@ -272,4 +274,4 @@ def reject(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
-    return _out(c)
+    return _out(c, include_reason=True)
