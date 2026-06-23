@@ -5,12 +5,13 @@ export interface RunBadgeCounts {
   failed: number;
 }
 
-interface RunBadgeJob {
+export interface RunBadgeJob {
   status: string;
   mode: string;
   error_message: string | null;
 }
 
+// Excludes jobs cancelled by the user (status "failed" with error_message "cancelled_by_user") from every bucket; "done" jobs split into "draft" (shadow mode) vs "done" (dm_reviewed mode).
 export function computeRunBadgeCounts(jobs: RunBadgeJob[]): RunBadgeCounts {
   return jobs.reduce<RunBadgeCounts>(
     (acc, job) => {
