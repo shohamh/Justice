@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, scope_root_ids, can_see_private, PRIVATE_FIELD_NAMES
 from app.auth.deps import require_password_changed, require_roles
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
@@ -110,7 +110,7 @@ class FieldUpdateOut(BaseModel):
     node_name: str | None = None
     field_name: str
     previous_value: str | None
-    new_value: str
+    new_value: str | None        # None when viewer cannot see private field values
     status: str
     decided_by: uuid.UUID | None
     decided_at: Any
@@ -155,19 +155,6 @@ def _direct_commander(session: Session, s: Soldier) -> Soldier | None:
     return session.get(Soldier, parent.commander_id)
 
 
-def _can_see_private_fields(session: Session, user: Soldier, target: Soldier) -> bool:
-    """Private fields (gender, email) visible to self, commanders in chain, DMs, admins."""
-    if user.id == target.id:
-        return True
-    if user.role == "admin":
-        return True
-    if user.role in ("duty_manager", "commander"):
-        from app.auth.authz import can, scope_root_ids
-        roots = scope_root_ids(session, user)
-        node = _node_of(session, target)
-        return can(user, Action.SOLDIER_READ, target_node=node, roots=roots)
-    return False
-
 
 def _out(
     s: Soldier,
@@ -203,15 +190,16 @@ def _out(
     )
 
 
-def _fu_out(u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None) -> FieldUpdateOut:
+def _fu_out(u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None, include_values: bool = True) -> FieldUpdateOut:
+    redact = not include_values and u.field_name in PRIVATE_FIELD_NAMES
     return FieldUpdateOut(
         id=u.id,
         soldier_id=u.soldier_id,
         soldier_name=soldier_name,
         node_name=node_name,
         field_name=u.field_name,
-        previous_value=u.previous_value,
-        new_value=u.new_value,
+        previous_value=None if redact else u.previous_value,
+        new_value=None if redact else u.new_value,
         status=u.status,
         decided_by=u.decided_by,
         decided_at=u.decided_at,
@@ -273,7 +261,7 @@ def list_soldiers(
     }
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
-        return [_out(s, include_private=True, telegram_linked=s.id in linked_ids) for s in rows]
+        return [_out(s, include_private=False, telegram_linked=s.id in linked_ids) for s in rows]
 
     roots = scope_root_ids(session, user)
     # Unassigned soldiers with no scope can only see themselves
@@ -329,7 +317,8 @@ def list_all_pending_field_updates(
                 if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
                 else None
             )
-            result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name))
+            include_values = s is not None and can_see_private(session, user, s)
+            result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values))
         return result
     roots = scope_root_ids(session, user)
     if not roots:
@@ -343,7 +332,8 @@ def list_all_pending_field_updates(
             if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
                 soldier_name = s.full_name
                 node_name = node.name if node else None
-                result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name))
+                include_values = can_see_private(session, user, s)
+                result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values))
     return result
 
 
@@ -471,7 +461,7 @@ def get_soldier(
     user: Soldier = Depends(require_password_changed),
 ) -> SoldierOut:
     s = _load(session, soldier_id)
-    if s.id != user.id and user.role != "soldier":
+    if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     link = session.execute(
         select(TelegramLink).where(
@@ -482,7 +472,7 @@ def get_soldier(
     commander = _direct_commander(session, s)
     return _out(
         s,
-        include_private=_can_see_private_fields(session, user, s),
+        include_private=can_see_private(session, user, s),
         telegram_linked=link is not None,
         direct_commander=commander,
     )
@@ -536,7 +526,7 @@ def update_profile(
     update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
     session.commit()
     session.refresh(s)
-    return _out(s, include_private=_can_see_private_fields(session, user, s))
+    return _out(s, include_private=can_see_private(session, user, s))
 
 
 @router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)
