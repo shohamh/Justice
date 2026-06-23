@@ -301,7 +301,7 @@ def load_duty_blocks_from_shifts(
 
     for shift in shifts:
         effective_start = max(shift.start_date, today)
-        if effective_start > shift.end_date:
+        if effective_start >= shift.end_date:
             # Shift is entirely in the past — nothing left to assign
             continue
         block_start_time = shift.start_time if effective_start == shift.start_date else "00:00"
@@ -609,6 +609,7 @@ def persist_results(
             notes=None,
             duty_shift_id=shift_id,
             is_reserve=block.is_reserve,
+            algorithm_job_id=job.id,   # NEW
         )
         da.id = uuid.uuid4()
         if duty_to_batch:
@@ -643,6 +644,27 @@ def persist_results(
         if not block.is_reserve:
             exp = explanation_map.get(duty_id)
             if exp is not None:
+                # Extract scalar fields from the full (pre-truncation) candidate list
+                # and store them on the assignment for fast proposal loading.
+                assigned_id = exp.assigned_soldier_id
+                unblocked = [c for c in exp.candidates if not c.blocked]
+                pool_size = len(unblocked)
+                unblocked_sorted = sorted(
+                    unblocked,
+                    key=lambda c: c.pre_effort_score if c.pre_effort_score is not None else float("inf"),
+                )
+                candidate_rank = next(
+                    (i + 1 for i, c in enumerate(unblocked_sorted) if c.soldier_id == assigned_id),
+                    None,
+                )
+                assigned_c = next(
+                    (c for c in unblocked if c.soldier_id == assigned_id), None
+                )
+                da.norm_score_before = assigned_c.pre_effort_score if assigned_c else None
+                da.norm_score_after = assigned_c.post_effort_score if assigned_c else None
+                da.candidate_rank = candidate_rank
+                da.candidate_pool_size = pool_size
+
                 payload = _explanation_payload(exp, dm_view=True, soldier_names=soldier_names)
                 payload["global_before"] = explanation_data.global_metrics_before
                 payload["global_after"] = explanation_data.global_metrics_after
@@ -812,7 +834,123 @@ def _br_to_dict(br) -> dict:
             }
             for sc in br.saturation_clusters
         ],
+        "impacted_soldiers": br.impacted_soldiers,
     }
+
+
+def _identify_relaxation_impacts(
+    result: SolverResult,
+    duties: list[DutyBlock],
+    existing: list[ExistingAssignment],
+    settings: SolverSettings,
+    soldier_names: dict[uuid.UUID, str],
+    duty_type_names: dict[uuid.UUID, str],
+    duty_to_batch: dict[uuid.UUID, int],
+) -> dict[int, list[dict]]:
+    """Return {batch_index: [impact_entry]} for assignments that exceeded base R/T caps.
+
+    For each batch that required relaxation (br.relaxations non-empty), checks each
+    assignment in that batch. An assignment is "impacted" when the soldier's cumulative
+    duty days — existing pre-job assignments plus all new assignments up to and including
+    this batch — exceed the base settings.R (Wr-day window) or settings.T (Wt-day window).
+    """
+    import bisect
+    from datetime import timedelta as _td
+
+    duty_map = {d.id: d for d in duties}
+
+    relaxed_batch_indices = {br.batch_index for br in result.batch_results if br.relaxations}
+    if not relaxed_batch_indices:
+        return {}
+
+    def _expand(start: date, end: date) -> list[date]:
+        """Dates in [start, end) — mirrors _duty_dates convention."""
+        days: list[date] = []
+        cur = start
+        while cur < end:
+            days.append(cur)
+            cur += _td(days=1)
+        return days
+
+    def _max_days_in_window(sorted_days: list[date], ref: date, W: int) -> int:
+        """Max duty-day count in any W-day window containing `ref`, using bisect."""
+        best = 0
+        for offset in range(W):
+            ws = ref - _td(days=offset)
+            we = ws + _td(days=W - 1)
+            cnt = bisect.bisect_right(sorted_days, we) - bisect.bisect_left(sorted_days, ws)
+            if cnt > best:
+                best = cnt
+        return best
+
+    # Pre-build per-soldier existing day lists (sorted, for bisect)
+    existing_all: dict[uuid.UUID, list[date]] = {}
+    existing_real: dict[uuid.UUID, list[date]] = {}
+    for ea in existing:
+        days = _expand(ea.start_date, ea.end_date)
+        existing_all.setdefault(ea.soldier_id, []).extend(days)
+        if not ea.is_reserve:
+            existing_real.setdefault(ea.soldier_id, []).extend(days)
+
+    # Pre-expand each duty block's dates exactly once
+    duty_days_cache: dict[uuid.UUID, list[date]] = {
+        a.duty_id: _expand(duty_map[a.duty_id].start_date, duty_map[a.duty_id].end_date)
+        for a in result.assignments
+        if a.duty_id in duty_map
+    }
+
+    impacts: dict[int, list[dict]] = {}
+
+    for batch_idx in relaxed_batch_indices:
+        # Pre-compute cumulative sorted day-lists per soldier up to this batch (once per batch)
+        soldier_all: dict[uuid.UUID, list[date]] = {}
+        soldier_real: dict[uuid.UUID, list[date]] = {}
+        for a in result.assignments:
+            if duty_to_batch.get(a.duty_id, -1) > batch_idx:
+                continue
+            duty = duty_map.get(a.duty_id)
+            if duty is None:
+                continue
+            days = duty_days_cache[a.duty_id]
+            soldier_all.setdefault(a.soldier_id, list(existing_all.get(a.soldier_id, []))).extend(days)
+            if not duty.is_reserve:
+                soldier_real.setdefault(a.soldier_id, list(existing_real.get(a.soldier_id, []))).extend(days)
+
+        # Sort once per soldier (for bisect in _max_days_in_window)
+        sorted_all = {sid: sorted(days) for sid, days in soldier_all.items()}
+        sorted_real = {sid: sorted(days) for sid, days in soldier_real.items()}
+
+        batch_impacts: list[dict] = []
+        for a in result.assignments:
+            if duty_to_batch.get(a.duty_id) != batch_idx:
+                continue
+            duty = duty_map.get(a.duty_id)
+            if duty is None:
+                continue
+
+            r_count = _max_days_in_window(sorted_all.get(a.soldier_id, []), duty.start_date, settings.Wr)
+            t_count = _max_days_in_window(sorted_real.get(a.soldier_id, []), duty.start_date, settings.Wt)
+
+            violation: str | None = None
+            if r_count > settings.R:
+                violation = f"R={settings.R}→{r_count}"
+            elif t_count > settings.T:
+                violation = f"T={settings.T}→{t_count}"
+
+            if violation:
+                batch_impacts.append({
+                    "soldier_id": str(a.soldier_id),
+                    "soldier_name": soldier_names.get(a.soldier_id, str(a.soldier_id)[:8]),
+                    "duty_type_name": duty_type_names.get(duty.duty_type_id, ""),
+                    "start_date": duty.start_date.isoformat(),
+                    "end_date": duty.end_date.isoformat(),
+                    "violation": violation,
+                })
+
+        if batch_impacts:
+            impacts[batch_idx] = batch_impacts
+
+    return impacts
 
 
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
@@ -997,14 +1135,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     session.commit()
                     return
 
-                # Post-process batch_results: replace block UUIDs with real DutyShift UUIDs
-                processed_batch_results = _postprocess_batch_results(
-                    result.batch_results, block_to_shift_map
-                )
-
-                # Serialise batch_results to JSONB-compatible list of dicts
-                job.batch_results = [_br_to_dict(br) for br in processed_batch_results]
-
                 # Build duty_id (block UUID) → batch_index map for stamping on DutyAssignment rows
                 duty_to_batch: dict[uuid.UUID, int] = {}
                 for br in result.batch_results:
@@ -1030,6 +1160,36 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     s.id: s.full_name
                     for s in session.execute(select(Soldier)).scalars().all()
                 }
+
+                # Lazy DutyType name fetch — shared by relaxation impacts and partial diagnosis
+                _dt_names_cache: dict[uuid.UUID, str] | None = None
+
+                def _get_dt_names() -> dict[uuid.UUID, str]:
+                    nonlocal _dt_names_cache
+                    if _dt_names_cache is None:
+                        _dt_names_cache = {
+                            dt.id: dt.name
+                            for dt in session.execute(select(DutyType)).scalars().all()
+                        }
+                    return _dt_names_cache
+
+                # Annotate result.batch_results before serialization
+                if result.relaxed:
+                    _impacts = _identify_relaxation_impacts(
+                        result, duties, existing, settings, soldier_names,
+                        _get_dt_names(), duty_to_batch,
+                    )
+                    for _i, _br in enumerate(result.batch_results):
+                        if _br.batch_index in _impacts:
+                            result.batch_results[_i] = dataclasses.replace(
+                                _br, impacted_soldiers=_impacts[_br.batch_index]
+                            )
+
+                # Post-process and serialize (impacted_soldiers now included via _br_to_dict)
+                processed_batch_results = _postprocess_batch_results(
+                    result.batch_results, block_to_shift_map
+                )
+                job.batch_results = [_br_to_dict(br) for br in processed_batch_results]
 
                 _phase("persist_results: start")
                 persist_results(
@@ -1059,11 +1219,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 assigned_ct = len(result.assignments)
                 if assigned_ct < len(duties):
                     from app.algorithm.diagnose import diagnose_infeasibility
-                    dt_names = {
-                        dt.id: dt.name
-                        for dt in session.execute(select(DutyType)).scalars().all()
-                    }
-                    reasons = diagnose_infeasibility(soldiers, duties, existing, dt_names)
+                    reasons = diagnose_infeasibility(soldiers, duties, existing, _get_dt_names())
                     job.error_message = json.dumps({
                         "status": "PARTIAL",
                         "assigned": assigned_ct,

@@ -111,3 +111,161 @@ def test_proposals_pending_job_returns_empty(admin_session):
 
     proposals = _proposals_for_job(admin_session, job)
     assert proposals == []
+
+
+import uuid as _uuid
+from sqlalchemy import select as _select
+
+from app.algorithm.types import (
+    Assignment,
+    AssignmentExplanation as AlgoExplanation,
+    CandidateInfo,
+    DutyBlock,
+    ExplanationData,
+    SolverResult,
+)
+from app.services.algorithm_bridge import persist_results
+
+
+def test_persist_results_sets_job_id_and_scores(admin_session):
+    dt = DutyType(name="שמירה_pr1", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="שער_pr1")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name="pr_node_1")
+    dm = create_soldier(
+        admin_session, personal_number="perf_dm_pr1", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="perf_s_pr1")
+
+    job = AlgorithmJob(
+        planning_start=date(2027, 3, 1),
+        planning_end=date(2027, 3, 7),
+        shift_ids=[],
+        settings_json={},
+        mode="shadow",
+        created_by=dm.id,
+        status="done",
+    )
+    admin_session.add(job)
+    admin_session.commit()
+
+    duty_id = _uuid.uuid4()
+    block = DutyBlock(
+        id=duty_id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2027, 3, 1),
+        end_date=date(2027, 3, 2),
+        score_per_day=Decimal("1.00"),
+        is_reserve=False,
+    )
+    result = SolverResult(
+        assignments=[Assignment(duty_id=duty_id, soldier_id=soldier.id)],
+        status="OPTIMAL",
+    )
+    other_soldier_id = _uuid.uuid4()
+    exp = AlgoExplanation(
+        duty_id=duty_id,
+        assigned_soldier_id=soldier.id,
+        candidates=[
+            CandidateInfo(
+                soldier_id=other_soldier_id,
+                blocked=False,
+                pre_effort_score=0.2,
+                post_effort_score=0.3,
+            ),
+            CandidateInfo(
+                soldier_id=soldier.id,
+                blocked=False,
+                pre_effort_score=0.5,
+                post_effort_score=0.7,
+            ),
+        ],
+    )
+    explanation_data = ExplanationData(per_assignment=[exp])
+
+    persist_results(
+        admin_session,
+        job=job,
+        result=result,
+        explanation_data=explanation_data,
+        duty_blocks=[block],
+        soldier_names={soldier.id: "Test Soldier", other_soldier_id: "Other Soldier"},
+        actor_id=dm.id,
+    )
+    admin_session.commit()
+
+    da = admin_session.execute(
+        _select(DutyAssignment).where(DutyAssignment.algorithm_job_id == job.id)
+    ).scalar_one()
+
+    assert da.algorithm_job_id == job.id
+    assert da.norm_score_before == pytest.approx(0.5)
+    assert da.norm_score_after == pytest.approx(0.7)
+    # other_soldier has pre_effort_score=0.2 (lower = better = rank 1)
+    # assigned soldier has pre_effort_score=0.5 → rank 2
+    assert da.candidate_rank == 2
+    assert da.candidate_pool_size == 2
+
+
+def test_persist_results_reserve_skips_scores(admin_session):
+    """Reserve assignments get algorithm_job_id but NOT score columns (no explanation)."""
+    dt = DutyType(name="שמירה_pr2", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="שער_pr2")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name="pr_node_2")
+    dm = create_soldier(
+        admin_session, personal_number="perf_dm_pr2", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="perf_s_pr2")
+
+    job = AlgorithmJob(
+        planning_start=date(2027, 4, 1),
+        planning_end=date(2027, 4, 7),
+        shift_ids=[],
+        settings_json={},
+        mode="shadow",
+        created_by=dm.id,
+        status="done",
+    )
+    admin_session.add(job)
+    admin_session.commit()
+
+    duty_id = _uuid.uuid4()
+    block = DutyBlock(
+        id=duty_id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2027, 4, 1),
+        end_date=date(2027, 4, 2),
+        score_per_day=Decimal("1.00"),
+        is_reserve=True,
+    )
+    result = SolverResult(
+        assignments=[Assignment(duty_id=duty_id, soldier_id=soldier.id)],
+        status="OPTIMAL",
+    )
+    explanation_data = ExplanationData(per_assignment=[])
+
+    persist_results(
+        admin_session,
+        job=job,
+        result=result,
+        explanation_data=explanation_data,
+        duty_blocks=[block],
+        soldier_names={soldier.id: "Reserve Soldier"},
+        actor_id=dm.id,
+    )
+    admin_session.commit()
+
+    da = admin_session.execute(
+        _select(DutyAssignment).where(DutyAssignment.algorithm_job_id == job.id)
+    ).scalar_one()
+
+    assert da.algorithm_job_id == job.id
+    assert da.norm_score_before is None
+    assert da.candidate_rank is None
