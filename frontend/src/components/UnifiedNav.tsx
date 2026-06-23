@@ -65,9 +65,8 @@ export default function UnifiedNav() {
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
-        const count = result.items.filter(
-          (j) => j.status === "pending" || j.status === "running" || j.status === "done" || j.status === "failed"
-        ).length;
+        // The list endpoint already excludes published jobs, so all returned items need attention.
+        const count = result.items.length;
         setAlgorithmBadgeCount(count);
       } catch {
         // ignore
