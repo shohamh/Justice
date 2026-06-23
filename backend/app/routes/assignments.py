@@ -5,7 +5,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
@@ -221,11 +221,11 @@ def clear_all_assignments(
 ) -> None:
     """Cancel all non-cancelled assignments (admin / duty-manager operation)."""
     authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
-    rows = session.execute(
-        select(DutyAssignment).where(DutyAssignment.status != "cancelled")
-    ).scalars().all()
-    for a in rows:
-        a.status = "cancelled"
+    session.execute(
+        sa_update(DutyAssignment)
+        .where(DutyAssignment.status != "cancelled")
+        .values(status="cancelled")
+    )
     session.commit()
 
 
