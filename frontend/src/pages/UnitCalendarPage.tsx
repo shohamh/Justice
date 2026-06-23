@@ -40,17 +40,17 @@ export default function UnitCalendarPage() {
   const [nodeId, setNodeId] = useState<string>("");
 
   useEffect(() => {
-    void fetchFullTree().then((ns) => {
-      const ordered = treeOrder(ns);
-      setNodes(ordered);
-      if (!nodeId) {
-        const root = ordered.find((n) => n.level === "corps") ?? ordered[0];
-        setNodeId(root?.id ?? "");
-      }
-    });
+    void fetchFullTree().then((ns) => setNodes(treeOrder(ns)));
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const depthMap = useMemo(() => buildDepthMap(nodes), [nodes]);
+
+  const rootNodeId = useMemo(
+    () => (nodes.find((n) => !n.parent_id) ?? nodes[0])?.id ?? "",
+    [nodes]
+  );
+
+  const effectiveNodeId = nodeId || rootNodeId;
 
   return (
     <Layout>
@@ -58,12 +58,13 @@ export default function UnitCalendarPage() {
         <h2 className="text-xl font-semibold">{t("unit_calendar.title")}</h2>
         <div className="w-72">
           <Combobox
+            placeholder={t("unit_calendar.all_units")}
             items={nodes.map((n) => ({ id: n.id, name: n.name, depth: depthMap.get(n.id) ?? 0 }))}
             value={nodeId}
             onChange={setNodeId}
           />
         </div>
-        {nodeId ? <UnitCalendar nodeId={nodeId} /> : <p data-testid="unit-calendar-empty">{t("unit_calendar.none")}</p>}
+        {effectiveNodeId ? <UnitCalendar nodeId={effectiveNodeId} /> : <p data-testid="unit-calendar-empty">{t("unit_calendar.none")}</p>}
       </section>
     </Layout>
   );

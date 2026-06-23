@@ -195,7 +195,8 @@
     "personal_constraints": "אילוצים אישיים",
     "no_constraints": "אין אילוצים אישיים",
     "duty_history": "היסטוריית תורנויות",
-    "telegram": "טלגרם"
+    "telegram": "טלגרם",
+    "cannot_move_commander": "לא ניתן להעביר חייל שהוא מפקד יחידה אחרת. יש להסיר אותו תחילה מתפקיד המפקד."
   },
   "role": {
     "soldier": "חייל",
@@ -299,6 +300,7 @@
     "to": "עד תאריך",
     "duties": "תורנויות",
     "none": "אין תורנויות",
+    "all_units": "כלל המסגרת",
     "loading": "טוען יומן...",
     "error": "שגיאה בטעינת היומן",
     "detail_table": "פירוט תורנויות לתאריך",
@@ -361,7 +363,7 @@
     "elapsed": "{{seconds}} שניות",
     "done": "הצעות האלגוריתם",
     "failed": "האלגוריתם נכשל",
-    "shadow_mode": "מצב צל",
+    "shadow_mode": "מצב טיוטה",
     "dm_reviewed_mode": "מצב סקירה",
     "accept": "אשר",
     "reject": "דחה",

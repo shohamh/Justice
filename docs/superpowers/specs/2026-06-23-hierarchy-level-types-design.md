@@ -34,18 +34,17 @@ Additionally, the "ערוך" button on a node currently only allows renaming —
 | `label` | `VARCHAR(200)` | NOT NULL — Hebrew display name (e.g. `"ענף"`) |
 | `rank` | `INTEGER` | UNIQUE NOT NULL — ordering; lower rank = higher in hierarchy |
 
-Seeded via Alembic with the 6 types currently used by the frontend:
+Seeded via Alembic with the 7 existing types:
 
 | key | label | rank |
 |-----|-------|------|
-| `division` | `מערך` | 1 |
-| `unit` | `יחידה` | 2 |
-| `department` | `מרכז` | 3 |
-| `branch` | `ענף` | 4 |
-| `group` | `מדור` | 5 |
-| `team` | `צוות` | 6 |
-
-`corps` (the hidden root-only type in the old backend `LEVEL_ORDER`) is dropped — root nodes in all existing data use `division`, and the frontend never exposed `corps` as a choice.
+| `corps` | `אגף` | 1 |
+| `division` | `מערך` | 2 |
+| `unit` | `יחידה` | 3 |
+| `department` | `מרכז` | 4 |
+| `branch` | `ענף` | 5 |
+| `group` | `מדור` | 6 |
+| `team` | `צוות` | 7 |
 
 The `HierarchyNode.level` column remains a plain `VARCHAR` — no FK to `hierarchy_level_types`. This keeps the DB simple and avoids cascade issues. Enforcement is done in the service layer.
 
