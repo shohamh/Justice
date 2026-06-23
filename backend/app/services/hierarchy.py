@@ -237,3 +237,62 @@ def delete_level_type(
         before={"key": level_type.key, "label": level_type.label},
     )
     session.delete(level_type)
+
+
+class ReorderViolation(HierarchyError):
+    def __init__(self, violations: list[dict[str, str]]):
+        self.violations = violations
+        super().__init__("reorder_would_violate_tree")
+
+
+def reorder_level_types(
+    session: Session, *, ordered_ids: list[uuid.UUID], actor_id: uuid.UUID | None = None
+) -> list[HierarchyLevelType]:
+    all_types = session.execute(select(HierarchyLevelType)).scalars().all()
+    if {t.id for t in all_types} != set(ordered_ids) or len(ordered_ids) != len(all_types):
+        raise HierarchyError("ordered_ids must contain exactly all existing level type ids")
+
+    new_rank_by_id = {type_id: i + 1 for i, type_id in enumerate(ordered_ids)}
+    new_rank_by_key = {t.key: new_rank_by_id[t.id] for t in all_types}
+    label_by_key = {t.key: t.label for t in all_types}
+
+    nodes = session.execute(select(HierarchyNode)).scalars().all()
+    nodes_by_id = {n.id: n for n in nodes}
+    violations: list[dict[str, str]] = []
+    for node in nodes:
+        if node.parent_id is None:
+            continue
+        parent = nodes_by_id.get(node.parent_id)
+        if parent is None:
+            continue
+        child_rank = new_rank_by_key.get(node.level)
+        parent_rank = new_rank_by_key.get(parent.level)
+        if child_rank is None or parent_rank is None:
+            continue
+        if child_rank <= parent_rank:
+            violations.append(
+                {
+                    "parent": f"{parent.name} ({label_by_key[parent.level]})",
+                    "child": f"{node.name} ({label_by_key[node.level]})",
+                }
+            )
+    if violations:
+        raise ReorderViolation(violations)
+
+    before = {t.key: t.rank for t in all_types}
+    offset = len(all_types) + max(t.rank for t in all_types) + 1
+    for t in all_types:
+        t.rank = new_rank_by_id[t.id] + offset
+    session.flush()
+    for t in all_types:
+        t.rank = new_rank_by_id[t.id]
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="hierarchy_level_type.reorder",
+        entity_type="hierarchy_level_type",
+        before={"ranks": before},
+        after={"ranks": {t.key: t.rank for t in all_types}},
+    )
+    return sorted(all_types, key=lambda t: t.rank)

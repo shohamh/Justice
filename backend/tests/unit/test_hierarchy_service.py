@@ -4,12 +4,14 @@ from sqlalchemy import select, text
 from app.db.models import HierarchyLevelType, HierarchyNode
 from app.services.hierarchy import (
     HierarchyError,
+    ReorderViolation,
     create_level_type,
     create_node,
     delete_level_type,
     delete_node,
     move_node,
     rename_node,
+    reorder_level_types,
     set_commander,
 )
 from tests.helpers import create_node as seed_node
@@ -161,3 +163,46 @@ def test_delete_level_type_succeeds_when_unused(admin_session):
     delete_level_type(admin_session, id=lt.id, actor_id=None)
     admin_session.commit()
     assert admin_session.get(HierarchyLevelType, lt.id) is None
+
+
+def test_reorder_level_types_happy_path(admin_session):
+    types = admin_session.execute(
+        select(HierarchyLevelType).order_by(HierarchyLevelType.rank)
+    ).scalars().all()
+    reversed_ids = [t.id for t in reversed(types)]
+    reorder_level_types(admin_session, ordered_ids=reversed_ids, actor_id=None)
+    admin_session.commit()
+    by_id = {
+        t.id: t.rank
+        for t in admin_session.execute(select(HierarchyLevelType)).scalars().all()
+    }
+    assert by_id[reversed_ids[0]] == 1
+    assert by_id[reversed_ids[-1]] == len(reversed_ids)
+
+
+def test_reorder_level_types_rejects_partial_id_list(admin_session):
+    types = admin_session.execute(
+        select(HierarchyLevelType).order_by(HierarchyLevelType.rank)
+    ).scalars().all()
+    with pytest.raises(HierarchyError):
+        reorder_level_types(admin_session, ordered_ids=[types[0].id], actor_id=None)
+
+
+def test_reorder_level_types_detects_tree_violation(admin_session):
+    dept = seed_node(admin_session, level="department", name="d")  # rank 4
+    seed_node(admin_session, level="branch", name="b", parent=dept)  # rank 5
+    types = {
+        t.key: t
+        for t in admin_session.execute(select(HierarchyLevelType)).scalars().all()
+    }
+    # Move "branch" (currently rank 5) above "department" (rank 4) -> would invert the pair.
+    ordered = sorted(types.values(), key=lambda t: t.rank)
+    ordered_ids = [t.id for t in ordered]
+    dept_pos = next(i for i, t in enumerate(ordered) if t.key == "department")
+    branch_pos = next(i for i, t in enumerate(ordered) if t.key == "branch")
+    ordered_ids[dept_pos], ordered_ids[branch_pos] = ordered_ids[branch_pos], ordered_ids[dept_pos]
+    with pytest.raises(ReorderViolation) as exc_info:
+        reorder_level_types(admin_session, ordered_ids=ordered_ids, actor_id=None)
+    assert len(exc_info.value.violations) == 1
+    assert exc_info.value.violations[0]["parent"] == "d (מרכז)"
+    assert exc_info.value.violations[0]["child"] == "b (ענף)"
