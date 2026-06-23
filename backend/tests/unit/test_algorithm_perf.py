@@ -95,6 +95,11 @@ def test_proposals_fast_path_no_audit_log_dependency(admin_session):
 
     proposals = _proposals_for_job(admin_session, job)
     assert len(proposals) == 1
+    p = proposals[0]
+    assert p.norm_score_before == pytest.approx(0.1)
+    assert p.norm_score_after == pytest.approx(0.2)
+    assert p.candidate_rank == 3
+    assert p.candidate_pool_size == 8
 
 
 def test_proposals_pending_job_returns_empty(admin_session):

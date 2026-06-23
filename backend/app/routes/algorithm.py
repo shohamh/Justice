@@ -232,6 +232,9 @@ def _proposals_for_job(session: Session, job: AlgorithmJob) -> list[ProposalOut]
         .all()
     )
 
+    # All assignments for new jobs have algorithm_job_id set (populated by persist_results).
+    # If fast_rows is non-empty we are dealing with a new job; fall through to the
+    # audit-log path only for legacy jobs whose assignments pre-date this column.
     if fast_rows:
         assignment_ids = {a.id for a in fast_rows}
         reserve_links = (
