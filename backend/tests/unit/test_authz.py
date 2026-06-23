@@ -118,3 +118,49 @@ def test_plain_soldier_cannot_manage_assignments(admin_session):
     )
     roots = _roots(admin_session, s)
     assert not authz.can(s, authz.Action.ASSIGNMENT_MANAGE, target_node=d, roots=roots)
+
+
+# ── can_see_private ──────────────────────────────────────────────────────────
+
+
+def test_can_see_private_self(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d1")
+    s = create_soldier(admin_session, personal_number="csp001", hierarchy_node_id=d.id)
+    assert authz.can_see_private(admin_session, viewer=s, target=s)
+
+
+def test_admin_cannot_see_private(admin_session):
+    admin = create_soldier(admin_session, personal_number="csp-adm001", role="admin")
+    target = create_soldier(admin_session, personal_number="csp002")
+    assert not authz.can_see_private(admin_session, viewer=admin, target=target)
+
+
+def test_dm_in_scope_can_see_private(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d2")
+    dm = create_soldier(admin_session, personal_number="csp-dm001", role="duty_manager", hierarchy_node_id=d.id)
+    target = create_soldier(admin_session, personal_number="csp003", hierarchy_node_id=d.id)
+    assert authz.can_see_private(admin_session, viewer=dm, target=target)
+
+
+def test_dm_out_of_scope_cannot_see_private(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d3")
+    other = create_node(admin_session, level="department", name="csp-d4")
+    dm = create_soldier(admin_session, personal_number="csp-dm002", role="duty_manager", hierarchy_node_id=d.id)
+    target = create_soldier(admin_session, personal_number="csp004", hierarchy_node_id=other.id)
+    assert not authz.can_see_private(admin_session, viewer=dm, target=target)
+
+
+def test_commander_in_chain_can_see_private(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d5")
+    cmd = create_soldier(admin_session, personal_number="csp-cmd001", role="commander")
+    d.commander_id = cmd.id
+    admin_session.flush()
+    target = create_soldier(admin_session, personal_number="csp005", hierarchy_node_id=d.id)
+    assert authz.can_see_private(admin_session, viewer=cmd, target=target)
+
+
+def test_plain_soldier_cannot_see_peer_private(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d6")
+    viewer = create_soldier(admin_session, personal_number="csp006", hierarchy_node_id=d.id)
+    target = create_soldier(admin_session, personal_number="csp007", hierarchy_node_id=d.id)
+    assert not authz.can_see_private(admin_session, viewer=viewer, target=target)

@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 
+PRIVATE_FIELD_NAMES: frozenset[str] = frozenset({"gender", "phone", "email"})
+
 
 class Action:
     SOLDIER_CREATE = "soldier.create"
@@ -116,6 +118,19 @@ def can(
                 and _node_in_scope(target_node, roots)
             )
         return action in _COMMANDER_ACTIONS and _node_in_scope(target_node, roots)
+    return False
+
+
+def can_see_private(session: Session, viewer: Soldier, target: Soldier) -> bool:
+    """Return True iff viewer may read private fields on target's record."""
+    if viewer.id == target.id:
+        return True
+    if viewer.role == "admin":
+        return False
+    if viewer.role in ("duty_manager", "commander"):
+        roots = scope_root_ids(session, viewer)
+        node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+        return _node_in_scope(node, roots)
     return False
 
 
