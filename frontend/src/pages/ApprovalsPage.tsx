@@ -230,7 +230,7 @@ export default function ApprovalsPage() {
                     <span>{c.start_date} → {c.end_date ?? "—"}</span>
                     <DaysBadge start={c.start_date} end={c.end_date} />
                   </p>
-                  <p className="text-xs text-gray-500 mb-2">{c.reason}</p>
+                  <p className="text-xs text-gray-500 mb-2">{c.reason ?? "מידע פרטי"}</p>
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onApprove(c.id)} data-testid={`approve-${c.id}`}>
                       {t("approvals.approve")}
@@ -273,7 +273,7 @@ export default function ApprovalsPage() {
                     <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
                     <DaysBadge start={er.start_date} end={er.end_date} />
                   </p>
-                  <p className="text-xs text-gray-500 mb-2">{er.reason}</p>
+                  <p className="text-xs text-gray-500 mb-2">{er.reason ?? "מידע פרטי"}</p>
                   {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {er.files.map(f => (
@@ -328,8 +328,8 @@ export default function ApprovalsPage() {
                   <span className="text-gray-400">—</span>
                   <span>{t(`soldier_profile.${item.field_name}`)}</span>
                 </div>
-                <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
-                <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
+                <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
+                <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input
