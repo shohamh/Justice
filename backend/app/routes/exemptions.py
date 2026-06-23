@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, can_see_private
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierExemption
 from app.db.session import get_session
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/soldiers/{soldier_id}/exemptions", tags=["exemptions
 class ExemptionOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
-    exemption_type_id: uuid.UUID
+    exemption_type_id: uuid.UUID | None
     start_date: date
     end_date: date | None
     reason: str | None
@@ -33,14 +33,14 @@ class GrantRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-def _out(ex: SoldierExemption) -> ExemptionOut:
+def _out(ex: SoldierExemption, include_sensitive: bool = True) -> ExemptionOut:
     return ExemptionOut(
         id=ex.id,
         soldier_id=ex.soldier_id,
-        exemption_type_id=ex.exemption_type_id,
+        exemption_type_id=ex.exemption_type_id if include_sensitive else None,
         start_date=ex.start_date,
         end_date=ex.end_date,
-        reason=ex.reason,
+        reason=ex.reason if include_sensitive else None,
         granted_by=ex.granted_by,
     )
 
@@ -65,7 +65,8 @@ def list_(
     s = _load_soldier(session, soldier_id)
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
-    return [_out(ex) for ex in svc.list_exemptions(session, soldier_id=soldier_id)]
+    include_sensitive = can_see_private(session, user, s)
+    return [_out(ex, include_sensitive=include_sensitive) for ex in svc.list_exemptions(session, soldier_id=soldier_id)]
 
 
 @router.post("", response_model=ExemptionOut, status_code=status.HTTP_201_CREATED)
@@ -91,7 +92,7 @@ def grant(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(ex)
-    return _out(ex)
+    return _out(ex, include_sensitive=True)
 
 
 @router.delete("/{exemption_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
