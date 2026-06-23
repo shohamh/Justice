@@ -11,7 +11,7 @@ import uuid as _uuid_mod
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier, SystemSetting
+from app.db.models import HierarchyLevelType, HierarchyNode, Soldier, SystemSetting
 from app.db.session import get_session
 from app.services import hierarchy as svc
 
@@ -46,6 +46,26 @@ class UpdateNodeRequest(BaseModel):
 
 class MoveNodeRequest(BaseModel):
     new_parent_id: uuid.UUID | None = None
+
+
+class LevelTypeOut(BaseModel):
+    id: uuid.UUID
+    key: str
+    label: str
+    rank: int
+
+
+class CreateLevelTypeRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=50)
+    label: str = Field(min_length=1, max_length=200)
+
+
+class ReorderLevelTypesRequest(BaseModel):
+    ordered_ids: list[uuid.UUID]
+
+
+def _level_type_out(t: HierarchyLevelType) -> LevelTypeOut:
+    return LevelTypeOut(id=t.id, key=t.key, label=t.label, rank=t.rank)
 
 
 def _out(n: HierarchyNode, _session: Session | None = None) -> NodeOut:
@@ -185,3 +205,66 @@ def get_tree(
             nodes = [root_node, *nodes]
 
     return [_out(n, session) for n in nodes]
+
+
+@router.get("/level-types", response_model=list[LevelTypeOut])
+def list_level_types(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[LevelTypeOut]:
+    types = session.execute(
+        select(HierarchyLevelType).order_by(HierarchyLevelType.rank)
+    ).scalars().all()
+    return [_level_type_out(t) for t in types]
+
+
+@router.post("/level-types", response_model=LevelTypeOut, status_code=status.HTTP_201_CREATED)
+def create_level_type_route(
+    body: CreateLevelTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> LevelTypeOut:
+    authorize(session, user, Action.HIERARCHY_LEVEL_TYPE_MANAGE, target_node=None)
+    try:
+        level_type = svc.create_level_type(
+            session, key=body.key, label=body.label, actor_id=user.id
+        )
+    except svc.HierarchyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(level_type)
+    return _level_type_out(level_type)
+
+
+@router.put("/level-types/reorder", response_model=list[LevelTypeOut])
+def reorder_level_types_route(
+    body: ReorderLevelTypesRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[LevelTypeOut]:
+    authorize(session, user, Action.HIERARCHY_LEVEL_TYPE_MANAGE, target_node=None)
+    try:
+        types = svc.reorder_level_types(session, ordered_ids=body.ordered_ids, actor_id=user.id)
+    except svc.ReorderViolation as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"detail": "reorder_would_violate_tree", "violations": exc.violations},
+        ) from exc
+    except svc.HierarchyError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return [_level_type_out(t) for t in types]
+
+
+@router.delete("/level-types/{level_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+def delete_level_type_route(
+    level_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    authorize(session, user, Action.HIERARCHY_LEVEL_TYPE_MANAGE, target_node=None)
+    try:
+        svc.delete_level_type(session, id=level_type_id, actor_id=user.id)
+    except svc.HierarchyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    session.commit()
