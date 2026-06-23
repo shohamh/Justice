@@ -152,6 +152,7 @@ _ALL_DATA_TABLES = [
     "duty_locations",
     "system_settings",
     "soldiers",
+    "hierarchy_level_types",
     "hierarchy_nodes",
 ]
 
@@ -202,6 +203,16 @@ _SYSTEM_SETTINGS_DEFAULTS = [
     ("auth.login_rate_limit_per_5m", "5"),
     ("eligibility.mitvahim_months", "6"),
     ("eligibility.alal_months", "3"),
+]
+
+_LEVEL_TYPE_DEFAULTS = [
+    ("corps", "אגף", 1),
+    ("division", "מערך", 2),
+    ("unit", "יחידה", 3),
+    ("department", "מרכז", 4),
+    ("branch", "ענף", 5),
+    ("group", "מדור", 6),
+    ("team", "צוות", 7),
 ]
 
 
@@ -260,6 +271,11 @@ def _truncate_tables(admin_engine) -> Iterator[None]:
                 " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
             )
         )
+        level_type_rows = ", ".join(
+            f"(gen_random_uuid(), '{key}', '{label}', {rank})"
+            for key, label, rank in _LEVEL_TYPE_DEFAULTS
+        )
+        conn.execute(text(f"INSERT INTO hierarchy_level_types (id, key, label, rank) VALUES {level_type_rows}"))
     yield
 
 
