@@ -51,7 +51,7 @@ def test_single_shift_required_count_1(admin_session):
 def test_shift_expands_to_N_blocks(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date(2026, 8, 1), date(2026, 8, 1), count=4)
+    shift = _shift(admin_session, dt, loc, date(2026, 8, 1), date(2026, 8, 2), count=4)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
@@ -103,8 +103,8 @@ def test_block_start_time_resets_to_midnight_when_truncated_to_today(admin_sessi
 def test_multiple_shifts_combined(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    s1 = _shift(admin_session, dt, loc, date(2026, 9, 1), date(2026, 9, 1), count=2)
-    s2 = _shift(admin_session, dt, loc, date(2026, 9, 2), date(2026, 9, 2), count=3)
+    s1 = _shift(admin_session, dt, loc, date(2026, 9, 1), date(2026, 9, 2), count=2)
+    s2 = _shift(admin_session, dt, loc, date(2026, 9, 2), date(2026, 9, 3), count=3)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[s1.id, s2.id])
@@ -116,7 +116,7 @@ def test_multiple_shifts_combined(admin_session):
 def test_block_ids_are_unique(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date(2026, 10, 1), date(2026, 10, 1), count=5)
+    shift = _shift(admin_session, dt, loc, date(2026, 10, 1), date(2026, 10, 2), count=5)
     admin_session.commit()
 
     blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
@@ -128,7 +128,7 @@ def test_score_per_day_from_duty_type(admin_session):
     loc = _loc(admin_session)
     admin_session.add(dt)
     admin_session.flush()
-    shift = _shift(admin_session, dt, loc, date(2026, 11, 1), date(2026, 11, 1), count=1)
+    shift = _shift(admin_session, dt, loc, date(2026, 11, 1), date(2026, 11, 2), count=1)
     admin_session.commit()
 
     blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
