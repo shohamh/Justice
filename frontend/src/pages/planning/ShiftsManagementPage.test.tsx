@@ -26,8 +26,8 @@ vi.mock("../../api/algorithm", () => ({
   listJobs: (...args: unknown[]) => mockListJobs(...args),
 }));
 
-function job(status: string, mode: string) {
-  return { status, mode };
+function job(status: string, mode: string, error_message: string | null = null) {
+  return { status, mode, error_message };
 }
 
 describe("ShiftsManagementPage — algorithm run badges", () => {
@@ -76,5 +76,18 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
     expect(screen.queryByTestId("algo-badge-draft")).not.toBeInTheDocument();
     expect(screen.queryByTestId("algo-badge-done")).not.toBeInTheDocument();
     expect(screen.queryByTestId("algo-badge-failed")).not.toBeInTheDocument();
+  });
+
+  test("excludes a cancelled job from the failed badge", async () => {
+    mockListJobs.mockResolvedValue({
+      items: [
+        job("failed", "shadow", "cancelled_by_user"),
+        job("failed", "dm_reviewed", "solver_timeout"),
+      ],
+      total: 2,
+    });
+    render(<ShiftsManagementPage />);
+
+    expect(await screen.findByTestId("algo-badge-failed")).toHaveTextContent("1");
   });
 });

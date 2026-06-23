@@ -5,44 +5,21 @@ import { ShiftsContent } from "../ShiftsPage";
 import { ShiftTemplatesContent } from "../ShiftTemplatesPage";
 import { AlgorithmContent } from "../AlgorithmPage";
 import { listJobs } from "../../api/algorithm";
-
-interface RunBadgeCounts {
-  running: number;
-  draft: number;
-  done: number;
-  failed: number;
-}
-
-const EMPTY_COUNTS: RunBadgeCounts = { running: 0, draft: 0, done: 0, failed: 0 };
+import { computeRunBadgeCounts, RunBadgeCounts } from "../../utils/algorithmRunBadges";
 
 export default function ShiftsManagementPage() {
   const { t } = useTranslation();
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(false);
   const [latestJobId, setLatestJobId] = useState<string | null>(null);
-  const [runBadgeCounts, setRunBadgeCounts] = useState<RunBadgeCounts>(EMPTY_COUNTS);
+  const [runBadgeCounts, setRunBadgeCounts] = useState<RunBadgeCounts>({ running: 0, draft: 0, done: 0, failed: 0 });
   const runsRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     async function fetchRunBadgeCounts() {
       try {
         const result = await listJobs(50);
-        const counts = result.items.reduce(
-          (acc, job) => {
-            if (job.status === "pending" || job.status === "running") {
-              acc.running += 1;
-            } else if (job.status === "done" && job.mode === "shadow") {
-              acc.draft += 1;
-            } else if (job.status === "done" && job.mode === "dm_reviewed") {
-              acc.done += 1;
-            } else if (job.status === "failed") {
-              acc.failed += 1;
-            }
-            return acc;
-          },
-          { running: 0, draft: 0, done: 0, failed: 0 }
-        );
-        setRunBadgeCounts(counts);
+        setRunBadgeCounts(computeRunBadgeCounts(result.items));
       } catch {
         // ignore — leave last known counts in place
       }
