@@ -37,7 +37,7 @@ export interface FieldUpdateDTO {
   node_name: string | null;
   field_name: string;
   previous_value: string | null;
-  new_value: string;
+  new_value: string | null;
   status: "pending" | "approved" | "rejected";
   decided_by: string | null;
   decided_at: string | null;

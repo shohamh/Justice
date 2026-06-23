@@ -3,7 +3,7 @@ import { api } from "./client";
 export interface Exemption {
   id: string;
   soldier_id: string;
-  exemption_type_id: string;
+  exemption_type_id: string | null;
   start_date: string;
   end_date: string | null;
   reason: string | null;
@@ -25,7 +25,7 @@ export interface ExemptionRequest {
   soldier_id: string;
   soldier_name: string;
   node_name: string | null;
-  exemption_type_id: string;
+  exemption_type_id: string | null;
   start_date: string;
   end_date: string | null;
   reason: string | null;

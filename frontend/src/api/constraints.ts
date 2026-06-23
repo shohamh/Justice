@@ -7,7 +7,7 @@ export interface PersonalConstraint {
   node_name: string | null;
   start_date: string;
   end_date: string;
-  reason: string;
+  reason: string | null;
   status: "pending" | "approved" | "rejected";
   decided_by: string | null;
   decided_at: string | null;
