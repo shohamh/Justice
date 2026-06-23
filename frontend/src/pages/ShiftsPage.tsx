@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
-import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
+import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -17,7 +17,7 @@ const FILL_COLORS: Record<string, string> = {
   full: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
 };
 
-type BulkAction = "clear" | "delete" | null;
+type BulkAction = "clearAll" | "clear" | "delete" | null;
 
 function Spinner() {
   return (
@@ -51,6 +51,20 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
       setError("שגיאה בטעינת תצוגה מקדימה");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleClearAll() {
+    if (!window.confirm("לנקות את כל השיבוצים?")) return;
+    setBusy("clearAll");
+    setError(null);
+    try {
+      await clearAllAssignments();
+      onClearedAll();
+    } catch {
+      setError("שגיאה בניקוי שיבוצים");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -108,10 +122,12 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
         <span className="text-sm text-gray-600 dark:text-gray-300">נקה את כל השיבוצים מכל המשמרות</span>
         <button
           type="button"
-          onClick={() => { if (window.confirm("לנקות את כל השיבוצים?")) { void clearAllAssignments().then(onClearedAll); } }}
-          className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700"
+          onClick={() => { void handleClearAll(); }}
+          disabled={!!busy}
+          className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
         >
-          נקה את כל השיבוצים
+          {busy === "clearAll" && <Spinner />}
+          {busy === "clearAll" ? "מנקה..." : "נקה את כל השיבוצים"}
         </button>
       </div>
       <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">ניקוי / מחיקה לפי טווח תאריכים</p>
@@ -228,6 +244,91 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
   );
 }
 
+type BulkOp = "clear" | "cancel" | "delete" | null;
+
+function BulkActionBar({ selectedShifts, onDone }: { selectedShifts: DutyShift[]; onDone: () => void }) {
+  const [busy, setBusy] = useState<BulkOp>(null);
+
+  async function handleClear() {
+    const assignmentCount = selectedShifts.reduce((acc, s) => acc + (s.assigned_count ?? 0), 0);
+    if (!window.confirm(`לנקות שיבוצים מ-${selectedShifts.length} משמרות (${assignmentCount} שיבוצים)?`)) return;
+    setBusy("clear");
+    try {
+      await Promise.all(selectedShifts.map(s => clearShiftAssignments(s.id)));
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleCancel() {
+    const active = selectedShifts.filter(s => s.status === "active");
+    if (active.length === 0) return;
+    if (!window.confirm(`לבטל ${active.length} משמרות פעילות?`)) return;
+    setBusy("cancel");
+    try {
+      await Promise.all(active.map(s => cancelShift(s.id)));
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDelete() {
+    const withAssignments = selectedShifts.filter(s => (s.assigned_count ?? 0) > 0);
+    const toDelete = selectedShifts.filter(s => (s.assigned_count ?? 0) === 0);
+    let msg = `למחוק ${toDelete.length} משמרות לצמיתות?`;
+    if (withAssignments.length > 0)
+      msg = `${withAssignments.length} משמרות עם שיבוצים יידלגו. למחוק ${toDelete.length} משמרות ריקות לצמיתות?`;
+    if (toDelete.length === 0) { alert("כל המשמרות הנבחרות מכילות שיבוצים ולא ניתן למחוק אותן."); return; }
+    if (!window.confirm(msg)) return;
+    setBusy("delete");
+    try {
+      await Promise.allSettled(toDelete.map(s => deleteShift(s.id)));
+      onDone();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const activeCount = selectedShifts.filter(s => s.status === "active").length;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg border border-indigo-200 dark:border-indigo-800" dir="rtl">
+      <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedShifts.length} נבחרו</span>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => { void handleClear(); }}
+          disabled={!!busy}
+          className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40"
+        >
+          {busy === "clear" && <Spinner />}
+          {busy === "clear" ? "מנקה..." : "נקה שיבוצים"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { void handleCancel(); }}
+          disabled={!!busy || activeCount === 0}
+          className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40"
+        >
+          {busy === "cancel" && <Spinner />}
+          {busy === "cancel" ? "מבטל..." : `בטל משמרות${activeCount < selectedShifts.length ? ` (${activeCount})` : ""}`}
+        </button>
+        <button
+          type="button"
+          onClick={() => { void handleDelete(); }}
+          disabled={!!busy}
+          className="flex items-center gap-1 px-3 py-1 rounded text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
+        >
+          {busy === "delete" && <Spinner />}
+          {busy === "delete" ? "מוחק..." : "מחק משמרות"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: string) => void } = {}) {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -304,13 +405,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     {
       id: "select",
       header: "",
-      sortValue: (s) => s.fill_status === "full" ? 2 : selectedShiftIds.includes(s.id) ? 0 : 1,
+      sortValue: (s) => selectedShiftIds.includes(s.id) ? 0 : 1,
       cell: (s) => (
         <input
           type="checkbox"
           checked={selectedShiftIds.includes(s.id)}
-          disabled={s.fill_status === "full"}
-          className={s.fill_status === "full" ? "opacity-30 cursor-not-allowed" : ""}
           onChange={() =>
             setSelectedShiftIds(prev =>
               prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id]
@@ -498,10 +597,10 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <button
                 type="button"
-                onClick={() => setSelectedShiftIds(shifts.filter(s => s.fill_status !== "full").map(s => s.id))}
+                onClick={() => setSelectedShiftIds(shifts.map(s => s.id))}
                 className="text-blue-600 dark:text-blue-400 hover:underline"
               >
-                בחר הכל ({shifts.filter(s => s.fill_status !== "full").length})
+                בחר הכל ({shifts.length})
               </button>
               {selectedShiftIds.length > 0 && (
                 <>
@@ -535,17 +634,45 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           )}
         </div>
 
+        {selectedShiftIds.length > 0 && (
+          <BulkActionBar
+            selectedShifts={shifts.filter(s => selectedShiftIds.includes(s.id))}
+            onDone={() => { setSelectedShiftIds([]); void refresh(); }}
+          />
+        )}
+
         {(() => {
+          const fullSelectedIds = shifts
+            .filter(s => s.fill_status === "full" && selectedShiftIds.includes(s.id))
+            .map(s => s.id);
+          const algorithmShiftIds = selectedShiftIds.filter(id => !fullSelectedIds.includes(id));
+
           const algorithmPanel = showAlgorithmPanel ? (
-            <AlgorithmInlinePanel
-              selectedShiftIds={selectedShiftIds}
-              onJobSubmitted={(jobId) => {
-                onJobSubmitted?.(jobId);
-                setShowAlgorithmPanel(false);
-                setSelectedShiftIds([]);
-              }}
-              onClose={() => setShowAlgorithmPanel(false)}
-            />
+            <>
+              {fullSelectedIds.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 text-sm" dir="rtl">
+                  <span className="text-amber-800 dark:text-amber-200">
+                    {fullSelectedIds.length} משמרות מלאות נבחרו — הן לא ישובצו אוטומטית.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedShiftIds(prev => prev.filter(id => !fullSelectedIds.includes(id)))}
+                    className="text-amber-700 dark:text-amber-300 underline hover:no-underline text-xs whitespace-nowrap"
+                  >
+                    הסר מהבחירה
+                  </button>
+                </div>
+              )}
+              <AlgorithmInlinePanel
+                selectedShiftIds={algorithmShiftIds}
+                onJobSubmitted={(jobId) => {
+                  onJobSubmitted?.(jobId);
+                  setShowAlgorithmPanel(false);
+                  setSelectedShiftIds([]);
+                }}
+                onClose={() => setShowAlgorithmPanel(false)}
+              />
+            </>
           ) : null;
 
           return (
