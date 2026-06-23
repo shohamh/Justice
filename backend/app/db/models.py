@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, text
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
@@ -266,6 +266,24 @@ class DutyAssignment(Base):
         Boolean, server_default=text("false"), default=False
     )
     batch_index: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    algorithm_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("algorithm_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    norm_score_before: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    norm_score_after: Mapped[float | None] = mapped_column(
+        Float, nullable=True, default=None
+    )
+    candidate_rank: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    candidate_pool_size: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=None
     )
     called_up_from: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
@@ -582,6 +600,14 @@ class AlgorithmJob(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+    @property
+    def total_duties(self) -> int:
+        return sum(br.get("duty_count", 0) for br in (self.batch_results or []))
+
+    @property
+    def assigned_duties(self) -> int:
+        return sum(br.get("assigned_count", 0) for br in (self.batch_results or []))
 
 
 class DutyDismissal(Base):
