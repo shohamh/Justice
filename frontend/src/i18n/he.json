@@ -73,7 +73,16 @@
     "shifts_tab_algorithm": "שיבוץ אלגוריתם",
     "admin_settings": "הגדרות מערכת",
     "admin_invite_codes": "קודי הזמנה",
-    "score_adjustments": "שינוי ניקוד ידני"
+    "score_adjustments": "שינוי ניקוד ידני",
+    "planning_export": "ייצוא לאקסל"
+  },
+  "export": {
+    "transparency_title": "ייצוא שקיפות",
+    "transparency_desc": "ייצוא נתוני ניקוד ושיבוץ לכל החיילים לקובץ Excel.",
+    "sub_units_title": "ייצוא יחידות משנה",
+    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel.",
+    "download": "הורד Excel",
+    "downloading": "מוריד..."
   },
   "my_requests": {
     "title": "אילוצים ופטורים",
@@ -99,13 +108,15 @@
     "exemption_details": "פרטים נוספים",
     "pending_constraints": "אילוצים ממתינים לאישור",
     "approved_constraints": "אילוצים שאושרו",
-    "rejected_constraints": "אילוצים שנדחו"
+    "rejected_constraints": "אילוצים שנדחו",
+    "decision_note": "הערת מפקד"
   },
   "approvals": {
     "title": "אישור בקשות",
     "none": "אין בקשות ממתינות לאישור",
     "approve": "אשר",
     "reject": "דחה",
+    "reject_constraint": "לא מאושר",
     "decision_note": "הערה",
     "tab_constraints": "אילוצים אישיים",
     "tab_exemptions": "בקשות פטור",
@@ -181,6 +192,8 @@
     "level_type_delete_in_use": "לא ניתן למחוק סוג בשימוש",
     "level_type_reorder_violations": "הסדר החדש יפר את ההיררכיה הקיימת:",
     "assign_commander": "קביעת מפקד",
+    "cannot_delete_commander": "לא ניתן למחוק חייל שהוא מפקד של יחידה",
+    "reassign_commander_first": "יש להחליף מפקד ביחידה לפני מחיקת החייל.",
     "commander": "מפקד",
     "level_division": "מערך",
     "level_unit": "יחידה",
@@ -198,6 +211,7 @@
     "exemptions": "פטורים",
     "profile": "פרופיל שירות",
     "edit": "ערוך",
+    "view_profile": "הצג פרופיל",
     "phone": "טלפון",
     "personal_constraints": "אילוצים אישיים",
     "no_constraints": "אין אילוצים אישיים",
@@ -441,6 +455,7 @@
     "gender": "מין",
     "gender_male": "זכר",
     "gender_female": "נקבה",
+    "gender_other": "אחר",
     "rank": "דרגה",
     "enlisted": "חוגרים",
     "officers": "קצינים",
@@ -882,7 +897,9 @@
     "requested_node": "מסגרת מבוקשת",
     "approve": "אשר",
     "reject": "דחה",
-    "decision_note_placeholder": "הערת החלטה (חובה לדחייה)"
+    "decision_note_placeholder": "הערת החלטה (חובה לדחייה)",
+    "click_to_view_profile": "(לחץ על השם לצפייה בפרופיל)",
+    "confirm_approve": "לאשר את הצטרפות {{soldier}} ליחידה {{node}}?"
   },
   "invite_codes": {
     "title": "קודי הזמנה",

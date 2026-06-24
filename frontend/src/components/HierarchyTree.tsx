@@ -97,7 +97,7 @@ function DraggableSoldier({
           onClick={() => onEdit(s)}
           data-testid={`edit-soldier-${s.personal_number}`}
         >
-          {t("team.edit")}
+          {t("team.view_profile")}
         </button>
       )}
     </li>

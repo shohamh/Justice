@@ -229,6 +229,7 @@ export default function ProfilePage() {
               <option value="">—</option>
               <option value="male">{t("soldier_profile.gender_male")}</option>
               <option value="female">{t("soldier_profile.gender_female")}</option>
+              <option value="other">{t("soldier_profile.gender_other")}</option>
             </select>
             <button type="button" onClick={() => requestUpdate("gender", genderReq)} disabled={!genderReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}

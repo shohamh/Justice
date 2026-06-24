@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import HierarchyNode, NotificationType, PersonalConstraint, Soldier
+from app.db.models import HierarchyNode, NotificationType, PersonalConstraint, Soldier, SoldierEnrollmentRequest
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -218,24 +218,41 @@ def list_constraints(session: Session, *, soldier_id: uuid.UUID) -> list[Persona
     )
 
 
-def list_pending_approvals(
-    session: Session,
-    *,
-    node_ids: set[uuid.UUID],
-) -> list[PersonalConstraint]:
+def _scope_soldier_ids(session: Session, node_ids: set[uuid.UUID]) -> list[uuid.UUID]:
+    """Return IDs of soldiers in scope: enrolled in scope nodes OR pending enrollment to them."""
     subq = (
         select(HierarchyNode.id)
         .where(HierarchyNode.path_ids.overlap(list(node_ids)))
         .subquery()
     )
+    enrolled = set(
+        session.execute(
+            select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
+        ).scalars().all()
+    )
+    pending = set(
+        session.execute(
+            select(SoldierEnrollmentRequest.soldier_id).where(
+                SoldierEnrollmentRequest.status == "pending",
+                SoldierEnrollmentRequest.requested_node_id.in_(select(subq.c.id)),
+            )
+        ).scalars().all()
+    )
+    return list(enrolled | pending)
+
+
+def list_pending_approvals(
+    session: Session,
+    *,
+    node_ids: set[uuid.UUID],
+) -> list[PersonalConstraint]:
+    soldier_ids = _scope_soldier_ids(session, node_ids)
     return list(
         session.execute(
             select(PersonalConstraint)
             .where(
                 PersonalConstraint.status == "pending",
-                PersonalConstraint.soldier_id.in_(
-                    select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
-                ),
+                PersonalConstraint.soldier_id.in_(soldier_ids),
             )
             .order_by(PersonalConstraint.start_date.asc())
         )
@@ -245,20 +262,14 @@ def list_pending_approvals(
 
 
 def pending_approval_count(session: Session, *, node_ids: set[uuid.UUID]) -> int:
-    subq = (
-        select(HierarchyNode.id)
-        .where(HierarchyNode.path_ids.overlap(list(node_ids)))
-        .subquery()
-    )
+    soldier_ids = _scope_soldier_ids(session, node_ids)
     return len(
         list(
             session.execute(
                 select(PersonalConstraint)
                 .where(
                     PersonalConstraint.status == "pending",
-                    PersonalConstraint.soldier_id.in_(
-                        select(Soldier.id).where(Soldier.hierarchy_node_id.in_(select(subq.c.id)))
-                    ),
+                    PersonalConstraint.soldier_id.in_(soldier_ids),
                 )
             )
             .scalars()

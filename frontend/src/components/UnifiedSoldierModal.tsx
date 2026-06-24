@@ -373,6 +373,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <option value="">—</option>
                   <option value="male">{t("soldier_profile.gender_male")}</option>
                   <option value="female">{t("soldier_profile.gender_female")}</option>
+                  <option value="other">{t("soldier_profile.gender_other")}</option>
                 </select>
               </label>
               <label className="flex items-center gap-3 cursor-pointer col-span-1">

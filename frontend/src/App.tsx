@@ -25,6 +25,7 @@ import TelegramSetupPage from "./pages/TelegramSetupPage";
 import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
+import ExportPage from "./pages/planning/ExportPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import HakpazaPage from "./pages/HakpazaPage";
 import ImportPage from "./pages/ImportPage";
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
             <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
             <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
+            <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
             {/* Admin */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
