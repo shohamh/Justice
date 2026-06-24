@@ -14,11 +14,12 @@ import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
 import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
-import RenameNodeDialog from "./RenameNodeDialog";
+import EditNodeDialog from "./EditNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import SoldierLink from "./SoldierLink";
 import TelegramBadge from "./TelegramBadge";
+import { useLevelTypes } from "../hooks/useLevelTypes";
 
 function SoldierAvatar({ url, name }: { url?: string | null; name: string }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -36,8 +37,7 @@ const LEVEL_COLORS: Record<string, string> = {
   group: "text-yellow-700 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-950",
   team: "text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-700",
 };
-
-const LEVEL_ORDER = ["division", "unit", "department", "branch", "group", "team"];
+const DEFAULT_LEVEL_COLOR = "text-slate-700 bg-slate-100 dark:text-slate-300 dark:bg-slate-700";
 
 interface DragDataSoldier {
   kind: "soldier";
@@ -117,6 +117,7 @@ function DroppableNodeRow({
   hasSoldiers,
   isExpanded,
   onToggle,
+  levelLabel,
   t,
 }: {
   node: NodeDTO;
@@ -132,6 +133,7 @@ function DroppableNodeRow({
   hasSoldiers: boolean;
   isExpanded: boolean;
   onToggle: () => void;
+  levelLabel: string;
   t: (k: string) => string;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -173,8 +175,8 @@ function DroppableNodeRow({
           ⠿
         </span>
       )}
-      <span className={`text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? ""}`}>
-        {t(`team.level_${node.level}`)}
+      <span className={`text-xs px-1.5 py-0.5 rounded ${LEVEL_COLORS[node.level] ?? DEFAULT_LEVEL_COLOR}`}>
+        {levelLabel}
       </span>
       <span className="font-medium" data-testid={`tree-name-${node.id}`}>{node.name}</span>
       {node.commander_name && (
@@ -218,6 +220,11 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
   const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const [activeData, setActiveData] = useState<DragData | null>(null);
+
+  const { levelTypes } = useLevelTypes();
+  const rankByKey = new Map(levelTypes.map((lt) => [lt.key, lt.rank]));
+  const maxRank = levelTypes.length > 0 ? Math.max(...levelTypes.map((lt) => lt.rank)) : 0;
+  const labelByKey = new Map(levelTypes.map((lt) => [lt.key, lt.label]));
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -308,8 +315,8 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
   };
 
   const canHaveChildrenFn = (level: string) => {
-    const idx = LEVEL_ORDER.indexOf(level);
-    return idx >= 0 && idx < LEVEL_ORDER.length - 1;
+    const rank = rankByKey.get(level);
+    return rank !== undefined && rank < maxRank;
   };
 
   function renderNode(node: NodeDTO, depth: number) {
@@ -334,6 +341,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
           hasSoldiers={nodeSoldiers.length > 0}
           isExpanded={isExpanded}
           onToggle={() => toggle(node.id)}
+          levelLabel={labelByKey.get(node.level) ?? node.level}
           t={t}
         />
 
@@ -400,9 +408,28 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
       {commanderDialog && (
         <AssignCommanderDialog node={commanderDialog} onClose={() => setCommanderDialog(null)} onAssigned={onChanged} />
       )}
-      {renameDialog && (
-        <RenameNodeDialog nodeId={renameDialog.id} currentName={renameDialog.name} onClose={() => setRenameDialog(null)} onRenamed={onChanged} />
-      )}
+      {renameDialog && (() => {
+        const parent = nodes.find((n) => n.id === renameDialog.parent_id);
+        const parentRank = parent ? rankByKey.get(parent.level) ?? null : null;
+        const childRanks = nodes
+          .filter((n) => n.parent_id === renameDialog.id)
+          .map((n) => rankByKey.get(n.level))
+          .filter((r): r is number => r !== undefined);
+        const minChildRank = childRanks.length > 0 ? Math.min(...childRanks) : null;
+        return (
+          <EditNodeDialog
+            nodeId={renameDialog.id}
+            currentName={renameDialog.name}
+            currentLevel={renameDialog.level}
+            parentRank={parentRank}
+            minChildRank={minChildRank}
+            isAdmin={isAdmin}
+            nodesUsingLevel={(key) => nodes.some((n) => n.level === key)}
+            onClose={() => setRenameDialog(null)}
+            onRenamed={onChanged}
+          />
+        );
+      })()}
       {editSoldier && (
         <UnifiedSoldierModal
           soldier={editSoldier}
