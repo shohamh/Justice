@@ -11,7 +11,6 @@ import CoverOfferModal from "./CoverOfferModal";
 import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
-import GimelimModal from "./GimelimModal";
 import { formatDutyRange } from "../utils/formatDate";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
@@ -55,7 +54,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
     soldierName: string;
     assignmentId: string;
   } | null>(null);
-  const [gimelimTarget, setGimelimTarget] = useState<CalendarShiftAssignee | null>(null);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
   const [gimelimDefaultRestDays, setGimelimDefaultRestDays] = useState(7);
   const [canOfferReplace, setCanOfferReplace] = useState(true);
@@ -233,14 +231,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         >
                           {t("dismiss_action")}
                         </button>
-                        {gimelimEnabled && !a.is_reserve && (user?.role === "duty_manager" || user?.role === "admin") && (
-                          <button
-                            className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
-                            onClick={() => setGimelimTarget(a)}
-                          >
-                            גימלים 🏥
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
@@ -388,6 +378,12 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
           <DismissalModal
             shift={shift}
             primary={dismissTarget}
+            canGimelim={
+              gimelimEnabled &&
+              !dismissTarget.is_reserve &&
+              (user?.role === "duty_manager" || user?.role === "admin")
+            }
+            defaultRestDays={gimelimDefaultRestDays}
             onClose={() => setDismissTarget(null)}
             onDone={() => { setDismissTarget(null); onRefreshNeeded(); }}
           />
@@ -399,19 +395,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             reserve={reserveDismissTarget}
             onClose={() => setReserveDismissTarget(null)}
             onDone={() => { setReserveDismissTarget(null); onRefreshNeeded(); }}
-          />
-        )}
-
-        {gimelimTarget && (
-          <GimelimModal
-            shiftId={shift.id}
-            primary={gimelimTarget}
-            defaultRestDays={gimelimDefaultRestDays}
-            onClose={() => setGimelimTarget(null)}
-            onDone={() => {
-              setGimelimTarget(null);
-              onRefreshNeeded();
-            }}
           />
         )}
 

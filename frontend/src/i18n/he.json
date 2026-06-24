@@ -731,7 +731,9 @@
     "error": "שגיאה בשחרור התורנות",
     "cancel": "ביטול",
     "submitting": "שולח...",
-    "confirm": "אשר שחרור"
+    "confirm": "אשר שחרור",
+    "mode_regular": "רגיל",
+    "mode_gimelim": "גימלים"
   },
   "primary_soldiers": "חיילים ראשיים",
   "reserve_soldiers": "רזרבה",

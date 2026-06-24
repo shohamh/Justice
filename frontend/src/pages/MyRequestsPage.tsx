@@ -388,7 +388,7 @@ export default function MyRequestsPage() {
           <ul className="space-y-2">
             {exemptions.map((ex) => {
               const exemptType = exemptionTypes.find((et) => et.id === ex.exemption_type_id);
-              const dutyNames = dutyTypeMap[ex.exemption_type_id] ?? [];
+              const dutyNames = ex.exemption_type_id ? dutyTypeMap[ex.exemption_type_id] ?? [] : [];
               const isMedical = exemptType?.is_medical ?? false;
               const isExpanded = expandedExemption.has(ex.id);
               return (
