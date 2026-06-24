@@ -35,7 +35,7 @@ export async function moveNode(id: string, new_parent_id: string | null): Promis
   return (await api.post<NodeDTO>(`/hierarchy/nodes/${id}/move`, { new_parent_id })).data;
 }
 
-export async function updateNode(id: string, input: { name?: string; commander_id?: string | null }): Promise<NodeDTO> {
+export async function updateNode(id: string, input: { name?: string; commander_id?: string | null; level?: string }): Promise<NodeDTO> {
   return (await api.patch<NodeDTO>(`/hierarchy/nodes/${id}`, input)).data;
 }
 
