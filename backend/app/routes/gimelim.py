@@ -53,6 +53,7 @@ class GimelimPreviewRequest(BaseModel):
     primary_assignment_id: uuid.UUID
     rest_days: int = Field(default=7, ge=0, le=365)
     reason: str | None = Field(default=None, max_length=1000)
+    from_date: date | None = None
 
 
 class SoldierRefOut(BaseModel):
@@ -178,6 +179,7 @@ def preview_gimelim_route(
             rest_days=body.rest_days,
             reason=body.reason,
             actor_id=user.id,
+            from_date=body.from_date,
         )
     except GimelimError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

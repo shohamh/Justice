@@ -31,7 +31,7 @@ def test_gimelim_promotion_copies_future_shift_times(admin_session):
     # A's current shift/assignment
     current_shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 7, 1), end_date=date(2026, 7, 2),
+        start_date=date.today(), end_date=date.today() + timedelta(days=1),
         start_time="06:00", end_time="14:00",
     )
     session.add(current_shift)
@@ -60,7 +60,7 @@ def test_gimelim_promotion_copies_future_shift_times(admin_session):
     # Future shift where C is currently primary — this is the slot A gets rolled onto.
     future_shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 7, 10), end_date=date(2026, 7, 11),
+        start_date=date.today() + timedelta(days=9), end_date=date.today() + timedelta(days=10),
         start_time="08:00", end_time="17:00",
     )
     session.add(future_shift)

@@ -291,6 +291,7 @@ def preview_gimelim(
     rest_days: int,
     reason: str | None,
     actor_id: uuid.UUID,
+    from_date: date | None = None,
 ) -> GimelimPreview:
     """Compute a gimelim proposal without writing anything."""
     # Load primary assignment
@@ -309,6 +310,11 @@ def preview_gimelim(
     shift = session.get(DutyShift, shift_id)
     if shift is None:
         raise GimelimError("shift_not_found")
+
+    if from_date is None:
+        from_date = date.today()
+    if from_date < primary_a.start_date or from_date >= primary_a.end_date:
+        raise GimelimError("date_out_of_range")
 
     # Load reserve (B) — must be linked
     link = session.execute(
@@ -388,6 +394,7 @@ def preview_gimelim(
         "primary_status_snapshot": primary_a.status,
         "reserve_status_snapshot": reserve_b.status,
         "rest_days": rest_days,
+        "from_date": from_date.isoformat(),
         "reason": reason,
         "duty_type_id": str(primary_a.duty_type_id),
         "current_shift_end": primary_a.end_date.isoformat(),
@@ -487,13 +494,14 @@ def commit_gimelim(
 
     rest_days: int = payload["rest_days"]
     reason: str | None = payload["reason"]
+    from_date_stored = date.fromisoformat(payload["from_date"])
     notifications_queued = 0
 
     # ── Step 1: Dismiss primary A ──────────────────────────────────────────
     dismissal = dismiss_primary(
         session,
         assignment=primary_a,
-        from_date=primary_a.start_date,
+        from_date=from_date_stored,
         to_date=primary_a.end_date - timedelta(days=1),
         reason=reason,
         actor_id=actor_id,
@@ -515,7 +523,7 @@ def commit_gimelim(
     call_up_reserve(
         session,
         assignment=reserve_b,
-        from_date=primary_a.start_date,
+        from_date=from_date_stored,
         to_date=call_up_last,
         actor_id=actor_id,
     )
@@ -526,7 +534,7 @@ def commit_gimelim(
         action="gimelim.call_up",
         entity_type="duty_assignment",
         entity_id=reserve_b.id,
-        after={"called_up_from": primary_a.start_date.isoformat(), "called_up_to": call_up_last.isoformat()},
+        after={"called_up_from": from_date_stored.isoformat(), "called_up_to": call_up_last.isoformat()},
     )
 
     # Handle reserve_fate setting for B
