@@ -104,9 +104,13 @@ export default function EditNodeDialog({
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    await updateNode(nodeId, { name, level: level !== currentLevel ? level : undefined });
-    onRenamed();
-    onClose();
+    try {
+      await updateNode(nodeId, { name, level: level !== currentLevel ? level : undefined });
+      onRenamed();
+      onClose();
+    } catch {
+      alert(t("errors.generic"));
+    }
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -143,9 +147,13 @@ export default function EditNodeDialog({
     e.preventDefault();
     if (!newTypeLabel.trim()) return;
     const key = newTypeLabel.trim().toLowerCase().replace(/\s+/g, "_");
-    await createLevelType(key, newTypeLabel.trim());
-    setNewTypeLabel("");
-    await refresh();
+    try {
+      await createLevelType(key, newTypeLabel.trim());
+      setNewTypeLabel("");
+      await refresh();
+    } catch {
+      alert(t("errors.generic"));
+    }
   }
 
   async function onDeleteType(type: LevelTypeDTO) {
