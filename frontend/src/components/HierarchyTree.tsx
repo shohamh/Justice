@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   DndContext,
@@ -222,9 +222,24 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
   const [activeData, setActiveData] = useState<DragData | null>(null);
 
   const { levelTypes } = useLevelTypes();
-  const rankByKey = new Map(levelTypes.map((lt) => [lt.key, lt.rank]));
-  const maxRank = levelTypes.length > 0 ? Math.max(...levelTypes.map((lt) => lt.rank)) : 0;
-  const labelByKey = new Map(levelTypes.map((lt) => [lt.key, lt.label]));
+  const { rankByKey, maxRank, labelByKey } = useMemo(() => {
+    const rankByKey = new Map(levelTypes.map((lt) => [lt.key, lt.rank]));
+    const maxRank = levelTypes.length > 0 ? Math.max(...levelTypes.map((lt) => lt.rank)) : 0;
+    const labelByKey = new Map(levelTypes.map((lt) => [lt.key, lt.label]));
+    return { rankByKey, maxRank, labelByKey };
+  }, [levelTypes]);
+
+  const editDialogRanks = useMemo(() => {
+    if (!renameDialog) return null;
+    const parent = nodes.find((n) => n.id === renameDialog.parent_id);
+    const parentRank = parent ? rankByKey.get(parent.level) ?? null : null;
+    const childRanks = nodes
+      .filter((n) => n.parent_id === renameDialog.id)
+      .map((n) => rankByKey.get(n.level))
+      .filter((r): r is number => r !== undefined);
+    const minChildRank = childRanks.length > 0 ? Math.min(...childRanks) : null;
+    return { parentRank, minChildRank };
+  }, [renameDialog, nodes, rankByKey]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -408,28 +423,19 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
       {commanderDialog && (
         <AssignCommanderDialog node={commanderDialog} onClose={() => setCommanderDialog(null)} onAssigned={onChanged} />
       )}
-      {renameDialog && (() => {
-        const parent = nodes.find((n) => n.id === renameDialog.parent_id);
-        const parentRank = parent ? rankByKey.get(parent.level) ?? null : null;
-        const childRanks = nodes
-          .filter((n) => n.parent_id === renameDialog.id)
-          .map((n) => rankByKey.get(n.level))
-          .filter((r): r is number => r !== undefined);
-        const minChildRank = childRanks.length > 0 ? Math.min(...childRanks) : null;
-        return (
-          <EditNodeDialog
-            nodeId={renameDialog.id}
-            currentName={renameDialog.name}
-            currentLevel={renameDialog.level}
-            parentRank={parentRank}
-            minChildRank={minChildRank}
-            isAdmin={isAdmin}
-            nodesUsingLevel={(key) => nodes.some((n) => n.level === key)}
-            onClose={() => setRenameDialog(null)}
-            onRenamed={onChanged}
-          />
-        );
-      })()}
+      {renameDialog && editDialogRanks && (
+        <EditNodeDialog
+          nodeId={renameDialog.id}
+          currentName={renameDialog.name}
+          currentLevel={renameDialog.level}
+          parentRank={editDialogRanks.parentRank}
+          minChildRank={editDialogRanks.minChildRank}
+          isAdmin={isAdmin}
+          nodesUsingLevel={(key) => nodes.some((n) => n.level === key)}
+          onClose={() => setRenameDialog(null)}
+          onRenamed={onChanged}
+        />
+      )}
       {editSoldier && (
         <UnifiedSoldierModal
           soldier={editSoldier}
