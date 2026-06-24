@@ -25,6 +25,7 @@ export default function TeamHierarchyPage() {
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
   const isAdmin = user?.role === "admin";
+  const canManageLevelTypes = user?.role === "admin" || user?.role === "duty_manager";
 
   async function refresh() {
     setNodes(await fetchTree());
@@ -75,7 +76,7 @@ export default function TeamHierarchyPage() {
             </button>
           )}
         </div>
-        <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} user={user} />
+        <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} canManageLevelTypes={canManageLevelTypes} />
 
         {isAdmin && (
           <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">

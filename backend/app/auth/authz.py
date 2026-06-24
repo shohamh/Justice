@@ -21,6 +21,7 @@ class Action:
     SOLDIER_ASSIGN_ROLE = "soldier.assign_role"
     HIERARCHY_READ = "hierarchy.read"
     HIERARCHY_MANAGE = "hierarchy.manage"
+    HIERARCHY_LEVEL_TYPE_MANAGE = "hierarchy.level_type_manage"
     EXEMPTION_GRANT = "exemption.grant"
     EXEMPTION_READ = "exemption.read"
     CONSTRAINT_SUBMIT = "constraint.submit"
@@ -66,6 +67,7 @@ _COMMANDER_ACTIONS = {
 _DM_GLOBAL_ACTIONS = {
     Action.ALGORITHM_RUN,
     Action.SHIFT_MANAGE,
+    Action.HIERARCHY_LEVEL_TYPE_MANAGE,
 }
 
 
