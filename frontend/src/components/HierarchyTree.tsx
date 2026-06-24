@@ -56,6 +56,7 @@ interface Props {
   nodes: NodeDTO[];
   soldiers: SoldierDTO[];
   isAdmin: boolean;
+  canManageLevelTypes: boolean;
   onChanged: () => void;
 }
 
@@ -211,7 +212,7 @@ function DroppableNodeRow({
   );
 }
 
-export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: Props) {
+export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevelTypes, onChanged }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id)));
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
@@ -430,7 +431,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
           currentLevel={renameDialog.level}
           parentRank={editDialogRanks.parentRank}
           minChildRank={editDialogRanks.minChildRank}
-          isAdmin={isAdmin}
+          isAdmin={canManageLevelTypes}
           nodesUsingLevel={(key) => nodes.some((n) => n.level === key)}
           onClose={() => setRenameDialog(null)}
           onRenamed={onChanged}

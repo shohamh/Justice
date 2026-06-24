@@ -110,7 +110,7 @@ export default function CommandDashboardPage() {
       content: (
         <div>
           <div className="mb-4">
-            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} isAdmin={false} onChanged={refresh} />
+            <HierarchyTree nodes={nodes} soldiers={soldierDTOs} isAdmin={false} canManageLevelTypes={false} onChanged={refresh} />
           </div>
         </div>
       ),

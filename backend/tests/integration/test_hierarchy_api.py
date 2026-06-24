@@ -83,6 +83,16 @@ def test_create_level_type_as_admin(client: TestClient, admin_session: Session):
     assert r.json()["key"] == "platoon"
 
 
+def test_create_level_type_as_duty_manager(client: TestClient, admin_session: Session):
+    dm = create_soldier(admin_session, personal_number="5000021", role="duty_manager")
+    r = client.post(
+        "/api/hierarchy/level-types",
+        headers=auth_headers(dm),
+        json={"key": "platoon", "label": "מחלקה"},
+    )
+    assert r.status_code == 201
+
+
 def test_create_level_type_rejects_soldier(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="5000012", role="soldier")
     r = client.post(

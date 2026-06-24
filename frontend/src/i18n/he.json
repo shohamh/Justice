@@ -172,7 +172,6 @@
     "node": "יחידה",
     "hierarchy": "היררכיה",
     "add_child_node": "הוסף תת-יחידה",
-    "rename_node": "שינוי שם",
     "edit_node": "עריכת יחידה",
     "level": "דרגה",
     "level_type_manager": "ניהול סוגי דרגות",
