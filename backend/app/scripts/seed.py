@@ -1,11 +1,15 @@
 """Seed the database with realistic test data.
 
-Usage: python -m app.scripts.seed [--clear] [--with-assignments] [--db-url URL]
+Usage: python -m app.scripts.seed [--clear] [--with-assignments] [--fair] [--db-url URL]
 
 Flags:
   --clear / --force      Drop and re-create all seed data.
   --with-assignments     Also pre-fill shift assignments (default: shifts are
                          created empty so the algorithm can assign them).
+  --fair                 Same soldiers, but skip personal constraints and
+                         soldier exemptions so nothing blocks anyone from duty
+                         — useful for verifying the algorithm distributes
+                         shifts fairly with no special cases.
   --db-url URL           Override DATABASE_URL (useful when running outside
                          Docker where the host is 'localhost' not 'db').
 """
@@ -49,7 +53,7 @@ from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
 
 
-def seed(*, force: bool = False, with_assignments: bool = False):
+def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
     from app.scripts.bootstrap import main as bootstrap_main
     bootstrap_main()
 
@@ -654,23 +658,24 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "יום כיף",
             "שמירת שבת",
         ]
-        for i, s in enumerate(all_soldiers[:15]):
-            offset = i % 30
-            pc = PersonalConstraint(
-                soldier_id=s.id,
-                start_date=today + timedelta(days=offset),
-                end_date=today + timedelta(days=offset + randint(0, 2)),
-                reason=constraint_reasons[i % len(constraint_reasons)],
-                status=choice(["pending", "approved", "approved", "rejected"]),
-                decided_by=choice(
-                    [s_admin.id, s_focus.id, s_alom.id]
-                    + [
-                        session.query(Soldier).filter(Soldier.personal_number == pn).first().id
-                        for pn in ["3000001", "3000002", "3000003", "3000004", "3000005", "3000006"]
-                    ]
-                ),
-            )
-            session.add(pc)
+        if not fair:
+            for i, s in enumerate(all_soldiers[:15]):
+                offset = i % 30
+                pc = PersonalConstraint(
+                    soldier_id=s.id,
+                    start_date=today + timedelta(days=offset),
+                    end_date=today + timedelta(days=offset + randint(0, 2)),
+                    reason=constraint_reasons[i % len(constraint_reasons)],
+                    status=choice(["pending", "approved", "approved", "rejected"]),
+                    decided_by=choice(
+                        [s_admin.id, s_focus.id, s_alom.id]
+                        + [
+                            session.query(Soldier).filter(Soldier.personal_number == pn).first().id
+                            for pn in ["3000001", "3000002", "3000003", "3000004", "3000005", "3000006"]
+                        ]
+                    ),
+                )
+                session.add(pc)
 
         # ── Soldier exemptions ──────────────────────────────────────
         # All exemptions must start on or before today so load_soldier_inputs
@@ -686,48 +691,49 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             "פטור עקב קורס מקצועי",
             "פטור זמני - החלמה",
         ]
-        # Cycle through the 5 non-global exemption types (indices 0-4)
-        _exemption_cycle = [exemption_types[i % 5] for i in range(12)]
-        for i, s in enumerate(all_soldiers[:12]):
-            days_ago = i % 7  # started 0-6 days ago → already active
-            se = SoldierExemption(
-                soldier_id=s.id,
-                exemption_type_id=_exemption_cycle[i].id,
-                start_date=today - timedelta(days=days_ago),
-                end_date=today + timedelta(days=14),
-                reason=exemption_reasons[i % len(exemption_reasons)],
-                granted_by=s_admin.id,
-            )
-            session.add(se)
+        if not fair:
+            # Cycle through the 5 non-global exemption types (indices 0-4)
+            _exemption_cycle = [exemption_types[i % 5] for i in range(12)]
+            for i, s in enumerate(all_soldiers[:12]):
+                days_ago = i % 7  # started 0-6 days ago → already active
+                se = SoldierExemption(
+                    soldier_id=s.id,
+                    exemption_type_id=_exemption_cycle[i].id,
+                    start_date=today - timedelta(days=days_ago),
+                    end_date=today + timedelta(days=14),
+                    reason=exemption_reasons[i % len(exemption_reasons)],
+                    granted_by=s_admin.id,
+                )
+                session.add(se)
 
-        # Grant the global exemption (index 5) to one soldier
-        global_et = next(et for et in exemption_types if et.is_global)
-        session.add(
-            SoldierExemption(
-                soldier_id=mador_soldiers[0].id,
-                exemption_type_id=global_et.id,
-                start_date=today - timedelta(days=10),
-                end_date=today + timedelta(days=20),
-                reason="פטור כללי זמני",
-                granted_by=s_admin.id,
+            # Grant the global exemption (index 5) to one soldier
+            global_et = next(et for et in exemption_types if et.is_global)
+            session.add(
+                SoldierExemption(
+                    soldier_id=mador_soldiers[0].id,
+                    exemption_type_id=global_et.id,
+                    start_date=today - timedelta(days=10),
+                    end_date=today + timedelta(days=20),
+                    reason="פטור כללי זמני",
+                    granted_by=s_admin.id,
+                )
             )
-        )
 
-        # Grant ספקטרה 8 an active פטור שמירות so the eligibility
-        # distribution pie chart shows variance within the ספקטרה group.
-        # mador_soldiers layout: אינפרה 0-14, פלאש 15-29, ספקטרה 30-44.
-        # "ספקטרה 8" = the soldier named "ספקטרה 8" (i+1=8 → i=7) → index 37.
-        spektra_8 = mador_soldiers[37]
-        session.add(
-            SoldierExemption(
-                soldier_id=spektra_8.id,
-                exemption_type_id=exemption_types[0].id,  # פטור שמירות
-                start_date=today - timedelta(days=30),
-                end_date=today + timedelta(days=60),
-                reason="פטור שמירות",
-                granted_by=s_admin.id,
+            # Grant ספקטרה 8 an active פטור שמירות so the eligibility
+            # distribution pie chart shows variance within the ספקטרה group.
+            # mador_soldiers layout: אינפרה 0-14, פלאש 15-29, ספקטרה 30-44.
+            # "ספקטרה 8" = the soldier named "ספקטרה 8" (i+1=8 → i=7) → index 37.
+            spektra_8 = mador_soldiers[37]
+            session.add(
+                SoldierExemption(
+                    soldier_id=spektra_8.id,
+                    exemption_type_id=exemption_types[0].id,  # פטור שמירות
+                    start_date=today - timedelta(days=30),
+                    end_date=today + timedelta(days=60),
+                    reason="פטור שמירות",
+                    granted_by=s_admin.id,
+                )
             )
-        )
 
         # ── Score adjustments ───────────────────────────────────────
         sa_defs = [
@@ -818,15 +824,16 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             decision_note="מאושר לשבוע",
         )
         session.add(er_approved)
-        # Mirror the approved request as an actual SoldierExemption so the exemptions tab shows it.
-        session.add(SoldierExemption(
-            soldier_id=all_soldiers[-8].id,
-            exemption_type_id=exemption_types[0].id,
-            start_date=today - timedelta(days=5),
-            end_date=today + timedelta(days=5),
-            reason="פטור לשמירות - אושר",
-            granted_by=s_admin.id,
-        ))
+        if not fair:
+            # Mirror the approved request as an actual SoldierExemption so the exemptions tab shows it.
+            session.add(SoldierExemption(
+                soldier_id=all_soldiers[-8].id,
+                exemption_type_id=exemption_types[0].id,
+                start_date=today - timedelta(days=5),
+                end_date=today + timedelta(days=5),
+                reason="פטור לשמירות - אושר",
+                granted_by=s_admin.id,
+            ))
 
         er_rejected = ExemptionRequest(
             soldier_id=all_soldiers[-9].id,
@@ -1376,8 +1383,11 @@ def seed(*, force: bool = False, with_assignments: bool = False):
             _safe_print("  0 shift assignments (pass --with-assignments to include)")
         _safe_print(f"  1 invite code")
         _safe_print(f"  4 enrollment requests (2 pending, 1 approved, 1 rejected)")
-        _safe_print(f"  15 personal constraints")
-        _safe_print(f"  12 soldier exemptions")
+        if fair:
+            _safe_print(f"  0 personal constraints, 0 soldier exemptions (--fair)")
+        else:
+            _safe_print(f"  15 personal constraints")
+            _safe_print(f"  12 soldier exemptions")
         _safe_print(f"  5 score adjustments")
         _safe_print(f"  8 exemption requests (6 pending, 1 approved, 1 rejected)")
         _safe_print(f"  {fu_count} profile field update requests")
@@ -1389,4 +1399,5 @@ if __name__ == "__main__":
     seed(
         force="--clear" in sys.argv or "--force" in sys.argv,
         with_assignments="--with-assignments" in sys.argv,
+        fair="--fair" in sys.argv,
     )
