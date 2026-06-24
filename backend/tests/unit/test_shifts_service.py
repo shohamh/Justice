@@ -54,12 +54,25 @@ def test_create_shift_rejects_bad_dates(admin_session):
         )
 
 
+def test_create_shift_rejects_zero_duration(admin_session):
+    dt = _dt(admin_session)
+    loc = _loc(admin_session)
+    with pytest.raises(ShiftError, match="end_before_start"):
+        create_shift(
+            admin_session,
+            duty_type_id=dt.id,
+            duty_location_id=loc.id,
+            start_date=date(2026, 7, 5),
+            end_date=date(2026, 7, 5),
+        )
+
+
 def test_fill_status_empty(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
     shift = create_shift(
         admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 8, 1), end_date=date(2026, 8, 1), required_count=3,
+        start_date=date(2026, 8, 1), end_date=date(2026, 8, 2), required_count=3,
     )
     admin_session.commit()
     from app.services.shifts import get_shift_fill
@@ -74,7 +87,7 @@ def test_fill_status_partial(admin_session):
     soldier = create_soldier(admin_session, personal_number=f"sh_{uuid.uuid4().hex[:6]}")
     shift = create_shift(
         admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 9, 1), end_date=date(2026, 9, 1), required_count=3,
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2), required_count=3,
     )
     admin_session.flush()
     da = DutyAssignment(
@@ -100,7 +113,7 @@ def test_delete_fails_with_published_assignments(admin_session):
     soldier = create_soldier(admin_session, personal_number=f"sh_{uuid.uuid4().hex[:6]}")
     shift = create_shift(
         admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 10, 1), end_date=date(2026, 10, 1),
+        start_date=date(2026, 10, 1), end_date=date(2026, 10, 2),
     )
     admin_session.flush()
     da = DutyAssignment(
@@ -126,7 +139,7 @@ def test_fill_status_excludes_reserve(admin_session):
     soldier_reserve = create_soldier(admin_session, personal_number=f"sh_{uuid.uuid4().hex[:6]}")
     shift = create_shift(
         admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 7, 10), end_date=date(2026, 7, 10), required_count=2,
+        start_date=date(2026, 7, 10), end_date=date(2026, 7, 11), required_count=2,
     )
     admin_session.flush()
     # Add 1 primary + 1 reserve assignment

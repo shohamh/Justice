@@ -247,7 +247,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
 type BulkOp = "clear" | "cancel" | "delete" | null;
 
-function BulkActionBar({ selectedShifts, onDone }: { selectedShifts: DutyShift[]; onDone: () => void }) {
+function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean }) {
   const [busy, setBusy] = useState<BulkOp>(null);
 
   async function handleClear() {
@@ -298,6 +298,19 @@ function BulkActionBar({ selectedShifts, onDone }: { selectedShifts: DutyShift[]
     <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg border border-indigo-200 dark:border-indigo-800" dir="rtl">
       <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedShifts.length} נבחרו</span>
       <div className="flex flex-wrap gap-2">
+        {onAutoAssign && (
+          <button
+            type="button"
+            onClick={onAutoAssign}
+            className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${
+              showAlgorithmPanel
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
+            }`}
+          >
+            שיבוץ אוטומטי
+          </button>
+        )}
         <button
           type="button"
           onClick={() => { void handleClear(); }}
@@ -368,6 +381,10 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (selectedShiftIds.length === 0) setShowAlgorithmPanel(false);
+  }, [selectedShiftIds.length]);
 
   useEffect(() => {
     if (searchParams.get("autoAssign") === "1") {
@@ -563,26 +580,13 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       <section ref={autoAssignSectionRef} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4" dir="rtl" data-testid="shifts-page">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <h2 className="text-xl font-semibold">{t("shifts.title")}</h2>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAlgorithmPanel(p => !p)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                showAlgorithmPanel
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                  : "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
-              }`}
-            >
-              שיבוץ אוטומטי
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreate(true)}
-              className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-            >
-              {t("shifts.create")}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+          >
+            {t("shifts.create")}
+          </button>
         </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm">
@@ -639,6 +643,8 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           <BulkActionBar
             selectedShifts={shifts.filter(s => selectedShiftIds.includes(s.id))}
             onDone={() => { setSelectedShiftIds([]); void refresh(); }}
+            onAutoAssign={() => setShowAlgorithmPanel(p => !p)}
+            showAlgorithmPanel={showAlgorithmPanel}
           />
         )}
 

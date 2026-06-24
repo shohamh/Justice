@@ -79,11 +79,11 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
-    label: "פירוק ואצווה (אלגוריתם)",
+    label: "פירוק וקבוצות (אלגוריתם)",
     settings: [
-      { key: "algorithm.batching_enabled", label: "פירוק ואצווה", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולאצוות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
-      { key: "algorithm.batch_size", label: "גודל אצווה (תורנויות)", description: "מספר התורנויות המרבי באצווה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
-      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לאצווה (שניות)", description: "תקציב זמן הפותר לכל אצווה.", type: "number", defaultValue: 120 },
+      { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
+      { key: "algorithm.batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
+      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
     ],
   },
   {

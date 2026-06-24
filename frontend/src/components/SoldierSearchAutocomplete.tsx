@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import Fuse from "fuse.js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listSoldiers, SoldierDTO } from "../api/soldiers";
 
@@ -26,17 +27,18 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
     })();
   }, []);
 
+  const fuse = useMemo(
+    () => new Fuse(soldiers, { keys: ["full_name", "personal_number"], threshold: 0.4 }),
+    [soldiers]
+  );
+
   useEffect(() => {
     if (!query.trim() || selected) {
       setResults([]);
       return;
     }
-    const q = query.toLowerCase();
-    const filtered = soldiers.filter(
-      (s) => s.full_name.toLowerCase().includes(q) || s.personal_number.includes(q)
-    );
-    setResults(filtered.slice(0, 10));
-  }, [query, soldiers, selected]);
+    setResults(fuse.search(query).map(r => r.item).slice(0, 10));
+  }, [query, soldiers, selected, fuse]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

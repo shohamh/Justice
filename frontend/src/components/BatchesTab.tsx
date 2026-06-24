@@ -26,7 +26,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
   if (batchResults.length === 0) {
     return (
       <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8" dir="rtl">
-        אין נתוני אצוות לריצה זו
+        אין נתוני קבוצות לריצה זו
       </p>
     );
   }
@@ -46,7 +46,7 @@ export default function BatchesTab({ batchResults, shiftNames }: Props) {
         return (
           <div key={compIdx} className="border dark:border-gray-600 rounded-lg overflow-hidden">
             <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 font-medium text-xs text-gray-700 dark:text-gray-300">
-              קבוצה {compIdx + 1} — {soldierCount} חיילים, {batches.length} אצוות
+              קבוצה {compIdx + 1} — {soldierCount} חיילים, {batches.length} קבוצות
             </div>
             <div className="overflow-x-auto">
             <table className="w-full text-xs min-w-max">

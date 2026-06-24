@@ -41,7 +41,7 @@ def test_load_duty_blocks_from_shifts_skips_already_filled_slots(admin_session):
     s = create_soldier(admin_session, personal_number="fill_soldier_1", role="soldier")
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2027, 7, 1), end_date=date(2027, 7, 1), required_count=3,
+        start_date=date(2027, 7, 1), end_date=date(2027, 7, 2), required_count=3,
     )
     admin_session.add(shift)
     admin_session.flush()

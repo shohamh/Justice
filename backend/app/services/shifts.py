@@ -105,7 +105,7 @@ def create_shift(
     reserve_count_override: int | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
-    if end_date < start_date:
+    if end_date <= start_date:
         raise ShiftError("end_before_start")
     if required_count < 1:
         raise ShiftError("invalid_required_count")
@@ -179,7 +179,7 @@ def update_shift(
         shift.reserve_count_override = reserve_count_override  # type: ignore[assignment]  # None means clear
     if eligible_node_ids is not _UNSET:
         shift.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
-    if shift.end_date < shift.start_date:
+    if shift.end_date <= shift.start_date:
         raise ShiftError("end_before_start")
     write_audit(
         session,

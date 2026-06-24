@@ -46,6 +46,31 @@ from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_d
 _cancel_events: dict[str, threading.Event] = {}
 
 
+def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_seconds: float) -> None:
+    """Daemon thread: force-cancels a job still running after max_seconds.
+
+    Nothing in the solve path enforces an overall wall-clock budget — each batch's
+    relaxation ladder can legitimately spend its full time_limit_seconds per rung
+    with no upper bound on total batches × rungs. Without this, a run that hits that
+    worst case is indistinguishable from a true hang and never reaches a terminal
+    status. Mirrors cancel_job's DB update (status/error_message/finished_at) so a
+    timed-out job looks the same to the UI as a manual cancel, just with a distinct
+    error_message.
+    """
+    from app.db.session import session_scope
+
+    if cancel_event.wait(timeout=max_seconds):
+        return  # finished normally, or cancelled by the user, before the deadline
+    with session_scope() as session:
+        job = session.get(AlgorithmJob, job_id)
+        if job is not None and job.status == "running":
+            job.status = "failed"
+            job.error_message = "timed_out"
+            job.finished_at = datetime.now(tz=UTC)
+            session.commit()
+    cancel_event.set()
+
+
 def _count_space_stats(
     soldiers: list[SoldierInput],
     assignments: list,
@@ -745,14 +770,15 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         alpha=Decimal(str(settings_json.get("alpha", 1.0))),
         time_limit_seconds=int(settings_json.get("time_limit_seconds", 60)),
         reserve_hierarchy_weight=_setting_decimal("fairness.reserve_hierarchy_weight", "0.5"),
-        effort_resolution=_setting_int("fairness.effort_resolution", 1_000),
+        effort_resolution=_setting_int("fairness.effort_resolution", 20_000),
         batching_enabled=_setting_bool("algorithm.batching_enabled", True),
         batch_window_days=_setting_int("algorithm.batch_window_days", 28),
         batch_time_limit_seconds=_setting_int("algorithm.batch_time_limit_seconds", 120),
         relax_t_ceiling=int(settings_json.get("relax_t_ceiling", _setting_int("algorithm.relax_t_ceiling", 10))),
         relax_r_ceiling=int(settings_json.get("relax_r_ceiling", _setting_int("algorithm.relax_r_ceiling", 20))),
-        decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "effort_rounds"))),
+        decomposition=str(settings_json.get("decomposition", _setting_str("algorithm.decomposition", "interleaved"))),
         round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 20))),
+        interleaved_batch_size=int(settings_json.get("interleaved_batch_size", _setting_int("algorithm.interleaved_batch_size", 50))),
         num_workers=int(settings_json.get("num_workers", 1)),
     )
 
@@ -998,6 +1024,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
                 standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
+                try:
+                    max_job_seconds = float(get_setting(session, "algorithm.max_job_seconds"))
+                except Exception:
+                    max_job_seconds = 600.0
+                threading.Thread(
+                    target=_watch_job_timeout, args=(job_id, cancel_event, max_job_seconds), daemon=True,
+                ).start()
+
                 shift_ids = [uuid.UUID(s) for s in job.shift_ids]
                 _phase("load_duty_blocks: start")
                 duties, block_to_shift_map = load_duty_blocks_from_shifts(
@@ -1043,10 +1077,17 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     planning_end=effort_horizon,
                     reset_date=_reset_date,
                 )
-                effort_range = inject_effort_scores(soldiers, duties, effort_map)
-                settings.effort_range_min, settings.effort_range_max = effort_range
+                # Whole-job range, for the _count_space_stats diagnostics only (those
+                # report a single before/after CV across the entire run). The solve
+                # itself does NOT use this — each batch's build_model call auto-derives
+                # its own tighter range from just the soldiers/duties it actually sees
+                # (see model.py's range_size<=0 fallback), since stamping this global,
+                # whole-job range onto every batch needlessly inflates the denominator
+                # for any batch smaller than the full run, pushing duty weights toward
+                # the max(1, ...) floor more than necessary.
+                stats_range_min, stats_range_max = inject_effort_scores(soldiers, duties, effort_map)
                 stats_before = _count_space_stats(soldiers, [], duties, settings.effort_resolution,
-                                                  settings.effort_range_min, settings.effort_range_max)
+                                                  stats_range_min, stats_range_max)
                 existing = load_existing_assignments(
                     session,
                     planning_start=planning_start,
@@ -1092,8 +1133,8 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     total = max(total, 1)
                     pct = 5 + int(90 * done / total)
                     label = (
-                        f"פותר — אצווה {done} מתוך {total}" if done > 0
-                        else f"מתחיל לפתור — {total} אצוות"
+                        f"פותר — קבוצה {done} מתוך {total}" if done > 0
+                        else f"מתחיל לפתור — {total} קבוצות"
                     )
                     job.progress_message = json.dumps({"pct": pct, "label": label})
                     session.commit()
@@ -1143,7 +1184,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                             duty_to_batch[sf.shift_id] = br.batch_index
 
                 stats_after = _count_space_stats(soldiers, result.assignments, duties, settings.effort_resolution,
-                                                 settings.effort_range_min, settings.effort_range_max)
+                                                 stats_range_min, stats_range_max)
 
                 _phase("build_explanations: start")
                 explanation_data = build_explanations(
@@ -1354,8 +1395,41 @@ def serialize_solver_inputs(
     }
 
 
+def _export_solver_outputs(job: "AlgorithmJob", session: "Session") -> dict:
+    """Return the solver outputs for this job: batch results, metadata, and proposals."""
+    from app.db.models import DutyAssignment
+    from sqlalchemy import select
+
+    proposals_q = select(DutyAssignment).where(DutyAssignment.algorithm_job_id == job.id)
+    proposals = session.execute(proposals_q).scalars().all()
+
+    def _assignment_dict(a: "DutyAssignment") -> dict:
+        return {
+            "id": str(a.id),
+            "soldier_id": str(a.soldier_id),
+            "duty_type_id": str(a.duty_type_id),
+            "duty_location_id": str(a.duty_location_id),
+            "start_date": a.start_date.isoformat(),
+            "end_date": a.end_date.isoformat(),
+            "start_time": a.start_time,
+            "end_time": a.end_time,
+            "status": a.status,
+            "is_reserve": a.is_reserve,
+            "batch_index": a.batch_index,
+            "duty_shift_id": str(a.duty_shift_id) if a.duty_shift_id else None,
+            "norm_score_before": a.norm_score_before,
+            "norm_score_after": a.norm_score_after,
+        }
+
+    return {
+        "batch_results": job.batch_results or [],
+        "result_metadata": job.result_metadata or {},
+        "proposals": [_assignment_dict(a) for a in proposals],
+    }
+
+
 def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
-    """Return this job's solver inputs.
+    """Return this job's solver inputs and outputs for offline debugging.
 
     If a snapshot was captured at run time (jobs created after the
     solver_input_snapshot column was added), return it verbatim with a fresh
@@ -1365,8 +1439,14 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
     legacy jobs with no snapshot, fall back to live reconstruction (best-effort;
     will return empty duties for a completed legacy job whose shifts are filled).
     """
+    outputs = _export_solver_outputs(job, session)
+
     if job.solver_input_snapshot is not None:
-        return {**job.solver_input_snapshot, "exported_at": datetime.now(tz=UTC).isoformat()}
+        return {
+            **job.solver_input_snapshot,
+            "exported_at": datetime.now(tz=UTC).isoformat(),
+            **outputs,
+        }
 
     from app.services.settings_loader import get_setting
 
@@ -1408,8 +1488,10 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         planning_end=effort_horizon,
         reset_date=_reset_date,
     )
-    effort_range = inject_effort_scores(soldiers, duties, effort_map)
-    settings.effort_range_min, settings.effort_range_max = effort_range
+    # Side effects only (effort_offset/effort_per_milli per soldier). The returned
+    # whole-job range is intentionally NOT stamped onto settings — see the matching
+    # comment in run_algorithm_job: each batch derives its own tighter range.
+    inject_effort_scores(soldiers, duties, effort_map)
 
     existing = load_existing_assignments(
         session,
@@ -1418,13 +1500,16 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         W=settings.Wr,
     )
 
-    return serialize_solver_inputs(
-        job_id=job.id,
-        planning_start=planning_start,
-        planning_end=planning_end,
-        settings=settings,
-        soldiers=soldiers,
-        duties=duties,
-        existing=existing,
-        block_to_shift_map=block_to_shift_map,
-    )
+    return {
+        **serialize_solver_inputs(
+            job_id=job.id,
+            planning_start=planning_start,
+            planning_end=planning_end,
+            settings=settings,
+            soldiers=soldiers,
+            duties=duties,
+            existing=existing,
+            block_to_shift_map=block_to_shift_map,
+        ),
+        **outputs,
+    }

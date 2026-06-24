@@ -17,7 +17,7 @@ def _setup(session, pn: str):
         duty_type_id=dt.id,
         duty_location_id=loc.id,
         start_date="2027-04-01",
-        end_date="2027-04-01",
+        end_date="2027-04-02",
         required_count=1,
     )
     session.add(shift)

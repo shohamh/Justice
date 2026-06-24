@@ -124,9 +124,14 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
   const unfilledShifts = collectUnfilledShifts(batchResults, shiftNames, shiftsById, clusterMap, dutyTypeNames);
   const diagnostics = analyzeBatches(batchResults);
 
+  const relaxedBatches = batchResults.filter(
+    br => br.relaxations.length > 0 && (br.impacted_soldiers?.length ?? 0) > 0
+  );
+
   const hasAnyIssue =
     unfilledShifts.length > 0 ||
     diagnostics.infeasibleCount > 0 ||
+    relaxedBatches.length > 0 ||
     job.status === "failed";
 
   const recommendations: { label: string; key: string; value: number }[] = [];
@@ -173,7 +178,7 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
                   <th className="px-3 py-2 text-center font-medium">נדרש</th>
                   <th className="px-3 py-2 text-center font-medium">שובץ</th>
                   <th className="px-3 py-2 text-center font-medium text-red-600 dark:text-red-400">חסר</th>
-                  <th className="px-3 py-2 text-center font-medium">אצווה</th>
+                  <th className="px-3 py-2 text-center font-medium">קבוצה</th>
                   <th className="px-3 py-2 text-right font-medium">סיבה</th>
                 </tr>
               </thead>
@@ -195,13 +200,59 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
         </div>
       )}
 
+      {relaxedBatches.length > 0 && (
+        <div>
+          <h3 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">הגמשת מגבלות</h3>
+          <div className="space-y-3">
+            {relaxedBatches.map(br => (
+              <div key={br.batch_index} className="border dark:border-gray-600 rounded-lg overflow-hidden">
+                <div className="bg-amber-50 dark:bg-amber-950 border-b border-amber-200 dark:border-amber-800 px-3 py-2 text-xs">
+                  <span className="font-medium text-amber-800 dark:text-amber-300">
+                    ⚠ קבוצה {br.batch_index + 1} ({br.date_from} – {br.date_to}):
+                  </span>
+                  <span className="mr-1 text-amber-700 dark:text-amber-400">
+                    {br.relaxations.join(", ")}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs min-w-max">
+                    <thead className="bg-gray-50 dark:bg-gray-700">
+                      <tr className="text-gray-500 dark:text-gray-400">
+                        <th className="px-3 py-1.5 text-right font-medium">חייל</th>
+                        <th className="px-3 py-1.5 text-right font-medium">תפקיד</th>
+                        <th className="px-3 py-1.5 text-center font-medium">תאריכים</th>
+                        <th className="px-3 py-1.5 text-center font-medium">חריגה</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(br.impacted_soldiers ?? []).map((s, i) => (
+                        <tr key={i} className="border-t dark:border-gray-700">
+                          <td className="px-3 py-1.5 text-right font-medium">{s.soldier_name}</td>
+                          <td className="px-3 py-1.5 text-right text-gray-600 dark:text-gray-400">{s.duty_type_name}</td>
+                          <td className="px-3 py-1.5 text-center">{s.start_date} – {s.end_date}</td>
+                          <td className="px-3 py-1.5 text-center">
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300 font-mono">
+                              {s.violation}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {(diagnostics.rCeilingHitCount > 0 || diagnostics.tCeilingHitCount > 0 || diagnostics.infeasibleCount > 0) && (
         <div>
           <h3 className="font-semibold mb-2 text-gray-800 dark:text-gray-200">אבחון</h3>
           <ul className="space-y-2 text-gray-700 dark:text-gray-300 text-xs">
             {diagnostics.rCeilingHitCount > 0 && diagnostics.currentRCeiling !== null && (
               <li className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2">
-                <span className="font-medium">⚠ מגבלת שיבוצים לחלון ארוך-טווח (R={diagnostics.currentRCeiling}) הוגמשה ב-{diagnostics.rCeilingHitCount} אצוות</span>
+                <span className="font-medium">⚠ מגבלת שיבוצים לחלון ארוך-טווח (R={diagnostics.currentRCeiling}) הוגמשה ב-{diagnostics.rCeilingHitCount} קבוצות</span>
                 <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
                   האלגוריתם שיבץ יותר תורנויות מהמותר בחלון הזמן הארוך. ניתן להגדיל את R בהגדרות מתקדמות, או לצמצם את כמות המשמרות.
                 </span>
@@ -209,7 +260,7 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
             )}
             {diagnostics.tCeilingHitCount > 0 && diagnostics.currentTCeiling !== null && (
               <li className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded p-2">
-                <span className="font-medium">⚠ מגבלת צפיפות שיבוצים (T={diagnostics.currentTCeiling}) הוגמשה ב-{diagnostics.tCeilingHitCount} אצוות</span>
+                <span className="font-medium">⚠ מגבלת צפיפות שיבוצים (T={diagnostics.currentTCeiling}) הוגמשה ב-{diagnostics.tCeilingHitCount} קבוצות</span>
                 <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
                   האלגוריתם שיבץ יותר תורנויות מהמותר בחלון קצר-טווח. ניתן להגדיל את T בהגדרות מתקדמות.
                 </span>
@@ -217,7 +268,7 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
             )}
             {diagnostics.infeasibleCount > 0 && (
               <li className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded p-2">
-                <span className="font-medium">✗ {diagnostics.infeasibleCount} אצוות נשארו ללא פתרון</span>
+                <span className="font-medium">✗ {diagnostics.infeasibleCount} קבוצות נשארו ללא פתרון</span>
                 <span className="block mt-0.5 text-gray-500 dark:text-gray-400">
                   האלגוריתם לא הצליח לאייש את כל המשמרות גם לאחר הגמשת המגבלות. הסיבות הנפוצות: אין מספיק חיילים כשירים לאותה תקופה, יותר מדי אילוצים אישיים מאושרים, או שמספר המשמרות גבוה מדי ביחס לגודל הכוח.
                 </span>

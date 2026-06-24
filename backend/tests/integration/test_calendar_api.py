@@ -127,7 +127,7 @@ def test_calendar_shifts_excludes_shift_with_no_assignees_in_node(
             "duty_type_id": str(dt.id),
             "duty_location_id": str(loc.id),
             "start_date": "2026-11-05",
-            "end_date": "2026-11-05",
+            "end_date": "2026-11-06",
             "required_count": 1,
         },
     )

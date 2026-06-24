@@ -265,6 +265,11 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, onChanged }: P
 
     if (dragData.kind === "soldier") {
       if (dragData.fromNodeId === overNodeId) return;
+      const isCommander = nodes.some((n) => n.commander_id === dragData.id);
+      if (isCommander) {
+        alert(t("team.cannot_move_commander"));
+        return;
+      }
       try {
         await updateSoldier(dragData.id, { hierarchy_node_id: overNodeId });
         setExpanded((prev) => new Set(prev).add(overNodeId));

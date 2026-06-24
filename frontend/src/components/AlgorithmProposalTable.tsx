@@ -196,7 +196,7 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
     { id: "batch_rank", header: t("algorithm.col_batch_rank"), cell: (p) => batchRankMap.get(p.assignment_id)?.toString() ?? "—", sortValue: (p) => batchRankMap.get(p.assignment_id) ?? null },
     ...(hasBatches ? [{
       id: "batch",
-      header: "אצווה",
+      header: "קבוצה",
       cell: (p: ProposalRow) => p.batch_index != null
         ? <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-mono">B{(p.batch_index ?? 0) + 1}</span>
         : <span className="text-gray-400">—</span>,
@@ -257,10 +257,10 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
             {hasBatches && (
               <div className="w-40">
                 <Combobox
-                  items={batchIndices.map(bi => ({ id: String(bi), name: `אצווה ${bi + 1}` }))}
+                  items={batchIndices.map(bi => ({ id: String(bi), name: `קבוצה ${bi + 1}` }))}
                   value={batchFilter === null ? "" : String(batchFilter)}
                   onChange={id => setBatchFilter(id === "" ? null : Number(id))}
-                  placeholder="כל האצוות"
+                  placeholder="כל הקבוצות"
                 />
               </div>
             )}

@@ -23,7 +23,6 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import VerifyEmailPage from "./pages/VerifyEmailPage";
 import TelegramSetupPage from "./pages/TelegramSetupPage";
 import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
-import AssignmentPage from "./pages/planning/AssignmentPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
@@ -74,7 +73,7 @@ export default function App() {
             <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
             {/* Planning pages */}
             <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
-            <Route path="/planning/assignment" element={<AppGate><AssignmentPage /></AppGate>} />
+            <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
             <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
             <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
             {/* Admin */}
@@ -82,8 +81,8 @@ export default function App() {
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
             <Route path="/import" element={<AppGate><ImportPage /></AppGate>} />
             {/* Redirects from old routes */}
-            <Route path="/duty-management" element={<Navigate to="/planning/assignment" replace />} />
-            <Route path="/algorithm" element={<Navigate to="/planning/assignment?tab=1" replace />} />
+            <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
+            <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
             <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
             <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
             <Route path="/shift-templates" element={<Navigate to="/planning/shifts" replace />} />

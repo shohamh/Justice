@@ -74,22 +74,18 @@ def test_effective_duty_days_spreads_score_days_evenly_across_touched_days(admin
 
 
 def test_effective_duty_days_zero_day_assignment_does_not_crash(admin_session):
-    """start_date == end_date is not rejected by create_assignment's validation (only
-    end_date < start_date is). Under the exclusive-end-date convention this yields
-    calendar_days_touched == 0, so day_weight must not raise ZeroDivisionError."""
+    """Zero-duration assignments (start == end) are rejected by the service but may exist
+    as legacy DB rows. Scoring must not raise ZeroDivisionError and must return no rows."""
+    from app.db.models import DutyAssignment
     s = create_soldier(admin_session, personal_number="8400301")
     dt = _dt(admin_session, "dt_zero_day", "5.00")
     loc = _loc(admin_session, "loc_zero_day")
-    create_assignment(
-        admin_session,
-        soldier_id=s.id,
-        duty_type_id=dt.id,
-        duty_location_id=loc.id,
-        start_date=date(2026, 7, 1),
-        end_date=date(2026, 7, 1),
-        notes=None,
-        actor_id=None,
+    # Insert directly, bypassing service validation, to simulate legacy bad data.
+    a = DutyAssignment(
+        soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 1), status="published",
     )
+    admin_session.add(a)
     admin_session.flush()
     rows = [r for r in effective_duty_days(admin_session) if r[1] == s.id]
     assert rows == []

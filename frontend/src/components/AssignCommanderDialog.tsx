@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import Fuse from "fuse.js";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, updateNode } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
@@ -32,14 +33,13 @@ export default function AssignCommanderDialog({ node, onClose, onAssigned }: Pro
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  const fuse = useMemo(
+    () => new Fuse(soldiers, { keys: ["full_name", "personal_number"], threshold: 0.4 }),
+    [soldiers]
+  );
+
   const filtered = inputText
-    ? soldiers
-        .filter(
-          (s) =>
-            s.full_name.toLowerCase().includes(inputText.toLowerCase()) ||
-            s.personal_number.includes(inputText)
-        )
-        .slice(0, 20)
+    ? fuse.search(inputText).map(r => r.item).slice(0, 20)
     : soldiers.slice(0, 20);
 
   function selectSoldier(s: SoldierDTO) {

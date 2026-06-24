@@ -252,15 +252,20 @@ def build_model(
     for di, si in eligible:
         x[(di, si)] = model.NewBoolVar(f"x_d{di}_s{si}")
 
-    # Coverage constraint. Hard: every duty assigned to exactly one soldier
-    # (model infeasible if any duty is unplaceable). Soft: each duty assigned to
-    # at most one soldier, so unplaceable duties are simply left unselected and
-    # the caller can defer them.
+    # Coverage constraint. Hard: every duty assigned to exactly one soldier.
+    # Soft: each duty assigned to at most one soldier (unplaceable duties left
+    # unselected so the caller can defer them).
+    # In both modes we skip duties with zero eligible soldiers rather than
+    # adding sum([]) == 1 (which would be 0 == 1 — globally infeasible) or
+    # sum([]) <= 1 (trivially true, harmless but wasteful). Duties with no
+    # eligible soldier are simply left uncovered; the caller's coverage check
+    # detects and reports the shortfall.
     for di in range(len(duty_list)):
         vars_for_d = [x[(di, si)] for (dii, si) in eligible if dii == di]
+        if not vars_for_d:
+            continue
         if coverage == "soft":
-            if vars_for_d:
-                model.Add(sum(vars_for_d) <= 1)
+            model.Add(sum(vars_for_d) <= 1)
         else:
             model.Add(sum(vars_for_d) == 1)
 
@@ -421,7 +426,17 @@ def build_model(
                 if not duty_list[di].is_reserve:
                     vars_real.append(x[(di, si)])
             if vars_real or existing_real_fixed:
-                model.Add(existing_real_fixed + sum(vars_real) <= T)
+                headroom_T = T - existing_real_fixed
+                if headroom_T <= 0:
+                    # Existing assignments already fill or exceed the T cap for
+                    # this window. Blocking new duties keeps the model satisfiable
+                    # (instead of adding an always-false constraint that makes the
+                    # entire model infeasible and prevents assigning unrelated duties
+                    # to other soldiers).
+                    if vars_real:
+                        model.Add(sum(vars_real) == 0)
+                else:
+                    model.Add(sum(vars_real) <= headroom_T)
             ws += timedelta(days=1)
 
         # ── R cap: all duty-days (reserve + real) per Wr-day rolling window ──
@@ -440,7 +455,12 @@ def build_model(
                 di = si_duties_sorted[i]
                 vars_all.append(x[(di, si)])
             if vars_all or existing_all_fixed:
-                model.Add(existing_all_fixed + sum(vars_all) <= R)
+                headroom_R = R - existing_all_fixed
+                if headroom_R <= 0:
+                    if vars_all:
+                        model.Add(sum(vars_all) == 0)
+                else:
+                    model.Add(sum(vars_all) <= headroom_R)
             ws += timedelta(days=1)
 
     terms = FairnessTerms(

@@ -602,7 +602,7 @@ def export_job_inputs(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> Any:
-    """Return a JSON dump of solver inputs for this job, suitable for offline replay."""
+    """Return a JSON dump of solver inputs and outputs for this job, suitable for offline debugging."""
     from fastapi.responses import JSONResponse
     from app.services.algorithm_bridge import export_solver_inputs
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)

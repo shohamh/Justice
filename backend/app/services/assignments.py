@@ -79,7 +79,7 @@ def create_assignment(
     is_reserve: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> DutyAssignment:
-    if end_date < start_date:
+    if end_date <= start_date:
         raise AssignmentError("bad_date_range")
     if session.get(Soldier, soldier_id) is None:
         raise AssignmentError("soldier_not_found")

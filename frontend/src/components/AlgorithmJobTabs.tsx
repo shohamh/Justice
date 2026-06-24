@@ -20,22 +20,42 @@ interface Props {
 
 type Tab = "proposals" | "batches" | "issues";
 
-async function downloadSolverInputs(jobId: string) {
-  const resp = await api.get(`/algorithm/jobs/${jobId}/export-inputs`, { responseType: "blob" });
-  const url = URL.createObjectURL(resp.data as Blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `solver_dump_${jobId}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
   const hasAnyUnfilledInit = job.batch_results.some(br => br.unassigned_count > 0);
   const hasInfeasibleInit = job.batch_results.some(br => br.outcome === "INFEASIBLE");
   const hasIssuesInit = hasAnyUnfilledInit || hasInfeasibleInit || job.status === "failed";
   const [tab, setTab] = useState<Tab>(hasIssuesInit ? "issues" : "proposals");
   const [shiftsById, setShiftsById] = useState<Record<string, DutyShift>>({});
+  // null = idle, -1 = indeterminate (server processing), 0-100 = download progress
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+
+  async function handleDownload() {
+    if (exportProgress !== null) return;
+    setExportProgress(-1);
+    try {
+      const resp = await api.get(`/algorithm/jobs/${jobId}/export-inputs`, {
+        responseType: "blob",
+        onDownloadProgress: (e) => {
+          if (e.total) setExportProgress(Math.round((e.loaded / e.total) * 100));
+        },
+      });
+      setExportProgress(100);
+      const url = URL.createObjectURL(resp.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `solver_dump_${jobId}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        setExportProgress(null);
+      }, 1000);
+    } catch (err) {
+      console.error("Export failed:", err);
+      setExportProgress(null);
+    }
+  }
 
   useEffect(() => {
     listShifts({ date_from: job.planning_start, date_to: job.planning_end })
@@ -64,7 +84,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
 
   const tabs: { id: Tab; label: string; badge?: string }[] = [
     { id: "proposals", label: "הצעות" },
-    { id: "batches", label: "אצוות" },
+    { id: "batches", label: "קבוצות" },
     { id: "issues", label: "בעיות", badge: issuesBadge },
   ];
 
@@ -108,11 +128,20 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
                 </span>
               )}
               <button
-                onClick={() => downloadSolverInputs(jobId)}
-                className="mr-auto text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
+                onClick={handleDownload}
+                disabled={exportProgress !== null}
+                className="mr-auto text-xs text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                ⬇ ייצוא קלטי solver
+                {exportProgress !== null ? "מייצר..." : "⬇ ייצוא קלטי ופלטי solver"}
               </button>
+            </div>
+          )}
+          {exportProgress !== null && (
+            <div className="h-1 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden -mt-1">
+              <div
+                className={`h-full bg-indigo-500 rounded-full ${exportProgress < 0 ? "w-full animate-pulse" : "transition-all duration-300"}`}
+                style={exportProgress >= 0 ? { width: `${exportProgress}%` } : undefined}
+              />
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -141,13 +170,24 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
             </p>
           )}
           {!meta.outcome && job.status === "done" && (
-            <div className="flex justify-end">
-              <button
-                onClick={() => downloadSolverInputs(jobId)}
-                className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline"
-              >
-                ⬇ ייצוא קלטי solver
-              </button>
+            <div className="space-y-1">
+              <div className="flex justify-end">
+                <button
+                  onClick={handleDownload}
+                  disabled={exportProgress !== null}
+                  className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exportProgress !== null ? "מייצר..." : "⬇ ייצוא קלטי ופלטי solver"}
+                </button>
+              </div>
+              {exportProgress !== null && (
+                <div className="h-1 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full bg-indigo-500 rounded-full ${exportProgress < 0 ? "w-full animate-pulse" : "transition-all duration-300"}`}
+                    style={exportProgress >= 0 ? { width: `${exportProgress}%` } : undefined}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

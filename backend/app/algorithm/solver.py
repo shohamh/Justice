@@ -40,7 +40,13 @@ DEFAULT_SOLVER_SEED = 42
 # time is overwhelmingly likely to be spent proving optimality, not finding a
 # better assignment, so cutting it short trades a negligible amount of
 # fairness-optimality for a large, reliable speedup.
-STALL_SECONDS = 5.0
+#
+# Set to 15s (was 5s): a finer-grained L1 objective gives CP-SAT more distinct
+# improvement steps to find, so very short stall windows can cut off small
+# single-batch components (< 100 duties) before they reach optimal fairness
+# (eligible soldiers receiving 0 duties). 15s resolves this without meaningfully
+# increasing runtime on large batches that stall late anyway.
+STALL_SECONDS = 15.0
 
 
 def _watch_cancel(solver: CpSolver, event: threading.Event) -> None:
@@ -119,6 +125,9 @@ def solve(
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
     and after each batch completes, so callers can report real progress.
     """
+    if settings.decomposition == "interleaved" and settings.batching_enabled:
+        return _interleaved_solve(soldiers, duties, existing, settings, reserve_dist,
+                                  cancel_event=cancel_event, progress_cb=progress_cb)
     if settings.decomposition == "effort_rounds" and settings.batching_enabled:
         return _effort_round_solve(soldiers, duties, existing, settings, reserve_dist,
                                    cancel_event=cancel_event, progress_cb=progress_cb)
@@ -204,6 +213,179 @@ def _connected_components(
     for root, dids in duty_groups.items():
         components.append((dids, soldier_groups.get(root, [])))
     return components
+
+
+def _interleaved_duty_batches(
+    duty_idxs: list[int],
+    duties: Sequence[DutyBlock],
+    target_batch_size: int,
+) -> list[list[int]]:
+    """Sort duties by (start_date, score_per_day desc, duty_type_id) then deal
+    round-robin into N = ceil(total / target_batch_size) batches so each batch
+    gets a representative mix of dates, scores, and types rather than a single
+    contiguous date slice.
+    """
+    if not duty_idxs:
+        return []
+    sorted_idxs = sorted(
+        duty_idxs,
+        key=lambda di: (
+            duties[di].start_date,
+            -float(duties[di].score_per_day),
+            str(duties[di].duty_type_id),
+        ),
+    )
+    n = max(1, (len(sorted_idxs) + target_batch_size - 1) // target_batch_size)
+    batches: list[list[int]] = [[] for _ in range(n)]
+    for i, di in enumerate(sorted_idxs):
+        batches[i % n].append(di)
+    return [b for b in batches if b]
+
+
+def _interleaved_solve(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None,
+    cancel_event: threading.Event | None,
+    progress_cb: ProgressCb | None = None,
+) -> SolverResult:
+    """Duty-interleaved decomposition.
+
+    Duties are sorted by date/score/type then dealt round-robin into N batches,
+    so each batch gets a representative mix across the planning window. All
+    soldiers compete for every batch — unlike effort_rounds, no soldier is
+    disadvantaged by group placement. Between batches, effort offsets and density
+    state are carried forward, so soldiers who accumulate duties early are
+    naturally deprioritised in later batches by the fairness objective.
+
+    N = ceil(total_duties / settings.interleaved_batch_size).
+    """
+    work = [dataclasses.replace(s) for s in soldiers]
+    soldier_by_id = {s.id: s for s in work}
+    duty_by_id = {d.id: d for d in duties}
+
+    pairs = _eligible_pairs(work, duties)
+    components = _connected_components(len(duties), len(work), pairs)
+
+    plan: list[tuple[int, list[int], list[int]]] = []
+    for comp_idx, (duty_idxs, soldier_idxs) in enumerate(components):
+        if not soldier_idxs:
+            continue
+        for batch in _interleaved_duty_batches(
+            list(duty_idxs), duties, settings.interleaved_batch_size
+        ):
+            plan.append((comp_idx, soldier_idxs, batch))
+
+    total = len(plan)
+    if progress_cb:
+        progress_cb(0, total)
+
+    batch_settings = dataclasses.replace(
+        settings, time_limit_seconds=settings.batch_time_limit_seconds
+    )
+
+    batch_results: list[BatchResult] = []
+    all_assignments: list[Assignment] = []
+    relaxed: list[str] = []
+    carry_existing: list[ExistingAssignment] = list(existing)
+
+    for done, (comp_idx, soldier_idxs, batch) in enumerate(plan, start=1):
+        if cancel_event is not None and cancel_event.is_set():
+            return SolverResult(
+                assignments=[], status="CANCELLED",
+                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                relaxed=relaxed, batch_results=batch_results,
+            )
+
+        sub_soldiers = [work[si] for si in soldier_idxs]
+        sub_duties = [duties[di] for di in batch]
+
+        sub_rd: dict[tuple[int, int], int] | None = None
+        if reserve_dist is not None:
+            sub_rd = {}
+            for local_di, gdi in enumerate(batch):
+                for local_si, gsi in enumerate(soldier_idxs):
+                    v = reserve_dist.get((gdi, gsi))
+                    if v is not None:
+                        sub_rd[(local_di, local_si)] = v
+
+        t0 = time.monotonic()
+        res = _infeasibility_relaxation_chain(
+            sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
+            cancel_event=cancel_event,
+        )
+        if res.status == "INFEASIBLE":
+            # Hard-coverage model proved infeasible: some duties in this batch
+            # have no eligible soldier (e.g. oversubscribed shift). Fall back to
+            # soft coverage so the assignable duties are still handled.
+            res = _solve_soft_coverage(
+                sub_soldiers, sub_duties, carry_existing, batch_settings, sub_rd,
+                cancel_event=cancel_event,
+            )
+        wall_time = time.monotonic() - t0
+
+        if res.status == "CANCELLED":
+            return res
+        relaxed.extend(res.relaxed)
+        all_assignments.extend(res.assignments)
+
+        assigned_duty_ids = {a.duty_id for a in res.assignments}
+        unassigned = [duties[di] for di in batch if duties[di].id not in assigned_duty_ids]
+        saturation_clusters = (
+            analyze_saturation(unassigned, sub_soldiers, all_assignments, carry_existing, duty_by_id)
+            if unassigned else []
+        )
+
+        batch_results.append(BatchResult(
+            batch_index=done - 1,
+            component_index=comp_idx,
+            date_from=min(duties[di].start_date for di in batch),
+            date_to=max(duties[di].end_date for di in batch),
+            duty_count=len(batch),
+            soldier_count=len(soldier_idxs),
+            assigned_count=len(res.assignments),
+            unassigned_count=len(batch) - len(res.assignments),
+            outcome=res.status,
+            relaxations=list(res.relaxed),
+            wall_time_seconds=round(wall_time, 3),
+            shifts=[
+                BatchShiftFill(
+                    shift_id=duties[di].id,
+                    required_count=1,
+                    assigned_count=1 if duties[di].id in assigned_duty_ids else 0,
+                )
+                for di in batch
+            ],
+            saturation_clusters=saturation_clusters,
+        ))
+
+        for a in res.assignments:
+            d = duty_by_id[a.duty_id]
+            carry_existing.append(ExistingAssignment(
+                soldier_id=a.soldier_id, duty_type_id=d.duty_type_id,
+                start_date=d.start_date, end_date=d.end_date,
+                is_reserve=d.is_reserve,
+            ))
+            s = soldier_by_id[a.soldier_id]
+            s.effort_offset += s.effort_per_milli * _block_score(d)
+
+        if progress_cb:
+            progress_cb(done, total)
+
+    all_assignments.sort(key=lambda a: a.duty_id)
+    assigned_ids = {a.duty_id for a in all_assignments}
+    status = "OPTIMAL" if len(assigned_ids) == len(duties) else "FEASIBLE"
+    if not all_assignments and duties:
+        status = "INFEASIBLE"
+    return SolverResult(
+        assignments=all_assignments,
+        status=status,
+        seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+        relaxed=relaxed,
+        batch_results=batch_results,
+    )
 
 
 def _calendar_window_batches(
@@ -541,7 +723,11 @@ def _solve_component_once(
 
     # ── Phase 1: disjoint effort-sorted rounds at this attempt's R/T ───────
     base_settings = dataclasses.replace(settings, time_limit_seconds=settings.batch_time_limit_seconds)
-    group_pool = sorted(pool, key=lambda s: (s.effort_offset, str(s.id)))
+    # Tiebreak equal-effort soldiers by a seeded hash, not UUID string order.
+    # UUID alphabetical ordering systematically disadvantages late-alphabet UUIDs
+    # (e.g. fb… ends up in the last group and gets leftover duties after earlier
+    # groups have claimed the only types they're eligible for).
+    group_pool = sorted(pool, key=lambda s: (s.effort_offset, hash((seed, s.id))))
     rsc = max(1, settings.round_soldier_count)
     for gi in range(0, len(group_pool), rsc):
         if not residual:

@@ -68,7 +68,7 @@ def test_delete_empty_shift(client, admin_session):
         "duty_type_id": str(dt.id),
         "duty_location_id": str(loc.id),
         "start_date": "2026-09-01",
-        "end_date": "2026-09-01",
+        "end_date": "2026-09-02",
     }, headers=auth_headers(dm))
     shift_id = create_resp.json()["id"]
     del_resp = client.delete(f"/api/shifts/{shift_id}", headers=auth_headers(dm))
@@ -81,7 +81,7 @@ def test_update_shift(client, admin_session):
         "duty_type_id": str(dt.id),
         "duty_location_id": str(loc.id),
         "start_date": "2026-10-01",
-        "end_date": "2026-10-01",
+        "end_date": "2026-10-02",
         "required_count": 1,
     }, headers=auth_headers(dm))
     shift_id = create_resp.json()["id"]

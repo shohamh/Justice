@@ -72,8 +72,19 @@ class SolverSettings:
     reserve_hierarchy_weight: Decimal = Decimal("0.5")
     # Fairness L1 in count-space: auto-range maps [effort_range_min, effort_range_max]
     # to [0, effort_resolution] so all resolution ticks fall in the active zone.
-    # effort_range_min/max are computed by inject_effort_scores and stamped before solve.
-    effort_resolution: int = 1_000
+    # effort_range_min/max default to 0/0 here; build_model's range_size<=0 fallback
+    # then auto-derives a tight per-batch range from just the soldiers/duties it sees,
+    # rather than a caller stamping one whole-job range onto every batch (see below).
+    #
+    # Resolution must be large enough that even the smallest duty's weight rounds to
+    # a meaningful integer after (effort_per_milli × block_score × resolution) //
+    # range_size.  At 1_000 all 1-day duties collapsed to weight=1 (via max(1,...))
+    # regardless of actual score, making the L1 objective blind to score differences.
+    # That problem was much worse when range_size was stamped from the WHOLE job
+    # (hence 100_000 was needed); now that it's scoped per batch, 20_000 keeps small
+    # duties distinguishable in typical batches while giving CP-SAT a much smaller
+    # value range to search than 100_000 did.
+    effort_resolution: int = 20_000
     effort_range_min: int = 0   # min effort_offset across soldiers (EFFORT_SCALE units)
     effort_range_max: int = 0   # max possible effort_offset including worst-case accumulation
     # Infeasibility relaxation ceilings: R relaxes first up to relax_r_ceiling,
@@ -84,10 +95,22 @@ class SolverSettings:
     batching_enabled: bool = True
     batch_window_days: int = 28
     batch_time_limit_seconds: int = 120
-    # Decomposition strategy: "effort_rounds" (default) | "calendar" | "none".
-    decomposition: str = "effort_rounds"
+    # Decomposition strategy: "interleaved" (default) | "effort_rounds" | "calendar" | "none".
+    # "interleaved": sort duties by date/score/type, deal round-robin into N batches so each
+    #   batch gets a representative mix; all soldiers compete per batch with effort carry-forward.
+    # "effort_rounds": legacy — chunks soldiers into disjoint groups (structurally unfair).
+    # "calendar": chunks duties into non-overlapping date windows; all soldiers per batch.
+    # "none": single whole-problem solve (correct but slow for large instances).
+    decomposition: str = "interleaved"
     # Disjoint Phase-1 group size for effort-round decomposition.
     round_soldier_count: int = 20
+    # Target duties per batch for interleaved decomposition. Smaller batches mean
+    # smaller CP-SAT models (less branching) AND a tighter per-batch effort_resolution
+    # denominator (see effort_resolution above), both of which make individual solves
+    # converge faster. 200 let large runs grind through a handful of huge,
+    # slow-to-stall batches; 50 trades a few more batches (more progress_cb overhead,
+    # negligible) for each one being meaningfully cheaper to solve.
+    interleaved_batch_size: int = 50
     # Search workers for CP-SAT. 1 = fully deterministic (fixed seed produces identical
     # results every run). >1 = parallel workers race each other; faster but non-deterministic
     # even with a fixed seed because the winning worker depends on CPU scheduling.
@@ -135,6 +158,7 @@ class BatchResult:
     wall_time_seconds: float
     shifts: list[BatchShiftFill] = field(default_factory=list)
     saturation_clusters: list[SaturationCluster] = field(default_factory=list)
+    impacted_soldiers: list[dict] = field(default_factory=list)
 
 
 @dataclass

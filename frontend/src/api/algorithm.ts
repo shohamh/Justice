@@ -45,6 +45,15 @@ export interface SaturationCluster {
   competing_duty_types: SaturationClusterCompeting[];
 }
 
+export interface ImpactedSoldier {
+  soldier_id: string;
+  soldier_name: string;
+  duty_type_name: string;
+  start_date: string;
+  end_date: string;
+  violation: string;
+}
+
 export interface BatchResult {
   batch_index: number;
   component_index: number;
@@ -59,6 +68,7 @@ export interface BatchResult {
   wall_time_seconds: number;
   shifts: BatchShiftFill[];
   saturation_clusters: SaturationCluster[];
+  impacted_soldiers?: ImpactedSoldier[];
 }
 
 export interface ProposalRow {
