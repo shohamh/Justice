@@ -26,6 +26,8 @@ export default function AddRootNodeDialog({ onClose, onCreated }: Props) {
     onClose();
   }
 
+  if (levelTypes.length === 0) return null;
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-96" onClick={(e) => e.stopPropagation()} data-testid="add-root-dialog">
