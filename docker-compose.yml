@@ -23,11 +23,15 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - LOG_DIR=/app/logs
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - ./logs:/app/logs
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
@@ -53,8 +57,11 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
     command: watchfiles --filter python 'python -m bot.main' app/ bot/
     env_file: .env
+    environment:
+      - LOG_DIR=/app/logs
     volumes:
       - ./backend:/app
+      - ./logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
