@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 import uuid as _uuid_mod
 
-from app.auth.authz import Action, authorize, scope_root_ids
+from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyLevelType, HierarchyNode, Soldier, SystemSetting
+from app.db.models import DutyManagerScope, HierarchyLevelType, HierarchyNode, Soldier, SystemSetting
 from app.db.session import get_session
 from app.services import hierarchy as svc
 
@@ -23,6 +23,12 @@ def _get_root_node_id(session: Session) -> uuid.UUID | None:
 router = APIRouter(prefix="/hierarchy", tags=["hierarchy"])
 
 
+class DutyManagerEntryOut(BaseModel):
+    scope_id: uuid.UUID
+    soldier_id: uuid.UUID
+    name: str
+
+
 class NodeOut(BaseModel):
     id: uuid.UUID
     level: str
@@ -31,6 +37,8 @@ class NodeOut(BaseModel):
     commander_id: uuid.UUID | None
     commander_name: str | None = None
     path_ids: list[uuid.UUID]
+    duty_managers: list[DutyManagerEntryOut] = []
+    dm_manageable: bool = False
 
 
 class CreateNodeRequest(BaseModel):
@@ -69,12 +77,40 @@ def _level_type_out(t: HierarchyLevelType) -> LevelTypeOut:
     return LevelTypeOut(id=t.id, key=t.key, label=t.label, rank=t.rank)
 
 
-def _out(n: HierarchyNode, _session: Session | None = None) -> NodeOut:
+def _out(
+    n: HierarchyNode,
+    session: Session,
+    *,
+    user: Soldier,
+    user_roots: set[uuid.UUID],
+    user_is_commander: bool,
+    user_is_duty_manager: bool,
+) -> NodeOut:
     commander_name = None
-    if n.commander_id and _session:
-        cmdr = _session.get(Soldier, n.commander_id)
+    if n.commander_id:
+        cmdr = session.get(Soldier, n.commander_id)
         if cmdr:
             commander_name = cmdr.full_name
+
+    dm_rows = session.execute(
+        select(DutyManagerScope, Soldier.full_name)
+        .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
+        .where(DutyManagerScope.hierarchy_node_id == n.id)
+    ).all()
+    duty_managers = [
+        DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
+        for entry, name in dm_rows
+    ]
+
+    dm_manageable = can(
+        user,
+        Action.DM_SCOPE_MANAGE,
+        target_node=n,
+        roots=user_roots,
+        is_commander=user_is_commander,
+        is_duty_manager=user_is_duty_manager,
+    )
+
     return NodeOut(
         id=n.id,
         level=n.level,
@@ -83,6 +119,8 @@ def _out(n: HierarchyNode, _session: Session | None = None) -> NodeOut:
         commander_id=n.commander_id,
         commander_name=commander_name,
         path_ids=list(n.path_ids),
+        duty_managers=duty_managers,
+        dm_manageable=dm_manageable,
     )
 
 
@@ -102,7 +140,12 @@ def create_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node, session)
+    return _out(
+        node, session, user=user,
+        user_roots=scope_root_ids(session, user),
+        user_is_commander=is_commander(session, user.id),
+        user_is_duty_manager=is_duty_manager(session, user.id),
+    )
 
 
 @router.patch("/nodes/{node_id}", response_model=NodeOut)
@@ -129,7 +172,12 @@ def update_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node, session)
+    return _out(
+        node, session, user=user,
+        user_roots=scope_root_ids(session, user),
+        user_is_commander=is_commander(session, user.id),
+        user_is_duty_manager=is_duty_manager(session, user.id),
+    )
 
 
 @router.post("/nodes/{node_id}/move", response_model=NodeOut)
@@ -153,7 +201,12 @@ def move_node(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(node)
-    return _out(node, session)
+    return _out(
+        node, session, user=user,
+        user_roots=scope_root_ids(session, user),
+        user_is_commander=is_commander(session, user.id),
+        user_is_duty_manager=is_duty_manager(session, user.id),
+    )
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -207,7 +260,18 @@ def get_tree(
         if root_node:
             nodes = [root_node, *nodes]
 
-    return [_out(n, session) for n in nodes]
+    user_roots = scope_root_ids(session, user)
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
+    return [
+        _out(
+            n, session, user=user,
+            user_roots=user_roots,
+            user_is_commander=user_is_commander,
+            user_is_duty_manager=user_is_duty_manager,
+        )
+        for n in nodes
+    ]
 
 
 @router.get("/level-types", response_model=list[LevelTypeOut])

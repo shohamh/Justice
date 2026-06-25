@@ -217,3 +217,46 @@ def test_create_node_with_custom_level_type(client: TestClient, admin_session: S
         json={"level": "platoon", "name": "מחלקה א", "parent_id": str(dept.id)},
     )
     assert r.status_code == 201
+
+
+def test_tree_includes_duty_managers_and_manageable_flag(client: TestClient, admin_session: Session):
+    from app.db.models import DutyManagerScope
+    node = create_node(admin_session, level="department", name="dm-out-node")
+    admin = create_soldier(admin_session, personal_number="dmout-001", role="admin")
+    dm = create_soldier(admin_session, personal_number="dmout-002", hierarchy_node_id=node.id)
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+
+    r = client.get("/api/hierarchy/tree", params={"all": True}, headers=auth_headers(admin))
+    assert r.status_code == 200
+    out_node = next(n for n in r.json() if n["id"] == str(node.id))
+    assert out_node["dm_manageable"] is True
+    assert len(out_node["duty_managers"]) == 1
+    assert out_node["duty_managers"][0]["soldier_id"] == str(dm.id)
+    assert out_node["duty_managers"][0]["name"] == dm.full_name
+
+
+def test_tree_dm_manageable_false_when_rank_insufficient(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="department", name="dm-rank-node")
+    cmd = create_soldier(admin_session, personal_number="dmout-004", role="commander")
+    node.commander_id = cmd.id
+    cmd.rank = "סרן"  # below רס"ן
+    admin_session.commit()
+
+    r = client.get("/api/hierarchy/tree", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    out_node = next(n for n in r.json() if n["id"] == str(node.id))
+    assert out_node["dm_manageable"] is False
+
+
+def test_tree_dm_manageable_true_for_commander_with_rank(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="department", name="dm-rank-node-2")
+    cmd = create_soldier(admin_session, personal_number="dmout-005", role="commander")
+    node.commander_id = cmd.id
+    cmd.rank = "רסן"
+    admin_session.commit()
+
+    r = client.get("/api/hierarchy/tree", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    out_node = next(n for n in r.json() if n["id"] == str(node.id))
+    assert out_node["dm_manageable"] is True
