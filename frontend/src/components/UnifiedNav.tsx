@@ -14,6 +14,7 @@ import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { listJobs } from "../api/algorithm";
 import { computeRunBadgeCounts, RunBadgeCounts } from "../utils/algorithmRunBadges";
+import { getSeenJobIds } from "../utils/seenAlgorithmJobs";
 import NavSheet, { BadgeColor } from "./NavSheet";
 
 interface NavTab {
@@ -81,7 +82,7 @@ export default function UnifiedNav() {
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
-        const counts = computeRunBadgeCounts(result.items);
+        const counts = computeRunBadgeCounts(result.items, getSeenJobIds());
         setAlgorithmBadgeCount(counts.running + counts.draft + counts.done + counts.failed);
         setAlgorithmBadgeColor(pickBadgeColor(counts));
       } catch {

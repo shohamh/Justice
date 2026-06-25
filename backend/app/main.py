@@ -56,10 +56,37 @@ def _handle_async_exception(loop: asyncio.AbstractEventLoop, context: dict) -> N
     )
 
 
+def _fail_orphaned_algorithm_jobs() -> None:
+    """Mark any AlgorithmJob left in "running" status as failed.
+
+    The solve loop's cancel_event and timeout watchdog (see
+    algorithm_bridge._watch_job_timeout) live only in the process that started
+    the job. If that process dies mid-solve (crash, reload, restart), the DB
+    row is orphaned at status="running" forever — nothing in the new process
+    knows about it. Since we just started, any "running" row predates us and
+    cannot be ours, so it's safe to fail it unconditionally on boot.
+    """
+    from datetime import UTC, datetime
+
+    from app.db.models import AlgorithmJob
+    from app.db.session import session_scope
+
+    with session_scope() as session:
+        orphaned = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
+        for job in orphaned:
+            job.status = "failed"
+            job.error_message = "orphaned_on_restart"
+            job.finished_at = datetime.now(tz=UTC)
+        if orphaned:
+            session.commit()
+            logger.warning("Marked %d orphaned algorithm job(s) as failed on startup", len(orphaned))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== STARTUP pid=%d ===", os.getpid())
     asyncio.get_running_loop().set_exception_handler(_handle_async_exception)
+    _fail_orphaned_algorithm_jobs()
     task = asyncio.create_task(run_email_worker())
     yield
     task.cancel()
