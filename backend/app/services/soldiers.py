@@ -39,7 +39,6 @@ def bump_token_version(soldier: Soldier) -> None:
     soldier.token_version = getattr(soldier, "token_version", 1) + 1
 
 
-
 class OnboardResult(NamedTuple):
     soldier: Soldier
     temp_password: str | None  # set only when the system generated the password
