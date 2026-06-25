@@ -8,6 +8,7 @@ import AlgorithmJobTabs from "../components/AlgorithmJobTabs";
 import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { markJobSeen } from "../utils/seenAlgorithmJobs";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -95,6 +96,14 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
       if (jobPollRef.current) clearInterval(jobPollRef.current);
     };
   }, [selectedJobId]);
+
+  // Opening a job dismisses its nav badge, unless it's still pending/running —
+  // in that case the badge should stay until there's actually something to see.
+  useEffect(() => {
+    if (!selectedJob) return;
+    if (selectedJob.status === "pending" || selectedJob.status === "running") return;
+    markJobSeen(selectedJob.id);
+  }, [selectedJob]);
 
   function handleJobSubmitted(jobId: string) {
     handleCloseRunForm();
