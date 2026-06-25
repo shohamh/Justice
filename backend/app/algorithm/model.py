@@ -19,6 +19,7 @@ from app.algorithm.types import (
     ExistingAssignment,
     SoldierInput,
     SolverSettings,
+    node_in_scope,
 )
 
 
@@ -324,9 +325,8 @@ def build_model(
             constrained_dates = constraint_map.get(s.id, set())
             if duty_dates_cache[di] & constrained_dates:
                 continue
-            if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
-                if s.hierarchy_node_id not in d.eligible_node_ids:
-                    continue
+            if not node_in_scope(d.eligible_node_ids, s.path_ids):
+                continue
             eligible.append((di, si))
             soldier_duties[si].append(di)
 

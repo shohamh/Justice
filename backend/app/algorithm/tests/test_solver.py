@@ -1072,3 +1072,55 @@ def test_eligible_pairs_subtree_match() -> None:
     pairs = _eligible_pairs(soldiers, [duty])
     eligible_soldier_idxs = {si for _, si in pairs}
     assert eligible_soldier_idxs == {0}  # only s_in_subtree (idx 0)
+
+
+def test_solve_excludes_soldier_outside_scope() -> None:
+    """End-to-end: a duty scoped to one branch is never assigned to a soldier
+    from a different branch, even if that soldier is otherwise idle."""
+    root_a = uuid4()
+    root_b = uuid4()
+    s_in_scope = uuid4()
+    s_out_of_scope = uuid4()
+    dt = uuid4()
+    loc = uuid4()
+
+    soldiers = [
+        SoldierInput(id=s_in_scope, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=root_a, path_ids=[root_a]),
+        SoldierInput(id=s_out_of_scope, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=root_b, path_ids=[root_b]),
+    ]
+    duty = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                      start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                      score_per_day=Decimal("1"), eligible_node_ids=[root_a])
+
+    result = solve(soldiers, [duty], [], SolverSettings(time_limit_seconds=10, batching_enabled=False))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 1
+    assert result.assignments[0].soldier_id == s_in_scope
+
+
+def test_solve_subtree_match_end_to_end() -> None:
+    """A soldier in a sub-team under the scoped node is assignable; one outside
+    the subtree, with no other duties competing, is not."""
+    root = uuid4()
+    child = uuid4()
+    s_in_subtree = uuid4()
+    s_outside = uuid4()
+    dt = uuid4()
+    loc = uuid4()
+
+    soldiers = [
+        SoldierInput(id=s_in_subtree, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=child, path_ids=[root, child]),
+        SoldierInput(id=s_outside, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=uuid4(), path_ids=[uuid4()]),
+    ]
+    duty = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                      start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                      score_per_day=Decimal("1"), eligible_node_ids=[root])
+
+    result = solve(soldiers, [duty], [], SolverSettings(time_limit_seconds=10, batching_enabled=False))
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 1
+    assert result.assignments[0].soldier_id == s_in_subtree
