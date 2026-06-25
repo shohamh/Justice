@@ -89,6 +89,12 @@ try:
         time.sleep(0.5)
         if proc is not None and proc.poll() is not None:
             code = proc.returncode
+            if code == 0:
+                # A clean exit (code 0) means bot.main() deliberately returned early
+                # (e.g. TELEGRAM_BOT_TOKEN not configured) rather than crashed — restarting
+                # forever in that case would just spam false CRASH markers. Stop supervising.
+                log("Bot exited cleanly (exit_code=0) — not restarting. Check TELEGRAM_BOT_TOKEN if this is unexpected.")
+                break
             log(f"CRASH detected: bot exited unexpectedly (exit_code={code})")
             write_crash_marker(code)
             time.sleep(1)
