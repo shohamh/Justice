@@ -1219,7 +1219,7 @@ def _require_dm(session: Session, actor: Soldier) -> None:
 Update the six call sites:
 - Lines ~109, ~126, ~153: `_require_role(actor, _COMMANDER_ROLES)` → `_require_commander_or_dm(session, actor)`
 - Lines ~189, ~235: `_require_role(actor, _APPROVER_ROLES)` → `_require_dm(session, actor)`
-- Line ~175: `if actor.role not in _APPROVER_ROLES:` → `if actor.role != "admin" and not is_duty_manager(session, actor):`
+- Line ~175: `if actor.role not in _APPROVER_ROLES:` → `if actor.role != "admin" and not is_duty_manager(session, actor.id):`
 
 (all six call sites already have `session` in scope as a route parameter).
 
@@ -1250,14 +1250,18 @@ git commit -m "fix: gate hakpaza initiate/approve on real commander/DM capabilit
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `backend/tests/integration/test_algorithm_routes.py` (reuse the file's existing `dm_node`/assignment-explanation setup pattern visible around its other explanation tests — read lines ~250-310 of that file for the exact fixture shape before writing this test):
+Add to `backend/tests/integration/test_algorithm_routes.py`:
 
 ```python
 def test_dual_role_commander_sees_unredacted_explanation(client, admin_session):
     """A soldier who commands node A and is separately DM of node B must see the
     unredacted explanation for an assignment in B — real DM capability must be
     checked, not the (commander-prioritized) role label."""
-    from app.db.models import DutyManagerScope
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import (
+        AssignmentExplanation, DutyAssignment, DutyLocation, DutyManagerScope, DutyType,
+    )
     from tests.helpers import create_node, create_soldier, auth_headers
 
     a = create_node(admin_session, level="department", name="algo-dual-a")
@@ -1265,22 +1269,38 @@ def test_dual_role_commander_sees_unredacted_explanation(client, admin_session):
     dual = create_soldier(admin_session, personal_number="algo-dual-001", role="commander")
     a.commander_id = dual.id
     admin_session.add(DutyManagerScope(duty_manager_id=dual.id, hierarchy_node_id=b.id))
+    assignee = create_soldier(admin_session, personal_number="algo-dual-002", hierarchy_node_id=b.id)
+    dt = DutyType(name="algo-dual-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-dual-loc")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(
+        AssignmentExplanation(
+            duty_assignment_id=assignment.id,
+            payload={"candidates": []},
+            algorithm_version="test",
+            solver_seed="0",
+        )
+    )
     admin_session.commit()
 
-    # Build on whatever assignment/explanation fixture helper this file already uses
-    # for its other explanation-redaction tests, assigning the explained duty to a
-    # soldier under node b, then:
-    # r = client.get(f"/api/algorithm/assignments/{assignment.id}/explanation", headers=auth_headers(dual))
-    # assert r.status_code == 200
-    # assert "candidates" in r.json()  # unredacted DM view includes full candidate list
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(dual))
+    assert r.status_code == 200
+    assert "candidates" in r.json()
+    assert "blocked_count" not in r.json()  # only the soldier-redacted view adds this key
 ```
-
-> Replace the trailing comment block with real calls once you've located the existing explanation-fixture helper in this file (look for `_explanation_response` callers / the route path under test) — do not leave it as a comment in the committed test.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd backend && pytest tests/integration/test_algorithm_routes.py -k dual_role_commander_sees_unredacted -v`
-Expected: FAIL — `is_dm = user.role in ("duty_manager", "admin")` is `False` for `dual` (role label is `"commander"`), so the soldier-redacted view is returned instead of the full DM view (or a 403 if `dual` isn't the assignee either).
+Expected: FAIL — `is_dm = user.role in ("duty_manager", "admin")` is `False` for `dual` (role label is `"commander"`), and `dual` is not the assignee either, so the route raises 403 instead of returning the unredacted DM view.
 
 - [ ] **Step 3: Fix the flag**
 
