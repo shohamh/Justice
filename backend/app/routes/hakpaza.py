@@ -18,12 +18,17 @@ from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/hakpaza", tags=["hakpaza"])
 
-_COMMANDER_ROLES = {"commander", "duty_manager", "admin"}
-_APPROVER_ROLES = {"duty_manager", "admin"}
+def _require_commander_or_dm(session: Session, actor: Soldier) -> None:
+    if (
+        actor.role != "admin"
+        and not is_commander(session, actor.id)
+        and not is_duty_manager(session, actor.id)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
 
-def _require_role(actor: Soldier, roles: set[str]) -> None:
-    if actor.role not in roles:
+def _require_dm(session: Session, actor: Soldier) -> None:
+    if actor.role != "admin" and not is_duty_manager(session, actor.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
 
@@ -110,7 +115,7 @@ def find_candidates(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
-    _require_role(actor, _COMMANDER_ROLES)
+    _require_commander_or_dm(session, actor)
     _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
     candidates = svc.find_candidates(
         session,
@@ -127,7 +132,7 @@ def create_hakpaza(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
-    _require_role(actor, _COMMANDER_ROLES)
+    _require_commander_or_dm(session, actor)
     original = _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
 
     try:
@@ -154,7 +159,7 @@ def list_hakpazot(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
-    _require_role(actor, _COMMANDER_ROLES)
+    _require_commander_or_dm(session, actor)
     all_items = session.execute(
         select(ForcedCallup).order_by(ForcedCallup.created_at.desc())
     ).scalars().all()
@@ -176,7 +181,7 @@ def pending_count(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ) -> dict:
-    if actor.role not in _APPROVER_ROLES:
+    if actor.role != "admin" and not is_duty_manager(session, actor.id):
         return {"count": 0}
     count = len(session.execute(
         select(ForcedCallup).where(ForcedCallup.status == "pending")
@@ -190,7 +195,7 @@ def approve(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
-    _require_role(actor, _APPROVER_ROLES)
+    _require_dm(session, actor)
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":
         raise HTTPException(status_code=404, detail="not_found_or_not_pending")
@@ -236,7 +241,7 @@ def reject(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
-    _require_role(actor, _APPROVER_ROLES)
+    _require_dm(session, actor)
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":
         raise HTTPException(status_code=404, detail="not_found_or_not_pending")
