@@ -59,7 +59,7 @@ export default function ProfilePage() {
     getRanks().then(setRanks).catch(() => {});
     getTelegramStatus().then(setTgStatus).catch(() => {});
     getPreferences().then((p) => { latestPrefsRef.current = p; setPrefs(p); }).catch(() => {});
-    if (user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") {
+    if (user?.role === "admin" || user?.is_commander || user?.is_duty_manager) {
       listCommanderScopes().then(setScopes).catch(() => {});
       fetchTree().then((nodes) => {
         const flat: NodeDTO[] = [];
@@ -410,7 +410,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {(user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin") && (
+      {(user?.role === "admin" || user?.is_commander || user?.is_duty_manager) && (
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
           <h3 className="text-lg font-semibold">{t("notifications.commander_scopes")}</h3>
           <p className="text-xs text-gray-500">{t("notifications.commander_scopes_hint")}</p>
