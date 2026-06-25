@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from telegram import Bot
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
+from app.logging_config import setup_logging
 from app.settings import get_settings
 from bot.handlers import (
     callback_query_handler,
@@ -35,6 +37,7 @@ async def _post_init(app: Application) -> None:
 
 
 def main() -> None:
+    setup_logging("bot.log")
     settings = get_settings()
     if not settings.telegram_bot_token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; bot not starting")
@@ -49,7 +52,14 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(callback_query_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    app.run_polling()
+    logger.info("=== STARTUP pid=%d ===", os.getpid())
+    try:
+        app.run_polling()
+    except Exception:
+        logger.critical("=== BOT CRASHED ===", exc_info=True)
+        raise
+    else:
+        logger.info("=== CLEAN SHUTDOWN ===")
 
 
 if __name__ == "__main__":

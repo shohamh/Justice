@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,6 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.email_worker import run_email_worker
+from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import limiter
 from app.routes import assignments as assignment_routes
@@ -41,9 +44,22 @@ from app.routes import gimelim as gimelim_routes
 from app.routes import public_settings as public_settings_routes
 from app.settings import get_settings
 
+setup_logging("backend.log")
+logger = logging.getLogger(__name__)
+
+
+def _handle_async_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    logging.getLogger("asyncio").critical(
+        "UNHANDLED ASYNCIO EXCEPTION: %s",
+        context.get("message"),
+        exc_info=context.get("exception"),
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("=== STARTUP pid=%d ===", os.getpid())
+    asyncio.get_running_loop().set_exception_handler(_handle_async_exception)
     task = asyncio.create_task(run_email_worker())
     yield
     task.cancel()
@@ -51,6 +67,7 @@ async def lifespan(app: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
+    logger.info("=== CLEAN SHUTDOWN ===")
 
 
 def create_app() -> FastAPI:
