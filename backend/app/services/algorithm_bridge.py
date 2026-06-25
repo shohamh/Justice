@@ -780,6 +780,8 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         round_soldier_count=int(settings_json.get("round_soldier_count", _setting_int("algorithm.round_soldier_count", 20))),
         interleaved_batch_size=int(settings_json.get("interleaved_batch_size", _setting_int("algorithm.interleaved_batch_size", 50))),
         num_workers=int(settings_json.get("num_workers", 1)),
+        tiebreak_mode=str(settings_json.get("tiebreak_mode", _setting_str("algorithm.tiebreak_mode", "range"))),
+        tiebreak_time_limit_seconds=int(settings_json.get("tiebreak_time_limit_seconds", _setting_int("algorithm.tiebreak_time_limit_seconds", 20))),
     )
 
 

@@ -26,6 +26,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_fairness": "algorithm",
     "test_fairness_components": "algorithm",
     "test_fairness_e2e": "algorithm",
+    "test_fairness_batching": "algorithm",
+    "test_tiebreak_e2e": "algorithm",
     "test_effort_score": "algorithm",
     "test_effort_future_published": "algorithm",
     # auth: login, JWT, password policy, RBAC, registration/enrollment, security hardening
