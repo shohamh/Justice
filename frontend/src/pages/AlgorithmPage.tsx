@@ -315,8 +315,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
 
 export default function AlgorithmPage() {
   const { user } = useAuth();
-  const role = user?.role;
-  const canManageDuties = role === "duty_manager" || role === "admin";
+  const canManageDuties = user?.role === "admin" || user?.is_duty_manager;
   if (!canManageDuties) return <Navigate to="/" replace />;
   return <Layout><AlgorithmContent /></Layout>;
 }
