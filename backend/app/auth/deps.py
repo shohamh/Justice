@@ -48,6 +48,18 @@ def require_roles(*roles: str) -> Callable[..., Soldier]:
     return _dep
 
 
+def require_duty_manager_or_admin(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(get_current_user),
+) -> Soldier:
+    """Admin, or a soldier holding at least one DutyManagerScope row."""
+    from app.auth.authz import is_duty_manager
+
+    if user.role != "admin" and not is_duty_manager(session, user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return user
+
+
 def require_password_changed(user: Soldier = Depends(get_current_user)) -> Soldier:
     """Block protected endpoints while the user still must change their password."""
     if user.must_change_password:

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.deps import require_password_changed, require_roles
+from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
@@ -157,7 +157,7 @@ def _parse_bool(val: Any) -> bool | None:
 async def preview(
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
-    actor: Soldier = Depends(require_roles("admin", "duty_manager")),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     content = await file.read()
     # Validate XLSX magic bytes (PK signature for ZIP format)
@@ -323,7 +323,7 @@ def _parse_templates_sheet(wb, duty_types_by_name) -> list[TemplateRowPreview]:
 def apply(
     req: ApplyRequest,
     session: Session = Depends(get_session),
-    actor: Soldier = Depends(require_roles("admin", "duty_manager")),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     from app.auth.password import hash_password
 

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def test_admin_creates_and_lists_duty_type(client: TestClient, admin_session: Session):
@@ -19,7 +19,10 @@ def test_admin_creates_and_lists_duty_type(client: TestClient, admin_session: Se
 
 
 def test_duty_manager_allowed(client: TestClient, admin_session: Session):
-    dm = create_soldier(admin_session, personal_number="5100002", role="duty_manager")
+    node = create_node(admin_session, level="department", name="dc-dm-node")
+    dm = create_soldier(
+        admin_session, personal_number="5100002", role="duty_manager", hierarchy_node_id=node.id
+    )
     r = client.post(
         "/api/duty-config/duty-types",
         headers=auth_headers(dm),
