@@ -23,6 +23,9 @@ class Soldier(Base):
     personal_number: Mapped[str] = mapped_column(Text, unique=True)
     full_name: Mapped[str] = mapped_column(Text)
     password_hash: Mapped[str] = mapped_column(Text)
+    # Derived display label only (priority: admin > commander > duty_manager > soldier),
+    # recomputed by app.services.dm_scope.recompute_role(). Never authoritative for
+    # authorization — see is_commander()/is_duty_manager() in app.auth.authz.
     role: Mapped[str] = mapped_column(
         Enum("soldier", "commander", "duty_manager", "admin", name="soldier_role"),
         server_default="soldier",
