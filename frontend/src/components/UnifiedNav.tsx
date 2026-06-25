@@ -44,9 +44,8 @@ export default function UnifiedNav() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const location = useLocation();
-  const role = user?.role;
-  const canApprove = role === "commander" || role === "duty_manager" || role === "admin";
-  const canPlan = role === "duty_manager" || role === "admin";
+  const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+  const canPlan = user?.role === "admin" || user?.is_duty_manager;
 
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
