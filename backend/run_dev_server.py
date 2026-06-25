@@ -17,6 +17,7 @@ import atexit
 import datetime
 import time
 import threading
+from pathlib import Path
 
 try:
     from watchfiles import watch, PythonFilter  # type: ignore[import]
@@ -36,10 +37,23 @@ CMD = [
 
 WATCH_DIR = "."   # watch relative to CWD (backend/)
 
+# backend/run_dev_server.py -> backend/ -> <project root>/logs
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+CRASH_LOG = LOG_DIR / "backend.log"
+
+
+def write_crash_marker(exit_code: int | None) -> None:
+    ts = datetime.datetime.now().isoformat()
+    with open(CRASH_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{ts} CRITICAL run_dev_server: === CRASH DETECTED exit_code={exit_code}, restarting ===\n")
+
 # ── State ─────────────────────────────────────────────────────────────────────
 
 proc: "subprocess.Popen[bytes] | None" = None
 stop_event = threading.Event()
+restart_lock = threading.Lock()
+expected_exit = threading.Event()  # set while we intentionally stop/restart proc
 
 
 def log(msg: str) -> None:
@@ -77,7 +91,9 @@ def stop_server() -> None:
 def shutdown(signum=None, frame=None) -> None:
     log(f"Shutdown signal received (signum={signum})")
     stop_event.set()
-    stop_server()
+    with restart_lock:
+        expected_exit.set()
+        stop_server()
     sys.exit(0)
 
 
@@ -95,27 +111,44 @@ except AttributeError:
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
-start_server()
-
-if not HAS_WATCHFILES:
-    log("watchfiles not installed — running without hot reload; install it with: pip install watchfiles")
-    try:
-        proc.wait()  # type: ignore[union-attr]
-    except KeyboardInterrupt:
-        shutdown()
-else:
-    log(f"Watching {WATCH_DIR!r} for .py changes (watchfiles {__import__('watchfiles').__version__})")
+def watch_loop() -> None:
     try:
         for changes in watch(WATCH_DIR, watch_filter=PythonFilter(), stop_event=stop_event):
             if stop_event.is_set():
                 break
             changed_files = sorted({str(p) for _, p in changes})
             log(f"Detected changes: {changed_files}")
-            stop_server()
-            time.sleep(0.15)   # brief pause so the OS releases port 8000
-            start_server()
-    except KeyboardInterrupt:
-        shutdown()
+            with restart_lock:
+                expected_exit.set()
+                stop_server()
+                time.sleep(0.15)   # brief pause so the OS releases port 8000
+                start_server()
+                expected_exit.clear()
     except Exception as exc:
         log(f"Watcher error: {exc}")
+
+
+def crash_monitor() -> None:
+    try:
+        while not stop_event.is_set():
+            time.sleep(0.5)
+            with restart_lock:
+                if proc is not None and proc.poll() is not None and not expected_exit.is_set():
+                    code = proc.returncode
+                    log(f"CRASH detected: uvicorn exited unexpectedly (exit_code={code})")
+                    write_crash_marker(code)
+                    time.sleep(1)
+                    start_server()
+    except KeyboardInterrupt:
         shutdown()
+
+
+start_server()
+
+if not HAS_WATCHFILES:
+    log("watchfiles not installed — running without hot reload; install it with: pip install watchfiles")
+else:
+    log(f"Watching {WATCH_DIR!r} for .py changes (watchfiles {__import__('watchfiles').__version__})")
+    threading.Thread(target=watch_loop, daemon=True).start()
+
+crash_monitor()
