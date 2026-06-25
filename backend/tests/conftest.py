@@ -90,6 +90,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_health": "misc",
     "test_audit_append_only": "misc",
     "test_settings_loader": "misc",
+    "test_logging_config": "misc",
 }
 
 
