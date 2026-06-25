@@ -122,7 +122,7 @@ $cmds.Add("cd /d `"$root\frontend`" && npm run dev")
 
 if (-not $NoBot) {
     $names.Add("bot");  $colors.Add("magenta")
-    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" -m bot.main")
+    $cmds.Add("cd /d `"$root\backend`" && `"$venvPy`" run_dev_bot.py")
 }
 
 # ── Kill any stale bot processes ─────────────────────────────────────────────
