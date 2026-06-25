@@ -1043,3 +1043,32 @@ def test_spreads_duties_evenly_when_soldiers_outnumber_duties() -> None:
 
     assert max(counts_list) <= 1, f"no soldier should be doubled up while another sits idle, got {counts_list}"
     assert counts_list.count(0) == 5, f"exactly 5 soldiers should be idle (15 duties / 20 soldiers), got {counts_list}"
+
+
+def test_eligible_pairs_subtree_match() -> None:
+    """A soldier in a sub-team under a scoped node is eligible (subtree match,
+    not exact match)."""
+    from app.algorithm.solver import _eligible_pairs
+
+    root = uuid4()
+    child = uuid4()
+    s_in_subtree = uuid4()
+    s_outside = uuid4()
+    s_unassigned = uuid4()
+    dt = uuid4()
+
+    soldiers = [
+        SoldierInput(id=s_in_subtree, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=child, path_ids=[root, child]),
+        SoldierInput(id=s_outside, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=uuid4(), path_ids=[uuid4()]),
+        SoldierInput(id=s_unassigned, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, hierarchy_node_id=None, path_ids=[]),
+    ]
+    duty = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=uuid4(),
+                      start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                      score_per_day=Decimal("1"), eligible_node_ids=[root])
+
+    pairs = _eligible_pairs(soldiers, [duty])
+    eligible_soldier_idxs = {si for _, si in pairs}
+    assert eligible_soldier_idxs == {0}  # only s_in_subtree (idx 0)

@@ -25,6 +25,7 @@ from app.algorithm.types import (
     SoldierInput,
     SolverResult,
     SolverSettings,
+    node_in_scope,
 )
 
 # Default CP-SAT random seed used whenever a caller doesn't specify one, so
@@ -172,9 +173,8 @@ def _eligible_pairs(
                 continue
             if any(t in constraint_dates[si] for t in ddates):
                 continue
-            if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
-                if s.hierarchy_node_id not in d.eligible_node_ids:
-                    continue
+            if not node_in_scope(d.eligible_node_ids, s.path_ids):
+                continue
             pairs.append((di, si))
     return pairs
 
