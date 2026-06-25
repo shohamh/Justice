@@ -67,10 +67,6 @@ export async function softDeleteSoldier(id: string): Promise<void> {
   await api.delete(`/soldiers/${id}`);
 }
 
-export async function assignRole(id: string, role: string): Promise<SoldierDTO> {
-  return (await api.post<SoldierDTO>(`/soldiers/${id}/role`, { role })).data;
-}
-
 export async function updateSoldier(
   id: string,
   input: { full_name?: string; phone?: string | null; hierarchy_node_id?: string | null; enrolled_at?: string | null }

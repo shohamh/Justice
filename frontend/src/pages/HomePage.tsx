@@ -68,7 +68,7 @@ export default function HomePage() {
   const [pendingExemptions, setPendingExemptions] = useState(0);
   const [pendingFieldUpdates, setPendingFieldUpdates] = useState(0);
 
-  const canApprove = user?.role === "commander" || user?.role === "duty_manager" || user?.role === "admin";
+  const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
 
   function handleOpenDuty(duty: EffectiveDuty) {
     setSelectedDuty(duty);

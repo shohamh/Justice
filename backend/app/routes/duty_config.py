@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.services.eligibility import DutyTypeRequirements
 
-from app.auth.deps import require_password_changed, require_roles
+from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
 from app.db.session import get_session
 from app.services import duty_config as svc
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/duty-config", tags=["duty-config"])
 
 
 def require_config_manager(
-    user: Soldier = Depends(require_roles("duty_manager", "admin")),
+    user: Soldier = Depends(require_duty_manager_or_admin),
 ) -> Soldier:
     if user.must_change_password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")

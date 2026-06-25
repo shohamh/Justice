@@ -51,7 +51,7 @@ beforeEach(() => {
 
 describe("UnifiedNav — soldier role", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "soldier" } });
+    mockUseAuth.mockReturnValue({ user: { role: "soldier", is_commander: false, is_duty_manager: false } });
   });
 
   test("renders 5 base tabs: my-requests, swaps, home, unit-calendar, transparency", () => {
@@ -77,7 +77,7 @@ describe("UnifiedNav — soldier role", () => {
 
 describe("UnifiedNav — commander role", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "commander" } });
+    mockUseAuth.mockReturnValue({ user: { role: "commander", is_commander: true, is_duty_manager: false } });
   });
 
   test("renders base tabs plus commander tab", () => {
@@ -110,7 +110,7 @@ describe("UnifiedNav — commander role", () => {
 
 describe("UnifiedNav — duty_manager role", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "duty_manager" } });
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
   });
 
   test("renders base tabs plus commander and planning tabs", () => {
@@ -141,7 +141,7 @@ describe("UnifiedNav — admin role", () => {
 
 describe("UnifiedNav — algorithm badge color", () => {
   beforeEach(() => {
-    mockUseAuth.mockReturnValue({ user: { role: "duty_manager" } });
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
   });
 
   test("shows red when any job failed, even with other statuses present", async () => {
@@ -182,5 +182,19 @@ describe("UnifiedNav — algorithm badge color", () => {
     render(<UnifiedNav />);
     await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
     expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnifiedNav — dual-role soldier (commander label, also a duty manager)", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({
+      user: { role: "commander", is_commander: true, is_duty_manager: true },
+    });
+  });
+
+  test("renders both commander and planning tabs", () => {
+    render(<UnifiedNav />);
+    expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
   });
 });

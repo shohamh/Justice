@@ -161,3 +161,42 @@ def test_approve_hakpaza_sets_multiplier_no_score_adjustment(client, admin_sessi
         select(ScoreAdjustment).where(ScoreAdjustment.soldier_id == replacement.id)
     ).scalars().all()
     assert adjs == []
+
+
+def test_dual_role_commander_can_approve_hakpaza(client, admin_session):
+    """A soldier who commands node A and is separately DM of node B (where the pulled
+    soldier sits) must be able to approve hakpaza for B — real DM capability must be
+    checked, not the (commander-prioritized) role label."""
+    from app.db.models import DutyManagerScope, DutyAssignment, DutyType, DutyLocation, ForcedCallup
+    from datetime import date
+    from decimal import Decimal
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    a = create_node(admin_session, level="department", name="hak-dual-a")
+    b = create_node(admin_session, level="department", name="hak-dual-b")
+    dual = create_soldier(admin_session, personal_number="hak-dual-001", role="commander")
+    a.commander_id = dual.id
+    admin_session.add(DutyManagerScope(duty_manager_id=dual.id, hierarchy_node_id=b.id))
+    pulled = create_soldier(admin_session, personal_number="hak-dual-002", hierarchy_node_id=b.id)
+    replacement = create_soldier(admin_session, personal_number="hak-dual-003", hierarchy_node_id=b.id)
+    dt = DutyType(name="hak-dual-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="hak-dual-loc")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=pulled.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 1, 1), end_date=date(2027, 1, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    h = ForcedCallup(
+        initiator_id=dual.id, pulled_soldier_id=pulled.id, original_assignment_id=assignment.id,
+        pull_date=date(2027, 1, 3), replacement_soldier_id=replacement.id, callup_multiplier=Decimal("2.0"),
+    )
+    admin_session.add(h)
+    admin_session.commit()
+
+    r = client.post(f"/api/hakpaza/{h.id}/approve", headers=auth_headers(dual))
+    assert r.status_code == 200

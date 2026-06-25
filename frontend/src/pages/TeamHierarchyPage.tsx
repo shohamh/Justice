@@ -23,7 +23,7 @@ export default function TeamHierarchyPage() {
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
   const isAdmin = user?.role === "admin";
-  const canManageLevelTypes = user?.role === "admin" || user?.role === "duty_manager";
+  const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
 
   async function refresh() {
     setNodes(await fetchTree());

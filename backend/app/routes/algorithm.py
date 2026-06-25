@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, is_duty_manager
 from app.auth.deps import require_password_changed
 from app.rate_limit import limiter
 from app.db.models import (
@@ -353,7 +353,7 @@ def _explanation_response(
     session: Session, assignment: DutyAssignment, user: Soldier
 ) -> dict[str, Any]:
     """Build the explanation response dict, redacted for soldiers."""
-    is_dm = user.role in ("duty_manager", "admin")
+    is_dm = user.role == "admin" or is_duty_manager(session, user.id)
     is_assignee = assignment.soldier_id == user.id
     if not is_dm and not is_assignee:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")

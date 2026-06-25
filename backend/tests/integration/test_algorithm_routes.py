@@ -715,3 +715,47 @@ def test_export_inputs_replays_completed_published_job(client, admin_session):
     dump = export_resp.json()
     assert len(dump["duties"]) > 0, "export-inputs returned no duties for a completed job — snapshot fix regressed"
     assert dump["duties"][0]["shift_id"] == str(shift.id)
+
+
+def test_dual_role_commander_sees_unredacted_explanation(client, admin_session):
+    """A soldier who commands node A and is separately DM of node B must see the
+    unredacted explanation for an assignment in B — real DM capability must be
+    checked, not the (commander-prioritized) role label."""
+    from decimal import Decimal
+    from datetime import date
+    from app.db.models import (
+        AssignmentExplanation, DutyAssignment, DutyLocation, DutyManagerScope, DutyType,
+    )
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    a = create_node(admin_session, level="department", name="algo-dual-a")
+    b = create_node(admin_session, level="department", name="algo-dual-b")
+    dual = create_soldier(admin_session, personal_number="algo-dual-001", role="commander")
+    a.commander_id = dual.id
+    admin_session.add(DutyManagerScope(duty_manager_id=dual.id, hierarchy_node_id=b.id))
+    assignee = create_soldier(admin_session, personal_number="algo-dual-002", hierarchy_node_id=b.id)
+    dt = DutyType(name="algo-dual-dt", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="algo-dual-loc")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=assignee.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2027, 2, 1), end_date=date(2027, 2, 5), status="published", is_reserve=False,
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.add(
+        AssignmentExplanation(
+            duty_assignment_id=assignment.id,
+            payload={"candidates": []},
+            algorithm_version="test",
+            solver_seed="0",
+        )
+    )
+    admin_session.commit()
+
+    r = client.get(f"/api/algorithm/explanations/{assignment.id}", headers=auth_headers(dual))
+    assert r.status_code == 200
+    assert "candidates" in r.json()
+    assert "blocked_count" not in r.json()  # only the soldier-redacted view adds this key

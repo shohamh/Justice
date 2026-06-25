@@ -11,6 +11,8 @@ export interface Me {
   personal_number: string;
   full_name: string;
   role: "soldier" | "commander" | "duty_manager" | "admin";
+  is_commander: boolean;
+  is_duty_manager: boolean;
   must_change_password: boolean;
   hierarchy_node_id: string | null;
   telegram_linked: boolean;

@@ -46,8 +46,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const { user } = useAuth();
   const isSelf = user?.personal_number === soldier.personal_number;
   const isAdmin = user?.role === "admin";
-  const isDutyManager = user?.role === "duty_manager";
-  const isCommander = user?.role === "commander";
+  const isDutyManager = user?.is_duty_manager ?? false;
+  const isCommander = user?.is_commander ?? false;
   const canManage = isAdmin || isDutyManager;
   const canViewAll = isAdmin || isDutyManager || isCommander;
   const TABS: TabKey[] = canViewAll

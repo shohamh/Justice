@@ -10,8 +10,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids, can_see_private, PRIVATE_FIELD_NAMES
-from app.auth.deps import require_password_changed, require_roles
+from app.auth.authz import (
+    Action,
+    authorize,
+    can,
+    can_see_private,
+    is_commander,
+    is_duty_manager,
+    scope_root_ids,
+    PRIVATE_FIELD_NAMES,
+)
+from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.audit.writer import write_audit
@@ -74,10 +83,6 @@ class UpdateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     hierarchy_node_id: uuid.UUID | None = None
     enrolled_at: date_type | None = None
-
-
-class RoleRequest(BaseModel):
-    role: str = Field(pattern="^(soldier|commander|duty_manager|admin)$")
 
 
 class UpdateProfileRequest(BaseModel):
@@ -323,13 +328,17 @@ def list_all_pending_field_updates(
     roots = scope_root_ids(session, user)
     if not roots:
         return []
-    from app.auth.authz import can
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
     result = []
     for upd in all_pending:
         s = soldiers_by_id.get(upd.soldier_id)
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+            if can(
+                user, Action.SOLDIER_READ, target_node=node, roots=roots,
+                is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+            ):
                 soldier_name = s.full_name
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
@@ -367,13 +376,17 @@ def count_pending_field_updates(
             select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
         ).scalars().all()
     } if node_ids else {}
-    from app.auth.authz import can
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
     total = 0
     for upd in all_pending:
         s = soldiers_by_id.get(upd.soldier_id)
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+            if can(
+                user, Action.SOLDIER_READ, target_node=node, roots=roots,
+                is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+            ):
                 total += 1
     return {"count": total}
 
@@ -430,7 +443,7 @@ def get_soldier_duty_history(
     if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
 
-    if include_drafts and user.role not in ("duty_manager", "admin"):
+    if include_drafts and user.role != "admin" and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     events = get_duty_history(session, soldier_id, include_drafts=include_drafts)
@@ -635,22 +648,3 @@ def delete(
     authorize(session, user, Action.SOLDIER_DELETE, target_node=_node_of(session, s))
     svc.soft_delete(session, soldier=s, actor_id=user.id)
     session.commit()
-
-
-@router.post("/{soldier_id}/role", response_model=SoldierOut)
-def set_role(
-    soldier_id: uuid.UUID,
-    body: RoleRequest,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_roles("admin")),
-) -> SoldierOut:
-    if user.must_change_password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
-    s = _load(session, soldier_id)
-    try:
-        svc.assign_role(session, soldier=s, role=body.role, actor_id=user.id)
-    except svc.SoldierError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    session.commit()
-    session.refresh(s)
-    return _out(s)
