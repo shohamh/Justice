@@ -88,6 +88,11 @@ These check `user.role` directly and must switch to the new helpers:
   this user elevated at all," which the recomputed `role` label still answers correctly (a
   dual-capability soldier's label is never `"soldier"`). Verify with a test case during
   implementation; no helper-based rewrite needed unless the test reveals otherwise.
+- `routes/duty_config.py` (`require_config_manager`) and `routes/import_excel.py` (two route
+  dependencies): all three currently gate on `Depends(require_roles("duty_manager", "admin"))`,
+  another role-string bypass of `can()`. Add a `require_duty_manager_or_admin` FastAPI dependency
+  (in `authz.py`, backed by `is_duty_manager`) and use it in place of `require_roles` at all three
+  call sites.
 
 ### Role-label recompute
 
@@ -116,11 +121,21 @@ Call sites:
 
 `recompute_role` is internal plumbing only — never exposed as something a request body can set.
 
+### Removing the stale manual-override endpoint
+
+`POST /soldiers/{id}/role` (`routes/soldiers.py`) lets an admin set `role` directly, independent of
+any real commander/DM data — the exact pattern this fix eliminates. It has no frontend caller
+(`assignRole()` in `frontend/src/api/soldiers.ts` is defined but never invoked). Remove the route,
+its `RoleRequest` model, the backing `services/soldiers.py::assign_role` function, the `ROLES`
+constant, and the dead frontend `assignRole()` function.
+
 ## Frontend changes
 
-- `Me` (`frontend/src/api/auth.ts`) and `SoldierDTO` gain two server-computed, read-only fields:
+- `Me` (`frontend/src/api/auth.ts`) gains two server-computed, read-only fields:
   `is_commander: boolean`, `is_duty_manager: boolean`. No request type gains these fields — they are
-  response-only.
+  response-only. `SoldierDTO` does **not** need them: every identified frontend permission gate reads
+  the *logged-in viewer's* capabilities (`useAuth().user`), never an arbitrary soldier record's, so
+  there is no consumer for capability flags on `SoldierDTO`. Adding them there would be speculative.
 - Replace `role === "commander"` / `role === "duty_manager"` *permission* gates with these booleans:
   - `components/UnifiedNav.tsx` (`canApprove`, `canPlan`)
   - `pages/ProfilePage.tsx` (notification-scope section gate)
