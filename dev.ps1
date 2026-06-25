@@ -128,7 +128,7 @@ if (-not $NoBot) {
 # ── Kill any stale bot processes ─────────────────────────────────────────────
 if (-not $NoBot) {
     $botProcs = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
-        Where-Object { $_.CommandLine -match 'bot\.main' }
+        Where-Object { $_.CommandLine -match 'bot\.main|run_dev_bot\.py' }
     if ($botProcs) {
         Write-Host "[dev] Killing $($botProcs.Count) stale bot process(es)..." -ForegroundColor Yellow
         $botProcs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
