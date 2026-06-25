@@ -40,6 +40,15 @@ def write_crash_marker(exit_code: int | None) -> None:
         f.write(f"{ts} CRITICAL run_dev_bot: === CRASH DETECTED exit_code={exit_code}, restarting ===\n")
 
 
+def write_clean_exit_marker() -> None:
+    # Same target file/tradeoffs as write_crash_marker, but for the deliberate
+    # exit_code=0 path (e.g. TELEGRAM_BOT_TOKEN not configured) so a developer
+    # tailing logs/bot.log can see why the bot stopped instead of restarting.
+    ts = datetime.datetime.now().isoformat()
+    with open(CRASH_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{ts} INFO run_dev_bot: === BOT EXITED CLEANLY (exit_code=0), not restarting ===\n")
+
+
 def start_bot() -> None:
     global proc
     log(f"Starting bot: {' '.join(CMD)}")
@@ -94,6 +103,7 @@ try:
                 # (e.g. TELEGRAM_BOT_TOKEN not configured) rather than crashed — restarting
                 # forever in that case would just spam false CRASH markers. Stop supervising.
                 log("Bot exited cleanly (exit_code=0) — not restarting. Check TELEGRAM_BOT_TOKEN if this is unexpected.")
+                write_clean_exit_marker()
                 break
             log(f"CRASH detected: bot exited unexpectedly (exit_code={code})")
             write_crash_marker(code)
