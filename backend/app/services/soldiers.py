@@ -39,8 +39,6 @@ def bump_token_version(soldier: Soldier) -> None:
     soldier.token_version = getattr(soldier, "token_version", 1) + 1
 
 
-ROLES = {"soldier", "commander", "duty_manager", "admin"}
-
 
 class OnboardResult(NamedTuple):
     soldier: Soldier
@@ -74,7 +72,7 @@ def onboard_soldier(
         personal_number=personal_number,
         full_name=full_name,
         password_hash=hash_password(password),
-        role="soldier",  # role changes are admin-only via assign_role
+        role="soldier",  # role is derived/read-only; recomputed from scope data elsewhere
         hierarchy_node_id=hierarchy_node_id,
         phone=phone,
         must_change_password=True,
@@ -159,25 +157,6 @@ def soft_delete(
         entity_type="soldier",
         entity_id=soldier.id,
         after={"left_at": soldier.left_at.isoformat()},
-    )
-    return soldier
-
-
-def assign_role(
-    session: Session, *, soldier: Soldier, role: str, actor_id: uuid.UUID | None = None
-) -> Soldier:
-    if role not in ROLES:
-        raise SoldierError(f"unknown role: {role}")
-    before = {"role": soldier.role}
-    soldier.role = role
-    write_audit(
-        session,
-        actor_id=actor_id,
-        action="soldier.assign_role",
-        entity_type="soldier",
-        entity_id=soldier.id,
-        before=before,
-        after={"role": role},
     )
     return soldier
 

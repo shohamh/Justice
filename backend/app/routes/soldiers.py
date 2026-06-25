@@ -20,7 +20,7 @@ from app.auth.authz import (
     scope_root_ids,
     PRIVATE_FIELD_NAMES,
 )
-from app.auth.deps import require_password_changed, require_roles
+from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
 from app.audit.writer import write_audit
@@ -83,10 +83,6 @@ class UpdateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     hierarchy_node_id: uuid.UUID | None = None
     enrolled_at: date_type | None = None
-
-
-class RoleRequest(BaseModel):
-    role: str = Field(pattern="^(soldier|commander|duty_manager|admin)$")
 
 
 class UpdateProfileRequest(BaseModel):
@@ -652,22 +648,3 @@ def delete(
     authorize(session, user, Action.SOLDIER_DELETE, target_node=_node_of(session, s))
     svc.soft_delete(session, soldier=s, actor_id=user.id)
     session.commit()
-
-
-@router.post("/{soldier_id}/role", response_model=SoldierOut)
-def set_role(
-    soldier_id: uuid.UUID,
-    body: RoleRequest,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_roles("admin")),
-) -> SoldierOut:
-    if user.must_change_password:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
-    s = _load(session, soldier_id)
-    try:
-        svc.assign_role(session, soldier=s, role=body.role, actor_id=user.id)
-    except svc.SoldierError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    session.commit()
-    session.refresh(s)
-    return _out(s)
