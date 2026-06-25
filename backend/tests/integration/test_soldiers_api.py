@@ -130,3 +130,27 @@ def test_get_soldier_telegram_linked(client: TestClient, admin_session: Session)
     admin_session.commit()
     r2 = client.get(f"/api/soldiers/{s.id}", headers=auth_headers(admin))
     assert r2.json()["telegram_linked"] is True
+
+
+def test_dual_role_commander_can_see_draft_duty_history(client, admin_session):
+    """A soldier who commands a node and is separately a duty manager elsewhere must
+    still be able to see draft assignments (include_drafts=true) — role label alone
+    must not gate this, only real duty-manager capability."""
+    from app.db.models import DutyManagerScope
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    a = create_node(admin_session, level="department", name="draft-vis-a")
+    b = create_node(admin_session, level="department", name="draft-vis-b")
+    dual = create_soldier(admin_session, personal_number="draft-vis-001", role="commander")
+    a.commander_id = dual.id
+    target = create_soldier(admin_session, personal_number="draft-vis-002", hierarchy_node_id=b.id)
+    admin_session.add(DutyManagerScope(duty_manager_id=dual.id, hierarchy_node_id=b.id))
+    admin_session.commit()
+    admin_session.refresh(dual)
+
+    r = client.get(
+        f"/api/soldiers/{target.id}/duty-history",
+        params={"include_drafts": "true"},
+        headers=auth_headers(dual),
+    )
+    assert r.status_code == 200

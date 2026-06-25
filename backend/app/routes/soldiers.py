@@ -443,7 +443,7 @@ def get_soldier_duty_history(
     if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
 
-    if include_drafts and user.role not in ("duty_manager", "admin"):
+    if include_drafts and user.role != "admin" and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
     events = get_duty_history(session, soldier_id, include_drafts=include_drafts)
