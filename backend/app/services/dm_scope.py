@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -11,6 +11,23 @@ from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 
 class DmScopeError(Exception):
     pass
+
+
+def recompute_role(session: Session, soldier: Soldier) -> None:
+    """Recompute the soldier's display-label role from real capability data.
+    Priority: admin > commander > duty_manager > soldier. Never touches admins.
+    This is a display label only — authorization no longer reads `role` for
+    the commander/duty_manager distinction (see app/auth/authz.py)."""
+    if soldier.role == "admin":
+        return
+    from app.auth.authz import is_commander, is_duty_manager
+
+    if is_commander(session, soldier.id):
+        soldier.role = "commander"
+    elif is_duty_manager(session, soldier.id):
+        soldier.role = "duty_manager"
+    else:
+        soldier.role = "soldier"
 
 
 def assign_dm_scope(
@@ -39,10 +56,8 @@ def assign_dm_scope(
 
     soldier = session.get(Soldier, soldier_id)
     assert soldier is not None
-    if soldier.role not in ("duty_manager", "admin"):
-        soldier.role = "duty_manager"
-
     session.flush()
+    recompute_role(session, soldier)
     write_audit(
         session,
         actor_id=actor_id,
@@ -68,17 +83,9 @@ def remove_dm_scope(
     session.delete(entry)
     session.flush()
 
-    remaining = session.execute(
-        select(func.count()).where(DutyManagerScope.duty_manager_id == soldier_id)
-    ).scalar_one()
-
-    if remaining == 0:
-        soldier = session.get(Soldier, soldier_id)
-        if soldier is not None and soldier.role == "duty_manager":
-            commanded = session.execute(
-                select(func.count()).where(HierarchyNode.commander_id == soldier_id)
-            ).scalar_one()
-            soldier.role = "commander" if commanded > 0 else "soldier"
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is not None:
+        recompute_role(session, soldier)
 
     write_audit(
         session,

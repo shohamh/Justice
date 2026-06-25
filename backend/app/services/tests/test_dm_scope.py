@@ -219,6 +219,45 @@ def test_is_commander_and_is_duty_manager_helpers(admin_session):
     assert is_duty_manager(admin_session, plain.id) is False
 
 
+def test_set_commander_downgrades_displaced_commander_to_soldier(admin_session):
+    """When a node's commander is replaced, the displaced soldier (with no other
+    commander_id or DM scope) must fall back to role 'soldier', not stay 'commander'."""
+    from app.services.hierarchy import set_commander
+    node = create_node(admin_session, level="division", name=f"div_{_uid()}")
+    old_cmd = create_soldier(admin_session, personal_number=f"old_{_uid()}", role="soldier")
+    new_cmd = create_soldier(admin_session, personal_number=f"new_{_uid()}", role="soldier")
+    set_commander(admin_session, node_id=node.id, commander_id=old_cmd.id, actor_id=None)
+    admin_session.commit()
+
+    set_commander(admin_session, node_id=node.id, commander_id=new_cmd.id, actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(old_cmd)
+    admin_session.refresh(new_cmd)
+
+    assert old_cmd.role == "soldier"
+    assert new_cmd.role == "commander"
+
+
+def test_set_commander_displaced_commander_keeps_dm_role_if_also_dm(admin_session):
+    """A displaced commander who is also a duty manager elsewhere falls back to
+    'duty_manager', not 'soldier'."""
+    from app.db.models import DutyManagerScope
+    from app.services.hierarchy import set_commander
+    node = create_node(admin_session, level="division", name=f"div_{_uid()}")
+    other_node = create_node(admin_session, level="division", name=f"div2_{_uid()}")
+    old_cmd = create_soldier(admin_session, personal_number=f"old_{_uid()}", role="soldier")
+    new_cmd = create_soldier(admin_session, personal_number=f"new_{_uid()}", role="soldier")
+    set_commander(admin_session, node_id=node.id, commander_id=old_cmd.id, actor_id=None)
+    admin_session.add(DutyManagerScope(duty_manager_id=old_cmd.id, hierarchy_node_id=other_node.id))
+    admin_session.commit()
+
+    set_commander(admin_session, node_id=node.id, commander_id=new_cmd.id, actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(old_cmd)
+
+    assert old_cmd.role == "duty_manager"
+
+
 def test_remove_dm_scope_keeps_dm_role_if_other_entries_remain(admin_session):
     """Removing one of multiple scope entries keeps duty_manager role."""
     from app.db.models import DutyManagerScope

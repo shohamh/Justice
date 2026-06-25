@@ -145,6 +145,7 @@ def set_commander(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HierarchyError("node not found")
+    previous_commander_id = node.commander_id
     if commander_id is not None:
         soldier = session.get(Soldier, commander_id)
         if soldier is None:
@@ -155,9 +156,19 @@ def set_commander(
             HierarchyNode.id != node_id,
         ).update({"commander_id": None})
         soldier.hierarchy_node_id = node_id
-        soldier.role = "commander"
     before = {"commander_id": str(node.commander_id) if node.commander_id else None}
     node.commander_id = commander_id
+    session.flush()
+
+    from app.services.dm_scope import recompute_role
+
+    if commander_id is not None:
+        recompute_role(session, session.get(Soldier, commander_id))
+    if previous_commander_id is not None and previous_commander_id != commander_id:
+        displaced = session.get(Soldier, previous_commander_id)
+        if displaced is not None:
+            recompute_role(session, displaced)
+
     write_audit(
         session,
         actor_id=actor_id,
