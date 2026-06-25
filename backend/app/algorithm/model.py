@@ -65,6 +65,11 @@ class FairnessTerms:
     prior_terms: list = field(default_factory=list)
     count_vars: list[IntVar] = field(default_factory=list)
     total_ub: int = 0
+    # Per-soldier |total_i - mu_const| variables from the L1 objective, exposed
+    # so a caller can pin Σdev_terms to its already-proven-optimal value and
+    # re-solve with a different (tie-break) objective — see
+    # apply_tiebreak_objective.
+    dev_terms: list[IntVar] = field(default_factory=list)
 
 
 def build_fairness_objective(
@@ -138,6 +143,7 @@ def build_fairness_objective(
             model.Add(dev >= mu_const - total)
             dev_terms.append(dev)
         l1_term = sum(dev_terms)
+        terms.dev_terms = dev_terms
 
         prior_term = sum(prior_terms) if prior_terms else 0
 
@@ -154,6 +160,83 @@ def build_fairness_objective(
         )
     else:
         model.Minimize(dist_term if reserve_dist_terms else 0)
+
+
+def apply_tiebreak_objective(
+    model: CpModel,
+    x: dict[tuple[int, int], IntVar],
+    duty_list: Sequence[DutyBlock],
+    settings: SolverSettings,
+    reserve_dist: dict[tuple[int, int], int] | None,
+    terms: FairnessTerms,
+    achieved_l1: int,
+) -> None:
+    """Lexicographic second stage: pin L1 dispersion to its proven-optimal
+    value, then insert a new dominant tier — above reserve proximity, but
+    DELIBERATELY NOT above prior/count-spread.
+
+    The L1 objective (``Σ|total_i - mu_const|``) is piecewise-linear: any
+    split of new duties between two soldiers who stay on the same side of
+    ``mu_const`` scores identically, so it cannot prefer an even split over a
+    lopsided one between otherwise-identical soldiers (see
+    test_fairness_batching.py). Pinning ``Σdev_terms <= achieved_l1`` keeps
+    every solution this stage considers exactly as good on L1 as the one
+    already found, while letting a new tie-break tier — ``max(total_i) -
+    min(total_i)`` over all eligible soldiers — choose among the (possibly
+    many) solutions tied on L1. This is cheap: O(n), reusing
+    AddMaxEquality/AddMinEquality exactly like the existing count_spread tier.
+    It can still be blind to ties that aren't the population's global
+    extremes (e.g. a structurally different soldier group already occupies
+    the max/min), but empirically resolves the production-representative
+    case (see backend git history on this branch for the n=80-100 benchmarks
+    that ruled out a full pairwise tier — O(n^2) and never finished within
+    any tested time budget at that scale).
+
+    prior_term and count_spread are NOT carried into this stage (unlike
+    reserve proximity, which is): both were already L1's own tie-breakers
+    for exactly the region this stage now handles, and both are weaker
+    proxies for the same goal range now measures directly — prior_term via
+    count_offset, which auto-range scaling can compress to near-meaningless
+    precision (see this branch's design discussion), and count_spread via
+    *this batch's new counts only*, which is the exact blind spot that
+    caused the original bug. Once range exists, neither adds a signal worth
+    protecting at the cost of (a) more model complexity and (b) potentially
+    overriding the more direct, cumulative range result for a coarser proxy.
+    Reserve proximity is kept because it isn't a load-balancing proxy at
+    all — it's an orthogonal placement-quality preference (assign reserve
+    duties to hierarchically-close soldiers).
+    """
+    if terms.dev_terms:
+        model.Add(sum(terms.dev_terms) <= achieved_l1)
+
+    eligible = terms.eligible_total_exprs
+    reserve_dist_terms: list = []
+    if reserve_dist is not None:
+        gamma_int = int(settings.reserve_hierarchy_weight * 1000)
+        for (di, si), var in x.items():
+            if duty_list[di].is_reserve:
+                dist = reserve_dist.get((di, si), 10)
+                reserve_dist_terms.append(gamma_int * dist * var)
+    dist_term = sum(reserve_dist_terms) if reserve_dist_terms else 0
+
+    if len(eligible) <= 1:
+        model.Minimize(dist_term if reserve_dist_terms else 0)
+        return
+
+    # spread_w just needs to dominate dist_term (bounded by gamma_int * max
+    # hierarchy distance per reserve duty — small relative to total_ub),
+    # nowhere near as large a gap as l1_w/prior_w needed since there's no
+    # other tier left to protect against here.
+    spread_w = 1_000_000_000  # 1e9
+
+    ub = terms.total_ub
+    max_v = model.NewIntVar(0, ub, "tb_max_total")
+    min_v = model.NewIntVar(0, ub, "tb_min_total")
+    model.AddMaxEquality(max_v, eligible)
+    model.AddMinEquality(min_v, eligible)
+    spread_term = max_v - min_v
+
+    model.Maximize(-spread_w * spread_term - dist_term)
 
 
 @overload

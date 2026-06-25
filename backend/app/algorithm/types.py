@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 # Scale factor for converting Decimal effort scores to CP-SAT integers.
 # Lives here (the pure, dependency-free types module) so both the solver
@@ -115,6 +115,13 @@ class SolverSettings:
     # results every run). >1 = parallel workers race each other; faster but non-deterministic
     # even with a fixed seed because the winning worker depends on CPU scheduling.
     num_workers: int = 1
+    # Lexicographic second-stage tie-break, applied after the main L1 solve
+    # reaches OPTIMAL/FEASIBLE: pins L1 dispersion to its proven value, then
+    # re-solves with a tie-break objective among solutions L1 can't
+    # distinguish (see apply_tiebreak_objective). "off" preserves today's
+    # single-stage behaviour exactly.
+    tiebreak_mode: Literal["off", "range"] = "range"
+    tiebreak_time_limit_seconds: int = 20
 
 
 @dataclass

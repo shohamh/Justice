@@ -11,6 +11,7 @@ from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallb
 from app.algorithm.model import (
     _block_score,
     _duty_dates,
+    apply_tiebreak_objective,
     build_fairness_objective,
     build_model,
 )
@@ -613,7 +614,9 @@ def _solve_with_settings(
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> tuple[CpSolver, dict[tuple[int, int], IntVar], int]:
-    model, x = build_model(soldiers, duties, existing, settings, reserve_dist)
+    model, x, terms = build_model(
+        soldiers, duties, existing, settings, reserve_dist, with_obj_terms=True
+    )
     solver = CpSolver()
     solver.parameters.max_time_in_seconds = settings.time_limit_seconds
     # Fixed seed + single worker = deterministic results. random_seed alone is
@@ -622,6 +625,37 @@ def _solve_with_settings(
     solver.parameters.random_seed = settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED
     solver.parameters.num_search_workers = settings.num_workers
     status = _solve_with_stall_guard(solver, model, cancel_event)
+
+    if settings.tiebreak_mode == "off" or not terms.dev_terms:
+        return solver, x, status
+    if solver.StatusName(status) not in ("OPTIMAL", "FEASIBLE"):
+        return solver, x, status
+    if cancel_event is not None and cancel_event.is_set():
+        return solver, x, status
+
+    # Lexicographic stage 2: pin the L1 value just proven, hint with stage 1's
+    # assignment (it's already feasible and L1-optimal, so stage 2 only needs
+    # to search among ties), then re-solve with a tie-break objective and a
+    # separate, shorter time budget. A SEPARATE solver instance is used so
+    # that if stage 2 fails to find anything within budget, `solver`'s
+    # already-valid stage-1 values are untouched and safe to fall back to —
+    # reusing one solver object (as the existing soft-coverage two-stage solve
+    # does) would leave Value() reflecting stage 2's failed attempt instead.
+    achieved_l1 = sum(solver.Value(d) for d in terms.dev_terms)
+    stage1_values = {key: solver.Value(var) for key, var in x.items()}
+    for key, var in x.items():
+        model.AddHint(var, stage1_values[key])
+    apply_tiebreak_objective(model, x, duties, settings, reserve_dist, terms, achieved_l1)
+
+    solver2 = CpSolver()
+    solver2.parameters.max_time_in_seconds = settings.tiebreak_time_limit_seconds
+    solver2.parameters.random_seed = solver.parameters.random_seed
+    solver2.parameters.num_search_workers = settings.num_workers
+    status2 = _solve_with_stall_guard(solver2, model, cancel_event)
+    if solver2.StatusName(status2) in ("OPTIMAL", "FEASIBLE"):
+        return solver2, x, status2
+    # Stage 2 found nothing usable within budget (or got cancelled) — fall
+    # back to stage 1's untouched, already-feasible solver/status.
     return solver, x, status
 
 
