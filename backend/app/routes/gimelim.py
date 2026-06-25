@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, scope_root_ids
+from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyDismissal, GimelimAttachment, HierarchyNode, Soldier
 from app.db.session import get_session
@@ -43,7 +43,10 @@ def _require_gimelim_permission(
     if soldier.hierarchy_node_id:
         target_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
     roots = scope_root_ids(session, user)
-    if not can(user, Action.ASSIGNMENT_MANAGE, target_node=target_node, roots=roots):
+    if not can(
+        user, Action.ASSIGNMENT_MANAGE, target_node=target_node, roots=roots,
+        is_commander=is_commander(session, user.id), is_duty_manager=is_duty_manager(session, user.id),
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
 

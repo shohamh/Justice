@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, scope_root_ids
+from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, Soldier
 from app.db.session import get_session
@@ -45,8 +45,12 @@ def _authorize_assignment_scope(
     if actor.role == "admin":
         return a
     roots = scope_root_ids(session, actor)
-    action = Action.ASSIGNMENT_MANAGE if actor.role == "duty_manager" else Action.HIERARCHY_READ
-    if not can(actor, action, target_node=target_node, roots=roots):
+    actor_is_duty_manager = is_duty_manager(session, actor.id)
+    action = Action.ASSIGNMENT_MANAGE if actor_is_duty_manager else Action.HIERARCHY_READ
+    if not can(
+        actor, action, target_node=target_node, roots=roots,
+        is_commander=is_commander(session, actor.id), is_duty_manager=actor_is_duty_manager,
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     return a
 

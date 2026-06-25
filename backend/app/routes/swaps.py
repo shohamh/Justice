@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, scope_root_ids
+from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapRequest, Soldier
 from app.db.session import get_session
@@ -267,7 +267,10 @@ def list_swaps_for_assignment(
         if soldier_on_assignment and soldier_on_assignment.hierarchy_node_id:
             node = session.get(HierarchyNode, soldier_on_assignment.hierarchy_node_id)
         roots = scope_root_ids(session, user)
-        if not can(user, Action.SWAP_APPROVE, target_node=node, roots=roots):
+        if not can(
+            user, Action.SWAP_APPROVE, target_node=node, roots=roots,
+            is_commander=is_commander(session, user.id), is_duty_manager=is_duty_manager(session, user.id),
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     rows = session.execute(
         select(SwapRequest).where(
@@ -442,10 +445,15 @@ def pending(
         return [_out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations) for r in all_pending]
 
     roots = scope_root_ids(session, user)
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
     return [
         _out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations)
         for r in all_pending
-        if can(user, Action.SWAP_APPROVE, target_node=_requester_node(r), roots=roots)
+        if can(
+            user, Action.SWAP_APPROVE, target_node=_requester_node(r), roots=roots,
+            is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+        )
     ]
 
 

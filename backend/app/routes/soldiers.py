@@ -10,7 +10,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids, can_see_private, PRIVATE_FIELD_NAMES
+from app.auth.authz import (
+    Action,
+    authorize,
+    can,
+    can_see_private,
+    is_commander,
+    is_duty_manager,
+    scope_root_ids,
+    PRIVATE_FIELD_NAMES,
+)
 from app.auth.deps import require_password_changed, require_roles
 from app.db.models import HierarchyNode, Soldier, SoldierFieldUpdate, TelegramLink
 from app.db.session import get_session
@@ -323,13 +332,17 @@ def list_all_pending_field_updates(
     roots = scope_root_ids(session, user)
     if not roots:
         return []
-    from app.auth.authz import can
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
     result = []
     for upd in all_pending:
         s = soldiers_by_id.get(upd.soldier_id)
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+            if can(
+                user, Action.SOLDIER_READ, target_node=node, roots=roots,
+                is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+            ):
                 soldier_name = s.full_name
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
@@ -367,13 +380,17 @@ def count_pending_field_updates(
             select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
         ).scalars().all()
     } if node_ids else {}
-    from app.auth.authz import can
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
     total = 0
     for upd in all_pending:
         s = soldiers_by_id.get(upd.soldier_id)
         if s:
             node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
-            if can(user, Action.SOLDIER_READ, target_node=node, roots=roots):
+            if can(
+                user, Action.SOLDIER_READ, target_node=node, roots=roots,
+                is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+            ):
                 total += 1
     return {"count": total}
 

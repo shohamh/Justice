@@ -71,7 +71,7 @@ def test_scope_root_ids_dm_no_entries(admin_session):
 
 def test_dm_scope_manage_requires_rasan(admin_session):
     """Commander with rank רסן can DM_SCOPE_MANAGE; rank סרן cannot."""
-    from app.auth.authz import can, scope_root_ids, Action
+    from app.auth.authz import can, scope_root_ids, is_commander, is_duty_manager, Action
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")
     high_cmd = create_soldier(admin_session, personal_number=f"cmd_h_{_uid()}", role="commander")
     high_cmd.rank = "רסן"
@@ -84,13 +84,19 @@ def test_dm_scope_manage_requires_rasan(admin_session):
     roots_h = scope_root_ids(admin_session, high_cmd)
     roots_l = scope_root_ids(admin_session, low_cmd)
 
-    assert can(high_cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots_h)
-    assert not can(low_cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots_l)
+    assert can(
+        high_cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots_h,
+        is_commander=is_commander(admin_session, high_cmd.id), is_duty_manager=is_duty_manager(admin_session, high_cmd.id),
+    )
+    assert not can(
+        low_cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots_l,
+        is_commander=is_commander(admin_session, low_cmd.id), is_duty_manager=is_duty_manager(admin_session, low_cmd.id),
+    )
 
 
 def test_dm_scope_manage_null_rank_denied(admin_session):
     """Commander with null rank cannot DM_SCOPE_MANAGE."""
-    from app.auth.authz import can, scope_root_ids, Action
+    from app.auth.authz import can, scope_root_ids, is_commander, is_duty_manager, Action
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")
     cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
     cmd.rank = None
@@ -99,7 +105,10 @@ def test_dm_scope_manage_null_rank_denied(admin_session):
     admin_session.commit()
 
     roots = scope_root_ids(admin_session, cmd)
-    assert not can(cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots)
+    assert not can(
+        cmd, Action.DM_SCOPE_MANAGE, target_node=node, roots=roots,
+        is_commander=is_commander(admin_session, cmd.id), is_duty_manager=is_duty_manager(admin_session, cmd.id),
+    )
 
 
 def test_assign_dm_scope_grants_dm_role(admin_session):
