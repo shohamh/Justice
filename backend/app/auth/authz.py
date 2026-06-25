@@ -12,6 +12,28 @@ from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 PRIVATE_FIELD_NAMES: frozenset[str] = frozenset({"gender", "phone", "email"})
 
 
+def is_commander(session: Session, soldier_id: uuid.UUID) -> bool:
+    """True iff this soldier currently commands at least one hierarchy node."""
+    return (
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.commander_id == soldier_id).limit(1)
+        ).first()
+        is not None
+    )
+
+
+def is_duty_manager(session: Session, soldier_id: uuid.UUID) -> bool:
+    """True iff this soldier currently holds at least one DutyManagerScope row."""
+    return (
+        session.execute(
+            select(DutyManagerScope.id)
+            .where(DutyManagerScope.duty_manager_id == soldier_id)
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 class Action:
     SOLDIER_CREATE = "soldier.create"
     SOLDIER_READ = "soldier.read"
@@ -74,17 +96,16 @@ _DM_GLOBAL_ACTIONS = {
 def scope_root_ids(session: Session, user: Soldier) -> set[uuid.UUID]:
     """The node ids whose subtrees this user governs."""
     roots: set[uuid.UUID] = set()
-    if user.role == "duty_manager":
-        dm_nodes = (
-            session.execute(
-                select(DutyManagerScope.hierarchy_node_id).where(
-                    DutyManagerScope.duty_manager_id == user.id
-                )
+    dm_nodes = (
+        session.execute(
+            select(DutyManagerScope.hierarchy_node_id).where(
+                DutyManagerScope.duty_manager_id == user.id
             )
-            .scalars()
-            .all()
         )
-        roots.update(dm_nodes)
+        .scalars()
+        .all()
+    )
+    roots.update(dm_nodes)
     commanded = (
         session.execute(select(HierarchyNode.id).where(HierarchyNode.commander_id == user.id))
         .scalars()

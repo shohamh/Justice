@@ -182,6 +182,34 @@ def test_remove_dm_scope_downgrades_to_commander_if_commands_node(admin_session)
     assert dm.role == "commander"
 
 
+def test_scope_root_ids_includes_dm_nodes_regardless_of_role_label(admin_session):
+    """A soldier labeled 'commander' who also holds a DutyManagerScope row must still
+    get that node in their roots — scope_root_ids must not gate DM nodes on role=='duty_manager'."""
+    from app.db.models import DutyManagerScope
+    node = create_node(admin_session, level="division", name=f"div_{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    admin_session.add(DutyManagerScope(duty_manager_id=cmd.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+
+    from app.auth.authz import scope_root_ids
+    roots = scope_root_ids(admin_session, cmd)
+    assert node.id in roots
+
+
+def test_is_commander_and_is_duty_manager_helpers(admin_session):
+    from app.auth.authz import is_commander, is_duty_manager
+    node = create_node(admin_session, level="division", name=f"div_{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    node.commander_id = cmd.id
+    plain = create_soldier(admin_session, personal_number=f"s_{_uid()}", role="soldier")
+    admin_session.commit()
+
+    assert is_commander(admin_session, cmd.id) is True
+    assert is_duty_manager(admin_session, cmd.id) is False
+    assert is_commander(admin_session, plain.id) is False
+    assert is_duty_manager(admin_session, plain.id) is False
+
+
 def test_remove_dm_scope_keeps_dm_role_if_other_entries_remain(admin_session):
     """Removing one of multiple scope entries keeps duty_manager role."""
     from app.db.models import DutyManagerScope
