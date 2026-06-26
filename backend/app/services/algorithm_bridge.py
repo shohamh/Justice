@@ -984,7 +984,9 @@ def _identify_relaxation_impacts(
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     import logging
+    import signal
     import time as _time
+    import traceback
 
     from app.algorithm.explain import build_explanations
     from app.algorithm.reserve import compute_reserve_dist
@@ -997,6 +999,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
     def _phase(label: str) -> None:
         _log.info("[job %s] phase=%-30s elapsed=%.1fs", job_id, label, _time.monotonic() - _t0)
+
+    # Catch SIGABRT (OR-Tools can call abort() on invalid model state, which
+    # converts to SIGABRT on Linux; on Windows this raises instead).
+    def _sigabrt_handler(signum: int, frame: object) -> None:
+        _log.critical("[job %s] SIGABRT received — OR-Tools likely aborted due to invalid model input", job_id)
+    try:
+        signal.signal(signal.SIGABRT, _sigabrt_handler)
+    except (OSError, ValueError):
+        pass  # non-main thread on some platforms
 
     cancel_event = threading.Event()
     _cancel_events[str(job_id)] = cancel_event
@@ -1081,6 +1092,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 # already published months ahead raise the soldier's effort and
                 # deprioritise them for new work (see effort_history_horizon).
                 effort_horizon = effort_history_horizon(session, planning_start=planning_start)
+                _phase("compute_effort_data: start")
                 effort_map = compute_effort_data(
                     session,
                     soldiers=soldiers,
@@ -1089,6 +1101,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     reset_date=_reset_date,
                     pending_duties=duties,
                 )
+                _phase("compute_effort_data: done")
                 # Whole-job range, for the _count_space_stats diagnostics only (those
                 # report a single before/after CV across the entire run). The solve
                 # itself does NOT use this — each batch's build_model call auto-derives
@@ -1098,6 +1111,11 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 # for any batch smaller than the full run, pushing duty weights toward
                 # the max(1, ...) floor more than necessary.
                 stats_range_min, stats_range_max = inject_effort_scores(soldiers, duties, effort_map)
+                _log.info(
+                    "[job %s] effort_range min=%d max=%d; sample soldier efforts: %s",
+                    job_id, stats_range_min, stats_range_max,
+                    [(s.id, s.effort_offset, s.effort_per_milli) for s in soldiers[:5]],
+                )
                 stats_before = _count_space_stats(soldiers, [], duties, settings.effort_resolution,
                                                   stats_range_min, stats_range_max)
                 existing = load_existing_assignments(
@@ -1155,11 +1173,23 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 session.commit()
 
                 _phase("solver: start")
-                result = solve(
-                    soldiers, duties, existing, settings,
-                    reserve_dist=reserve_dist, cancel_event=cancel_event,
-                    progress_cb=_report_progress,
+                _log.info(
+                    "[job %s] calling solve() — %d soldiers, %d duties, %d existing",
+                    job_id, len(soldiers), len(duties), len(existing),
                 )
+                try:
+                    result = solve(
+                        soldiers, duties, existing, settings,
+                        reserve_dist=reserve_dist, cancel_event=cancel_event,
+                        progress_cb=_report_progress,
+                    )
+                except BaseException as _solve_exc:
+                    _log.critical(
+                        "[job %s] solve() raised %s:\n%s",
+                        job_id, type(_solve_exc).__name__,
+                        traceback.format_exc(),
+                    )
+                    raise
                 _phase(f"solver: done (status={result.status}, assignments={len(result.assignments)})")
                 job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
                 session.commit()
@@ -1328,6 +1358,10 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase("final commit done — job complete")
 
             except Exception as exc:  # noqa: BLE001
+                _log.error(
+                    "[job %s] unhandled exception in run_algorithm_job:\n%s",
+                    job_id, traceback.format_exc(),
+                )
                 session.rollback()
                 with session_scope() as err_session:
                     err_job = err_session.get(AlgorithmJob, job_id)
