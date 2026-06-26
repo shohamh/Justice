@@ -162,6 +162,9 @@ class DutyType(Base):
     start_time: Mapped[time | None] = mapped_column(sa.Time, nullable=True, default=None)
     end_time: Mapped[time | None] = mapped_column(sa.Time, nullable=True, default=None)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    eligible_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -407,6 +410,9 @@ class ShiftTemplate(Base):
     recurrence_type: Mapped[str] = mapped_column(Text, server_default=text("'weekly'"), default="weekly")
     duration_days: Mapped[int] = mapped_column(server_default=text("1"), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    eligible_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True, default=None
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
