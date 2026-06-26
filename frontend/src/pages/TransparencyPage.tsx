@@ -4,8 +4,9 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency, downloadTransparencyExport, downloadSubUnitsExport } from "../api/scoring";
+import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
+import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
@@ -302,6 +303,8 @@ export default function TransparencyPage() {
   const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
   const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
   const [fairnessComponents, setFairnessComponents] = useState<FairnessComponents | null>(null);
+  const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
+  const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
 
   useEffect(() => { void getTransparency().then(setRows); }, []);
   useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
@@ -568,6 +571,10 @@ export default function TransparencyPage() {
         );
       },
       sortValue: (r) => r.effort_score,
+      exportValue: (r) => {
+        const n = r.effort_score;
+        return isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";
+      },
     },
     {
       id: "group_rank",
@@ -598,6 +605,12 @@ export default function TransparencyPage() {
         );
       },
       sortValue: (r: NumberedRow) => r._group?.rank ?? 9999,
+      exportValue: (r: NumberedRow) => {
+        const g = r._group;
+        if (!g || g.compIndex === -1) return "פטור";
+        if (g.groupSize < 2) return "—";
+        return `${g.rank}/${g.groupSize}`;
+      },
     } as ColDef<NumberedRow>,
     {
       id: "group_dev",
@@ -624,6 +637,12 @@ export default function TransparencyPage() {
       sortValue: (r: NumberedRow) => {
         const mean = r._group?.groupMean;
         return mean != null && !isNaN(r.effort_score) ? r.effort_score - mean : 9999;
+      },
+      exportValue: (r: NumberedRow) => {
+        const mean = r._group?.groupMean;
+        if (mean == null || isNaN(r.effort_score) || r._group?.compIndex === -1) return "—";
+        const dev = r.effort_score - mean;
+        return (dev >= 0 ? "+" : "") + (dev * 100).toFixed(2) + "%";
       },
     } as ColDef<NumberedRow>,
     ...(showDebug ? [
@@ -794,31 +813,13 @@ export default function TransparencyPage() {
             )}
           </div>
 
-          {tab === 0 && (
-            <div className="flex items-center gap-2">
-              {user?.role === "admin" && (
-                <button
-                  className={`text-xs px-2 py-1 rounded border transition-colors ${showDebug ? "bg-amber-100 dark:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200" : "border-gray-300 dark:border-gray-600 text-gray-500 hover:border-amber-400"}`}
-                  onClick={() => setShowDebug(d => !d)}
-                  title="הצג ערכי count-space לדיבאג הוגנות"
-                >
-                  🔧 מצב דיבאג
-                </button>
-              )}
-              <button
-                className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-                onClick={() => void downloadTransparencyExport(selectedNodeId)}
-              >
-                📥 ייצוא לאקסל
-              </button>
-            </div>
-          )}
-          {tab === 1 && (
+          {tab === 0 && user?.role === "admin" && (
             <button
-              className="text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-3 py-1 rounded hover:bg-green-50 dark:hover:bg-green-950"
-              onClick={() => void downloadSubUnitsExport()}
+              className={`text-xs px-2 py-1 rounded border transition-colors ${showDebug ? "bg-amber-100 dark:bg-amber-900 border-amber-400 text-amber-800 dark:text-amber-200" : "border-gray-300 dark:border-gray-600 text-gray-500 hover:border-amber-400"}`}
+              onClick={() => setShowDebug(d => !d)}
+              title="הצג ערכי count-space לדיבאג הוגנות"
             >
-              📥 ייצוא לאקסל
+              🔧 מצב דיבאג
             </button>
           )}
         </div>
@@ -918,6 +919,9 @@ export default function TransparencyPage() {
         {/* Tab content */}
         {tab === 0 && (
           <>
+            <div className="flex justify-start" dir="ltr">
+              <ExcelExportButton columns={soldierCols} rows={exportSoldierRows} filename="transparency.xlsx" />
+            </div>
             <DataTable
               columns={soldierCols}
               data={visibleRows}
@@ -930,16 +934,23 @@ export default function TransparencyPage() {
                 return { borderRight: `3px solid ${color}` };
               }}
               testId="transparency-table"
+              onVisibleRowsChange={setExportSoldierRows}
             />
           </>
         )}
 
         {tab === 1 && (
-          <DataTable
-            columns={subCols}
-            data={subRows}
-            filterPlaceholder={t("table.filter_placeholder")}
-          />
+          <>
+            <div className="flex justify-start" dir="ltr">
+              <ExcelExportButton columns={subCols} rows={exportSubRows} filename="sub-units.xlsx" />
+            </div>
+            <DataTable
+              columns={subCols}
+              data={subRows}
+              filterPlaceholder={t("table.filter_placeholder")}
+              onVisibleRowsChange={setExportSubRows}
+            />
+          </>
         )}
       </section>
 
