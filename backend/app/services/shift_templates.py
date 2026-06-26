@@ -94,6 +94,7 @@ def create_template(
     auto_roll: bool = False,
     auto_roll_until: date | None = None,
     notes: str | None = None,
+    eligible_node_ids: list[uuid.UUID] | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
     _validate(recurrence_type, weekdays, duration_days, required_count, start_time, end_time, auto_roll_until)
@@ -110,6 +111,7 @@ def create_template(
         auto_roll=auto_roll,
         auto_roll_until=auto_roll_until,
         notes=notes,
+        eligible_node_ids=eligible_node_ids,
         created_by=actor_id,
     )
     session.add(tpl)
@@ -147,6 +149,7 @@ def update_template(
     auto_roll_until: object = ...,
     active: bool | None = None,
     notes: object = ...,
+    eligible_node_ids: object = ...,
     actor_id: uuid.UUID | None = None,
 ) -> ShiftTemplate:
     before = {"name": tpl.name, "recurrence_type": tpl.recurrence_type, "weekdays": tpl.weekdays, "duration_days": tpl.duration_days, "active": tpl.active, "auto_roll": tpl.auto_roll}
@@ -172,6 +175,8 @@ def update_template(
         tpl.active = active
     if notes is not ...:
         tpl.notes = notes  # type: ignore[assignment]
+    if eligible_node_ids is not ...:
+        tpl.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]
     if tpl.recurrence_type != "weekly":
         tpl.weekdays = []
         tpl.duration_days = 1
@@ -251,6 +256,7 @@ def generate_shifts(
             notes=tpl.notes,
             created_by=actor_id,
             generated_from_template_id=tpl.id,
+            eligible_node_ids=tpl.eligible_node_ids,
         )
         session.add(shift)
         created.append(shift)

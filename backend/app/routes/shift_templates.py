@@ -31,6 +31,7 @@ class TemplateOut(BaseModel):
     auto_roll: bool
     auto_roll_until: date | None
     notes: str | None
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateTemplateRequest(BaseModel):
@@ -46,6 +47,7 @@ class CreateTemplateRequest(BaseModel):
     auto_roll: bool = False
     auto_roll_until: date | None = None
     notes: str | None = Field(default=None, max_length=1000)
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class UpdateTemplateRequest(BaseModel):
@@ -60,6 +62,7 @@ class UpdateTemplateRequest(BaseModel):
     auto_roll_until: date | None = None
     active: bool | None = None
     notes: str | None = None
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -82,6 +85,7 @@ def _out(t: ShiftTemplate) -> TemplateOut:
         recurrence_type=t.recurrence_type, weekdays=t.weekdays, duration_days=t.duration_days,
         start_time=t.start_time, end_time=t.end_time, required_count=t.required_count,
         active=t.active, auto_roll=t.auto_roll, auto_roll_until=t.auto_roll_until, notes=t.notes,
+        eligible_node_ids=t.eligible_node_ids,
     )
 
 
@@ -117,7 +121,7 @@ def create_template(
             start_time=body.start_time, end_time=body.end_time,
             required_count=body.required_count, auto_roll=body.auto_roll,
             auto_roll_until=body.auto_roll_until,
-            notes=body.notes, actor_id=user.id,
+            notes=body.notes, eligible_node_ids=body.eligible_node_ids, actor_id=user.id,
         )
     except svc.TemplateError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -140,6 +144,8 @@ def update_template(
         extra["notes"] = body.notes
     if "auto_roll_until" in body.model_fields_set:
         extra["auto_roll_until"] = body.auto_roll_until
+    if "eligible_node_ids" in body.model_fields_set:
+        extra["eligible_node_ids"] = body.eligible_node_ids
     try:
         svc.update_template(
             session, tpl=t, name=body.name, recurrence_type=body.recurrence_type,
