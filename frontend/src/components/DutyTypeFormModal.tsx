@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyType, createDutyType, updateDutyType, updateDutyTypeRequirements } from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
+import SubHierarchySelector from "./SubHierarchySelector";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
 
@@ -28,6 +29,7 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
   const [reqs, setReqs] = useState<Reqs>(initial?.requirements ?? {});
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
   const [eligOpen, setEligOpen] = useState(false);
+  const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(initial?.eligible_node_ids ?? []);
   const [showHelp, setShowHelp] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +69,7 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
         end_time: endTime || null,
         instructions: instructions || null,
         is_external: isExternal === "true",
+        eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
       };
       let dt: DutyType;
       if (initial) {
@@ -273,6 +276,13 @@ export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) 
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Hierarchy scope section */}
+          <div className="border dark:border-gray-600 rounded p-3">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t("hierarchy_scope.title")}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t("hierarchy_scope.help")}</p>
+            <SubHierarchySelector value={scopeNodeIds} onChange={setScopeNodeIds} />
           </div>
 
           {error && <p className="text-red-500 text-xs">{error}</p>}
