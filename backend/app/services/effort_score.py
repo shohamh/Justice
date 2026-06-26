@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -9,6 +10,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import calendar_days_touched, score_days
 from app.algorithm.types import EFFORT_SCALE  # noqa: F401  (re-exported for importers)
 from app.services.scoring import effective_duty_days
 
@@ -77,6 +79,29 @@ def _find_quarter_key(all_quarters: list[tuple[date, date]], d: date) -> date | 
         if quarter_start(q_start_d) == target:
             return q_start_d
     return None
+
+
+def _pending_quarter_scores(pending_duties: Sequence[Any]) -> dict[date, Decimal]:
+    """Apportion each pending (not-yet-published) duty's total score across the
+    calendar quarter(s) it falls in, using the same per-day weighting
+    effective_duty_days uses for published assignments. Keyed by the UNCLIPPED
+    calendar quarter_start. Used by compute_effort_data's pending_duties parameter
+    to inflate a quarter's unit_score denominator by the workload the algorithm is
+    about to assign this run, assuming full coverage.
+    """
+    buckets: dict[date, Decimal] = {}
+    for d in pending_duties:
+        touched = calendar_days_touched(d.start_date, d.end_date)
+        if touched <= 0:
+            continue
+        day_weight = Decimal(score_days(d.start_date, d.end_date, d.start_time, d.end_time)) / Decimal(touched)
+        per_day_score = Decimal(d.score_per_day) * day_weight
+        day = d.start_date
+        while day < d.end_date:
+            qs = quarter_start(day)
+            buckets[qs] = buckets.get(qs, Decimal("0")) + per_day_score
+            day += timedelta(days=1)
+    return buckets
 
 
 def _compute_effort_data(
@@ -162,6 +187,7 @@ def compute_effort_data(
     planning_start: date,
     planning_end: date,
     reset_date: date,
+    pending_duties: Sequence[Any] = (),  # DutyBlock-like: about to be planned, not yet published
 ) -> dict[uuid.UUID, EffortData]:
     """
     Compute EffortData for all soldiers using published assignment history plus
@@ -170,6 +196,11 @@ def compute_effort_data(
     Uses effective_duty_days() from scoring.py (same source-of-truth as score calculations).
     Loads history from reset_date up to (but not including) planning_start, PLUS any
     published assignments after planning_end (future duties beyond the planning window).
+
+    `pending_duties` are duties the algorithm is ABOUT TO assign this run (not yet
+    published). Each one's score is added to whichever quarter(s) it falls in as a
+    denominator-only contribution — nobody is credited yet. This stops a thin quarter
+    from making one pre-existing duty look like a huge personal share.
 
     Returns dict[soldier_id, EffortData] with effort_per_milli=0;
     the caller (bridge) sets effort_per_milli after knowing unit_score_milli.
@@ -200,6 +231,21 @@ def compute_effort_data(
 
     all_quarters = past_quarters + future_quarters
 
+    # Merge the about-to-be-assigned workload into whichever quarter(s) it falls in,
+    # creating a new unclipped quarter tuple if none is tracked yet. Computed before
+    # the "anything to do" check so pending-only duties can be the sole reason a
+    # quarter exists.
+    cal_to_tracked: dict[date, date] = {quarter_start(q_s): q_s for q_s, _ in all_quarters}
+    pending_unit_scores: dict[date, Decimal] = {}
+    if pending_duties:
+        for cal_qs, amount in _pending_quarter_scores(pending_duties).items():
+            tracked_qs = cal_to_tracked.get(cal_qs)
+            if tracked_qs is None:
+                tracked_qs = cal_qs
+                all_quarters.append((cal_qs, quarter_end(cal_qs)))
+                cal_to_tracked[cal_qs] = cal_qs
+            pending_unit_scores[tracked_qs] = pending_unit_scores.get(tracked_qs, Decimal("0")) + amount
+
     if not all_quarters:
         return _compute_effort_data(
             soldiers=soldiers,
@@ -215,14 +261,12 @@ def compute_effort_data(
     }
 
     # Map calendar-quarter-start → clipped quarter-start used in all_quarters.
-    # O(Q) instead of O(Q × 90 days) — the per-day loop was building ~720 entries
-    # only to do a dict lookup that quarter_start() computes directly.
     cal_qs_to_clipped: dict[date, date] = {
         quarter_start(q_start_d): q_start_d for q_start_d, _ in all_quarters
     }
 
-    # Aggregate duty scores per quarter
-    q_unit_scores: dict[date, Decimal] = {}
+    # Aggregate duty scores per quarter, seeded with the pending-workload baseline.
+    q_unit_scores: dict[date, Decimal] = dict(pending_unit_scores)
     q_soldier_scores: dict[date, dict[uuid.UUID, Decimal]] = {}
     for day, soldier_id, duty_type_id, mult in days_data:
         # Skip the planning window — solver controls those

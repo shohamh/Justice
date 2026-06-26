@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -428,6 +428,102 @@ def test_future_quarters_appear_in_breakdown(admin_session):
     assert any(q.soldier_score > 0 for q in future_quarters)
     # effort_score should be nonzero since the soldier has future duties
     assert breakdown.effort_score > Decimal("0")
+
+
+def test_pending_quarter_scores_apportions_by_day():
+    """_pending_quarter_scores splits a duty's total score across the calendar
+    quarter(s) it touches, keyed by quarter_start."""
+    from app.services.effort_score import _pending_quarter_scores
+
+    @dataclass
+    class _Block:
+        start_date: date
+        end_date: date
+        start_time: str
+        end_time: str
+        score_per_day: Decimal
+
+    # One 7-day duty fully inside Q3 2026 (Jul 1 - Sep 30), score_per_day=1.00
+    # -> total score 7, all attributed to quarter_start=2026-07-01.
+    block = _Block(
+        start_date=date(2026, 7, 13), end_date=date(2026, 7, 20),
+        start_time="00:00", end_time="23:59", score_per_day=Decimal("1.00"),
+    )
+    buckets = _pending_quarter_scores([block])
+    assert buckets == {date(2026, 7, 1): Decimal("7")}
+
+
+def test_pending_duties_dilute_thin_quarter_share(admin_session):
+    """
+    Reproduces the production bug: a soldier ('victim') has ONE pre-existing
+    7-day duty in a quarter that otherwise has zero published activity. Without
+    pending_duties, that duty looks like 100% of the quarter. With pending_duties
+    representing 93 more duty-equivalents about to be planned into the same quarter,
+    her share correctly drops to 7%.
+    """
+    from app.db.models import DutyLocation, DutyType
+    from app.algorithm.types import DutyBlock
+    from app.services.assignments import create_assignment
+    from tests.helpers import create_soldier
+
+    dt = DutyType(name="שמירה-pending", score_per_day=Decimal("1.00"))
+    admin_session.add(dt)
+    loc = DutyLocation(name="מוצב-pending")
+    admin_session.add(loc)
+    admin_session.flush()
+
+    enrolled = date(2025, 1, 1)
+    victim = create_soldier(admin_session, personal_number="9700010")
+    victim.enrolled_at = enrolled
+    control = create_soldier(admin_session, personal_number="9700011")
+    control.enrolled_at = enrolled
+    admin_session.flush()
+
+    # victim's one pre-existing published duty: 7 days @ score 1.00 = 7 total.
+    create_assignment(
+        admin_session,
+        soldier_id=victim.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 13),
+        end_date=date(2026, 7, 20),
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    planning_start = date(2026, 10, 1)
+    planning_end = date(2026, 10, 1)
+    reset_date = date(2026, 7, 1)
+
+    without = compute_effort_data(
+        admin_session, soldiers=[victim, control],
+        planning_start=planning_start, planning_end=planning_end, reset_date=reset_date,
+    )
+    assert without[victim.id].effort_score == Decimal("1")  # 7/7 -- the bug
+    assert without[control.id].effort_score == Decimal("0")
+
+    # 93 more single-day duty-equivalents about to be planned into the same quarter.
+    pending = [
+        DutyBlock(
+            id=uuid.uuid4(), duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date(2026, 8, 1) + timedelta(days=i),
+            end_date=date(2026, 8, 2) + timedelta(days=i),
+            score_per_day=Decimal("1.00"),
+        )
+        for i in range(93)
+    ]
+
+    withp = compute_effort_data(
+        admin_session, soldiers=[victim, control],
+        planning_start=planning_start, planning_end=planning_end, reset_date=reset_date,
+        pending_duties=pending,
+    )
+    # 61 of the 93 pending duties fall in Q3 (Aug 1..Sep 30), 32 spill into Q4
+    # (Oct 1..Nov 1), creating a second quarter in the denominator.
+    # Q3: 7 published + 61 pending = 68; Q4: 32 pending. W_i = 2 quarters.
+    # effort_score ≈ (7/68) / 2 = 7/136 ≈ 0.0515 -- a fraction of the bugged 7/7.
+    assert Decimal("0.051") < withp[victim.id].effort_score < Decimal("0.052")
+    assert withp[control.id].effort_score == Decimal("0")
 
 
 def test_run_algorithm_job_passes_pending_duties_to_compute_effort_data():
