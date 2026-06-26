@@ -496,6 +496,8 @@ git commit -m "feat: move transparency export above table, respect all active fi
 
 Replace the full contents of `frontend/src/pages/planning/ExportPage.tsx` with:
 
+**Note on `dfsOrder`:** `fetchFullTree()` (and `GET /hierarchy/tree` generally) returns a FLAT list of nodes — `NodeDTO.children` is declared but never populated by the API (confirmed: `backend/app/routes/hierarchy.py`'s `get_tree` returns `list[NodeOut]` with no nesting). `dfsOrder` below builds its own `parent_id`-keyed children map from the flat list and recurses from root (`parent_id === null`) — do NOT try to recurse into `n.children`, since it will always be `undefined` and silently produce a flat alphabetical sort instead of a real pre-order traversal grouped by unit hierarchy.
+
 ```typescript
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -516,14 +518,23 @@ function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
 }
 
 function dfsOrder(nodes: NodeDTO[]): string[] {
+  const childrenByParent = new Map<string | null, NodeDTO[]>();
+  for (const n of nodes) {
+    const key = n.parent_id ?? null;
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key)!.push(n);
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }
   const order: string[] = [];
-  function traverse(list: NodeDTO[]) {
-    for (const n of [...list].sort((a, b) => a.name.localeCompare(b.name, "he"))) {
+  function traverse(parentId: string | null) {
+    for (const n of childrenByParent.get(parentId) ?? []) {
       order.push(n.id);
-      if (n.children?.length) traverse(n.children);
+      traverse(n.id);
     }
   }
-  traverse(nodes);
+  traverse(null);
   return order;
 }
 
