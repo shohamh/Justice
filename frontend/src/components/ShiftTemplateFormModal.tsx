@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CreateTemplateInput,
@@ -12,6 +12,7 @@ import { DutyType, DutyLocation } from "../api/dutyConfig";
 import Combobox from "./Combobox";
 import DutyTypeFormModal from "./DutyTypeFormModal";
 import LocationFormModal from "./LocationFormModal";
+import SubHierarchySelector from "./SubHierarchySelector";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -170,9 +171,19 @@ export default function ShiftTemplateFormModal({
   const [autoRoll, setAutoRoll] = useState(initial?.auto_roll ?? false);
   const [autoRollUntil, setAutoRollUntil] = useState(initial?.auto_roll_until ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(
+    initial?.eligible_node_ids ?? localDutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []
+  );
   const [error, setError] = useState<string | null>(null);
   const [showAddDt, setShowAddDt] = useState(false);
   const [showAddLoc, setShowAddLoc] = useState(false);
+
+  useEffect(() => {
+    if (!initial) {
+      setScopeNodeIds(localDutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dtId]);
 
   const autoRollCount = autoRoll && autoRollUntil
     ? countAutoRollInstances(recurrenceType, startDow, todayStr(), autoRollUntil)
@@ -240,7 +251,7 @@ export default function ShiftTemplateFormModal({
           name, recurrence_type: recurrenceType, weekdays, duration_days,
           start_time: startTime, end_time: endTime,
           required_count: count, auto_roll: autoRoll, auto_roll_until: autoRollUntil || null,
-          notes: notes || null,
+          notes: notes || null, eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         };
         await updateTemplate(initial.id, input);
       } else {
@@ -249,7 +260,7 @@ export default function ShiftTemplateFormModal({
           recurrence_type: recurrenceType, weekdays, duration_days,
           start_time: startTime, end_time: endTime,
           required_count: count, auto_roll: autoRoll, auto_roll_until: autoRollUntil || null,
-          notes: notes || null,
+          notes: notes || null, eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         };
         await createTemplate(input);
       }
@@ -504,6 +515,12 @@ export default function ShiftTemplateFormModal({
                 className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
               />
             </label>
+
+            <div className="border dark:border-gray-600 rounded p-3">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t("hierarchy_scope.title")}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t("hierarchy_scope.help")}</p>
+              <SubHierarchySelector value={scopeNodeIds} onChange={setScopeNodeIds} />
+            </div>
 
             {error && <p className="text-red-500 text-xs">{error}</p>}
 
