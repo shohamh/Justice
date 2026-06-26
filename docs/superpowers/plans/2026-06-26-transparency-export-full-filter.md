@@ -484,6 +484,201 @@ git commit -m "feat: move transparency export above table, respect all active fi
 
 ---
 
+### Task 4.5: Migrate `ExportPage` (Planning > Export) to client-side export
+
+**Discovered during execution:** `frontend/src/pages/planning/ExportPage.tsx` is a separate, currently-working page (nav entry "ייצוא לאקסל" under Planning) that ALSO calls `downloadTransparencyExport`/`downloadSubUnitsExport` — unfiltered, full-dataset versions. Neither the design doc nor the original plan accounted for this page. Decision: keep the page, but migrate it to the same client-side `ExcelExportButton` mechanism, so Task 5/6 can safely delete the old backend-driven functions/routes without breaking it.
+
+**Files:**
+- Modify: `frontend/src/pages/planning/ExportPage.tsx`
+- Modify: `frontend/src/i18n/he.json`
+
+- [ ] **Step 1: Rewrite `ExportPage.tsx`**
+
+Replace the full contents of `frontend/src/pages/planning/ExportPage.tsx` with:
+
+```typescript
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import Layout from "../../components/Layout";
+import { TransparencyRow, getTransparency } from "../../api/scoring";
+import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
+import { ExcelExportButton } from "../../components/ExcelExportButton";
+import type { ColDef } from "../../components/DataTable";
+
+function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
+  const result: NodeDTO[] = [];
+  function traverse(node: NodeDTO) {
+    result.push(node);
+    node.children?.forEach(traverse);
+  }
+  nodes.forEach(traverse);
+  return result;
+}
+
+function dfsOrder(nodes: NodeDTO[]): string[] {
+  const order: string[] = [];
+  function traverse(list: NodeDTO[]) {
+    for (const n of [...list].sort((a, b) => a.name.localeCompare(b.name, "he"))) {
+      order.push(n.id);
+      if (n.children?.length) traverse(n.children);
+    }
+  }
+  traverse(nodes);
+  return order;
+}
+
+function nodePath(nodeId: string | null, nodesById: Map<string, NodeDTO>): string {
+  const parts: string[] = [];
+  let id = nodeId;
+  while (id) {
+    const node = nodesById.get(id);
+    if (!node) break;
+    parts.push(node.name);
+    id = node.parent_id;
+  }
+  return parts.reverse().join(" / ");
+}
+
+interface SubRow {
+  node_id: string;
+  node_name: string;
+  count: number;
+  active_pct: number;
+  avg_active_days: number;
+  avg_cumulative: number;
+  avg_cumulative_active: number;
+  total_score_per_day: number;
+  avg_normalised: number;
+}
+
+export default function ExportPage() {
+  const { t } = useTranslation();
+  const [rows, setRows] = useState<TransparencyRow[]>([]);
+  const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
+
+  useEffect(() => { void getTransparency().then(setRows); }, []);
+  useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
+
+  const flatNodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);
+  const nodesById = useMemo(() => new Map(flatNodes.map((n) => [n.id, n])), [flatNodes]);
+  const nodeOrder = useMemo(() => {
+    const order = dfsOrder(treeNodes);
+    return new Map(order.map((id, i) => [id, i]));
+  }, [treeNodes]);
+
+  const soldierRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const oa = a.node_id ? nodeOrder.get(a.node_id) ?? 9999 : 9999;
+      const ob = b.node_id ? nodeOrder.get(b.node_id) ?? 9999 : 9999;
+      if (oa !== ob) return oa - ob;
+      return a.full_name.localeCompare(b.full_name, "he");
+    });
+  }, [rows, nodeOrder]);
+
+  const subRows = useMemo((): SubRow[] => {
+    const result: SubRow[] = [];
+    const sortedNodes = [...flatNodes].sort(
+      (a, b) => a.path_ids.length - b.path_ids.length || a.name.localeCompare(b.name, "he"),
+    );
+    const avg = (vals: number[]) => vals.reduce((a, b) => a + b, 0) / vals.length;
+    for (const node of sortedNodes) {
+      const nodeRows = rows.filter((r) => r.node_id != null && nodesById.get(r.node_id)?.path_ids.includes(node.id));
+      if (nodeRows.length === 0) continue;
+      const activeRows = nodeRows.filter((r) => !r.is_globally_exempted);
+      result.push({
+        node_id: node.id,
+        node_name: node.name,
+        count: nodeRows.length,
+        active_pct: Math.round((activeRows.length / nodeRows.length) * 100),
+        avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
+        avg_cumulative: avg(nodeRows.map((r) => Number(r.cumulative_score))),
+        avg_cumulative_active: activeRows.length > 0 ? avg(activeRows.map((r) => Number(r.cumulative_score))) : 0,
+        total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
+        avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
+      });
+    }
+    return result;
+  }, [flatNodes, nodesById, rows]);
+
+  const soldierCols: ColDef<TransparencyRow>[] = [
+    {
+      id: "unit_path", header: "יחידה / תת-יחידה",
+      cell: (r) => r.node_id ? nodePath(r.node_id, nodesById) : "—",
+      sortValue: (r) => r.node_id ? nodePath(r.node_id, nodesById) : "",
+    },
+    { id: "name", header: "שם", cell: (r) => r.full_name, sortValue: (r) => r.full_name, filterValue: (r) => r.full_name },
+    { id: "unit", header: "יחידה", cell: (r) => r.node_name ?? "—", sortValue: (r) => r.node_name ?? "" },
+    { id: "enrolled_at", header: "תאריך הצטרפות", cell: (r) => r.enrolled_at, sortValue: (r) => r.enrolled_at },
+    { id: "active_days", header: "ימים פעילים", cell: (r) => r.active_days, sortValue: (r) => r.active_days },
+    { id: "rank", header: "דרגה", cell: (r) => r.rank ?? "—", sortValue: (r) => r.rank ?? "" },
+    { id: "shift_count", header: "כמות משמרות", cell: (r) => r.shift_count, sortValue: (r) => r.shift_count },
+    { id: "cumulative", header: "ניקוד מצטבר", cell: (r) => r.cumulative_score, sortValue: (r) => Number(r.cumulative_score) },
+    { id: "score_per_day", header: "ניקוד ליום", cell: (r) => r.score_per_day, sortValue: (r) => Number(r.score_per_day) },
+    { id: "normalised", header: "ניקוד מנורמל", cell: (r) => r.normalised_score, sortValue: (r) => Number(r.normalised_score) },
+  ];
+
+  const subCols: ColDef<SubRow>[] = [
+    { id: "name", header: "יחידה", cell: (r) => r.node_name, sortValue: (r) => r.node_name },
+    { id: "count", header: "כמות חיילים", cell: (r) => r.count, sortValue: (r) => r.count },
+    { id: "active_pct", header: "חיילים פעילים (%)", cell: (r) => r.active_pct, sortValue: (r) => r.active_pct },
+    { id: "avg_active_days", header: "ממוצע ימים פעילים", cell: (r) => r.avg_active_days, sortValue: (r) => r.avg_active_days },
+    { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(2), exportValue: (r) => r.avg_cumulative, sortValue: (r) => r.avg_cumulative },
+    { id: "avg_cumulative_active", header: "ממוצע ניקוד לחייל פעיל", cell: (r) => r.avg_cumulative_active.toFixed(2), exportValue: (r) => r.avg_cumulative_active, sortValue: (r) => r.avg_cumulative_active },
+    { id: "total_score_per_day", header: "ניקוד ליום (מסגרת)", cell: (r) => r.total_score_per_day.toFixed(2), exportValue: (r) => r.total_score_per_day, sortValue: (r) => r.total_score_per_day },
+    { id: "avg_normalised", header: "ניקוד מנורמל ממוצע", cell: (r) => r.avg_normalised.toFixed(3), exportValue: (r) => r.avg_normalised, sortValue: (r) => r.avg_normalised },
+  ];
+
+  return (
+    <Layout>
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
+        <h2 className="text-xl font-semibold">{t("nav.planning_export")}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="border dark:border-gray-700 rounded-lg p-5 space-y-3">
+            <h3 className="font-medium">{t("export.transparency_title")}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("export.transparency_desc")}</p>
+            <ExcelExportButton columns={soldierCols} rows={soldierRows} filename="transparency.xlsx" />
+          </div>
+          <div className="border dark:border-gray-700 rounded-lg p-5 space-y-3">
+            <h3 className="font-medium">{t("export.sub_units_title")}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("export.sub_units_desc")}</p>
+            <ExcelExportButton columns={subCols} rows={subRows} filename="sub-units.xlsx" />
+          </div>
+        </div>
+      </section>
+    </Layout>
+  );
+}
+```
+
+This mirrors exactly the column set the OLD backend `transparency_export`/`transparency_sub_units_export` routes produced (full unfiltered dataset, DFS-ordered by unit path for soldiers, shallowest-first for sub-units) — just computed client-side now. No fairness/group columns (those are Transparency-page-specific enrichments, out of scope for this page, which always showed the plain unfiltered dataset).
+
+- [ ] **Step 2: Remove the now-unused `download`/`downloading` i18n keys**
+
+In `frontend/src/i18n/he.json`, inside the `"export"` block, remove the `"download"` and `"downloading"` keys (they were only used by the loading-button UI this rewrite removes):
+
+```json
+  "export": {
+    "transparency_title": "ייצוא שקיפות",
+    "transparency_desc": "ייצוא נתוני ניקוד ושיבוץ לכל החיילים לקובץ Excel.",
+    "sub_units_title": "ייצוא יחידות משנה",
+    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel."
+  },
+```
+
+- [ ] **Step 3: Typecheck and lint**
+
+Run (from `frontend/`): `npm run lint`
+Expected: no errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/pages/planning/ExportPage.tsx src/i18n/he.json
+git commit -m "feat: migrate ExportPage to client-side Excel export"
+```
+
+---
+
 ### Task 5: Remove the now-unused frontend API functions
 
 **Files:**
@@ -499,7 +694,7 @@ Run (from `frontend/`):
 ```bash
 grep -rn "downloadTransparencyExport\|downloadSubUnitsExport\|_triggerBlobDownload" src
 ```
-Expected: no output (the only references were in `TransparencyPage.tsx`, already removed in Task 4).
+Expected: no output (references were in `TransparencyPage.tsx`, removed in Task 4, and `ExportPage.tsx`, migrated off them in Task 4.5).
 
 - [ ] **Step 3: Typecheck**
 
@@ -608,5 +803,9 @@ As an admin, toggle "🔧 מצב דיבאג" on the soldiers tab, then export �
 - [ ] **Step 7: Verify zero-row state**
 
 Apply a filter combination that yields zero rows (e.g. select a unit with no soldiers, or search for nonsense text). Confirm the export button becomes disabled (greyed out) rather than producing an empty file.
+
+- [ ] **Step 8: Verify the migrated `ExportPage` (Planning > Export)**
+
+Navigate to the "ייצוא לאקסל" nav entry under Planning. Confirm both cards render with their title/description text (unchanged), each with a working export button. Click each and confirm a full, unfiltered `transparency.xlsx` / `sub-units.xlsx` downloads, with a unit-path column on the soldiers export and per-node aggregates on the sub-units export — i.e. functionally equivalent to what this page produced before the migration, just generated client-side now.
 
 No commit for this task — it's verification only.
