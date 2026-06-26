@@ -1,7 +1,10 @@
-import { AlgorithmJob, BatchResult, SaturationCluster } from "../api/algorithm";
+import { useState } from "react";
+import { AlgorithmJob, BatchResult, SaturationCluster, retryJob } from "../api/algorithm";
 import { DutyType } from "../api/dutyConfig";
 import { DutyShift } from "../api/shifts";
 import FailurePanel from "./FailurePanel";
+import InterruptedPanel from "./InterruptedPanel";
+import { parseInterrupted } from "../utils/algorithmFailure";
 
 interface Props {
   job: AlgorithmJob;
@@ -9,6 +12,7 @@ interface Props {
   shiftNames: Record<string, string>;
   shiftsById: Record<string, DutyShift>;
   onRerun?: (overrides: Record<string, number>) => void;
+  onRetried?: (newJobId: string) => void;
 }
 
 interface UnfilledShift {
@@ -117,7 +121,23 @@ function analyzeBatches(batchResults: BatchResult[]): DiagnosticResult {
   return { rCeilingHitCount, tCeilingHitCount, infeasibleCount, currentRCeiling: maxR, currentTCeiling: maxT };
 }
 
-export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRerun }: Props) {
+export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRerun, onRetried }: Props) {
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  async function handleRetry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const result = await retryJob(job.id);
+      onRetried?.(result.id);
+    } catch {
+      setRetryError("הרצה חדשה נכשלה — נסה שוב");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   const batchResults = job.batch_results ?? [];
   const dutyTypeNames = Object.fromEntries(dutyTypes.map((dt) => [dt.id, dt.name]));
   const clusterMap = buildClusterMap(batchResults);
@@ -160,9 +180,19 @@ export default function IssuesTab({ job, dutyTypes, shiftNames, shiftsById, onRe
 
   return (
     <div className="space-y-6 text-sm" dir="rtl">
-      {job.status === "failed" && job.error_message !== "cancelled_by_user" && (
-        <FailurePanel relaxed={job.relaxed} reasons={job.reasons} />
-      )}
+      {job.status === "failed" && job.error_message !== "cancelled_by_user" && (() => {
+        const interrupted = parseInterrupted(job.error_message);
+        return interrupted
+          ? (
+            <InterruptedPanel
+              reason={interrupted.reason}
+              onRetry={onRetried ? handleRetry : undefined}
+              retrying={retrying}
+              retryError={retryError}
+            />
+          )
+          : <FailurePanel relaxed={job.relaxed} reasons={job.reasons} />;
+      })()}
 
       {unfilledShifts.length > 0 && (
         <div>

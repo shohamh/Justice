@@ -294,8 +294,11 @@ def _interleaved_solve(
 
     for done, (comp_idx, soldier_idxs, batch) in enumerate(plan, start=1):
         if cancel_event is not None and cancel_event.is_set():
+            # Batches already completed are verified solutions — keep them
+            # instead of discarding a long run's work just because the last
+            # batch didn't make the cutoff.
             return SolverResult(
-                assignments=[], status="CANCELLED",
+                assignments=list(all_assignments), status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed, batch_results=batch_results,
             )
@@ -328,7 +331,11 @@ def _interleaved_solve(
         wall_time = time.monotonic() - t0
 
         if res.status == "CANCELLED":
-            return res
+            # The in-flight batch didn't finish, but prior batches did — keep them.
+            return SolverResult(
+                assignments=list(all_assignments), status="CANCELLED",
+                seed=res.seed, relaxed=relaxed, batch_results=batch_results,
+            )
         relaxed.extend(res.relaxed)
         all_assignments.extend(res.assignments)
 
@@ -459,6 +466,16 @@ def _decomposed_solve(
     carry_existing: list[ExistingAssignment] = list(existing)
 
     for done, (comp_idx, soldier_idxs, batch) in enumerate(plan, start=1):
+        if cancel_event is not None and cancel_event.is_set():
+            # Batches already completed are verified solutions — keep them
+            # instead of discarding a long run's work just because the last
+            # batch didn't make the cutoff.
+            return SolverResult(
+                assignments=list(all_assignments), status="CANCELLED",
+                seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
+                relaxed=relaxed, batch_results=batch_results,
+            )
+
         sub_soldiers = [work[si] for si in soldier_idxs]
         sub_duties = [duties[di] for di in batch]
         # Remap reserve_dist (global indices) to this sub-problem's local indices.
@@ -479,7 +496,11 @@ def _decomposed_solve(
         wall_time = time.monotonic() - t0
 
         if res.status == "CANCELLED":
-            return res
+            # The in-flight batch didn't finish, but prior batches did — keep them.
+            return SolverResult(
+                assignments=list(all_assignments), status="CANCELLED",
+                seed=res.seed, relaxed=relaxed, batch_results=batch_results,
+            )
         relaxed.extend(res.relaxed)
         all_assignments.extend(res.assignments)
 
@@ -947,8 +968,9 @@ def _effort_round_solve(
 
     for done, (duty_idxs, soldier_idxs) in enumerate(components, start=1):
         if cancel_event is not None and cancel_event.is_set():
+            # Components already solved are verified solutions — keep them.
             return SolverResult(
-                assignments=[], status="CANCELLED",
+                assignments=list(all_assignments), status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed,
                 batch_results=batch_results,
@@ -984,8 +1006,9 @@ def _effort_round_solve(
             full_pool, component_duties, carry, settings, _remap_rd, cancel_event,
         )
         if component_result.status == "CANCELLED":
+            # The in-flight component didn't finish, but prior ones did — keep them.
             return SolverResult(
-                assignments=[], status="CANCELLED",
+                assignments=list(all_assignments), status="CANCELLED",
                 seed=(settings.seed if settings.seed is not None else DEFAULT_SOLVER_SEED),
                 relaxed=relaxed,
                 batch_results=batch_results,

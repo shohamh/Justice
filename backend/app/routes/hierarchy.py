@@ -85,6 +85,7 @@ def _out(
     user_roots: set[uuid.UUID],
     user_is_commander: bool,
     user_is_duty_manager: bool,
+    duty_managers: list[DutyManagerEntryOut] | None = None,
 ) -> NodeOut:
     commander_name = None
     if n.commander_id:
@@ -92,15 +93,16 @@ def _out(
         if cmdr:
             commander_name = cmdr.full_name
 
-    dm_rows = session.execute(
-        select(DutyManagerScope, Soldier.full_name)
-        .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
-        .where(DutyManagerScope.hierarchy_node_id == n.id)
-    ).all()
-    duty_managers = [
-        DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
-        for entry, name in dm_rows
-    ]
+    if duty_managers is None:
+        dm_rows = session.execute(
+            select(DutyManagerScope, Soldier.full_name)
+            .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
+            .where(DutyManagerScope.hierarchy_node_id == n.id)
+        ).all()
+        duty_managers = [
+            DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
+            for entry, name in dm_rows
+        ]
 
     dm_manageable = can(
         user,
@@ -263,12 +265,26 @@ def get_tree(
     user_roots = scope_root_ids(session, user)
     user_is_commander = is_commander(session, user.id)
     user_is_duty_manager = is_duty_manager(session, user.id)
+
+    dm_by_node: dict[uuid.UUID, list[DutyManagerEntryOut]] = {n.id: [] for n in nodes}
+    if nodes:
+        dm_rows = session.execute(
+            select(DutyManagerScope, Soldier.full_name)
+            .join(Soldier, Soldier.id == DutyManagerScope.duty_manager_id)
+            .where(DutyManagerScope.hierarchy_node_id.in_([n.id for n in nodes]))
+        ).all()
+        for entry, name in dm_rows:
+            dm_by_node[entry.hierarchy_node_id].append(
+                DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
+            )
+
     return [
         _out(
             n, session, user=user,
             user_roots=user_roots,
             user_is_commander=user_is_commander,
             user_is_duty_manager=user_is_duty_manager,
+            duty_managers=dm_by_node[n.id],
         )
         for n in nodes
     ]

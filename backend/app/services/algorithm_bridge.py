@@ -65,7 +65,7 @@ def _watch_job_timeout(job_id: uuid.UUID, cancel_event: threading.Event, max_sec
         job = session.get(AlgorithmJob, job_id)
         if job is not None and job.status == "running":
             job.status = "failed"
-            job.error_message = "timed_out"
+            job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "timed_out"})
             job.finished_at = datetime.now(tz=UTC)
             session.commit()
     cancel_event.set()
@@ -1026,20 +1026,29 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
                 standby_multiplier = _setting_decimal("scoring.reserve_standby_multiplier", "0.2")
 
-                try:
-                    max_job_seconds = float(get_setting(session, "algorithm.max_job_seconds"))
-                except Exception:
-                    max_job_seconds = 600.0
-                threading.Thread(
-                    target=_watch_job_timeout, args=(job_id, cancel_event, max_job_seconds), daemon=True,
-                ).start()
-
                 shift_ids = [uuid.UUID(s) for s in job.shift_ids]
                 _phase("load_duty_blocks: start")
                 duties, block_to_shift_map = load_duty_blocks_from_shifts(
                     session, shift_ids=shift_ids, standby_multiplier=standby_multiplier,
                 )
                 _phase(f"load_duty_blocks: done ({len(duties)} blocks)")
+
+                try:
+                    configured_max_job_seconds = float(get_setting(session, "algorithm.max_job_seconds"))
+                except Exception:
+                    configured_max_job_seconds = 600.0
+                # A flat budget doesn't scale with workload: the solver decomposes into
+                # roughly len(duties)/interleaved_batch_size sequential batches, each
+                # allowed up to batch_time_limit_seconds. Extend the watchdog (never
+                # shrink below the configured floor) to cover that worst case, plus
+                # headroom for setup/persisting, so an honestly large job isn't killed
+                # before it can finish.
+                estimated_batches = max(1, math.ceil(len(duties) / max(1, settings.interleaved_batch_size)))
+                estimated_worst_case_seconds = estimated_batches * settings.batch_time_limit_seconds + 60
+                max_job_seconds = max(configured_max_job_seconds, estimated_worst_case_seconds)
+                threading.Thread(
+                    target=_watch_job_timeout, args=(job_id, cancel_event, max_job_seconds), daemon=True,
+                ).start()
 
                 if not duties:
                     # Every selected shift is already fully staffed (published or
@@ -1154,10 +1163,26 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 job.progress_message = json.dumps({"pct": 96, "label": "שומר הצעות…"})
                 session.commit()
 
-                # Solver was interrupted by cancellation — DB already marked failed
-                if result.status == "CANCELLED":
+                # Solver was interrupted by cancellation (timeout watchdog or explicit
+                # user cancel both set cancel_event the same way — the DB row already
+                # has whichever terminal status/error_message that path committed).
+                # With nothing assigned before the cutoff there's nothing to salvage.
+                salvaging_timeout = False
+                if result.status == "CANCELLED" and not result.assignments:
                     session.rollback()
                     return
+                if result.status == "CANCELLED":
+                    session.refresh(job)
+                    if job.error_message == "cancelled_by_user":
+                        # The user asked to stop, not to get a draft of whatever
+                        # finished first — honor the cancellation as-is.
+                        session.rollback()
+                        return
+                    # Timed out, but earlier batches/components completed before the
+                    # cutoff — treat their work as a partial result instead of
+                    # discarding it. Falls through to the normal persistence path
+                    # below, which will mark the job "done" with a PARTIAL note.
+                    salvaging_timeout = True
 
                 if result.status == "INFEASIBLE":
                     from app.algorithm.diagnose import diagnose_infeasibility
@@ -1251,16 +1276,18 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 )
                 _phase("persist_results: done")
 
-                # Check if job was cancelled while the solver was running
+                # Check if the job was cancelled by something other than the timeout
+                # we're already deliberately salvaging (e.g. a user cancel that landed
+                # while persist_results was running).
                 session.refresh(job)
-                if job.status == "failed":
+                if job.status == "failed" and not salvaging_timeout:
                     # Cancelled externally — don't overwrite the cancellation
                     session.rollback()
                     return
 
                 # Attach diagnostic reasons when the result is partial (some duties unassigned)
                 assigned_ct = len(result.assignments)
-                if assigned_ct < len(duties):
+                if assigned_ct < len(duties) or salvaging_timeout:
                     from app.algorithm.diagnose import diagnose_infeasibility
                     reasons = diagnose_infeasibility(soldiers, duties, existing, _get_dt_names())
                     job.error_message = json.dumps({
@@ -1269,6 +1296,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "total": len(duties),
                         "relaxed": result.relaxed,
                         "reasons": reasons,
+                        "timed_out": salvaging_timeout,
                     })
 
                 job.result_metadata = {

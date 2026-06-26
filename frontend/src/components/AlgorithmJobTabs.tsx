@@ -16,11 +16,12 @@ interface Props {
   dutyTypes: DutyType[];
   onProposalUpdate: (updated: AlgorithmJob) => void;
   onRerun?: (overrides: Record<string, number>) => void;
+  onRetried?: (newJobId: string) => void;
 }
 
 type Tab = "proposals" | "batches" | "issues";
 
-export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun }: Props) {
+export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onProposalUpdate, onRerun, onRetried }: Props) {
   const hasAnyUnfilledInit = job.batch_results.some(br => br.unassigned_count > 0);
   const hasInfeasibleInit = job.batch_results.some(br => br.outcome === "INFEASIBLE");
   const hasIssuesInit = hasAnyUnfilledInit || hasInfeasibleInit || job.status === "failed";
@@ -235,6 +236,7 @@ export default function AlgorithmJobTabs({ job, jobId, soldiers, dutyTypes, onPr
           shiftNames={shiftNames}
           shiftsById={shiftsById}
           onRerun={onRerun}
+          onRetried={onRetried}
         />
       )}
     </div>

@@ -107,6 +107,68 @@ def test_create_job_rejects_unknown_shift(client, admin_session):
     assert resp.json()["detail"] == "shift_not_found"
 
 
+def test_retry_job_creates_new_job_with_same_inputs(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_retry_001")
+    shift, _dt, _loc = _make_shift(admin_session, "route_retry_1", "2027-07-03")
+
+    source = AlgorithmJob(
+        planning_start=date(2027, 7, 3),
+        planning_end=date(2027, 7, 3),
+        shift_ids=[str(shift.id)],
+        settings_json={"T": 7, "Wt": 14, "alpha": 1.0, "time_limit_seconds": 5},
+        mode="shadow",
+        status="failed",
+        error_message='{"status": "INTERRUPTED", "reason": "server_restarted"}',
+        created_by=dm.id,
+    )
+    admin_session.add(source)
+    admin_session.commit()
+    admin_session.refresh(source)
+
+    resp = client.post(f"/api/algorithm/jobs/{source.id}/retry", headers=auth_headers(dm))
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["id"] != str(source.id)
+    assert data["status"] == "pending"
+
+    new_job = admin_session.get(AlgorithmJob, data["id"])
+    assert new_job.shift_ids == source.shift_ids
+    assert new_job.mode == source.mode
+    assert new_job.settings_json == source.settings_json
+
+
+def test_retry_job_rejects_in_progress_job(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_retry_002")
+    shift, _dt, _loc = _make_shift(admin_session, "route_retry_2", "2027-07-04")
+
+    source = AlgorithmJob(
+        planning_start=date(2027, 7, 4),
+        planning_end=date(2027, 7, 4),
+        shift_ids=[str(shift.id)],
+        settings_json={"T": 7, "Wt": 14, "alpha": 1.0, "time_limit_seconds": 5},
+        mode="shadow",
+        status="running",
+        created_by=dm.id,
+    )
+    admin_session.add(source)
+    admin_session.commit()
+    admin_session.refresh(source)
+
+    resp = client.post(f"/api/algorithm/jobs/{source.id}/retry", headers=auth_headers(dm))
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "job_in_progress"
+
+
+def test_retry_job_rejects_unknown_job(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_retry_003")
+
+    resp = client.post(
+        "/api/algorithm/jobs/00000000-0000-0000-0000-000000000099/retry",
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 404
+
+
 def test_soldier_cannot_create_job(client, admin_session):
     soldier = create_soldier(admin_session, personal_number="route_alg_003")
     shift, _dt, _loc = _make_shift(admin_session, "route_3", "2027-07-01")

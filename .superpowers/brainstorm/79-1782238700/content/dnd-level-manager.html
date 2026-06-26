@@ -1,0 +1,112 @@
+<h2 class="sr-only">Drag-and-drop level type manager mockup</h2>
+
+<style>
+.panel{background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:20px;max-width:360px;margin:1rem auto;direction:rtl}
+.panel-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0 0 4px}
+.panel-sub{font-size:12px;color:var(--color-text-secondary);margin:0 0 16px}
+.level-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.level-item{display:flex;align-items:center;gap:8px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 10px;cursor:default;user-select:none;transition:background 0.1s,border-color 0.1s}
+.level-item.dragging{opacity:0.35;border:1.5px dashed var(--color-border-secondary)}
+.level-item.drag-over{border-color:var(--color-border-info);background:var(--color-background-info)}
+.drag-handle{color:var(--color-text-tertiary);font-size:16px;cursor:grab;padding:0 2px;flex-shrink:0}
+.drag-handle:active{cursor:grabbing}
+.rank-badge{font-size:10px;color:var(--color-text-secondary);background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:4px;padding:1px 5px;min-width:18px;text-align:center;flex-shrink:0}
+.level-name{flex:1;font-size:13px;color:var(--color-text-primary);font-weight:500}
+.delete-btn{color:var(--color-text-secondary);font-size:13px;opacity:0;transition:opacity 0.15s;cursor:pointer;padding:0 2px;flex-shrink:0;background:none;border:none}
+.level-item:hover .delete-btn{opacity:1}
+.add-row{display:flex;gap:8px;margin-top:10px}
+.add-row input{flex:1;font-size:13px}
+.add-btn{padding:6px 14px;font-size:13px;border-radius:var(--border-radius-md);background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);cursor:pointer;white-space:nowrap;flex-shrink:0}
+.add-btn:hover{filter:brightness(0.95)}
+.divider{height:0.5px;background:var(--color-border-tertiary);margin:14px 0}
+.field-label{font-size:13px;color:var(--color-text-secondary);display:block;margin-bottom:4px}
+.save-row{display:flex;gap:8px;margin-top:16px}
+.btn-primary{padding:7px 18px;font-size:13px;border-radius:var(--border-radius-md);background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);cursor:pointer}
+.btn-secondary{padding:7px 14px;font-size:13px;border-radius:var(--border-radius-md);cursor:pointer}
+</style>
+
+<div class="panel">
+  <p class="panel-title">ערוך: אלומות</p>
+  <p class="panel-sub">ענף — תחת פוקוס</p>
+
+  <label class="field-label">שם</label>
+  <input value="אלומות" style="width:100%;box-sizing:border-box;margin-bottom:14px" />
+
+  <label class="field-label">סוג</label>
+  <select id="level-select" style="width:100%;box-sizing:border-box;margin-bottom:4px;font-size:13px"></select>
+  <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 0">רק סוגים חוקיים לפי מיקום בעץ</p>
+
+  <div class="divider"></div>
+
+  <p style="font-size:12px;font-weight:500;color:var(--color-text-secondary);margin:0 0 8px">סדר הדרגות <span style="font-weight:400;color:var(--color-text-tertiary)">(גרור לסידור מחדש)</span></p>
+
+  <ul class="level-list" id="level-list"></ul>
+
+  <div class="add-row">
+    <input id="new-type-input" placeholder="שם הסוג החדש..." style="font-size:13px" />
+    <button class="add-btn" onclick="addLevel()">+ הוסף</button>
+  </div>
+
+  <div class="save-row">
+    <button class="btn-primary">שמור</button>
+    <button class="btn-secondary">ביטול</button>
+  </div>
+</div>
+
+<script>
+const LEVELS = ["מערך","יחידה","מרכז","ענף","מדור","צוות"];
+let levels = [...LEVELS];
+let dragSrc = null;
+
+function render() {
+  const list = document.getElementById("level-list");
+  list.innerHTML = "";
+  levels.forEach((name, i) => {
+    const li = document.createElement("li");
+    li.className = "level-item";
+    li.draggable = true;
+    li.dataset.idx = i;
+    li.innerHTML = `
+      <span class="drag-handle" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span>
+      <span class="rank-badge">${i + 1}</span>
+      <span class="level-name">${name}</span>
+      <button class="delete-btn" onclick="removeLevel(${i})" title="הסר סוג" aria-label="הסר ${name}"><i class="ti ti-x"></i></button>
+    `;
+    li.addEventListener("dragstart", e => { dragSrc = i; li.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
+    li.addEventListener("dragend", () => { li.classList.remove("dragging"); document.querySelectorAll(".level-item").forEach(el => el.classList.remove("drag-over")); });
+    li.addEventListener("dragover", e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; document.querySelectorAll(".level-item").forEach(el => el.classList.remove("drag-over")); li.classList.add("drag-over"); });
+    li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+    li.addEventListener("drop", e => { e.preventDefault(); li.classList.remove("drag-over"); if (dragSrc === null || dragSrc === i) return; const moved = levels.splice(dragSrc, 1)[0]; levels.splice(i, 0, moved); dragSrc = null; render(); });
+    list.appendChild(li);
+  });
+
+  const sel = document.getElementById("level-select");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  levels.forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    if (name === (prev || "ענף")) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function addLevel() {
+  const inp = document.getElementById("new-type-input");
+  const name = inp.value.trim();
+  if (!name || levels.includes(name)) return;
+  levels.push(name);
+  inp.value = "";
+  render();
+  const list = document.getElementById("level-list");
+  const last = list.lastElementChild;
+  if (last) last.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+document.getElementById("new-type-input").addEventListener("keydown", e => { if (e.key === "Enter") addLevel(); });
+
+function removeLevel(i) { levels.splice(i, 1); render(); }
+
+render();
+</script>

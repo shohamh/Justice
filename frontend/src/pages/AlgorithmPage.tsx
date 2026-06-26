@@ -293,6 +293,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                 dutyTypes={dutyTypes}
                 onProposalUpdate={setSelectedJob}
                 onRerun={handleRerun}
+                onRetried={handleJobSubmitted}
               />
             )}
           </div>

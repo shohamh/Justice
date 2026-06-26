@@ -45,13 +45,19 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Default run is the fast suite, parallel across CPU cores (~2 min). The 8
-# @pytest.mark.slow large-scale CP-SAT cases (n≈100, m≈200, ~11 min combined)
-# are deselected by a conftest.py hook unless --slow is passed.
+# Default run is the fast suite, parallel across a fixed worker count (~2 min).
+# Capped at 4 rather than `-n auto`: auto sizes off the host's logical CPU count,
+# but each worker boots its own testcontainers Postgres and loads ortools' ~70MB
+# of native DLLs, which overcommits memory/the Windows page file (and Docker
+# Desktop's smaller VM CPU/RAM cap) well before the host CPU count is reached,
+# causing intermittent WinError 1455 crashes that cascade into unrelated test
+# failures under xdist. The 8 @pytest.mark.slow large-scale CP-SAT cases
+# (n≈100, m≈200, ~11 min combined) are deselected by a conftest.py hook unless
+# --slow is passed.
 # Area markers (algorithm, auth, hierarchy, duty, scoring, notifications,
 # soldiers, misc) are assigned automatically by the same hook based on test
 # file name — run a slice with e.g. `pytest -m algorithm`.
-addopts = "-ra -q -n auto"
+addopts = "-ra -q -n 4"
 asyncio_mode = "auto"
 markers = [
   "slow: large-scale CP-SAT tests (n≈100, m≈200); deselected by default, run with: pytest --slow",

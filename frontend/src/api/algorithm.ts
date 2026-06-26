@@ -255,6 +255,10 @@ export async function cancelJob(id: string): Promise<void> {
   await api.delete(`/algorithm/jobs/${id}`);
 }
 
+export async function retryJob(id: string): Promise<{ id: string; status: string }> {
+  return (await api.post<{ id: string; status: string }>(`/algorithm/jobs/${id}/retry`)).data;
+}
+
 export interface DraftPreviewItem {
   assignment_id: string;
   soldier_name: string;
