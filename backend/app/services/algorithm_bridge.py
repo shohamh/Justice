@@ -128,6 +128,10 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     soldiers = (
         session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
     )
+    node_path_map: dict[uuid.UUID, list[uuid.UUID]] = {
+        n.id: list(n.path_ids)
+        for n in session.execute(select(HierarchyNode.id, HierarchyNode.path_ids)).all()
+    }
     duty_scores = scoring_svc.duty_score_by_soldier(session)
     adj_scores = scoring_svc.adjustments_by_soldier(session)
 
@@ -247,6 +251,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
                 cumulative_score=cum,
                 active_days=ad,
                 hierarchy_node_id=s.hierarchy_node_id,
+                path_ids=node_path_map.get(s.hierarchy_node_id, []) if s.hierarchy_node_id else [],
                 approved_constraint_dates=soldier_constraints.get(s.id, []),
                 exempted_duty_type_ids=combined_exempt,
             )

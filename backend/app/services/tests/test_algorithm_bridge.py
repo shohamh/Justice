@@ -192,3 +192,31 @@ def test_serialize_solver_inputs_duty_with_no_shift_mapping():
     )
 
     assert result["duties"][0]["shift_id"] is None
+
+
+def test_load_soldier_inputs_populates_path_ids(admin_session):
+    from datetime import date as _date
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_node, create_soldier
+
+    root = create_node(admin_session, level="division", name="div_pathids")
+    child = create_node(admin_session, level="unit", name="unit_pathids", parent=root)
+    soldier = create_soldier(admin_session, personal_number="pathids_1", hierarchy_node_id=child.id)
+    admin_session.commit()
+
+    inputs = load_soldier_inputs(admin_session, as_of=_date(2026, 6, 1))
+    by_id = {s.id: s for s in inputs}
+    assert by_id[soldier.id].path_ids == [root.id, child.id]
+
+
+def test_load_soldier_inputs_unassigned_soldier_has_empty_path_ids(admin_session):
+    from datetime import date as _date
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="pathids_2")
+    admin_session.commit()
+
+    inputs = load_soldier_inputs(admin_session, as_of=_date(2026, 6, 1))
+    by_id = {s.id: s for s in inputs}
+    assert by_id[soldier.id].path_ids == []
