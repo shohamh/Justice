@@ -6,7 +6,7 @@ import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { ExcelExportButton } from "../../components/ExcelExportButton";
 import type { ColDef } from "../../components/DataTable";
 
-function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
+export function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
   const result: NodeDTO[] = [];
   function traverse(node: NodeDTO) {
     result.push(node);
@@ -16,19 +16,28 @@ function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
   return result;
 }
 
-function dfsOrder(nodes: NodeDTO[]): string[] {
+export function dfsOrder(nodes: NodeDTO[]): string[] {
+  const childrenByParent = new Map<string | null, NodeDTO[]>();
+  for (const n of nodes) {
+    const key = n.parent_id ?? null;
+    if (!childrenByParent.has(key)) childrenByParent.set(key, []);
+    childrenByParent.get(key)!.push(n);
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }
   const order: string[] = [];
-  function traverse(list: NodeDTO[]) {
-    for (const n of [...list].sort((a, b) => a.name.localeCompare(b.name, "he"))) {
+  function traverse(parentId: string | null) {
+    for (const n of childrenByParent.get(parentId) ?? []) {
       order.push(n.id);
-      if (n.children?.length) traverse(n.children);
+      traverse(n.id);
     }
   }
-  traverse(nodes);
+  traverse(null);
   return order;
 }
 
-function nodePath(nodeId: string | null, nodesById: Map<string, NodeDTO>): string {
+export function nodePath(nodeId: string | null, nodesById: Map<string, NodeDTO>): string {
   const parts: string[] = [];
   let id = nodeId;
   while (id) {
