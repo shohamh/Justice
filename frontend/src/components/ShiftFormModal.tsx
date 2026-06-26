@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 import Combobox from "./Combobox";
+import SubHierarchySelector from "./SubHierarchySelector";
 import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
 
 interface Props {
@@ -25,10 +26,20 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [count, setCount] = useState(existing?.required_count ?? 1);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [reserveOverride, setReserveOverride] = useState(existing?.reserve_count_override?.toString() ?? "");
+  const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(
+    existing?.eligible_node_ids ?? dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []
+  );
   const [error, setError] = useState<string | null>(null);
   const [addingLocation, setAddingLocation] = useState(false);
   const [newLocName, setNewLocName] = useState("");
   const [locSaving, setLocSaving] = useState(false);
+
+  useEffect(() => {
+    if (!existing) {
+      setScopeNodeIds(dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dtId]);
 
   async function handleAddLocation(e: React.FormEvent) {
     e.preventDefault();
@@ -57,6 +68,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
+          eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         });
       } else {
         const input: CreateShiftInput = {
@@ -67,6 +79,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
+          eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         };
         await createShift(input);
       }
@@ -146,6 +159,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
               <span className="text-xs text-gray-500">({t("reserve_calculated_count")}: {existing.calculated_reserve_count})</span>
             )}
           </label>
+          <div className="border dark:border-gray-600 rounded p-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t("hierarchy_scope.title")}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t("hierarchy_scope.help")}</p>
+            <SubHierarchySelector value={scopeNodeIds} onChange={setScopeNodeIds} />
+          </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shifts.cancel")}</button>
