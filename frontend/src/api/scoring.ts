@@ -73,33 +73,3 @@ export async function getBreakdown(soldierId: string): Promise<Breakdown> {
 export async function getEffortBreakdown(soldierId: string): Promise<EffortBreakdown> {
   return (await api.get<EffortBreakdown>(`/scoring/soldiers/${soldierId}/effort-breakdown`)).data;
 }
-
-function _triggerBlobDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-export async function downloadTransparencyExport(nodeId: string | null): Promise<void> {
-  const params = nodeId ? `?node_id=${nodeId}` : "";
-  try {
-    const res = await api.get<Blob>(`/scoring/transparency/export${params}`, { responseType: "blob" });
-    _triggerBlobDownload(res.data, "transparency.xlsx");
-  } catch (e) {
-    console.error("Export failed:", e);
-  }
-}
-
-export async function downloadSubUnitsExport(): Promise<void> {
-  try {
-    const res = await api.get<Blob>(`/scoring/transparency/sub-units/export`, { responseType: "blob" });
-    _triggerBlobDownload(res.data, "sub-units.xlsx");
-  } catch (e) {
-    console.error("Export failed:", e);
-  }
-}
