@@ -11,6 +11,7 @@ import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 import TelegramBadge from "../components/TelegramBadge";
+import DutyManagerPortfolioDialog from "../components/DutyManagerPortfolioDialog";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -22,6 +23,7 @@ export default function TeamHierarchyPage() {
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
+  const [portfolioSoldier, setPortfolioSoldier] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
 
@@ -162,6 +164,15 @@ export default function TeamHierarchyPage() {
                 header: "",
                 cell: (s) => (
                   <span className="space-x-2 space-x-reverse">
+                    {(isAdmin || (user?.is_commander ?? false)) && (
+                      <button
+                        onClick={() => setPortfolioSoldier({ id: s.id, name: s.full_name })}
+                        className="text-indigo-600 dark:text-indigo-300"
+                        data-testid={`dm-portfolio-${s.personal_number}`}
+                      >
+                        {t("team.manage_portfolio")}
+                      </button>
+                    )}
                     <button onClick={() => openSoldierModal(s.id, refresh)} className="text-indigo-600 dark:text-indigo-300" data-testid={`edit-${s.personal_number}`}>{t("team.edit")}</button>
                     <button onClick={() => onReset(s.id)} className="text-indigo-600 dark:text-indigo-300" data-testid={`reset-${s.personal_number}`}>{t("team.reset_password")}</button>
                     <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
@@ -182,10 +193,17 @@ export default function TeamHierarchyPage() {
             );
           })()}
         </div>
+
+        {portfolioSoldier && (
+          <DutyManagerPortfolioDialog
+            soldierId={portfolioSoldier.id}
+            soldierName={portfolioSoldier.name}
+            nodes={nodes}
+            onClose={() => setPortfolioSoldier(null)}
+            onChanged={refresh}
+          />
+        )}
       </section>
-
-
-
     </Layout>
   );
 }
