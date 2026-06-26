@@ -231,7 +231,8 @@ export function DataTable<T>({
     },
   });
 
-  const visibleRows = table.getRowModel().rows.map((r) => r.original);
+  const tableRows = table.getRowModel().rows;
+  const visibleRows = useMemo(() => tableRows.map((r) => r.original), [tableRows]);
   useEffect(() => {
     onVisibleRowsChange?.(visibleRows);
     // eslint-disable-next-line react-hooks/exhaustive-deps
