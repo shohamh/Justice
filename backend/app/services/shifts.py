@@ -34,6 +34,7 @@ class ShiftWithFill:
     fill_status: str  # 'empty' | 'partial' | 'full'
     status: str = "active"  # 'active' | 'cancelled'
     reserve_count_override: int | None = None
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 def _expected_reserve(shift: DutyShift, duty_type: DutyType | None) -> int:
@@ -88,6 +89,7 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         fill_status=_fill_status(primary, shift.required_count, reserve, exp_reserve),
         status=shift.status,
         reserve_count_override=shift.reserve_count_override,
+        eligible_node_ids=shift.eligible_node_ids,
     )
 
 
@@ -103,6 +105,7 @@ def create_shift(
     required_count: int = 1,
     notes: str | None = None,
     reserve_count_override: int | None = None,
+    eligible_node_ids: list[uuid.UUID] | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> DutyShift:
     if end_date <= start_date:
@@ -125,6 +128,7 @@ def create_shift(
         required_count=required_count,
         notes=notes,
         reserve_count_override=reserve_count_override,
+        eligible_node_ids=eligible_node_ids,
         created_by=actor_id,
     )
     session.add(shift)

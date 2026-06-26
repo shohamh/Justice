@@ -34,6 +34,7 @@ class ShiftOut(BaseModel):
     status: str = "active"
     reserve_count_override: int | None = None
     calculated_reserve_count: int | None = None
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateShiftRequest(BaseModel):
@@ -46,6 +47,7 @@ class CreateShiftRequest(BaseModel):
     required_count: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     reserve_count_override: int | None = Field(default=None, ge=0)
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class UpdateShiftRequest(BaseModel):
@@ -79,6 +81,7 @@ def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
         reserve_count_override=s.reserve_count_override,
         calculated_reserve_count=calculated,
         status=s.status,
+        eligible_node_ids=s.eligible_node_ids,
     )
 
 
@@ -120,6 +123,7 @@ def create_shift(
             required_count=body.required_count,
             notes=body.notes,
             reserve_count_override=body.reserve_count_override,
+            eligible_node_ids=body.eligible_node_ids,
             actor_id=user.id,
         )
     except svc.ShiftError as exc:
