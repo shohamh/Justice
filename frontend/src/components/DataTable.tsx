@@ -170,10 +170,17 @@ export function DataTable<T>({
   // colId → selected values (empty Set = all / no filter)
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
 
+  // Keep a ref to latest columns so filteredData can read them without
+  // listing columns in its deps (columns reference changes every parent render
+  // even when content is identical, which would trigger an infinite update loop
+  // via onVisibleRowsChange → parent setState → re-render → new columns ref).
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
+
   // Apply column-level filters on top of global filter
   const filteredData = useMemo(() => {
     return data.filter((row) => {
-      for (const col of columns) {
+      for (const col of columnsRef.current) {
         if (!col.columnFilter) continue;
         const selected = colFilters[col.id];
         if (!selected || selected.size === 0) continue;
@@ -182,7 +189,7 @@ export function DataTable<T>({
       }
       return true;
     });
-  }, [data, columns, colFilters]);
+  }, [data, colFilters]);
 
   const tanCols: TanColumnDef<T>[] = useMemo(
     () =>
@@ -231,12 +238,18 @@ export function DataTable<T>({
     },
   });
 
-  const tableRows = table.getRowModel().rows;
-  const visibleRows = useMemo(() => tableRows.map((r) => r.original), [tableRows]);
+  // Memoize by the state that actually affects which rows are visible:
+  // data + column filters + global filter + sort. Excludes `columns` and
+  // `tableRows` references which change on every parent render even when
+  // the actual visible rows are unchanged.
+  const visibleRows = useMemo(
+    () => table.getRowModel().rows.map((r) => r.original),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, colFilters, globalFilter, sorting],
+  );
   useEffect(() => {
     onVisibleRowsChange?.(visibleRows);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleRows]);
+  }, [visibleRows, onVisibleRowsChange]);
 
   return (
     <div className={className} data-testid={testId}>
