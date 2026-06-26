@@ -381,7 +381,7 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             canGimelim={
               gimelimEnabled &&
               !dismissTarget.is_reserve &&
-              (user?.role === "admin" || user?.is_duty_manager)
+              (user?.role === "admin" || (user?.is_duty_manager ?? false))
             }
             defaultRestDays={gimelimDefaultRestDays}
             onClose={() => setDismissTarget(null)}
