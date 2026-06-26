@@ -238,6 +238,21 @@ def test_transparency_rows_has_effort_score_key():
     assert "effort_score" in src, "transparency_rows must include effort_score in output"
 
 
+def test_run_algorithm_job_passes_pending_duties_to_compute_effort_data():
+    """run_algorithm_job must pass its own `duties` list as `pending_duties` to
+    compute_effort_data, so the algorithm's fairness input accounts for the
+    workload it is about to assign (see test_pending_duties_dilute_thin_quarter_share
+    for why this matters). Source-inspection style matches
+    test_transparency_rows_has_effort_score_key in this same file."""
+    import inspect
+    from app.services import algorithm_bridge as ab
+
+    src = inspect.getsource(ab.run_algorithm_job)
+    assert "pending_duties=duties" in src, (
+        "run_algorithm_job's compute_effort_data(...) call must pass pending_duties=duties"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Integration tests: future published duties beyond planning_end
 # ---------------------------------------------------------------------------
