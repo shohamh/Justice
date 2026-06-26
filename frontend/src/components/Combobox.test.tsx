@@ -34,7 +34,17 @@ test("clicking an item calls onChange with its id and closes the list", () => {
   render(<Combobox items={items} value="" onChange={onChange} />);
   fireEvent.focus(screen.getByRole("combobox"));
   fireEvent.pointerDown(screen.getByText("Beta"));
+  fireEvent.pointerUp(screen.getByText("Beta"));
   expect(onChange).toHaveBeenCalledWith("2");
+});
+
+test("a touch that turns into a scroll (pointercancel) does not select the item", () => {
+  const onChange = vi.fn();
+  render(<Combobox items={items} value="" onChange={onChange} />);
+  fireEvent.focus(screen.getByRole("combobox"));
+  fireEvent.pointerDown(screen.getByText("Beta"));
+  fireEvent.pointerCancel(screen.getByText("Beta"));
+  expect(onChange).not.toHaveBeenCalled();
 });
 
 test("disabled items are not selectable", () => {
@@ -43,6 +53,7 @@ test("disabled items are not selectable", () => {
   render(<Combobox items={withDisabled} value="" onChange={onChange} />);
   fireEvent.focus(screen.getByRole("combobox"));
   fireEvent.pointerDown(screen.getByText("Delta"));
+  fireEvent.pointerUp(screen.getByText("Delta"));
   expect(onChange).not.toHaveBeenCalled();
 });
 
@@ -51,6 +62,7 @@ test("placeholder renders as a selectable first row that clears the value", () =
   render(<Combobox items={items} value="1" onChange={onChange} placeholder="— none —" />);
   fireEvent.focus(screen.getByRole("combobox"));
   fireEvent.pointerDown(screen.getByText("— none —"));
+  fireEvent.pointerUp(screen.getByText("— none —"));
   expect(onChange).toHaveBeenCalledWith("");
 });
 

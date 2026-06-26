@@ -146,6 +146,14 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
                   onPointerDown={e => {
                     if (item.disabled) return;
                     e.preventDefault(); // keep input focused so blur doesn't fire before onChange
+                  }}
+                  onPointerUp={e => {
+                    if (item.disabled) return;
+                    // Select on pointer-up (a completed tap), not pointer-down: pointerdown fires the
+                    // instant a finger touches the screen, before a scroll gesture can be distinguished
+                    // from a tap. A touch that turns into a scroll fires pointercancel instead of
+                    // pointerup, so this naturally lets touch-scrolling the dropdown work.
+                    e.preventDefault();
                     selectItem(item);
                   }}
                   style={depth > 0 ? { paddingRight: `${0.75 + depth * 1.25}rem` } : undefined}

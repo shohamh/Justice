@@ -1,0 +1,114 @@
+<h2 style="font-size:16px;font-weight:500;margin:1rem 0 0.25rem">ערוך dialog — שני מצבים</h2>
+<p class="subtitle" style="margin-bottom:1.5rem">שמאל: מצב רגיל עם picker שכבה. ימין: אחרי לחיצה על "הוסף סוג חדש"</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;direction:rtl">
+
+  <div>
+    <p style="font-size:12px;color:var(--color-text-secondary);margin:0 0 8px;text-align:right">מצב בסיסי — שינוי שם + שינוי סוג</p>
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:20px;direction:rtl">
+      <p style="font-weight:500;font-size:15px;margin:0 0 16px;color:var(--color-text-primary)">ערוך: אלומות</p>
+
+      <label style="font-size:13px;color:var(--color-text-secondary);display:block;margin-bottom:4px">שם</label>
+      <input value="אלומות" style="width:100%;margin-bottom:14px;box-sizing:border-box" />
+
+      <label style="font-size:13px;color:var(--color-text-secondary);display:block;margin-bottom:4px">סוג</label>
+      <select style="width:100%;margin-bottom:6px;box-sizing:border-box">
+        <option>מערך</option>
+        <option>יחידה</option>
+        <option>מרכז</option>
+        <option selected>ענף</option>
+        <option>מדור</option>
+        <option>צוות</option>
+        <option disabled style="color:var(--color-text-tertiary)">──────────</option>
+        <option style="color:var(--color-text-info)">+ הוסף סוג חדש...</option>
+      </select>
+      <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 16px;text-align:right">רק סוגים תואמים לעץ מוצגים</p>
+
+      <div style="display:flex;gap:8px;justify-content:flex-start">
+        <button style="background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);padding:6px 16px;border-radius:var(--border-radius-md);font-size:13px">שמור</button>
+        <button style="padding:6px 16px;font-size:13px;border-radius:var(--border-radius-md)">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <p style="font-size:12px;color:var(--color-text-secondary);margin:0 0 8px;text-align:right">אחרי "+ הוסף סוג חדש" — picker מוטמע</p>
+    <div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:20px;direction:rtl">
+      <p style="font-weight:500;font-size:15px;margin:0 0 16px;color:var(--color-text-primary)">ערוך: אלומות</p>
+
+      <label style="font-size:13px;color:var(--color-text-secondary);display:block;margin-bottom:4px">שם</label>
+      <input value="אלומות" style="width:100%;margin-bottom:14px;box-sizing:border-box" />
+
+      <label style="font-size:13px;color:var(--color-text-secondary);display:block;margin-bottom:4px">סוג</label>
+      <div style="border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-md);padding:12px;background:var(--color-background-secondary)">
+        <p style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0 0 8px">הוסף סוג חדש</p>
+
+        <input placeholder="שם הסוג (עברית)" style="width:100%;margin-bottom:12px;box-sizing:border-box;font-size:13px" />
+
+        <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px">מיקום בסדר הדרגות:</p>
+
+        <div style="position:relative;padding-right:16px">
+          <div style="position:absolute;right:6px;top:8px;bottom:8px;width:1px;background:var(--color-border-tertiary)"></div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">מעל הכל</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">מערך</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">אחרי מערך</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">יחידה</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">אחרי יחידה</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">מרכז</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0;background:var(--color-background-info);border-radius:4px;padding:4px 6px">
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--color-text-info);flex-shrink:0"></div>
+            <span style="font-size:11px;color:var(--color-text-info);font-weight:500">אחרי מרכז ← נבחר</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">ענף</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">אחרי ענף</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">מדור</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">אחרי מדור</span>
+          </div>
+
+          <div style="font-size:12px;color:var(--color-text-secondary);padding:2px 0 2px 18px;margin-right:18px">צוות</div>
+
+          <div style="display:flex;align-items:center;gap:8px;padding:3px 0">
+            <div style="width:10px;height:10px;border-radius:50%;border:1.5px solid var(--color-border-secondary);flex-shrink:0;background:var(--color-background-primary)"></div>
+            <span style="font-size:11px;color:var(--color-text-tertiary)">מתחת לכל</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button style="background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-info);padding:5px 12px;border-radius:var(--border-radius-md);font-size:12px">צור וקבע</button>
+          <button style="padding:5px 10px;font-size:12px;border-radius:var(--border-radius-md)">ביטול</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-start;margin-top:14px">
+        <button style="background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);padding:6px 16px;border-radius:var(--border-radius-md);font-size:13px;opacity:0.5" disabled>שמור</button>
+        <button style="padding:6px 16px;font-size:13px;border-radius:var(--border-radius-md)">ביטול</button>
+      </div>
+    </div>
+  </div>
+
+</div>

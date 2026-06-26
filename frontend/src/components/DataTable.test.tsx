@@ -1,4 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
+import { useState } from "react";
+import { test, expect, vi } from "vitest";
 import { DataTable, type ColDef } from "./DataTable";
 
 interface Row { name: string; score: number; }
@@ -67,4 +69,54 @@ test("shows empty message when no rows match filter", () => {
   render(<DataTable columns={cols} data={data} emptyMessage="nothing" />);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "zzz" } });
   expect(screen.getByText("nothing")).toBeInTheDocument();
+});
+
+test("onVisibleRowsChange fires with full data on initial render", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  expect(spy).toHaveBeenCalledWith(data);
+});
+
+test("onVisibleRowsChange fires with filtered rows after search box input", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Alice" } });
+  expect(spy).toHaveBeenLastCalledWith([data[0]]);
+});
+
+test("onVisibleRowsChange fires with sorted rows after header click", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  fireEvent.click(screen.getByText("Score"));
+  expect(spy).toHaveBeenLastCalledWith([data[1], data[2], data[0]]); // Bob(1), Charlie(2), Alice(3)
+});
+
+test("onVisibleRowsChange does not fire again when parent re-renders without data/columns changing (no infinite loop)", () => {
+  const spy = vi.fn();
+
+  // Wrapper that re-renders DataTable on a state change unrelated to data/columns,
+  // simulating what happens when onVisibleRowsChange is wired to setState in a parent.
+  function Wrapper() {
+    const [, setTick] = useState(0);
+    return (
+      <div>
+        <button onClick={() => setTick((t) => t + 1)}>bump</button>
+        <DataTable columns={cols} data={data} onVisibleRowsChange={spy} />
+      </div>
+    );
+  }
+
+  render(<Wrapper />);
+  expect(spy).toHaveBeenCalledTimes(1);
+  const firstRows = spy.mock.calls[0][0];
+
+  // Force a parent re-render with no actual change to filtering/sorting/data.
+  fireEvent.click(screen.getByText("bump"));
+  fireEvent.click(screen.getByText("bump"));
+
+  // visibleRows must be referentially stable across re-renders with unchanged
+  // row model, so the effect must not fire again (this would infinite-loop if
+  // onVisibleRowsChange were wired to setState, per Task 4).
+  expect(spy).toHaveBeenCalledTimes(1);
+  expect(spy.mock.calls[0][0]).toBe(firstRows);
 });

@@ -455,6 +455,54 @@ def _explanation_response(
 
 # ── Endpoints ──
 
+def _submit_job(
+    session: Session,
+    background_tasks: BackgroundTasks,
+    *,
+    shift_ids: list[uuid.UUID],
+    mode: str,
+    settings_json: dict[str, Any],
+    actor_id: uuid.UUID,
+) -> AlgorithmJob:
+    from app.services.shifts import get_shift_fill
+
+    shifts_by_id = {
+        s.id: s
+        for s in session.execute(
+            select(DutyShift).where(DutyShift.id.in_(shift_ids))
+        ).scalars().all()
+    }
+    for sid in shift_ids:
+        if sid not in shifts_by_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_not_found")
+
+    all_full = all(
+        (fill := get_shift_fill(session, shift_id=sid)) is None or fill.fill_status == "full"
+        for sid in shift_ids
+    )
+    if all_full:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="all_shifts_full")
+
+    shifts = list(shifts_by_id.values())
+    planning_start = min(s.start_date for s in shifts)
+    planning_end = max(s.end_date for s in shifts)
+
+    job = AlgorithmJob(
+        planning_start=planning_start,
+        planning_end=planning_end,
+        shift_ids=[str(sid) for sid in shift_ids],
+        settings_json=settings_json,
+        mode=mode,
+        created_by=actor_id,
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background_tasks.add_task(run_algorithm_job, job.id, actor_id)
+    return job
+
+
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("3/minute")
 def create_job(
@@ -470,42 +518,41 @@ def create_job(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="t_exceeds_r")
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
 
-    from app.services.shifts import get_shift_fill
-
-    shifts_by_id = {
-        s.id: s
-        for s in session.execute(
-            select(DutyShift).where(DutyShift.id.in_(body.shift_ids))
-        ).scalars().all()
-    }
-    for sid in body.shift_ids:
-        if sid not in shifts_by_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_not_found")
-
-    all_full = all(
-        (fill := get_shift_fill(session, shift_id=sid)) is None or fill.fill_status == "full"
-        for sid in body.shift_ids
+    job = _submit_job(
+        session, background_tasks,
+        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(),
+        actor_id=user.id,
     )
-    if all_full:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="all_shifts_full")
+    return {"id": str(job.id), "status": job.status}
 
-    shifts = list(shifts_by_id.values())
-    planning_start = min(s.start_date for s in shifts)
-    planning_end = max(s.end_date for s in shifts)
 
-    job = AlgorithmJob(
-        planning_start=planning_start,
-        planning_end=planning_end,
-        shift_ids=[str(sid) for sid in body.shift_ids],
-        settings_json=body.settings.model_dump(),
-        mode=body.mode,
-        created_by=user.id,
+@router.post("/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("3/minute")
+def retry_job(
+    job_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, Any]:
+    """Resubmit a job with the same shifts/mode/settings.
+
+    For a job that failed because of infrastructure (server restart, watchdog
+    timeout) rather than a real scheduling problem, there's nothing to
+    reconfigure — the original inputs were fine, just run them again.
+    """
+    source = _load_job(session, job_id)
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    if source.status in ("pending", "running"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="job_in_progress")
+
+    job = _submit_job(
+        session, background_tasks,
+        shift_ids=[uuid.UUID(s) for s in source.shift_ids],
+        mode=source.mode, settings_json=source.settings_json or {},
+        actor_id=user.id,
     )
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-
-    background_tasks.add_task(run_algorithm_job, job.id, user.id)
     return {"id": str(job.id), "status": job.status}
 
 

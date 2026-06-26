@@ -11,7 +11,7 @@ import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
 import TelegramBadge from "../components/TelegramBadge";
-import DutyManagerPortfolioDialog from "../components/DutyManagerPortfolioDialog";
+import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
 
 export default function TeamHierarchyPage() {
   const { t } = useTranslation();
@@ -23,7 +23,6 @@ export default function TeamHierarchyPage() {
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
   const [tempPw, setTempPw] = useState<string | null>(null);
-  const [portfolioSoldier, setPortfolioSoldier] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
 
@@ -32,6 +31,8 @@ export default function TeamHierarchyPage() {
     setSoldiers(await listSoldiers());
   }
   useEffect(() => { void refresh(); }, []);
+
+  const portfolioDialog = usePortfolioDialog(nodes, refresh);
 
   async function addSoldier(e: FormEvent) {
     e.preventDefault();
@@ -166,7 +167,7 @@ export default function TeamHierarchyPage() {
                   <span className="space-x-2 space-x-reverse">
                     {(isAdmin || (user?.is_commander ?? false)) && (
                       <button
-                        onClick={() => setPortfolioSoldier({ id: s.id, name: s.full_name })}
+                        onClick={() => portfolioDialog.open(s.id, s.full_name)}
                         className="text-indigo-600 dark:text-indigo-300"
                         data-testid={`dm-portfolio-${s.personal_number}`}
                       >
@@ -194,15 +195,7 @@ export default function TeamHierarchyPage() {
           })()}
         </div>
 
-        {portfolioSoldier && (
-          <DutyManagerPortfolioDialog
-            soldierId={portfolioSoldier.id}
-            soldierName={portfolioSoldier.name}
-            nodes={nodes}
-            onClose={() => setPortfolioSoldier(null)}
-            onChanged={refresh}
-          />
-        )}
+        {portfolioDialog.dialog}
       </section>
     </Layout>
   );

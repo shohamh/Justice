@@ -66,6 +66,7 @@ def _fail_orphaned_algorithm_jobs() -> None:
     knows about it. Since we just started, any "running" row predates us and
     cannot be ours, so it's safe to fail it unconditionally on boot.
     """
+    import json
     from datetime import UTC, datetime
 
     from app.db.models import AlgorithmJob
@@ -75,7 +76,7 @@ def _fail_orphaned_algorithm_jobs() -> None:
         orphaned = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
         for job in orphaned:
             job.status = "failed"
-            job.error_message = "orphaned_on_restart"
+            job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "server_restarted"})
             job.finished_at = datetime.now(tz=UTC)
         if orphaned:
             session.commit()

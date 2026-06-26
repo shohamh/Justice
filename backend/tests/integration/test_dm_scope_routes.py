@@ -81,6 +81,23 @@ def test_remove_scope_as_admin(client, admin_session):
     assert dm.role == "soldier"
 
 
+def test_remove_scope_commander_out_of_scope_forbidden(client, admin_session):
+    """Commander with sufficient rank cannot DELETE a scope entry on a node outside their subtree."""
+    a = create_node(admin_session, level="department", name=f"rm-scope-a-{_uid()}")
+    b = create_node(admin_session, level="department", name=f"rm-scope-b-{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"rmf-{_uid()}", role="commander")
+    a.commander_id = cmd.id
+    cmd.rank = "רסן"
+    dm = create_soldier(admin_session, personal_number=f"rmf-{_uid()}", role="duty_manager")
+    entry = DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=b.id)
+    admin_session.add(entry)
+    admin_session.commit()
+    admin_session.refresh(entry)
+
+    resp = client.delete(f"/api/duty-manager-scope/{entry.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 403
+
+
 def test_list_scope(client, admin_session):
     """GET /duty-manager-scope?soldier_id=... returns that soldier's scope entries."""
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")

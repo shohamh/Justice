@@ -1,4 +1,5 @@
 import json
+import threading
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
@@ -924,6 +925,124 @@ def test_decomposed_solve_returns_batch_results() -> None:
 
 def _line_duties(base, dt, n, is_reserve=False):
     return [_single_day_duty(base + timedelta(days=i), dt, is_reserve=is_reserve) for i in range(n)]
+
+
+def test_interleaved_solve_cancellation_keeps_completed_batches(monkeypatch) -> None:
+    # 4 duties, batch size 1 -> 4 sequential batches. The cancel_event is set
+    # only *after* the first batch's solve call returns (not during it, and not
+    # via a call-counter, which would also catch the per-batch solve's own
+    # internal is_set() checks) -> batch 1 completes cleanly, batch 2 never starts.
+    import app.algorithm.solver as solver_mod
+
+    dt = uuid4()
+    soldiers = [
+        SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=100)
+        for _ in range(4)
+    ]
+    duties = _line_duties(date(2026, 6, 1), dt, 4)
+
+    cancel_event = threading.Event()
+    original = solver_mod._infeasibility_relaxation_chain
+
+    def cancel_after_first_call(*args, **kwargs):
+        result = original(*args, **kwargs)
+        cancel_event.set()
+        return result
+
+    monkeypatch.setattr(solver_mod, "_infeasibility_relaxation_chain", cancel_after_first_call)
+
+    res = solver_mod._interleaved_solve(
+        soldiers, duties, [],
+        SolverSettings(decomposition="interleaved", interleaved_batch_size=1, batch_time_limit_seconds=10),
+        reserve_dist=None, cancel_event=cancel_event,
+    )
+    assert res.status == "CANCELLED"
+    assert 0 < len(res.assignments) < len(duties), (
+        "the completed first batch's assignments should be kept, not discarded, "
+        "while later (never-run) batches correctly contribute nothing"
+    )
+
+
+def test_decomposed_solve_cancellation_keeps_completed_batches(monkeypatch) -> None:
+    # Two duties 44 days apart with a 28-day window -> 2 calendar batches.
+    # cancel_event is set only after the first batch's solve returns.
+    import app.algorithm.solver as solver_mod
+
+    soldier_ids = [uuid4() for _ in range(3)]
+    duty_type_id = uuid4()
+    duty_location_id = uuid4()
+    soldiers = [
+        SoldierInput(id=sid, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"), active_days=200)
+        for sid in soldier_ids
+    ]
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type_id, duty_location_id=duty_location_id,
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 1), score_per_day=Decimal("1.00")),
+        DutyBlock(id=uuid4(), duty_type_id=duty_type_id, duty_location_id=duty_location_id,
+                  start_date=date(2026, 7, 15), end_date=date(2026, 7, 15), score_per_day=Decimal("1.00")),
+    ]
+
+    cancel_event = threading.Event()
+    original = solver_mod._infeasibility_relaxation_chain
+
+    def cancel_after_first_call(*args, **kwargs):
+        result = original(*args, **kwargs)
+        cancel_event.set()
+        return result
+
+    monkeypatch.setattr(solver_mod, "_infeasibility_relaxation_chain", cancel_after_first_call)
+
+    res = solver_mod._decomposed_solve(
+        soldiers, duties, [],
+        SolverSettings(batch_window_days=28, decomposition="calendar"),
+        reserve_dist=None, cancel_event=cancel_event,
+    )
+    assert res.status == "CANCELLED"
+    assert 0 < len(res.assignments) < len(duties), (
+        "the completed first batch's assignments should be kept, not discarded, "
+        "while the later (never-run) batch correctly contributes nothing"
+    )
+
+
+def test_effort_round_solve_cancellation_keeps_completed_components(monkeypatch) -> None:
+    # Soldier 1 is exempt from dt_b, soldier 2 is exempt from dt_a, so the two
+    # (duty, soldier) pairs share no eligibility edge -> 2 disjoint components.
+    # cancel_event is set only after the first component's solve returns, same
+    # reasoning as the interleaved test above.
+    import app.algorithm.solver as solver_mod
+
+    dt_a, dt_b = uuid4(), uuid4()
+    soldier_1, soldier_2 = uuid4(), uuid4()
+    soldiers = [
+        SoldierInput(id=soldier_1, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, exempted_duty_type_ids={dt_b}),
+        SoldierInput(id=soldier_2, enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                     active_days=100, exempted_duty_type_ids={dt_a}),
+    ]
+    duties = [
+        _single_day_duty(date(2026, 6, 1), dt_a, is_reserve=False),
+        _single_day_duty(date(2026, 6, 2), dt_b, is_reserve=False),
+    ]
+
+    cancel_event = threading.Event()
+    original = solver_mod._search_relaxation_ladder
+
+    def cancel_after_first_call(*args, **kwargs):
+        result = original(*args, **kwargs)
+        cancel_event.set()
+        return result
+
+    monkeypatch.setattr(solver_mod, "_search_relaxation_ladder", cancel_after_first_call)
+
+    res = solver_mod._effort_round_solve(
+        soldiers, duties, [],
+        SolverSettings(round_soldier_count=50, batch_time_limit_seconds=10),
+        reserve_dist=None, cancel_event=cancel_event,
+    )
+    assert res.status == "CANCELLED"
+    assert 0 < len(res.assignments) < len(duties), (
+        "the completed first component's assignments should be kept, not discarded"
+    )
 
 
 def test_effort_rounds_small_component_single_round() -> None:

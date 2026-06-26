@@ -1,0 +1,43 @@
+<h2>How should "add new type" work?</h2>
+<p class="subtitle">Three approaches for adding a new level type while editing a node</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline — inside the edit dialog <span style="font-size:11px;background:#d1fae5;color:#065f46;border-radius:4px;padding:2px 6px;margin-right:6px">מומלץ</span></h3>
+      <p>The ערוך dialog grows a level dropdown. At the bottom of the dropdown list sits "+ הוסף סוג חדש". Clicking it expands an inline mini-form: a name input and a visual position picker showing the ordered level list with insertion points. Create and select in one step.</p>
+      <div style="margin-top:8px;font-size:12px;color:#6b7280">
+        ✓ No navigation — stays in context<br>
+        ✓ Create the type you need right now<br>
+        ✗ Dialog gets taller when adding
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Separate settings page</h3>
+      <p>Level types are managed in a dedicated section of System Settings — a sortable list with add/rename/reorder. The ערוך dialog just shows the available types in a plain dropdown with no inline creation.</p>
+      <div style="margin-top:8px;font-size:12px;color:#6b7280">
+        ✓ Clean separation of concerns<br>
+        ✓ Easy to reorder/manage the full list<br>
+        ✗ Must navigate away to add a new type mid-task
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Gear button → second modal</h3>
+      <p>The ערוך dialog has a level dropdown plus a small ⚙ button beside it. Clicking the gear opens a second modal for managing all types (reorder, add, rename). When done, closes back to the edit dialog.</p>
+      <div style="margin-top:8px;font-size:12px;color:#6b7280">
+        ✓ Management stays near the edit flow<br>
+        ✓ Room to manage the full list<br>
+        ✗ Modal-on-modal layering is awkward
+      </div>
+    </div>
+  </div>
+</div>
