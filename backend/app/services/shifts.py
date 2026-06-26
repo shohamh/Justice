@@ -290,6 +290,7 @@ def list_shifts(
             fill_status=_fill_status(primary_assigned, shift.required_count, reserve_assigned, exp_reserve),
             status=shift.status,
             reserve_count_override=shift.reserve_count_override,
+            eligible_node_ids=shift.eligible_node_ids,
         ))
     return result
 
