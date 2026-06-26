@@ -17,6 +17,7 @@ export interface ShiftTemplate {
   auto_roll: boolean;
   auto_roll_until: string | null;
   notes: string | null;
+  eligible_node_ids: string[] | null;
 }
 
 export interface CreateTemplateInput {
@@ -32,6 +33,7 @@ export interface CreateTemplateInput {
   auto_roll?: boolean;
   auto_roll_until?: string | null;
   notes?: string | null;
+  eligible_node_ids?: string[] | null;
 }
 
 export type UpdateTemplateInput = Partial<
