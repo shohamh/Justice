@@ -14,6 +14,7 @@ export interface DutyShift {
   status: "active" | "cancelled";
   reserve_count_override?: number | null;
   calculated_reserve_count?: number | null;
+  eligible_node_ids?: string[] | null;
 }
 
 export interface CreateShiftInput {
@@ -24,6 +25,7 @@ export interface CreateShiftInput {
   required_count: number;
   notes?: string | null;
   reserve_count_override?: number | null;
+  eligible_node_ids?: string[] | null;
 }
 
 export interface UpdateShiftInput {
@@ -32,6 +34,7 @@ export interface UpdateShiftInput {
   required_count?: number;
   notes?: string | null;
   reserve_count_override?: number | null;
+  eligible_node_ids?: string[] | null;
 }
 
 export async function listShifts(params?: {
