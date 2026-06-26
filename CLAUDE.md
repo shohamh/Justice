@@ -66,6 +66,7 @@ alembic upgrade head               # apply migrations
 pip install -e ".[dev]"            # reinstall after editing pyproject.toml
 
 # Frontend (run from frontend/)
-npm test        # vitest unit tests
-npm run lint    # eslint (zero warnings enforced)
+npm test           # vitest unit tests
+npm run lint       # eslint (zero warnings enforced)
+npm run typecheck  # tsc --noEmit (not run by lint — run separately, or rely on CI)
 ```
