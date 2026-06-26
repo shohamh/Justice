@@ -80,9 +80,7 @@
     "transparency_title": "ייצוא שקיפות",
     "transparency_desc": "ייצוא נתוני ניקוד ושיבוץ לכל החיילים לקובץ Excel.",
     "sub_units_title": "ייצוא יחידות משנה",
-    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel.",
-    "download": "הורד Excel",
-    "downloading": "מוריד..."
+    "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel."
   },
   "my_requests": {
     "title": "אילוצים ופטורים",
