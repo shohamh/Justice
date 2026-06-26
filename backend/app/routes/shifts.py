@@ -271,6 +271,8 @@ def get_shift_candidates(
         n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()
     }
 
+    from app.algorithm.types import node_in_scope
+
     soldier_inputs = load_soldier_inputs(session, as_of=shift.start_date)
 
     result: list[ShiftCandidateOut] = []
@@ -279,7 +281,9 @@ def get_shift_candidates(
             continue
         if shift.duty_type_id in si.exempted_duty_type_ids:
             continue
-        if shift.eligible_node_ids and si.hierarchy_node_id not in shift.eligible_node_ids:
+        soldier_node = node_map.get(si.hierarchy_node_id) if si.hierarchy_node_id else None
+        soldier_path_ids = list(soldier_node.path_ids) if soldier_node else []
+        if not node_in_scope(shift.eligible_node_ids, soldier_path_ids):
             continue
         soldier = soldier_map.get(si.id)
         if soldier is None:
@@ -298,8 +302,7 @@ def get_shift_candidates(
 
         effort = float(si.cumulative_score) / float(si.active_days)
 
-        node = node_map.get(si.hierarchy_node_id) if si.hierarchy_node_id else None
-        path_ids = [str(pid) for pid in node.path_ids] if node and node.path_ids else []
+        path_ids = [str(pid) for pid in soldier_path_ids]
 
         result.append(ShiftCandidateOut(
             soldier_id=si.id,
