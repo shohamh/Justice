@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
+import { test, expect, vi } from "vitest";
 import { DataTable, type ColDef } from "./DataTable";
 
 interface Row { name: string; score: number; }
@@ -67,4 +68,24 @@ test("shows empty message when no rows match filter", () => {
   render(<DataTable columns={cols} data={data} emptyMessage="nothing" />);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "zzz" } });
   expect(screen.getByText("nothing")).toBeInTheDocument();
+});
+
+test("onVisibleRowsChange fires with full data on initial render", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  expect(spy).toHaveBeenCalledWith(data);
+});
+
+test("onVisibleRowsChange fires with filtered rows after search box input", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Alice" } });
+  expect(spy).toHaveBeenLastCalledWith([data[0]]);
+});
+
+test("onVisibleRowsChange fires with sorted rows after header click", () => {
+  const spy = vi.fn();
+  render(<DataTable columns={cols} data={data} onVisibleRowsChange={spy} />);
+  fireEvent.click(screen.getByText("Score"));
+  expect(spy).toHaveBeenLastCalledWith([data[1], data[2], data[0]]); // Bob(1), Charlie(2), Alice(3)
 });

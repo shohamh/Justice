@@ -20,6 +20,8 @@ export interface ColDef<T> {
   columnFilter?: boolean;
   /** Minimum column width in pixels. */
   minWidth?: number;
+  /** Plain value for Excel export. Falls back to filterValue, then sortValue, then "". */
+  exportValue?: (row: T) => string | number | boolean | null | undefined;
 }
 
 interface DataTableProps<T> {
@@ -32,6 +34,8 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   testId?: string;
   rowTestId?: (row: T) => string;
+  /** Fires with the fully filtered + sorted row set whenever it changes (e.g. for export). */
+  onVisibleRowsChange?: (rows: T[]) => void;
 }
 
 // ─── Column filter dropdown ───────────────────────────────────────────────────
@@ -158,6 +162,7 @@ export function DataTable<T>({
   emptyMessage = "—",
   testId,
   rowTestId,
+  onVisibleRowsChange,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -225,6 +230,12 @@ export function DataTable<T>({
       return cellValue.toLowerCase().includes(value.toLowerCase());
     },
   });
+
+  const visibleRows = table.getRowModel().rows.map((r) => r.original);
+  useEffect(() => {
+    onVisibleRowsChange?.(visibleRows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRows]);
 
   return (
     <div className={className} data-testid={testId}>
