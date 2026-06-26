@@ -1,5 +1,11 @@
 import { api } from "./client";
 
+export interface DutyManagerEntry {
+  scope_id: string;
+  soldier_id: string;
+  name: string;
+}
+
 export interface NodeDTO {
   id: string;
   level: "corps" | "division" | "unit" | "department" | "branch" | "group" | "team";
@@ -8,6 +14,8 @@ export interface NodeDTO {
   commander_id: string | null;
   commander_name: string | null;
   path_ids: string[];
+  duty_managers: DutyManagerEntry[];
+  dm_manageable: boolean;
   children?: NodeDTO[];
 }
 
