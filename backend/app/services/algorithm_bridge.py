@@ -1087,6 +1087,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     planning_start=effort_horizon,
                     planning_end=effort_horizon,
                     reset_date=_reset_date,
+                    pending_duties=duties,
                 )
                 # Whole-job range, for the _count_space_stats diagnostics only (those
                 # report a single before/after CV across the entire run). The solve
