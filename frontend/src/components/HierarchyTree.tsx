@@ -14,6 +14,8 @@ import { NodeDTO, deleteNode, moveNode } from "../api/hierarchy";
 import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
+import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
+import DutyManagerPortfolioDialog from "./DutyManagerPortfolioDialog";
 import EditNodeDialog from "./EditNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
@@ -112,6 +114,8 @@ function DroppableNodeRow({
   onAddChild,
   onAddSoldier,
   onAssignCommander,
+  onManageDutyManagers,
+  onOpenPortfolio,
   onRename,
   onDelete,
   hasChildren,
@@ -128,6 +132,8 @@ function DroppableNodeRow({
   onAddChild: () => void;
   onAddSoldier: () => void;
   onAssignCommander: () => void;
+  onManageDutyManagers: () => void;
+  onOpenPortfolio: (soldierId: string, name: string) => void;
   onRename: () => void;
   onDelete: () => void;
   hasChildren: boolean;
@@ -185,23 +191,52 @@ function DroppableNodeRow({
           ({t("team.commander")}: {node.commander_name})
         </span>
       )}
-      {isAdmin && (
+      {node.duty_managers.length > 0 && (
+        <span className="text-xs text-gray-400" data-testid={`tree-dm-list-${node.id}`}>
+          ({t("team.duty_managers")}:{" "}
+          {node.duty_managers.map((dm, i) => (
+            <span key={dm.scope_id}>
+              {i > 0 && ", "}
+              <button
+                type="button"
+                className="hover:underline text-indigo-600 dark:text-indigo-300"
+                onClick={() => onOpenPortfolio(dm.soldier_id, dm.name)}
+                data-testid={`tree-dm-link-${dm.scope_id}`}
+              >
+                {dm.name}
+              </button>
+            </span>
+          ))})
+        </span>
+      )}
+      {(isAdmin || node.dm_manageable) && (
         <span className="flex gap-1 ml-auto">
-          {canHaveChildren && (
+          {isAdmin && canHaveChildren && (
             <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddChild} data-testid={`tree-add-child-${node.id}`}>
               +{t("team.add_node")}
             </button>
           )}
-          <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddSoldier} data-testid={`tree-add-soldier-${node.id}`}>
-            +{t("team.add_soldier")}
-          </button>
-          <button className="text-xs text-green-600 hover:underline" onClick={onAssignCommander} data-testid={`tree-commander-btn-${node.id}`}>
-            {t("team.assign_commander")}
-          </button>
-          <button className="text-xs text-amber-600 hover:underline" onClick={onRename} data-testid={`tree-rename-${node.id}`}>
-            {t("team.edit")}
-          </button>
-          {!node.commander_id && !hasChildren && (
+          {isAdmin && (
+            <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddSoldier} data-testid={`tree-add-soldier-${node.id}`}>
+              +{t("team.add_soldier")}
+            </button>
+          )}
+          {isAdmin && (
+            <button className="text-xs text-green-600 hover:underline" onClick={onAssignCommander} data-testid={`tree-commander-btn-${node.id}`}>
+              {t("team.assign_commander")}
+            </button>
+          )}
+          {node.dm_manageable && (
+            <button className="text-xs text-green-700 hover:underline" onClick={onManageDutyManagers} data-testid={`tree-dm-btn-${node.id}`}>
+              {t("team.assign_duty_managers")}
+            </button>
+          )}
+          {isAdmin && (
+            <button className="text-xs text-amber-600 hover:underline" onClick={onRename} data-testid={`tree-rename-${node.id}`}>
+              {t("team.edit")}
+            </button>
+          )}
+          {isAdmin && !node.commander_id && !hasChildren && (
             <button className="text-xs text-red-500 hover:underline" onClick={onDelete} data-testid={`tree-delete-${node.id}`}>
               {t("duty_config.delete")}
             </button>
@@ -221,6 +256,8 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
   const [quickAddNode, setQuickAddNode] = useState<string | null>(null);
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const [activeData, setActiveData] = useState<DragData | null>(null);
+  const [dmDialogNodeId, setDmDialogNodeId] = useState<string | null>(null);
+  const [portfolioSoldier, setPortfolioSoldier] = useState<{ id: string; name: string } | null>(null);
 
   const { levelTypes } = useLevelTypes();
   const { rankByKey, maxRank, labelByKey } = useMemo(() => {
@@ -356,6 +393,8 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
           onAddChild={() => setAddDialog(node)}
           onAddSoldier={() => setQuickAddNode(node.id)}
           onAssignCommander={() => setCommanderDialog(node)}
+          onManageDutyManagers={() => setDmDialogNodeId(node.id)}
+          onOpenPortfolio={(soldierId, name) => setPortfolioSoldier({ id: soldierId, name })}
           onRename={() => setRenameDialog(node)}
           onDelete={() => void handleDelete(node.id)}
           hasChildren={hasChildren}
@@ -428,6 +467,25 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
       )}
       {commanderDialog && (
         <AssignCommanderDialog node={commanderDialog} onClose={() => setCommanderDialog(null)} onAssigned={onChanged} />
+      )}
+      {dmDialogNodeId && (() => {
+        const dmNode = nodes.find((n) => n.id === dmDialogNodeId);
+        return dmNode ? (
+          <AssignDutyManagersDialog
+            node={dmNode}
+            onClose={() => setDmDialogNodeId(null)}
+            onChanged={onChanged}
+          />
+        ) : null;
+      })()}
+      {portfolioSoldier && (
+        <DutyManagerPortfolioDialog
+          soldierId={portfolioSoldier.id}
+          soldierName={portfolioSoldier.name}
+          nodes={nodes}
+          onClose={() => setPortfolioSoldier(null)}
+          onChanged={onChanged}
+        />
       )}
       {renameDialog && editDialogRanks && (
         <EditNodeDialog

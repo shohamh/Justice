@@ -98,3 +98,36 @@ def test_list_scope(client, admin_session):
     data = resp.json()
     assert len(data) >= 1
     assert any(d["hierarchy_node_id"] == str(node.id) for d in data)
+
+
+def test_list_scope_filtered_for_commander_in_scope(client, admin_session):
+    a = create_node(admin_session, level="department", name=f"list-scope-a-{_uid()}")
+    b = create_node(admin_session, level="department", name=f"list-scope-b-{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"lsf-{_uid()}", role="commander")
+    a.commander_id = cmd.id
+    cmd.rank = "רסן"
+    dm = create_soldier(admin_session, personal_number=f"lsf-{_uid()}", role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=a.id))
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=b.id))
+    admin_session.commit()
+
+    resp = client.get(f"/api/duty-manager-scope?soldier_id={dm.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["hierarchy_node_id"] == str(a.id)
+
+
+def test_list_scope_empty_for_commander_with_no_overlap(client, admin_session):
+    other = create_node(admin_session, level="department", name=f"list-scope-c-{_uid()}")
+    unrelated = create_node(admin_session, level="department", name=f"list-scope-d-{_uid()}")
+    cmd = create_soldier(admin_session, personal_number=f"lsf-{_uid()}", role="commander")
+    other.commander_id = cmd.id
+    cmd.rank = "רסן"
+    dm = create_soldier(admin_session, personal_number=f"lsf-{_uid()}", role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=unrelated.id))
+    admin_session.commit()
+
+    resp = client.get(f"/api/duty-manager-scope?soldier_id={dm.id}", headers=auth_headers(cmd))
+    assert resp.status_code == 200
+    assert resp.json() == []

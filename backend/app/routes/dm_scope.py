@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyManagerScope, HierarchyNode
 from app.db.session import get_session
@@ -74,8 +74,6 @@ def list_scope(
     session: Session = Depends(get_session),
     user=Depends(require_password_changed),
 ) -> list[ScopeEntryOut]:
-    if user.role != "admin" and user.id != soldier_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     entries = (
         session.execute(
             select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == soldier_id)
@@ -83,6 +81,21 @@ def list_scope(
         .scalars()
         .all()
     )
+    if user.role != "admin" and user.id != soldier_id:
+        roots = scope_root_ids(session, user)
+        nodes_by_id = {
+            n.id: n
+            for n in session.execute(
+                select(HierarchyNode).where(
+                    HierarchyNode.id.in_([e.hierarchy_node_id for e in entries])
+                )
+            ).scalars().all()
+        }
+        entries = [
+            e
+            for e in entries
+            if any(r in nodes_by_id[e.hierarchy_node_id].path_ids for r in roots)
+        ]
     return [
         ScopeEntryOut(
             id=e.id,
