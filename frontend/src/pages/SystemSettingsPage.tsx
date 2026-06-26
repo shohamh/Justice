@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import { getSystemSettings, updateSystemSettings, SettingsMap } from "../api/systemSettings";
+import ReactMarkdown from "react-markdown";
+import changelogRaw from "../../../CHANGELOG.md?raw";
 
 interface SettingDef {
   key: string;
@@ -163,6 +165,36 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   },
 ];
 
+// ── Changelog panel ──────────────────────────────────────────────────────────
+
+function ChangelogPanel() {
+  return (
+    <details className="bg-white dark:bg-gray-800 rounded-lg shadow">
+      <summary className="cursor-pointer select-none px-5 py-4 font-semibold text-gray-700 dark:text-gray-200 flex items-center justify-between list-none">
+        <span>📋 יומן שינויים (Changelog)</span>
+        <span className="text-gray-400 text-xs">▼</span>
+      </summary>
+      <div className="px-5 pb-5 prose prose-sm dark:prose-invert max-w-none" dir="ltr">
+        <ReactMarkdown
+          components={{
+            h1: ({ children }) => <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 mt-4 mb-2">{children}</h1>,
+            h2: ({ children }) => <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 mt-5 mb-1 border-b border-gray-200 dark:border-gray-600 pb-1">{children}</h2>,
+            h3: ({ children }) => <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mt-3 mb-1">{children}</h3>,
+            p: ({ children }) => <p className="text-sm text-gray-600 dark:text-gray-400 my-1">{children}</p>,
+            ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5 text-sm text-gray-700 dark:text-gray-300 my-1">{children}</ul>,
+            li: ({ children }) => <li className="text-sm">{children}</li>,
+            strong: ({ children }) => <strong className="font-semibold text-gray-800 dark:text-gray-200">{children}</strong>,
+            hr: () => <hr className="border-gray-200 dark:border-gray-600 my-4" />,
+            code: ({ children }) => <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded text-xs">{children}</code>,
+          }}
+        >
+          {changelogRaw}
+        </ReactMarkdown>
+      </div>
+    </details>
+  );
+}
+
 function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {
   const raw = map[def.key];
   if (raw === undefined || raw === null) return def.defaultValue;
@@ -283,6 +315,8 @@ export function SystemSettingsContent() {
           })}
         </div>
       ))}
+
+      <ChangelogPanel />
     </div>
   );
 }
