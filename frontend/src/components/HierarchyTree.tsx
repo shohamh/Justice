@@ -15,13 +15,13 @@ import { SoldierDTO, updateSoldier, onboardSoldier } from "../api/soldiers";
 import AddChildNodeDialog from "./AddChildNodeDialog";
 import AssignCommanderDialog from "./AssignCommanderDialog";
 import AssignDutyManagersDialog from "./AssignDutyManagersDialog";
-import DutyManagerPortfolioDialog from "./DutyManagerPortfolioDialog";
 import EditNodeDialog from "./EditNodeDialog";
 import SoldierSearchAutocomplete from "./SoldierSearchAutocomplete";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import SoldierLink from "./SoldierLink";
 import TelegramBadge from "./TelegramBadge";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import { useDutyManagerPortfolio } from "../hooks/useDutyManagerPortfolio";
 
 function SoldierAvatar({ url, name }: { url?: string | null; name: string }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -257,7 +257,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
   const [editSoldier, setEditSoldier] = useState<SoldierDTO | null>(null);
   const [activeData, setActiveData] = useState<DragData | null>(null);
   const [dmDialogNodeId, setDmDialogNodeId] = useState<string | null>(null);
-  const [portfolioSoldier, setPortfolioSoldier] = useState<{ id: string; name: string } | null>(null);
+  const portfolio = useDutyManagerPortfolio({ nodes, onChanged });
 
   const { levelTypes } = useLevelTypes();
   const { rankByKey, maxRank, labelByKey } = useMemo(() => {
@@ -394,7 +394,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
           onAddSoldier={() => setQuickAddNode(node.id)}
           onAssignCommander={() => setCommanderDialog(node)}
           onManageDutyManagers={() => setDmDialogNodeId(node.id)}
-          onOpenPortfolio={(soldierId, name) => setPortfolioSoldier({ id: soldierId, name })}
+          onOpenPortfolio={(soldierId, name) => portfolio.open(soldierId, name)}
           onRename={() => setRenameDialog(node)}
           onDelete={() => void handleDelete(node.id)}
           hasChildren={hasChildren}
@@ -478,15 +478,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
           />
         ) : null;
       })()}
-      {portfolioSoldier && (
-        <DutyManagerPortfolioDialog
-          soldierId={portfolioSoldier.id}
-          soldierName={portfolioSoldier.name}
-          nodes={nodes}
-          onClose={() => setPortfolioSoldier(null)}
-          onChanged={onChanged}
-        />
-      )}
+      {portfolio.dialog}
       {renameDialog && editDialogRanks && (
         <EditNodeDialog
           nodeId={renameDialog.id}
