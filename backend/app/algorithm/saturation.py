@@ -15,6 +15,7 @@ from app.algorithm.types import (
     ExistingAssignment,
     SaturationCluster,
     SoldierInput,
+    node_in_scope,
 )
 
 
@@ -25,9 +26,8 @@ def _eligible(soldier: SoldierInput, duty: DutyBlock) -> bool:
     for cs, ce in soldier.approved_constraint_dates:
         if cs < duty.end_date and ce >= duty.start_date:
             return False
-    if duty.eligible_node_ids is not None and soldier.hierarchy_node_id is not None:
-        if soldier.hierarchy_node_id not in duty.eligible_node_ids:
-            return False
+    if not node_in_scope(duty.eligible_node_ids, soldier.path_ids):
+        return False
     return True
 
 

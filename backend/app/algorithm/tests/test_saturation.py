@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from app.algorithm.saturation import analyze_saturation
+from app.algorithm.saturation import _eligible, analyze_saturation
 from app.algorithm.types import Assignment, DutyBlock, ExistingAssignment, SoldierInput
 
 
@@ -88,3 +88,20 @@ def test_analyze_saturation_reports_free_soldiers_when_not_saturated():
 
 def test_analyze_saturation_returns_empty_for_no_unassigned_duties():
     assert analyze_saturation(unassigned=[], full_pool=[], all_assignments=[], existing=[], duty_by_id={}) == []
+
+
+def test_eligible_subtree_match():
+    """A soldier in a sub-team under a scoped node is eligible (subtree match,
+    not exact match) -- mirrors solver._eligible_pairs' filter."""
+    root = uuid4()
+    child = uuid4()
+    dt = uuid4()
+    loc = uuid4()
+
+    soldier = SoldierInput(id=uuid4(), enrolled_at=date(2026, 1, 1), cumulative_score=Decimal("0"),
+                            active_days=100, hierarchy_node_id=child, path_ids=[root, child])
+    duty = DutyBlock(id=uuid4(), duty_type_id=dt, duty_location_id=loc,
+                      start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+                      score_per_day=Decimal("1"), eligible_node_ids=[root])
+
+    assert _eligible(soldier, duty) is True
