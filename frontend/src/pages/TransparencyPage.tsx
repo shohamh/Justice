@@ -719,10 +719,17 @@ export default function TransparencyPage() {
       header: "חיילים פעילים",
       cell: (r) => `${r.active_count} (${Math.round(r.active_count / r.count * 100)}%)`,
       sortValue: (r) => r.active_count,
+      exportValue: (r) => `${r.active_count} (${Math.round(r.active_count / r.count * 100)}%)`,
     },
     { id: "avg_active_days", header: t("transparency.avg_active_days"), cell: (r) => r.avg_active_days, sortValue: (r) => r.avg_active_days },
     { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(2), sortValue: (r) => r.avg_cumulative },
-    { id: "avg_cumulative_active", header: "ממוצע ניקוד לחייל פעיל", cell: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—", sortValue: (r) => r.avg_cumulative_active },
+    {
+      id: "avg_cumulative_active",
+      header: "ממוצע ניקוד לחייל פעיל",
+      cell: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—",
+      sortValue: (r) => r.avg_cumulative_active,
+      exportValue: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—",
+    },
     {
       id: "total_score_per_day", header: "ניקוד ליום (מסגרת)",
       headerTooltip: "סך ניקוד ליום של כל חיילי המסגרת — מייצג את עומס התורנויות הכולל של היחידה.",
@@ -732,6 +739,7 @@ export default function TransparencyPage() {
         </span>
       ),
       sortValue: (r) => r.total_score_per_day,
+      exportValue: (r) => r.total_score_per_day.toFixed(2),
     },
     {
       id: "avg_normalised", header: t("transparency.normalised"),
@@ -750,6 +758,7 @@ export default function TransparencyPage() {
       header: t("transparency.subunit_avg_effort"),
       cell: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
       sortValue: (r) => r.avg_effort,
+      exportValue: (r) => r.avg_effort > 0 ? (r.avg_effort * 100).toFixed(1) + "%" : "—",
     },
     {
       id: "cv_effort",
@@ -765,6 +774,10 @@ export default function TransparencyPage() {
         return <span className={colorClass}>{pct.toFixed(1)}%</span>;
       },
       sortValue: (r) => r.cv_effort ?? -1,
+      exportValue: (r) => {
+        if (r.cv_effort === null) return "—";
+        return (r.cv_effort * 100).toFixed(1) + "%";
+      },
     },
   ];
 
