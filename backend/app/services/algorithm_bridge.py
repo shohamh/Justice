@@ -395,8 +395,13 @@ def inject_effort_scores(
 ) -> tuple[int, int]:
     """Set effort_offset and effort_per_milli on each SoldierInput in-place.
 
-    effort_per_milli = int(C_over_D / unit_score_milli × EFFORT_SCALE)
-    where unit_score_milli = sum of block_score(b) for all blocks in the planning window.
+    effort_per_milli = int(C_over_D × EFFORT_SCALE)
+    where C_over_D = 1 / (Σ(U_q × active_frac_q) × 1000).
+    Each milli-point of score assigned to a soldier increases their effort by
+    C_over_D × EFFORT_SCALE in solver-scale units (≈ score_pts / W_global).
+
+    unit_score_milli is still computed to guard against empty windows and to
+    bound the worst-case effort accumulation for range encoding.
 
     Returns (effort_range_min, effort_range_max) — tight bounds covering every possible
     effort_offset value throughout the entire run (including worst-case accumulation).
@@ -411,7 +416,7 @@ def inject_effort_scores(
             continue
         s.effort_offset = data.effort_offset
         if unit_score_milli > 0:
-            s.effort_per_milli = int(float(data.C_over_D) / unit_score_milli * EFFORT_SCALE)
+            s.effort_per_milli = int(float(data.C_over_D) * EFFORT_SCALE)
         else:
             s.effort_per_milli = 0
 

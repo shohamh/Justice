@@ -452,8 +452,8 @@ function DeepDiveTab() {
       <section className="space-y-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-200">📐 ניקוד עומס — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_score = A / W</code></h3>
         <p className="text-gray-700 dark:text-gray-300">
-          לכל חייל מחושב ציון אחד — <strong>עומס רבעוני ממוצע</strong>. הוא מייצג: מתוך כל התורנויות שהיחידה עשתה,
-          כמה אחוז נשא החייל בכל רבעון שהיה פעיל בו, בממוצע משוקלל.
+          לכל חייל מחושב ציון אחד — <strong>עומס רבעוני</strong>. הוא מייצג: מה חלקך מסך כל הניקוד שצברה היחידה,
+          משוקלל לפי שיעור הנוכחות שלך בכל רבעון. ערך הוגן = 1/N (N = מספר החיילים).
         </p>
 
         {/* Term table */}
@@ -468,11 +468,12 @@ function DeepDiveTab() {
             </thead>
             <tbody className="text-gray-700 dark:text-gray-300">
               {[
-                { sym: "shareq", name: "חלק רבעוני", def: <><InlineMath math="\dfrac{\text{ניקוד החייל ברבעון } q}{\text{ניקוד כלל היחידה ברבעון } q}" /> — מספר בין 0 ל-1.</> },
+                { sym: "s_q", name: "ניקוד אישי ברבעון", def: "הניקוד שצבר החייל בתורנויות ברבעון q." },
+                { sym: "U_q", name: "ניקוד יחידה ברבעון", def: "סכום ניקוד כלל החיילים ביחידה ברבעון q." },
                 { sym: "active_fracq", name: "שבר נוכחות", def: "חלק הרבעון שבו החייל היה פעיל (0–1). רבעון מלא = 1." },
-                { sym: "A", name: "עומס שנצבר", def: <><InlineMath math="\sum_q (\text{share}_q \times \text{active\_frac}_q)" /> על כל הרבעונים ההיסטוריים.</> },
-                { sym: "W", name: "היסטוריה כוללת", def: <><InlineMath math="\sum_{q:\,\text{unit}>0} \text{active\_frac}_q" /> — סכום משקלי הנוכחות, <strong>רק ברבעונות שבהם הייתה פעילות ביחידה</strong>. רבעונות ריקים מדוללים את הממוצע ומעוותים את ההשוואה.</> },
-                { sym: "effort_score", name: "עומס רבעוני", def: <><InlineMath math="\dfrac{A}{W}" /> — ממוצע החלק הרבעוני על פני כל התקופה שבה שירת החייל.</> },
+                { sym: "A", name: "ניקוד אישי משוקלל", def: <><InlineMath math="\sum_q (s_q \times \text{active\_frac}_q)" /> — ניקוד החייל משוקלל לפי נוכחות.</> },
+                { sym: "W", name: "ניקוד יחידה משוקלל", def: <><InlineMath math="\sum_{q:\,U_q>0} (U_q \times \text{active\_frac}_q)" /> — ניקוד היחידה משוקלל, <strong>רק ברבעונות שבהם הייתה פעילות</strong>.</> },
+                { sym: "effort_score", name: "עומס רבעוני", def: <><InlineMath math="\dfrac{A}{W}" /> — חלקך מסך הניקוד המשוקלל של היחידה. עולה כשרבעונות חדשים נצברים — ממיר עיוותי-סקאלה של הנוסחה הישנה.</> },
               ].map(({ sym, name, def }) => (
                 <tr key={sym} className="border-b border-gray-100 dark:border-gray-700">
                   <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{sym}</td>

@@ -73,8 +73,8 @@ class EffortQuarterRow(BaseModel):
 class EffortBreakdownOut(BaseModel):
     quarters: list[EffortQuarterRow]
     effort_score: Decimal
-    A_i: Decimal   # Σ(share_q × active_frac_q)
-    W_i: Decimal   # Σ(active_frac_q) — historical weight
+    A_i: Decimal   # Σ(s_q × active_frac_q) — personal weighted score
+    W_i: Decimal   # Σ(U_q × active_frac_q) — unit weighted score
 
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:

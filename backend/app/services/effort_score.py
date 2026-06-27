@@ -18,10 +18,10 @@ from app.services.scoring import effective_duty_days
 @dataclass
 class EffortData:
     """Per-soldier effort computation result for use in the CP-SAT model."""
-    effort_score: Decimal      # A_i / D_i: historical weighted-average quarterly share
-    C_over_D: Decimal          # C_i / D_i: current-window weight over total weight
+    effort_score: Decimal      # A_i / W_i: Σ(s_q × w_q) / Σ(U_q × w_q) — scale-invariant cumulative ratio
+    C_over_D: Decimal          # 1 / (W_i × 1000) — used by bridge as: effort_per_milli = int(C_over_D × EFFORT_SCALE)
     effort_offset: int = 0     # int(effort_score × EFFORT_SCALE) — precomputed for model
-    effort_per_milli: int = 0  # int(C_over_D / unit_score_milli × EFFORT_SCALE) — set by bridge
+    effort_per_milli: int = 0  # int(C_over_D × EFFORT_SCALE) — set by bridge
 
 
 @dataclass
@@ -45,8 +45,8 @@ class EffortBreakdown:
     quarters: list[EffortQuarterDetail] = field(default_factory=list)
     effort_score: Decimal = Decimal("0")
     # Raw components: effort_score = A_i / W_i
-    A_i: Decimal = Decimal("0")   # Σ(share_q × active_frac_q)
-    W_i: Decimal = Decimal("0")   # Σ(active_frac_q)  — historical weight
+    A_i: Decimal = Decimal("0")   # Σ(s_q × active_frac_q)  — personal weighted score
+    W_i: Decimal = Decimal("0")   # Σ(U_q × active_frac_q)  — unit weighted score
 
 
 def _quarter_label(q_start: date) -> str:
@@ -114,14 +114,26 @@ def _compute_effort_data(
     """
     Pure-logic core: compute EffortData per soldier given pre-aggregated quarter scores.
 
-    effort_score = A_i / W_i  (historical weighted-average share; 0 for new soldiers)
-    C_over_D     = 1 / max(W_i, 1)  — used by the bridge to compute effort_per_milli.
+    effort_score = A_i / W_i  where:
+        A_i = Σ(s_q × active_frac_q)   — personal weighted score
+        W_i = Σ(U_q × active_frac_q)   — unit total weighted score
+
+    This is scale-invariant across quarters: a quarter with 10× more total work
+    contributes proportionally more to the denominator, so it can never permanently
+    inflate a soldier's effort relative to a later quarter.  Equal effort for all
+    soldiers requires equal share (s_q/U_q) in every quarter — and this formula
+    converges toward that: as future quarters accumulate work, a soldier's overloaded
+    historical share dilutes naturally without needing retroactive reassignment.
+
+    C_over_D = 1 / (max(W_i, 1) × 1000)
+        Used by the bridge as: effort_per_milli = int(C_over_D × EFFORT_SCALE)
+        (no unit_score_milli division — the score units cancel differently now).
     """
     result: dict[uuid.UUID, EffortData] = {}
 
     for soldier in soldiers:
-        A_i = Decimal("0")  # numerator: sum(share_q × active_frac_q)
-        W_i = Decimal("0")  # denominator: sum(active_frac_q)
+        A_i = Decimal("0")  # Σ(s_q × active_frac_q)
+        W_i = Decimal("0")  # Σ(U_q × active_frac_q)
 
         for q_start, q_end in quarters:
             q_days = (q_end - q_start).days + 1
@@ -135,13 +147,12 @@ def _compute_effort_data(
             unit_score = quarter_unit_scores.get(q_start, Decimal("0"))
             if unit_score > 0:
                 s_score = quarter_soldier_scores.get(q_start, {}).get(soldier.id, Decimal("0"))
-                share_q = s_score / unit_score
-                A_i += share_q * active_frac
-                W_i += active_frac
+                A_i += s_score * active_frac
+                W_i += unit_score * active_frac
 
         effective_W = W_i if W_i > Decimal("0") else Decimal("1")
         effort_score = A_i / W_i if W_i > Decimal("0") else Decimal("0")
-        C_over_D = Decimal("1") / effective_W
+        C_over_D = Decimal("1") / (effective_W * 1000)
         effort_offset = int(effort_score * EFFORT_SCALE)
 
         result[soldier.id] = EffortData(
@@ -395,8 +406,8 @@ def compute_effort_breakdown(
 
     # Compute per-quarter detail for this soldier
     quarter_details: list[EffortQuarterDetail] = []
-    A_i = Decimal("0")
-    W_i = Decimal("0")
+    A_i = Decimal("0")  # Σ(s_q × active_frac_q)
+    W_i = Decimal("0")  # Σ(U_q × active_frac_q)
 
     for q_start_d, q_end_d in quarters:
         q_days = (q_end_d - q_start_d).days + 1
@@ -413,8 +424,8 @@ def compute_effort_breakdown(
         weighted_share = share * active_frac
 
         if unit_score > 0:
-            A_i += weighted_share
-            W_i += active_frac
+            A_i += s_score * active_frac
+            W_i += unit_score * active_frac
 
         true_q_end = quarter_end(q_start_d)
         quarter_details.append(EffortQuarterDetail(
