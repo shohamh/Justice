@@ -7,6 +7,7 @@ import App from "./App";
 import "./i18n";
 import "./styles/globals.css";
 import "katex/dist/katex.min.css";
+import { AlgorithmSeenProvider } from "./contexts/AlgorithmSeenContext";
 
 const queryClient = new QueryClient();
 
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <AlgorithmSeenProvider>
+          <App />
+        </AlgorithmSeenProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,
