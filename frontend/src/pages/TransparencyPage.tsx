@@ -553,7 +553,7 @@ export default function TransparencyPage() {
     },
     {
       id: "effort_score", header: "עומס רבעוני",
-      headerTooltip: "ממוצע משוקלל של חלק התורנויות של החייל מסך תורנויות היחידה לרבעון, מאז תאריך האיפוס. לחץ לפירוט רבעוני.",
+      headerTooltip: "חלקך מסך ניקוד היחידה: Σ(ניקודך × נוכחות) ÷ Σ(ניקוד היחידה × נוכחות). ערך הוגן = 1/N. עולה ומתכנס ככל שמצטברים רבעונות. לחץ לפירוט רבעוני.",
       cell: (r) => {
         const n = r.effort_score;
         const label = isNaN(n) || n === undefined ? "—" : (n * 100).toFixed(2) + "%";

@@ -62,7 +62,8 @@ def _sid():
 def test_new_soldier_no_history():
     """Soldier present but with no scored duties → effort_score=0.
 
-    effort_score = A_i / W_i = 0 / 1 = 0. C_over_D = 1/max(W_i,1) = 1.0.
+    New formula: A_i = 0 (no personal score), W_i = U_q × active_frac = 100 × 1.0 = 100.
+    C_over_D = 1 / (W_i × 1000) = 1/100000 = 1e-5.
     """
     sid = _sid()
     soldier = _MockSoldier(id=sid, enrolled_at=date(2026, 4, 1))
@@ -74,16 +75,16 @@ def test_new_soldier_no_history():
     )
     data = result[sid]
     assert data.effort_score == Decimal("0")
-    # W_i = 1.0 (enrolled on quarter start → active_frac=1.0 for Q2 2026)
-    # C_over_D = 1 / max(W_i, 1) = 1.0
-    assert abs(data.C_over_D - Decimal("1.0")) < Decimal("0.001")
+    # W_i = 100 × 1.0 = 100  (unit_score × active_frac)
+    # C_over_D = 1 / (100 × 1000) = 1e-5
+    assert abs(data.C_over_D - Decimal("0.00001")) < Decimal("0.000001")
 
 
 def test_veteran_perfect_average():
-    """Veteran with exactly 1/N share each quarter → effort_score = A/D."""
+    """Veteran with exactly 1/N share each quarter → effort_score = 1/N."""
     sid = _sid()
     soldier = _MockSoldier(id=sid, enrolled_at=date(2025, 1, 1))
-    # 2 full quarters, each with unit_score=100, soldier got 10 (1/10)
+    # 2 full quarters, each with unit_score=100, soldier got 10 (1/10 = 1/N for N=10)
     quarters = [
         (date(2025, 1, 1), date(2025, 3, 31)),
         (date(2025, 4, 1), date(2025, 6, 30)),
@@ -103,9 +104,8 @@ def test_veteran_perfect_average():
         quarter_soldier_scores=soldier_scores,
     )
     data = result[sid]
-    # share_q1 = share_q2 = 0.1, active_frac = 1.0 both quarters
-    # A_i = 0.1 + 0.1 = 0.2, W_i = 2.0
-    # effort_score = A_i / W_i = 0.2 / 2 = 0.1
+    # A_i = 10×1.0 + 10×1.0 = 20, W_i = 100×1.0 + 100×1.0 = 200
+    # effort_score = 20/200 = 0.1
     assert abs(data.effort_score - Decimal("0.1")) < Decimal("0.0001")
 
 
@@ -132,11 +132,11 @@ def test_soldier_not_yet_enrolled():
         quarter_soldier_scores=soldier_scores,
     )
     data = result[sid]
-    # Q1: soldier not enrolled → skip. Q2: active_frac=1.0, share=0.1
-    # A_i=0.1, W_i=1.0
-    # effort_score = A_i / W_i = 0.1 / 1 = 0.1
+    # Q1: soldier not enrolled → skip. Q2: active_frac=1.0, s=10, U=100
+    # A_i = 10×1.0 = 10, W_i = 100×1.0 = 100
+    # effort_score = 10/100 = 0.1, C_over_D = 1/(100×1000) = 1e-5
     assert abs(data.effort_score - Decimal("0.1")) < Decimal("0.0001")
-    assert abs(data.C_over_D - Decimal("1.0")) < Decimal("0.0001")
+    assert abs(data.C_over_D - Decimal("0.00001")) < Decimal("0.000001")
 
 
 def test_effort_offset_integer():
@@ -178,7 +178,7 @@ def test_soldier_input_has_effort_fields():
 
 
 def test_inject_effort_scores():
-    """After injection, SoldierInput has nonzero effort_per_milli when unit_score > 0."""
+    """After injection, effort_per_milli = int(C_over_D × EFFORT_SCALE) when unit_score > 0."""
     sid = uuid.uuid4()
     s = SoldierInput(
         id=sid, enrolled_at=date(2026, 1, 1),
@@ -190,8 +190,7 @@ def test_inject_effort_scores():
         start_date=date(2026, 7, 1), end_date=date(2026, 7, 7),
         score_per_day=Decimal("0.5"),
     )
-    # end_date is exclusive, so duration = 6 days: unit_score_milli = int(0.5 * 6 * 1000) = 3000
-    # effort data: effort_score=0.1, C_over_D=0.5
+    # C_over_D = 1/(W_global × 1000). The bridge multiplies it by EFFORT_SCALE directly.
     effort_map = {
         sid: EffortData(
             effort_score=Decimal("0.1"), C_over_D=Decimal("0.5"),
@@ -200,23 +199,17 @@ def test_inject_effort_scores():
     }
     inject_effort_scores([s], [block], effort_map)
     assert s.effort_offset == int(Decimal("0.1") * EFFORT_SCALE)
-    # effort_per_milli = int(0.5 / 3000 × EFFORT_SCALE) = int(166666) = 166666
-    expected = int(Decimal("0.5") / 3000 * EFFORT_SCALE)
+    # effort_per_milli = int(C_over_D × EFFORT_SCALE) — no unit_score_milli division
+    expected = int(Decimal("0.5") * EFFORT_SCALE)
     assert s.effort_per_milli == expected
 
 
-def test_inject_effort_scores_uses_score_days_not_calendar_days_touched():
-    """A block touching 8 calendar days but spanning exactly 7*24h should contribute
-    unit_score_milli as if it were 7 days, not 8."""
+def test_inject_effort_scores_zero_when_no_duties():
+    """effort_per_milli stays 0 when the planning window has no duties."""
     sid = uuid.uuid4()
     s = SoldierInput(
         id=sid, enrolled_at=date(2026, 1, 1),
         cumulative_score=Decimal("0"), active_days=90,
-    )
-    block = DutyBlock(
-        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
-        start_date=date(2026, 7, 1), end_date=date(2026, 7, 9),  # 8 calendar days touched
-        score_per_day=Decimal("0.5"), start_time="14:00", end_time="14:00",  # exactly 7*24h
     )
     effort_map = {
         sid: EffortData(
@@ -224,10 +217,8 @@ def test_inject_effort_scores_uses_score_days_not_calendar_days_touched():
             effort_offset=int(Decimal("0.1") * EFFORT_SCALE),
         )
     }
-    inject_effort_scores([s], [block], effort_map)
-    # unit_score_milli = int(0.5 * 7 * 1000) = 3500 (score_days=7), not int(0.5*8*1000)=4000
-    expected = int(Decimal("0.5") / 3500 * EFFORT_SCALE)
-    assert s.effort_per_milli == expected
+    inject_effort_scores([s], [], effort_map)  # empty duty_blocks
+    assert s.effort_per_milli == 0
 
 
 def test_transparency_rows_has_effort_score_key():
@@ -518,11 +509,11 @@ def test_pending_duties_dilute_thin_quarter_share(admin_session):
         planning_start=planning_start, planning_end=planning_end, reset_date=reset_date,
         pending_duties=pending,
     )
-    # 61 of the 93 pending duties fall in Q3 (Aug 1..Sep 30), 32 spill into Q4
-    # (Oct 1..Nov 1), creating a second quarter in the denominator.
-    # Q3: 7 published + 61 pending = 68; Q4: 32 pending. W_i = 2 quarters.
-    # effort_score ≈ (7/68) / 2 = 7/136 ≈ 0.0515 -- a fraction of the bugged 7/7.
-    assert Decimal("0.051") < withp[victim.id].effort_score < Decimal("0.052")
+    # 61 of the 93 pending duties fall in Q3 (Aug 1..Sep 30), 32 spill into Q4.
+    # Q3: 7 published + 61 pending = 68; Q4: 32 pending.
+    # New formula: A_i = 7×1.0 = 7, W_i = 68×1.0 + 32×1.0 = 100
+    # effort_score = 7/100 = 0.07 — a fraction of the bugged 7/7.
+    assert Decimal("0.069") < withp[victim.id].effort_score < Decimal("0.071")
     assert withp[control.id].effort_score == Decimal("0")
 
 
