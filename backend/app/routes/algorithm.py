@@ -5,8 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, is_duty_manager
@@ -625,24 +625,6 @@ def list_jobs(
     )
 
 
-@router.post("/jobs/{job_id}/seen", status_code=204)
-def mark_job_seen(
-    job_id: uuid.UUID,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> None:
-    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    job = session.get(AlgorithmJob, job_id)
-    if job is None or job.created_by != user.id:
-        raise HTTPException(status_code=404, detail="Job not found")
-    session.execute(
-        insert(AlgorithmJobSeen)
-        .values(job_id=job_id, user_id=user.id)
-        .on_conflict_do_nothing()
-    )
-    session.commit()
-
-
 @router.post("/jobs/mark-all-seen", status_code=204)
 def mark_all_jobs_seen(
     session: Session = Depends(get_session),
@@ -661,11 +643,29 @@ def mark_all_jobs_seen(
     ).scalars().all()
     if job_ids:
         session.execute(
-            insert(AlgorithmJobSeen)
+            pg_insert(AlgorithmJobSeen)
             .values([{"job_id": jid, "user_id": user.id} for jid in job_ids])
             .on_conflict_do_nothing()
         )
         session.commit()
+
+
+@router.post("/jobs/{job_id}/seen", status_code=204)
+def mark_job_seen(
+    job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    job = session.get(AlgorithmJob, job_id)
+    if job is None or job.created_by != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    session.execute(
+        pg_insert(AlgorithmJobSeen)
+        .values(job_id=job_id, user_id=user.id)
+        .on_conflict_do_nothing()
+    )
+    session.commit()
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
