@@ -59,6 +59,8 @@ export default function DismissalModal({
   // ── Regular mode state ──────────────────────────────────────────────────
   const [fromIdx, setFromIdx] = useState<number | null>(0);
   const [toIdx, setToIdx] = useState<number | null>(allDates.length - 1);
+  // "to" = next click narrows/sets the end; "from" = next click starts a new anchor
+  const [selectionPhase, setSelectionPhase] = useState<"from" | "to">("to");
   const [selectedReserveId, setSelectedReserveId] = useState(primary.reserve_assignment_id ?? "");
 
   // ── Shared ───────────────────────────────────────────────────────────────
@@ -96,20 +98,20 @@ export default function DismissalModal({
   const toDate = toIdx !== null ? allDates[toIdx] : null;
 
   function handleDateClick(i: number) {
-    if (fromIdx === null || toIdx === null) {
+    if (selectionPhase === "from") {
+      // First click of a new selection: anchor FROM here, collapse to single day
       setFromIdx(i);
       setToIdx(i);
-    } else if (i < fromIdx) {
-      setFromIdx(i);
-    } else if (i > toIdx) {
-      setToIdx(i);
-    } else if (i === fromIdx && i === toIdx) {
-      return;
+      setSelectionPhase("to");
     } else {
-      const dFrom = Math.abs(i - fromIdx);
-      const dTo = Math.abs(i - toIdx);
-      if (dFrom <= dTo) setFromIdx(i);
-      else setToIdx(i);
+      // Second click: set TO (or swap if clicked before FROM)
+      if (fromIdx === null || i >= fromIdx) {
+        setToIdx(i);
+      } else {
+        setToIdx(fromIdx);
+        setFromIdx(i);
+      }
+      setSelectionPhase("from");
     }
   }
 
@@ -237,6 +239,7 @@ export default function DismissalModal({
                   const isEnd = toIdx === i;
                   const isSelected = fromIdx !== null && toIdx !== null && i >= fromIdx && i <= toIdx;
                   const isRange = isSelected && !isStart && !isEnd;
+                  const isActiveEndpoint = (selectionPhase === "from" && isStart) || (selectionPhase === "to" && isEnd);
                   return (
                     <button
                       key={d}
@@ -244,7 +247,9 @@ export default function DismissalModal({
                       onClick={() => handleDateClick(i)}
                       className={`flex flex-col items-center rounded-lg px-2.5 py-1.5 text-xs min-w-[48px] transition-colors
                         ${isStart || isEnd
-                          ? "bg-amber-500 text-white shadow-md font-bold"
+                          ? isActiveEndpoint
+                            ? "bg-amber-400 text-white shadow-md font-bold ring-2 ring-amber-600"
+                            : "bg-amber-500 text-white shadow-md font-bold"
                           : isRange
                             ? "bg-amber-100 text-amber-900"
                             : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -258,14 +263,17 @@ export default function DismissalModal({
               </div>
               <div className="flex justify-center gap-6 mt-3 text-sm text-gray-600 dark:text-gray-300">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
-                  {t("dismiss_modal.from")}: <span className="font-medium text-gray-800" dir="ltr">{fromDate}</span>
+                  <span className={`w-2.5 h-2.5 rounded-sm inline-block ${selectionPhase === "from" ? "bg-amber-300 ring-2 ring-amber-500" : "bg-amber-500"}`} />
+                  {t("dismiss_modal.from")}: <span className="font-medium text-gray-800 dark:text-gray-100" dir="ltr">{fromDate}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
-                  {t("dismiss_modal.to")}: <span className="font-medium text-gray-800" dir="ltr">{toDate}</span>
+                  <span className={`w-2.5 h-2.5 rounded-sm inline-block ${selectionPhase === "to" ? "bg-amber-300 ring-2 ring-amber-500" : "bg-amber-500"}`} />
+                  {t("dismiss_modal.to")}: <span className="font-medium text-gray-800 dark:text-gray-100" dir="ltr">{toDate}</span>
                 </span>
               </div>
+              <p className="text-center text-xs text-amber-600 dark:text-amber-400 mt-1">
+                {selectionPhase === "from" ? "בחר תאריך התחלה" : "בחר תאריך סיום"}
+              </p>
             </div>
 
             <div className="mb-4">

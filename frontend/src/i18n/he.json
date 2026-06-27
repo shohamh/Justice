@@ -548,7 +548,8 @@
     "search_shifts": "חיפוש משמרות...",
     "filter_duty_type": "סוג תורנות",
     "algorithm_running_badge": "ריצות פעילות",
-    "algorithm_done_badge": "הושלמו, ממתינות לפרסום"
+    "algorithm_done_badge": "הושלמו, ממתינות לפרסום",
+    "eligible_units": "תת יחידה אחראית"
   },
   "table": {
     "filter_placeholder": "סנן..."

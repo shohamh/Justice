@@ -18,6 +18,17 @@ export interface ColDef<T> {
   filterValue?: (row: T) => string;
   /** When true, shows an Excel-style dropdown with checkboxes for unique values in this column. */
   columnFilter?: boolean;
+  /**
+   * Custom column filter: replaces the standard checkbox dropdown with a
+   * fully controlled component. `isActive` controls the highlight indicator;
+   * `dropdown` is the content rendered inside the popover; `fn` is used to
+   * filter rows instead of the built-in exact-match logic.
+   */
+  customColumnFilter?: {
+    isActive: boolean;
+    dropdown: React.ReactNode;
+    fn: (row: T) => boolean;
+  };
   /** Minimum column width in pixels. */
   minWidth?: number;
   /** Plain value for Excel export. Falls back to filterValue, then sortValue, then "". */
@@ -150,6 +161,48 @@ function ColumnFilterDropdown<T>({
   );
 }
 
+// ─── Custom column filter dropdown ───────────────────────────────────────────
+
+function CustomColumnFilterDropdown({ isActive, children }: { isActive: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        title="סנן עמודה"
+        onClick={() => setOpen((o) => !o)}
+        className={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
+          isActive
+            ? "border-indigo-500 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900"
+            : "border-gray-300 text-gray-400 hover:text-gray-600 dark:border-gray-500 dark:text-gray-500 dark:hover:text-gray-300"
+        }`}
+      >
+        {isActive ? "▼●" : "▼"}
+      </button>
+      {open && (
+        <div
+          className="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl"
+          style={{ right: 0, minWidth: "14rem" }}
+          dir="rtl"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main DataTable ───────────────────────────────────────────────────────────
 
 export function DataTable<T>({
@@ -181,6 +234,10 @@ export function DataTable<T>({
   const filteredData = useMemo(() => {
     return data.filter((row) => {
       for (const col of columnsRef.current) {
+        if (col.customColumnFilter) {
+          if (!col.customColumnFilter.fn(row)) return false;
+          continue;
+        }
         if (!col.columnFilter) continue;
         const selected = colFilters[col.id];
         if (!selected || selected.size === 0) continue;
@@ -293,6 +350,11 @@ export function DataTable<T>({
                             setColFilters((prev) => ({ ...prev, [colDef.id]: next }))
                           }
                         />
+                      )}
+                      {colDef?.customColumnFilter && (
+                        <CustomColumnFilterDropdown isActive={colDef.customColumnFilter.isActive}>
+                          {colDef.customColumnFilter.dropdown}
+                        </CustomColumnFilterDropdown>
                       )}
                     </span>
                     {header.column.getIsSorted() === "asc" && <span aria-hidden> ▲</span>}

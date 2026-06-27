@@ -7,6 +7,8 @@ import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
+import { fetchFullTree, NodeDTO } from "../api/hierarchy";
+import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
 import { DataTable, type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
@@ -350,6 +352,9 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [shifts, setShifts] = useState<DutyShift[]>([]);
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
   const [locations, setLocations] = useState<DutyLocation[]>([]);
+  const [nodeMap, setNodeMap] = useState<Map<string, string>>(new Map());
+  const [nodeTree, setNodeTree] = useState<NodeDTO[]>([]);
+  const [nodeFilterIds, setNodeFilterIds] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -372,6 +377,21 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   }, [dateFrom, dateTo]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    void fetchFullTree().then((roots) => {
+      const map = new Map<string, string>();
+      function walk(nodes: NodeDTO[]) {
+        for (const n of nodes) {
+          map.set(n.id, n.name);
+          if (n.children) walk(n.children);
+        }
+      }
+      walk(roots);
+      setNodeMap(map);
+      setNodeTree(roots);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     void listJobs(50, 0)
@@ -418,6 +438,10 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
 
   const dtName = useCallback((id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8), [dutyTypes]);
   const locName = useCallback((id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8), [locations]);
+  const eligibleUnitsLabel = useCallback((s: DutyShift) => {
+    if (!s.eligible_node_ids?.length) return "כולם";
+    return s.eligible_node_ids.map(id => nodeMap.get(id) ?? id.slice(0, 8)).join(", ");
+  }, [nodeMap]);
 
   const shiftCols: ColDef<DutyShift>[] = useMemo(() => [
     {
@@ -451,6 +475,28 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       cell: (s) => locName(s.duty_location_id),
       sortValue: (s) => locName(s.duty_location_id),
       filterValue: (s) => locName(s.duty_location_id),
+    },
+    {
+      id: "eligible_units",
+      header: t("shifts.eligible_units"),
+      cell: (s) => eligibleUnitsLabel(s),
+      sortValue: (s) => eligibleUnitsLabel(s),
+      filterValue: (s) => eligibleUnitsLabel(s),
+      customColumnFilter: {
+        isActive: nodeFilterIds.length > 0,
+        dropdown: (
+          <HierarchyNodeFilter
+            nodes={nodeTree}
+            selected={nodeFilterIds}
+            onChange={setNodeFilterIds}
+          />
+        ),
+        fn: (s) =>
+          nodeFilterIds.length === 0 ||
+          (s.eligible_node_ids?.length
+            ? s.eligible_node_ids.some((id) => nodeFilterIds.includes(id))
+            : true),
+      },
     },
     {
       id: "start_date",
@@ -571,7 +617,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         </span>
       ),
     },
-  ], [selectedShiftIds, t, dtName, locName, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete]);
+  ], [selectedShiftIds, t, dtName, locName, eligibleUnitsLabel, nodeFilterIds, nodeTree, setNodeFilterIds, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete]);
 
   return (
     <>
