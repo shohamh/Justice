@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -52,7 +52,10 @@ export default function UnifiedNav() {
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
   const { seenIds, seedSeenIds } = useSeenJobs();
   const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
-  const algorithmCounts = computeRunBadgeCounts(algorithmJobs, seenIds);
+  const algorithmCounts = useMemo(
+    () => computeRunBadgeCounts(algorithmJobs, seenIds),
+    [algorithmJobs, seenIds]
+  );
   const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
   const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
