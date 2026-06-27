@@ -52,26 +52,51 @@ if (-not (Test-Path "$root\frontend\node_modules\.bin\vite")) {
     Pop-Location
 }
 
-# ── Helper: kill whatever process is listening on a TCP port ─────────────────
-function Stop-PortProcess([int]$Port) {
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-    if ($conn) {
-        $conn | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object {
-            Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
-        }
-        return $true
-    }
-    return $false
-}
-
 # ── Stop Docker app containers so their ports are free ────────────────────────
 Write-Host "[dev] Stopping Docker app containers (keeping DB)..." -ForegroundColor Yellow
 try { docker compose stop backend frontend telegram-bot *>$null } catch {}
 
-# ── Kill any native processes still holding dev ports ────────────────────────
-Write-Host "[dev] Freeing ports 8000 and 5173..." -ForegroundColor Yellow
-if (Stop-PortProcess 8000) { Write-Host "[dev]   killed process on :8000" -ForegroundColor DarkYellow }
-if (Stop-PortProcess 5173) { Write-Host "[dev]   killed process on :5173" -ForegroundColor DarkYellow }
+# ── Kill all stale dev-server processes ───────────────────────────────────────
+Write-Host "[dev] Killing stale backend/frontend processes..." -ForegroundColor Yellow
+
+# Kill by port first — most reliable, catches child processes that WMI misses
+foreach ($port in @(8000, 5173)) {
+    $portPids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique
+    foreach ($pid in $portPids) {
+        Write-Host "[dev]   killing pid=$pid on :$port" -ForegroundColor DarkYellow
+        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Kill any python process running run_dev_server.py or uvicorn for this project
+Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+    Where-Object { $_.CommandLine -match 'run_dev_server|uvicorn|run_dev_bot' } |
+    ForEach-Object {
+        Write-Host "[dev]   killing python pid=$($_.ProcessId) ($($_.CommandLine.Substring(0, [Math]::Min(60,$_.CommandLine.Length)))...)" -ForegroundColor DarkYellow
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+# Kill any node/vite process
+Get-WmiObject Win32_Process -Filter "Name='node.exe'" |
+    Where-Object { $_.CommandLine -match 'vite|concurrently' } |
+    ForEach-Object {
+        Write-Host "[dev]   killing node pid=$($_.ProcessId)" -ForegroundColor DarkYellow
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+# Wait until both ports are actually free (up to 10s) instead of a flat sleep
+$deadline = (Get-Date).AddSeconds(10)
+foreach ($port in @(8000, 5173)) {
+    while ((Get-Date) -lt $deadline) {
+        $still = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+        if (-not $still) { break }
+        Write-Host "[dev]   waiting for :$port to be released..." -ForegroundColor DarkYellow
+        Start-Sleep -Milliseconds 300
+    }
+    $still = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+    if ($still) { Write-Warning "[dev] Port $port still in use after 10s — proceeding anyway" }
+}
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
 Write-Host "[dev] Starting DB container..." -ForegroundColor Cyan
@@ -140,7 +165,7 @@ if (-not $NoBot) {
 Write-Host ""
 Write-Host "Dev stack starting..." -ForegroundColor Green
 Write-Host "  Frontend : http://localhost:5173" -ForegroundColor White
-Write-Host "  Backend  : http://localhost:8000/docs" -ForegroundColor White
+Write-Host "  Backend  : http://localhost:8000/api" -ForegroundColor White
 Write-Host "  Press Ctrl+C to stop all services." -ForegroundColor DarkGray
 Write-Host ""
 
