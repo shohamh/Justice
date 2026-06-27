@@ -302,70 +302,6 @@ wheels = [
 ]
 
 [[package]]
-name = "cod2-backend"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "argon2-cffi" },
-    { name = "fastapi" },
-    { name = "holidays" },
-    { name = "openpyxl" },
-    { name = "ortools" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-jose", extra = ["cryptography"] },
-    { name = "python-multipart" },
-    { name = "python-telegram-bot" },
-    { name = "slowapi" },
-    { name = "sqlalchemy" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "hypothesis" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "testcontainers" },
-    { name = "types-python-jose" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.13" },
-    { name = "argon2-cffi", specifier = ">=23.1" },
-    { name = "fastapi", specifier = ">=0.110" },
-    { name = "holidays", specifier = ">=0.46" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.99" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
-    { name = "openpyxl", specifier = ">=3.1" },
-    { name = "ortools", specifier = ">=9.10" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "pydantic-settings", specifier = ">=2.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
-    { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3" },
-    { name = "python-multipart", specifier = ">=0.0.9" },
-    { name = "python-telegram-bot", specifier = ">=21.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3" },
-    { name = "slowapi", specifier = ">=0.1.9" },
-    { name = "sqlalchemy", specifier = ">=2.0.27" },
-    { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "types-python-jose", marker = "extra == 'dev'", specifier = ">=3.3" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -674,6 +610,84 @@ sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
 ]
+
+[[package]]
+name = "jinja2"
+version = "3.1.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "justice-backend"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "holidays" },
+    { name = "jinja2" },
+    { name = "openpyxl" },
+    { name = "ortools" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-jose", extra = ["cryptography"] },
+    { name = "python-multipart" },
+    { name = "python-telegram-bot" },
+    { name = "slowapi" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "testcontainers" },
+    { name = "types-python-jose" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13" },
+    { name = "argon2-cffi", specifier = ">=23.1" },
+    { name = "fastapi", specifier = ">=0.110" },
+    { name = "holidays", specifier = ">=0.46" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.99" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.9" },
+    { name = "openpyxl", specifier = ">=3.1" },
+    { name = "ortools", specifier = ">=9.10" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "pydantic-settings", specifier = ">=2.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
+    { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
+    { name = "python-telegram-bot", specifier = ">=21.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3" },
+    { name = "slowapi", specifier = ">=0.1.9" },
+    { name = "sqlalchemy", specifier = ">=2.0.27" },
+    { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "types-python-jose", marker = "extra == 'dev'", specifier = ">=3.3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "librt"

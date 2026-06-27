@@ -12,6 +12,10 @@
 - **`ShiftFormModal` scroll on mobile** — modal container now has `max-h-[90vh] overflow-y-auto` so tall forms are scrollable on small screens.
 - **`DismissalModal` date range picker** — replaced broken "snap to nearest endpoint" heuristic with a two-phase model (click FROM then click TO). The old logic made it geometrically impossible to select a range ending near the start of a long shift. Phase starts at "to" so the first click on a pre-filled full-range naturally narrows the end date.
 
+### Features
+- **Post-solve swap pass** — after CP-SAT solving, a greedy swap pass transfers individual duties between over- and under-loaded soldiers to reduce effort imbalance without re-solving. Runs on every decomposition mode (interleaved, effort-rounds, calendar, monolithic).
+- **Duty-count progress reporting** — progress bar now advances proportionally to duties solved rather than batches completed, giving smoother and more accurate progress indication. A distinct "מאזן עומסים…" label appears during the swap pass (at 94 %).
+
 ### Chores
 - **Effort formula: cumulative weighted ratio** — changed effort formula to use cumulative weighted ratio for better convergence.
 - **`useDutyManagerPortfolio` hook** — shared hook extracted from `HierarchyTree` and `TeamHierarchyPage` (worktree merged; master uses `usePortfolioDialog` naming).

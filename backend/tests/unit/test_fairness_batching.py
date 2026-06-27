@@ -123,19 +123,14 @@ def _run(tiebreak_mode: str) -> list[int]:
     return sorted(counts.get(s.id, 0) for s in tied)
 
 
-@pytest.mark.xfail(
-    reason="L1 objective is tie-blind across batches with no tiebreak stage "
-    "enabled — this is the bug the tiebreak_mode settings fix",
-    strict=True,
-)
-def test_off_mode_leaves_identical_soldiers_unevenly_split():
-    """Today's default (tiebreak_mode='off') reproduces the gap: even though
-    the tied group's total (64) divides evenly by 4, the L1-only objective
-    settles on [15, 15, 17, 17] (spread=2) instead of [16, 16, 16, 16]."""
+def test_off_mode_achieves_even_split_via_swap_pass():
+    """The post-solve swap pass recovers the achievable [16, 16, 16, 16] split
+    even when tiebreak_mode='off', by greedily moving duties from over-loaded
+    soldiers to under-loaded ones after the CP-SAT solve completes."""
     tied_counts = _run("off")
     assert max(tied_counts) - min(tied_counts) == 0, (
         f"4 identical soldiers should split an evenly-divisible total "
-        f"perfectly evenly; got {tied_counts}"
+        f"perfectly evenly after the swap pass; got {tied_counts}"
     )
 
 

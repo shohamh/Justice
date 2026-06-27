@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from sqlalchemy import delete as sa_delete, func
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, Soldier, SwapRequest
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, ShiftTemplate, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
@@ -35,6 +35,8 @@ class ShiftOut(BaseModel):
     reserve_count_override: int | None = None
     calculated_reserve_count: int | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
+    generated_from_template_id: uuid.UUID | None = None
+    generated_from_template_name: str | None = None
 
 
 class CreateShiftRequest(BaseModel):
@@ -59,7 +61,7 @@ class UpdateShiftRequest(BaseModel):
     eligible_node_ids: list[uuid.UUID] | None = None
 
 
-def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
+def _out(s: svc.ShiftWithFill, session: Session | None = None, template_name: str | None = None) -> ShiftOut:
     calculated = None
     if session is not None:
         from app.services.algorithm_bridge import reserve_count_for_shift
@@ -82,6 +84,8 @@ def _out(s: svc.ShiftWithFill, session: Session | None = None) -> ShiftOut:
         calculated_reserve_count=calculated,
         status=s.status,
         eligible_node_ids=s.eligible_node_ids,
+        generated_from_template_id=s.generated_from_template_id,
+        generated_from_template_name=template_name,
     )
 
 
@@ -101,7 +105,13 @@ def list_shifts(
     user: Soldier = Depends(require_password_changed),
 ) -> list[ShiftOut]:
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
-    return [_out(s, session) for s in svc.list_shifts(session, date_from=date_from, date_to=date_to, duty_type_id=duty_type_id)]
+    shifts = svc.list_shifts(session, date_from=date_from, date_to=date_to, duty_type_id=duty_type_id)
+    template_ids = {s.generated_from_template_id for s in shifts if s.generated_from_template_id}
+    template_names: dict[uuid.UUID, str] = {}
+    if template_ids:
+        rows = session.execute(select(ShiftTemplate).where(ShiftTemplate.id.in_(template_ids))).scalars().all()
+        template_names = {t.id: t.name for t in rows}
+    return [_out(s, session, template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None) for s in shifts]
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)

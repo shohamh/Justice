@@ -104,7 +104,7 @@ def _solve_with_stall_guard(
         stop_event.set()
 
 
-ProgressCb = Callable[[int, int], None]  # (batches_done, batches_total)
+ProgressCb = Callable[[int, int], None]  # (duties_done, duties_total)
 
 
 def solve(
@@ -115,6 +115,7 @@ def solve(
     reserve_dist: dict[tuple[int, int], int] | None = None,
     cancel_event: threading.Event | None = None,
     progress_cb: ProgressCb | None = None,
+    swap_progress_cb: "Callable[[], None] | None" = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.
 
@@ -125,23 +126,35 @@ def solve(
     ``"none"`` or ``batching_enabled=False`` solves the whole problem in one model.
 
     ``progress_cb(done, total)`` is invoked once with (0, total) before solving
-    and after each batch completes, so callers can report real progress.
+    and after each batch completes. Both values are duty counts, so larger batches
+    cause proportionally more progress-bar movement.
+
+    ``swap_progress_cb()`` is called (no arguments) just before the post-solve
+    swap pass begins, so the UI can show a distinct "balancing loads…" label.
     """
     if settings.decomposition == "interleaved" and settings.batching_enabled:
-        return _interleaved_solve(soldiers, duties, existing, settings, reserve_dist,
-                                  cancel_event=cancel_event, progress_cb=progress_cb)
-    if settings.decomposition == "effort_rounds" and settings.batching_enabled:
-        return _effort_round_solve(soldiers, duties, existing, settings, reserve_dist,
+        result = _interleaved_solve(soldiers, duties, existing, settings, reserve_dist,
+                                    cancel_event=cancel_event, progress_cb=progress_cb)
+    elif settings.decomposition == "effort_rounds" and settings.batching_enabled:
+        result = _effort_round_solve(soldiers, duties, existing, settings, reserve_dist,
+                                     cancel_event=cancel_event, progress_cb=progress_cb)
+    elif settings.decomposition == "calendar" and settings.batching_enabled:
+        result = _decomposed_solve(soldiers, duties, existing, settings, reserve_dist,
                                    cancel_event=cancel_event, progress_cb=progress_cb)
-    if settings.decomposition == "calendar" and settings.batching_enabled:
-        return _decomposed_solve(soldiers, duties, existing, settings, reserve_dist,
-                                 cancel_event=cancel_event, progress_cb=progress_cb)
-    # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
-    if progress_cb:
-        progress_cb(0, 1)
-    result = _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
-    if progress_cb:
-        progress_cb(1, 1)
+    else:
+        # Unknown/``"none"`` decomposition value or batching disabled → whole solve in one model.
+        total_duties = len(duties)
+        if progress_cb:
+            progress_cb(0, total_duties)
+        result = _infeasibility_relaxation_chain(soldiers, duties, existing, settings, reserve_dist, cancel_event=cancel_event)
+        if progress_cb:
+            progress_cb(total_duties, total_duties)
+
+    if result.status in ("OPTIMAL", "FEASIBLE") and result.assignments:
+        if swap_progress_cb:
+            swap_progress_cb()
+        swapped = _swap_pass(soldiers, duties, existing, result.assignments, settings)
+        result = dataclasses.replace(result, assignments=swapped)
     return result
 
 
@@ -279,9 +292,10 @@ def _interleaved_solve(
         ):
             plan.append((comp_idx, soldier_idxs, batch))
 
-    total = len(plan)
+    total_duties = sum(len(batch) for _, _, batch in plan)
+    duties_done = 0
     if progress_cb:
-        progress_cb(0, total)
+        progress_cb(0, total_duties)
 
     batch_settings = dataclasses.replace(
         settings, time_limit_seconds=settings.batch_time_limit_seconds
@@ -379,8 +393,9 @@ def _interleaved_solve(
             s = soldier_by_id[a.soldier_id]
             s.effort_offset += s.effort_per_milli * _block_score(d)
 
+        duties_done += len(batch)
         if progress_cb:
-            progress_cb(done, total)
+            progress_cb(duties_done, total_duties)
 
     all_assignments.sort(key=lambda a: a.duty_id)
     assigned_ids = {a.duty_id for a in all_assignments}
@@ -452,9 +467,10 @@ def _decomposed_solve(
             if batch:
                 plan.append((comp_idx, soldier_idxs, batch))
 
-    total = len(plan)
+    total_duties = sum(len(batch) for _, _, batch in plan)
+    duties_done = 0
     if progress_cb:
-        progress_cb(0, total)
+        progress_cb(0, total_duties)
 
     batch_settings = dataclasses.replace(
         settings, time_limit_seconds=settings.batch_time_limit_seconds
@@ -541,8 +557,9 @@ def _decomposed_solve(
             s = soldier_by_id[a.soldier_id]
             s.effort_offset += s.effort_per_milli * _block_score(d)
 
+        duties_done += len(batch)
         if progress_cb:
-            progress_cb(done, total)
+            progress_cb(duties_done, total_duties)
 
     all_assignments.sort(key=lambda a: a.duty_id)
     assigned_ids = {a.duty_id for a in all_assignments}
@@ -956,9 +973,10 @@ def _effort_round_solve(
                     out[(local_di, local_si)] = v
         return out or None
 
-    n_components = len(components)
+    total_duties = sum(len(duty_idxs) for duty_idxs, _ in components)
+    duties_done = 0
     if progress_cb:
-        progress_cb(0, n_components)
+        progress_cb(0, total_duties)
 
     all_assignments: list[Assignment] = []
     relaxed: list[str] = []
@@ -995,8 +1013,9 @@ def _effort_round_solve(
                     wall_time_seconds=0.0,
                     shifts=[BatchShiftFill(shift_id=d.id, required_count=1, assigned_count=0) for d in component_duties],
                 ))
+            duties_done += len(duty_idxs)
             if progress_cb:
-                progress_cb(done, n_components)
+                progress_cb(duties_done, total_duties)
             continue
 
         t0 = time.monotonic()
@@ -1058,8 +1077,9 @@ def _effort_round_solve(
         ))
         relaxed.extend(component_relaxed)
 
+        duties_done += len(duty_idxs)
         if progress_cb:
-            progress_cb(done, n_components)
+            progress_cb(duties_done, total_duties)
 
     all_assignments.sort(key=lambda a: a.duty_id)
     assigned_ids = {a.duty_id for a in all_assignments}
@@ -1131,3 +1151,226 @@ def _infeasibility_relaxation_chain(
             },
             relaxed=relaxed,
         )
+
+
+def _swap_pass(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    assignments: list[Assignment],
+    settings: SolverSettings,
+) -> list[Assignment]:
+    """Greedy post-solve fairness improvement via first-improving duty transfers.
+
+    Iteratively moves one duty from a high-effort donor to a low-effort recipient
+    whenever the transfer passes all constraint checks and strictly reduces the
+    population L1 distance from mean effort.
+
+    Constraints checked:
+      1. Eligibility — same rules as the solver (exemptions, personal constraints,
+         hierarchy node scope).
+      2. No-overlap — recipient has no existing duty on any of the duty's calendar
+         dates.
+      3. Density caps — T (non-reserve per Wt-day window) and R (all per Wr-day
+         window). The transferred duty counts as 1 per overlapping window, matching
+         the solver's convention for new duties.
+
+    Optimisations:
+      - First-improving swap: stops on the first valid improving transfer found.
+      - Donors sorted by effort desc, recipients by effort asc.
+      - Duties sorted by block_score desc per donor (big moves first).
+      - Precomputed block_scores, duty date frozensets, eligibility sets.
+      - Incremental effort tracking — no full recompute per iteration.
+      - Capped at 3 × n_soldiers iterations.
+    """
+    import bisect as _bisect
+
+    if len(assignments) < 2 or len(soldiers) < 2:
+        return assignments
+
+    duty_by_id = {d.id: d for d in duties}
+    soldier_by_id = {s.id: s for s in soldiers}
+
+    # Precompute duty metadata
+    block_scores: dict = {d.id: _block_score(d) for d in duties}
+    duty_ddates: dict = {}
+    duty_start: dict = {}
+    duty_last: dict = {}
+    for d in duties:
+        dd = _duty_dates(d)
+        if dd:
+            duty_ddates[d.id] = frozenset(dd)
+            duty_start[d.id] = dd[0]
+            duty_last[d.id] = dd[-1]
+        else:
+            duty_ddates[d.id] = frozenset()
+            duty_start[d.id] = d.start_date
+            duty_last[d.id] = d.start_date
+
+    # Expand personal constraint dates per soldier
+    soldier_constraint_dates: dict = {}
+    for s in soldiers:
+        dates: set = set()
+        for cs, ce in s.approved_constraint_dates:
+            dt = cs
+            while dt <= ce:
+                dates.add(dt)
+                dt += timedelta(days=1)
+        soldier_constraint_dates[s.id] = dates
+
+    # eligible_for[duty_id] = set of soldier_ids that can take this duty
+    eligible_for: dict = {}
+    for d in duties:
+        ddates_frozen = duty_ddates[d.id]
+        elig: set = set()
+        for s in soldiers:
+            if d.duty_type_id in s.exempted_duty_type_ids:
+                continue
+            if ddates_frozen & soldier_constraint_dates[s.id]:
+                continue
+            if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
+                if s.hierarchy_node_id not in d.eligible_node_ids:
+                    continue
+            elig.add(s.id)
+        eligible_for[d.id] = elig
+
+    # Mutable assignment maps
+    assigned_to: dict = {a.duty_id: a.soldier_id for a in assignments}
+    soldier_duties: dict = {s.id: set() for s in soldiers}
+    for a in assignments:
+        soldier_duties[a.soldier_id].add(a.duty_id)
+
+    # Build per-soldier date sets from existing assignments + current solver assignments
+    def _build_date_sets(sid):
+        all_d: list = []
+        real_d: list = []
+        for ea in existing:
+            if ea.soldier_id != sid:
+                continue
+            dt = ea.start_date
+            while dt < ea.end_date:
+                all_d.append(dt)
+                if not ea.is_reserve:
+                    real_d.append(dt)
+                dt += timedelta(days=1)
+        for did in soldier_duties.get(sid, set()):
+            d = duty_by_id[did]
+            for dt in _duty_dates(d):
+                all_d.append(dt)
+                if not d.is_reserve:
+                    real_d.append(dt)
+        return sorted(set(all_d)), sorted(set(real_d))
+
+    all_sorted: dict = {}
+    real_sorted: dict = {}
+    all_set: dict = {}
+    for s in soldiers:
+        a, r = _build_date_sets(s.id)
+        all_sorted[s.id] = a
+        real_sorted[s.id] = r
+        all_set[s.id] = set(a)
+
+    def _count_in(lst, ws, we):
+        return _bisect.bisect_right(lst, we) - _bisect.bisect_left(lst, ws)
+
+    def _can_receive(sid, duty_id) -> bool:
+        ddates_frozen = duty_ddates[duty_id]
+        if not ddates_frozen:
+            return True
+        # Cheapest check first: calendar-day overlap
+        if ddates_frozen & all_set[sid]:
+            return False
+        duty = duty_by_id[duty_id]
+        d_start = duty_start[duty_id]
+        d_last = duty_last[duty_id]
+        # T cap: non-reserve duty-days per Wt-day window
+        if not duty.is_reserve:
+            ws = d_start - timedelta(days=settings.Wt - 1)
+            while ws <= d_last:
+                we = ws + timedelta(days=settings.Wt - 1)
+                if _count_in(real_sorted[sid], ws, we) + 1 > settings.T:
+                    return False
+                ws += timedelta(days=1)
+        # R cap: all duty-days per Wr-day window
+        ws = d_start - timedelta(days=settings.Wr - 1)
+        while ws <= d_last:
+            we = ws + timedelta(days=settings.Wr - 1)
+            if _count_in(all_sorted[sid], ws, we) + 1 > settings.R:
+                return False
+            ws += timedelta(days=1)
+        return True
+
+    # Initial effort state (incremental tracking)
+    efforts: dict = {}
+    total_effort = 0
+    for s in soldiers:
+        e = s.effort_offset
+        for did in soldier_duties.get(s.id, set()):
+            e += s.effort_per_milli * block_scores[did]
+        efforts[s.id] = e
+        total_effort += e
+    n_soldiers = len(soldiers)
+
+    # First-improving greedy loop
+    max_iters = 3 * n_soldiers
+    for _ in range(max_iters):
+        mean_e = total_effort / n_soldiers
+        donors = sorted(
+            ((sid, eff) for sid, eff in efforts.items() if eff > mean_e),
+            key=lambda x: -x[1],
+        )
+        if not donors:
+            break
+
+        found = False
+        for from_sid, eff_a in donors:
+            if found:
+                break
+            pm_a = soldier_by_id[from_sid].effort_per_milli
+            for duty_id in sorted(soldier_duties[from_sid], key=lambda d: -block_scores[d]):
+                if found:
+                    break
+                score = block_scores[duty_id]
+                eff_a_after = eff_a - pm_a * score
+                candidates = sorted(
+                    (sid for sid in eligible_for[duty_id]
+                     if sid != from_sid and efforts[sid] < eff_a),
+                    key=lambda sid: efforts[sid],
+                )
+                for to_sid in candidates:
+                    eff_b = efforts[to_sid]
+                    if not _can_receive(to_sid, duty_id):
+                        continue
+                    pm_b = soldier_by_id[to_sid].effort_per_milli
+                    eff_b_after = eff_b + pm_b * score
+                    delta = (
+                        abs(eff_a - mean_e) + abs(eff_b - mean_e)
+                        - abs(eff_a_after - mean_e) - abs(eff_b_after - mean_e)
+                    )
+                    if delta <= 0:
+                        continue
+                    # Apply transfer
+                    duty = duty_by_id[duty_id]
+                    ddates = _duty_dates(duty)
+                    assigned_to[duty_id] = to_sid
+                    soldier_duties[from_sid].discard(duty_id)
+                    soldier_duties[to_sid].add(duty_id)
+                    removed = set(ddates)
+                    all_set[from_sid] -= removed
+                    all_sorted[from_sid] = sorted(all_set[from_sid])
+                    if not duty.is_reserve:
+                        real_sorted[from_sid] = sorted(set(real_sorted[from_sid]) - removed)
+                    all_set[to_sid].update(ddates)
+                    for dt in ddates:
+                        _bisect.insort(all_sorted[to_sid], dt)
+                        if not duty.is_reserve:
+                            _bisect.insort(real_sorted[to_sid], dt)
+                    efforts[from_sid] = eff_a_after
+                    efforts[to_sid] = eff_b_after
+                    total_effort += (pm_b - pm_a) * score
+                    found = True
+                    break
+        if not found:
+            break
+
+    return [Assignment(duty_id=did, soldier_id=sid) for did, sid in assigned_to.items()]
