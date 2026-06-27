@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.db.models import DutyLocation, DutyShift, DutyType
+from sqlalchemy import update
+
+from app.db.models import AlgorithmJob, DutyLocation, DutyShift, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -104,3 +106,26 @@ def test_seen_is_per_user(client, admin_session):
     items2 = client.get("/api/algorithm/jobs", headers=auth_headers(dm2)).json()["items"]
     assert items2[0]["id"] == job_id2
     assert items2[0]["seen"] is False
+
+
+def test_mark_all_seen_persists_for_done_job(client, admin_session):
+    """mark-all-seen reflects in list_jobs for a done/failed job."""
+    dm, shift = _setup(admin_session, "seen_007")
+    job_id = _create_job(client, dm, shift)
+
+    # Force the job to "done" status so mark-all-seen includes it
+    admin_session.execute(
+        update(AlgorithmJob)
+        .where(AlgorithmJob.id == job_id)
+        .values(status="done")
+    )
+    admin_session.commit()
+
+    # Call mark-all-seen
+    resp = client.post("/api/algorithm/jobs/mark-all-seen", headers=auth_headers(dm))
+    assert resp.status_code == 204
+
+    # list_jobs should now show seen=True for the done job
+    items = client.get("/api/algorithm/jobs", headers=auth_headers(dm)).json()["items"]
+    assert len(items) == 1
+    assert items[0]["seen"] is True
