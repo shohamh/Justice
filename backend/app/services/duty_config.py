@@ -35,6 +35,7 @@ def create_duty_type(
     end_time: time | None = None,
     instructions: str | None = None,
     is_external: bool = False,
+    eligible_node_ids: list[uuid.UUID] | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> DutyType:
     if score_per_day < 0:
@@ -53,6 +54,7 @@ def create_duty_type(
         end_time=end_time,
         instructions=instructions,
         is_external=is_external,
+        eligible_node_ids=eligible_node_ids,
     )
     session.add(dt)
     session.flush()
@@ -90,6 +92,7 @@ def update_duty_type(
     end_time: time | None = None,
     instructions: str | None = None,
     is_external: bool | None = None,
+    eligible_node_ids: object = ...,
 ) -> DutyType:
     before = {
         "name": duty_type.name,
@@ -128,6 +131,8 @@ def update_duty_type(
         duty_type.instructions = instructions
     if is_external is not None:
         duty_type.is_external = is_external
+    if eligible_node_ids is not ...:
+        duty_type.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
     write_audit(
         session,
         actor_id=actor_id,

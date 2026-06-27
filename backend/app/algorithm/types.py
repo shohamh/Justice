@@ -12,6 +12,21 @@ from typing import Any, Literal
 # can share it without the solver importing any DB code.
 EFFORT_SCALE = 1_000_000_000  # 10^9
 
+
+def node_in_scope(scope_node_ids: list[uuid.UUID] | None, soldier_path_ids: list[uuid.UUID]) -> bool:
+    """True if a soldier is within an eligibility scope.
+
+    `scope_node_ids` is None for "unrestricted" (everyone matches). Otherwise a
+    soldier matches if any scoped node is itself or an ancestor of it —
+    `soldier_path_ids` is the materialized root-to-self path (see
+    HierarchyNode.path_ids), so this is a plain set-intersection subtree check.
+    A soldier with no hierarchy node (empty path_ids) never matches a set scope.
+    """
+    if scope_node_ids is None:
+        return True
+    return any(n in soldier_path_ids for n in scope_node_ids)
+
+
 @dataclass
 class SoldierInput:
     """A soldier eligible for duty assignment."""
@@ -20,6 +35,7 @@ class SoldierInput:
     cumulative_score: Decimal
     active_days: int
     hierarchy_node_id: uuid.UUID | None = None
+    path_ids: list[uuid.UUID] = field(default_factory=list)
     approved_constraint_dates: list[tuple[date, date]] = field(default_factory=list)
     exempted_duty_type_ids: set[uuid.UUID] = field(default_factory=set)
     # Effort-based fairness fields (set by algorithm_bridge after loading duty blocks)

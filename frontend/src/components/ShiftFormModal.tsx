@@ -41,6 +41,13 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [newLocName, setNewLocName] = useState("");
   const [locSaving, setLocSaving] = useState(false);
 
+  useEffect(() => {
+    if (!existing) {
+      setScopeNodeIds(dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dtId]);
+
   async function handleAddLocation(e: React.FormEvent) {
     e.preventDefault();
     if (!newLocName.trim()) return;

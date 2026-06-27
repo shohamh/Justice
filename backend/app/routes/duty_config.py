@@ -44,6 +44,7 @@ class DutyTypeOut(BaseModel):
     end_time: time | None = None
     instructions: str | None = None
     is_external: bool = False
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateDutyTypeRequest(BaseModel):
@@ -58,6 +59,7 @@ class CreateDutyTypeRequest(BaseModel):
     end_time: time | None = None
     instructions: str | None = Field(default=None)
     is_external: bool  # required — no default
+    eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
     @classmethod
@@ -81,6 +83,7 @@ class UpdateDutyTypeRequest(BaseModel):
     end_time: time | None = None
     instructions: str | None = Field(default=None)
     is_external: bool | None = None
+    eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
     @classmethod
@@ -106,6 +109,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         end_time=d.end_time,
         instructions=d.instructions,
         is_external=d.is_external,
+        eligible_node_ids=d.eligible_node_ids,
     )
 
 
@@ -136,6 +140,7 @@ def create_duty_type(
             end_time=body.end_time,
             instructions=body.instructions,
             is_external=body.is_external,
+            eligible_node_ids=body.eligible_node_ids,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
@@ -156,6 +161,9 @@ def update_duty_type(
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     try:
+        extra: dict = {}
+        if "eligible_node_ids" in body.model_fields_set:
+            extra["eligible_node_ids"] = body.eligible_node_ids
         svc.update_duty_type(
             session,
             duty_type=dt,
@@ -172,6 +180,7 @@ def update_duty_type(
             end_time=body.end_time,
             instructions=body.instructions,
             is_external=body.is_external,
+            **extra,
         )
         if body.active is not None:
             svc.set_duty_type_active(session, duty_type=dt, active=body.active, actor_id=user.id)
