@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-27
+
+### Features
+- **Shifts table "תת יחידה אחראית" column** — new column after "מיקום" shows which sub-unit(s) are eligible for each shift ("כולם" when unrestricted). Supports a collapsible hierarchy tree filter in the column header.
+- **`HierarchyNodeFilter` component** — reusable collapsible tree picker for filtering by hierarchy nodes, used in the shifts table column filter.
+- **`customColumnFilter` on `DataTable`** — new `ColDef` field for fully-controlled column filter dropdowns: provide a React node for the popup content and a predicate function for row filtering, replacing the built-in exact-match checkbox list.
+- **Collapsible `SubHierarchySelector`** — each node now has a ▾/▸ expand/collapse toggle; the tree starts fully expanded. Used in the shift, shift template, and duty type forms.
+
+### Fixes
+- **`ShiftFormModal` scroll on mobile** — modal container now has `max-h-[90vh] overflow-y-auto` so tall forms are scrollable on small screens.
+- **`DismissalModal` date range picker** — replaced broken "snap to nearest endpoint" heuristic with a two-phase model (click FROM then click TO). The old logic made it geometrically impossible to select a range ending near the start of a long shift. Phase starts at "to" so the first click on a pre-filled full-range naturally narrows the end date.
+
+### Chores
+- **Effort formula: cumulative weighted ratio** — changed effort formula to use cumulative weighted ratio for better convergence.
+- **`useDutyManagerPortfolio` hook** — shared hook extracted from `HierarchyTree` and `TeamHierarchyPage` (worktree merged; master uses `usePortfolioDialog` naming).
+- **SIGABRT debug handler removed** — removed temporary SIGABRT signal handler from algorithm job runner.
+- **`dev.ps1` process cleanup** — more reliable stale process killing on dev server startup.
+
+---
+
 ## 2026-06-26
 
 ### Features
