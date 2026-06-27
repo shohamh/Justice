@@ -13,6 +13,7 @@ from app.auth.deps import require_password_changed
 from app.rate_limit import limiter
 from app.db.models import (
     AlgorithmJob,
+    AlgorithmJobSeen,
     AssignmentExplanation,
     AuditLog,
     DutyAssignment,
@@ -123,6 +124,7 @@ class JobSummaryOut(BaseModel):
     error_message: str | None
     total_duties: int = 0
     assigned_duties: int = 0
+    seen: bool = False
 
 
 class JobListOut(BaseModel):
@@ -582,13 +584,22 @@ def list_jobs(
         select(func.count()).select_from(AlgorithmJob).where(AlgorithmJob.created_by == user.id)
     ).scalar_one()
 
-    jobs = session.execute(
-        select(AlgorithmJob)
+    seen_subq = (
+        select(AlgorithmJobSeen.job_id)
+        .where(
+            AlgorithmJobSeen.job_id == AlgorithmJob.id,
+            AlgorithmJobSeen.user_id == user.id,
+        )
+        .exists()
+    )
+
+    rows = session.execute(
+        select(AlgorithmJob, seen_subq.label("seen"))
         .where(AlgorithmJob.created_by == user.id)
         .order_by(AlgorithmJob.created_at.desc())
         .limit(limit)
         .offset(offset)
-    ).scalars().all()
+    ).all()
 
     return JobListOut(
         items=[
@@ -605,8 +616,9 @@ def list_jobs(
                 error_message=j.error_message,
                 total_duties=j.total_duties,
                 assigned_duties=j.assigned_duties,
+                seen=bool(seen),
             )
-            for j in jobs
+            for j, seen in rows
         ],
         total=total,
     )
