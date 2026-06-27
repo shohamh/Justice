@@ -984,7 +984,6 @@ def _identify_relaxation_impacts(
 def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
     """Background task: load data, run solver, persist results."""
     import logging
-    import signal
     import time as _time
     import traceback
 
@@ -999,15 +998,6 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
 
     def _phase(label: str) -> None:
         _log.info("[job %s] phase=%-30s elapsed=%.1fs", job_id, label, _time.monotonic() - _t0)
-
-    # Catch SIGABRT (OR-Tools can call abort() on invalid model state, which
-    # converts to SIGABRT on Linux; on Windows this raises instead).
-    def _sigabrt_handler(signum: int, frame: object) -> None:
-        _log.critical("[job %s] SIGABRT received — OR-Tools likely aborted due to invalid model input", job_id)
-    try:
-        signal.signal(signal.SIGABRT, _sigabrt_handler)
-    except (OSError, ValueError):
-        pass  # non-main thread on some platforms
 
     cancel_event = threading.Event()
     _cancel_events[str(job_id)] = cancel_event
