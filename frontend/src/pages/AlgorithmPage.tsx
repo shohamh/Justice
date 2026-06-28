@@ -8,7 +8,7 @@ import AlgorithmJobTabs from "../components/AlgorithmJobTabs";
 import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
-import { markJobSeen } from "../utils/seenAlgorithmJobs";
+import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -20,6 +20,8 @@ function formatDuration(seconds: number): string {
 export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+
+  const { markJobSeen, markAllSeen, seenIds, seedSeenIds } = useSeenJobs();
 
   const [jobs, setJobs] = useState<JobSummaryOut[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -36,8 +38,9 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
     try {
       const result = await listJobs();
       setJobs(result.items);
+      seedSeenIds(result.items);
     } catch { /* ignore */ }
-  }, []);
+  }, [seedSeenIds]);
 
   useEffect(() => {
     Promise.all([listSoldiers(), listDutyTypes()]).then(([ss, dts]) => {
@@ -102,8 +105,8 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
   useEffect(() => {
     if (!selectedJob) return;
     if (selectedJob.status === "pending" || selectedJob.status === "running") return;
-    markJobSeen(selectedJob.id);
-  }, [selectedJob]);
+    void markJobSeen(selectedJob.id);
+  }, [selectedJob, markJobSeen]);
 
   function handleJobSubmitted(jobId: string) {
     handleCloseRunForm();
@@ -156,12 +159,30 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
       <div className="w-full md:w-72 md:shrink-0 border dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 flex flex-col overflow-hidden max-h-48 md:max-h-none">
         <div className="flex justify-between items-center p-3 border-b dark:border-gray-600">
           <h2 className="font-semibold text-sm">{t("algorithm.runs_title")}</h2>
-          <Link
-            to="/planning/shifts?autoAssign=1"
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-          >
-            ריצה חדשה ←
-          </Link>
+          <div className="flex items-center gap-2">
+            {jobs.some(j =>
+              (j.status === "done" || j.status === "failed") &&
+              j.error_message !== "cancelled_by_user" &&
+              !seenIds.has(j.id)
+            ) && (
+              <button
+                onClick={() => void markAllSeen(
+                  jobs
+                    .filter(j => (j.status === "done" || j.status === "failed") && j.error_message !== "cancelled_by_user")
+                    .map(j => j.id)
+                )}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                סמן הכל כנראה
+              </button>
+            )}
+            <Link
+              to="/planning/shifts?autoAssign=1"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              ריצה חדשה ←
+            </Link>
+          </div>
         </div>
         <div className="overflow-y-auto flex-1 p-2 space-y-1">
           {jobs.length === 0 && (

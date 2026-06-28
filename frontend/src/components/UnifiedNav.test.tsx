@@ -40,13 +40,46 @@ vi.mock("./NavSheet", () => ({
     open ? <div data-testid={testId ?? "nav-sheet-open"} /> : null,
 }));
 
-function job(status: string, mode: string, error_message: string | null = null) {
-  return { status, mode, error_message };
+const mockSeedSeenIds = vi.fn();
+const mockUseSeenJobs = vi.fn(() => ({
+  seenIds: new Set<string>(),
+  seedSeenIds: mockSeedSeenIds,
+  markJobSeen: vi.fn(),
+  markAllSeen: vi.fn(),
+}));
+vi.mock("../contexts/AlgorithmSeenContext", () => ({
+  useSeenJobs: (...args: unknown[]) => mockUseSeenJobs(...args),
+}));
+
+function job(status: string, mode: string, error_message: string | null = null, id = "job-1") {
+  return {
+    id,
+    status,
+    mode,
+    error_message,
+    seen: false,
+    total_duties: 0,
+    assigned_duties: 0,
+    created_at: "",
+    started_at: null,
+    finished_at: null,
+    planning_start: "2027-01-01",
+    planning_end: "2027-01-07",
+    shift_count: 0,
+  };
 }
 
 beforeEach(() => {
   mockListJobs.mockReset();
   mockListJobs.mockResolvedValue({ items: [], total: 0 });
+  mockSeedSeenIds.mockReset();
+  mockUseSeenJobs.mockReset();
+  mockUseSeenJobs.mockImplementation(() => ({
+    seenIds: new Set<string>(),
+    seedSeenIds: mockSeedSeenIds,
+    markJobSeen: vi.fn(),
+    markAllSeen: vi.fn(),
+  }));
 });
 
 describe("UnifiedNav — soldier role", () => {
@@ -177,6 +210,23 @@ describe("UnifiedNav — algorithm badge color", () => {
   test("excludes cancelled jobs from the badge count", async () => {
     mockListJobs.mockResolvedValue({
       items: [job("failed", "shadow", "cancelled_by_user")],
+      total: 1,
+    });
+    render(<UnifiedNav />);
+    await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
+    expect(screen.queryByTestId("pending-badge")).not.toBeInTheDocument();
+  });
+
+  test("excludes a seen done job from the badge count", async () => {
+    // Override the context mock to return a non-empty seenIds for this test
+    mockUseSeenJobs.mockImplementation(() => ({
+      seenIds: new Set(["job-seen"]),
+      seedSeenIds: vi.fn(),
+      markJobSeen: vi.fn(),
+      markAllSeen: vi.fn(),
+    }));
+    mockListJobs.mockResolvedValue({
+      items: [job("done", "shadow", null, "job-seen")],
       total: 1,
     });
     render(<UnifiedNav />);

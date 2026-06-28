@@ -15,6 +15,8 @@ export interface DutyShift {
   reserve_count_override?: number | null;
   calculated_reserve_count?: number | null;
   eligible_node_ids?: string[] | null;
+  generated_from_template_id?: string | null;
+  generated_from_template_name?: string | null;
 }
 
 export interface CreateShiftInput {

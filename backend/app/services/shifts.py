@@ -35,6 +35,7 @@ class ShiftWithFill:
     status: str = "active"  # 'active' | 'cancelled'
     reserve_count_override: int | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
+    generated_from_template_id: uuid.UUID | None = None
 
 
 def _expected_reserve(shift: DutyShift, duty_type: DutyType | None) -> int:
@@ -90,6 +91,7 @@ def _to_with_fill(session: Session, shift: DutyShift) -> ShiftWithFill:
         status=shift.status,
         reserve_count_override=shift.reserve_count_override,
         eligible_node_ids=shift.eligible_node_ids,
+        generated_from_template_id=shift.generated_from_template_id,
     )
 
 
@@ -291,6 +293,7 @@ def list_shifts(
             status=shift.status,
             reserve_count_override=shift.reserve_count_override,
             eligible_node_ids=shift.eligible_node_ids,
+            generated_from_template_id=shift.generated_from_template_id,
         ))
     return result
 

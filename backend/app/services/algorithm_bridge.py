@@ -1156,17 +1156,21 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 _phase("compute_reserve_dist: done")
 
                 # Real-time progress: the solver decomposes the run into batches and
-                # calls this back once with (0, total) then after each batch.  We map
-                # batches to 5–95 % (leaving headroom for setup and persisting) and
-                # store a {pct, label} JSON on the job for the UI to poll.
+                # calls this back once with (0, total) then after each duty batch.
+                # Both arguments are DUTY counts, so the bar advances proportionally
+                # to work done.  5–93 % leaves room for the swap pass and persisting.
                 def _report_progress(done: int, total: int) -> None:
                     total = max(total, 1)
-                    pct = 5 + int(90 * done / total)
+                    pct = 5 + int(88 * done / total)
                     label = (
-                        f"פותר — קבוצה {done} מתוך {total}" if done > 0
-                        else f"מתחיל לפתור — {total} קבוצות"
+                        f"פותר — {done} מתוך {total} תורנויות" if done > 0
+                        else f"מתחיל לפתור — {total} תורנויות"
                     )
                     job.progress_message = json.dumps({"pct": pct, "label": label})
+                    session.commit()
+
+                def _report_swap_start() -> None:
+                    job.progress_message = json.dumps({"pct": 94, "label": "מאזן עומסים…"})
                     session.commit()
 
                 job.progress_message = json.dumps({"pct": 3, "label": "מכין נתונים…"})
@@ -1182,6 +1186,7 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         soldiers, duties, existing, settings,
                         reserve_dist=reserve_dist, cancel_event=cancel_event,
                         progress_cb=_report_progress,
+                        swap_progress_cb=_report_swap_start,
                     )
                 except BaseException as _solve_exc:
                     _log.critical(

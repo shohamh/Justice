@@ -134,6 +134,7 @@ export interface JobSummaryOut {
   error_message: string | null;
   total_duties: number;
   assigned_duties: number;
+  seen: boolean;
 }
 
 export interface JobListOut {
@@ -200,6 +201,14 @@ export async function pollJob(jobId: string): Promise<AlgorithmJob> {
 
 export async function listJobs(limit = 20, offset = 0): Promise<JobListOut> {
   return (await api.get<JobListOut>("/algorithm/jobs", { params: { limit, offset } })).data;
+}
+
+export async function markJobSeen(jobId: string): Promise<void> {
+  await api.post(`/algorithm/jobs/${jobId}/seen`);
+}
+
+export async function markAllJobsSeen(): Promise<void> {
+  await api.post("/algorithm/jobs/mark-all-seen");
 }
 
 export async function getExplanation(

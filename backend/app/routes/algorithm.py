@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, is_duty_manager
@@ -13,6 +14,7 @@ from app.auth.deps import require_password_changed
 from app.rate_limit import limiter
 from app.db.models import (
     AlgorithmJob,
+    AlgorithmJobSeen,
     AssignmentExplanation,
     AuditLog,
     DutyAssignment,
@@ -123,6 +125,7 @@ class JobSummaryOut(BaseModel):
     error_message: str | None
     total_duties: int = 0
     assigned_duties: int = 0
+    seen: bool = False
 
 
 class JobListOut(BaseModel):
@@ -582,13 +585,22 @@ def list_jobs(
         select(func.count()).select_from(AlgorithmJob).where(AlgorithmJob.created_by == user.id)
     ).scalar_one()
 
-    jobs = session.execute(
-        select(AlgorithmJob)
+    seen_subq = (
+        select(AlgorithmJobSeen.job_id)
+        .where(
+            AlgorithmJobSeen.job_id == AlgorithmJob.id,
+            AlgorithmJobSeen.user_id == user.id,
+        )
+        .exists()
+    )
+
+    rows = session.execute(
+        select(AlgorithmJob, seen_subq.label("seen"))
         .where(AlgorithmJob.created_by == user.id)
         .order_by(AlgorithmJob.created_at.desc())
         .limit(limit)
         .offset(offset)
-    ).scalars().all()
+    ).all()
 
     return JobListOut(
         items=[
@@ -605,11 +617,55 @@ def list_jobs(
                 error_message=j.error_message,
                 total_duties=j.total_duties,
                 assigned_duties=j.assigned_duties,
+                seen=bool(seen),
             )
-            for j in jobs
+            for j, seen in rows
         ],
         total=total,
     )
+
+
+@router.post("/jobs/mark-all-seen", status_code=204)
+def mark_all_jobs_seen(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    job_ids = session.execute(
+        select(AlgorithmJob.id).where(
+            AlgorithmJob.created_by == user.id,
+            AlgorithmJob.status.notin_(["pending", "running"]),
+            ~(
+                (AlgorithmJob.status == "failed")
+                & (AlgorithmJob.error_message == "cancelled_by_user")
+            ),
+        )
+    ).scalars().all()
+    if job_ids:
+        session.execute(
+            pg_insert(AlgorithmJobSeen)
+            .values([{"job_id": jid, "user_id": user.id} for jid in job_ids])
+            .on_conflict_do_nothing()
+        )
+        session.commit()
+
+
+@router.post("/jobs/{job_id}/seen", status_code=204)
+def mark_job_seen(
+    job_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    job = session.get(AlgorithmJob, job_id)
+    if job is None or job.created_by != user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
+    session.execute(
+        pg_insert(AlgorithmJobSeen)
+        .values(job_id=job_id, user_id=user.id)
+        .on_conflict_do_nothing()
+    )
+    session.commit()
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
+import ShiftTemplateFormModal from "../components/ShiftTemplateFormModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -12,6 +13,7 @@ import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
 import { DataTable, type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
+import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -364,16 +366,20 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [showAlgorithmPanel, setShowAlgorithmPanel] = useState(false);
   const [runningCount, setRunningCount] = useState(0);
   const [doneUnpublishedCount, setDoneUnpublishedCount] = useState(0);
+  const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
+  const [viewTemplate, setViewTemplate] = useState<ShiftTemplate | null>(null);
 
   const refresh = useCallback(async () => {
-    const [ss, dts, locs] = await Promise.all([
+    const [ss, dts, locs, tmpls] = await Promise.all([
       listShifts({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
       listDutyTypes(),
       listLocations(),
+      listTemplates(true),
     ]);
     setShifts(ss);
     setDutyTypes(dts);
     setLocations(locs);
+    setTemplates(tmpls);
   }, [dateFrom, dateTo]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -563,6 +569,24 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       filterValue: (s) => s.status === "cancelled" ? t("shifts.cancelled") : t("shifts.active"),
     },
     {
+      id: "template",
+      header: "תבנית",
+      cell: (s) => s.generated_from_template_id ? (
+        <button
+          type="button"
+          onClick={() => {
+            const tmpl = templates.find(t => t.id === s.generated_from_template_id);
+            if (tmpl) setViewTemplate(tmpl);
+          }}
+          className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 text-xs text-right"
+        >
+          {s.generated_from_template_name ?? "תבנית"}
+        </button>
+      ) : null,
+      sortValue: (s) => s.generated_from_template_name ?? "",
+      filterValue: (s) => s.generated_from_template_name ?? "",
+    },
+    {
       id: "actions",
       header: "",
       minWidth: 260,
@@ -617,7 +641,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         </span>
       ),
     },
-  ], [selectedShiftIds, t, dtName, locName, eligibleUnitsLabel, nodeFilterIds, nodeTree, setNodeFilterIds, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete]);
+  ], [selectedShiftIds, t, dtName, locName, eligibleUnitsLabel, nodeFilterIds, nodeTree, setNodeFilterIds, setEditShift, setEditAssignmentsShift, setSelectedShiftIds, handleCancel, handleActivate, handleDelete, templates, setViewTemplate]);
 
   return (
     <>
@@ -766,6 +790,15 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           dutyTypes={dutyTypes}
           onSaved={async () => { setEditAssignmentsShift(null); await refresh(); }}
           onClose={() => setEditAssignmentsShift(null)}
+        />
+      )}
+      {viewTemplate && (
+        <ShiftTemplateFormModal
+          dutyTypes={dutyTypes}
+          locations={locations}
+          initial={viewTemplate}
+          onSubmit={async () => { setViewTemplate(null); await refresh(); }}
+          onClose={() => setViewTemplate(null)}
         />
       )}
     </>

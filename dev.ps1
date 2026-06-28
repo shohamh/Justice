@@ -63,9 +63,9 @@ Write-Host "[dev] Killing stale backend/frontend processes..." -ForegroundColor 
 foreach ($port in @(8000, 5173)) {
     $portPids = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue |
                 Select-Object -ExpandProperty OwningProcess -Unique
-    foreach ($pid in $portPids) {
-        Write-Host "[dev]   killing pid=$pid on :$port" -ForegroundColor DarkYellow
-        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    foreach ($procId in $portPids) {
+        Write-Host "[dev]   killing pid=$procId on :$port" -ForegroundColor DarkYellow
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
 }
 

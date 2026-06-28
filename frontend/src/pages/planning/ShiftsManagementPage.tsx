@@ -1,34 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Layout from "../../components/Layout";
 import { ShiftsContent } from "../ShiftsPage";
 import { ShiftTemplatesContent } from "../ShiftTemplatesPage";
 import { AlgorithmContent } from "../AlgorithmPage";
 import { listJobs } from "../../api/algorithm";
-import { computeRunBadgeCounts, RunBadgeCounts } from "../../utils/algorithmRunBadges";
+import { computeRunBadgeCounts, RunBadgeJob } from "../../utils/algorithmRunBadges";
+import { useSeenJobs } from "../../contexts/AlgorithmSeenContext";
 
 export default function ShiftsManagementPage() {
   const { t } = useTranslation();
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(false);
   const [latestJobId, setLatestJobId] = useState<string | null>(null);
-  const [runBadgeCounts, setRunBadgeCounts] = useState<RunBadgeCounts>({ running: 0, draft: 0, done: 0, failed: 0 });
   const runsRef = useRef<HTMLElement | null>(null);
+  const { seenIds, seedSeenIds, markAllSeen } = useSeenJobs();
+  const [rawJobs, setRawJobs] = useState<RunBadgeJob[]>([]);
+  const runBadgeCounts = useMemo(() => computeRunBadgeCounts(rawJobs, seenIds), [rawJobs, seenIds]);
 
   useEffect(() => {
-    async function fetchRunBadgeCounts() {
+    async function fetchRawJobs() {
       try {
         const result = await listJobs(50);
-        setRunBadgeCounts(computeRunBadgeCounts(result.items));
+        setRawJobs(result.items);
+        seedSeenIds(result.items);
       } catch {
-        // ignore — leave last known counts in place
+        // ignore — leave last known data in place
       }
     }
 
-    void fetchRunBadgeCounts();
-    const interval = setInterval(() => void fetchRunBadgeCounts(), 30_000);
+    void fetchRawJobs();
+    const interval = setInterval(() => void fetchRawJobs(), 30_000);
     return () => clearInterval(interval);
-  }, [latestJobId]);
+  }, [latestJobId, seedSeenIds]);
 
   function handleJobSubmitted(jobId: string) {
     setLatestJobId(jobId);
@@ -67,35 +71,36 @@ export default function ShiftsManagementPage() {
           >
             <h2 className="text-xl font-semibold">ריצות אלגוריתם</h2>
             <div className="flex items-center gap-2">
-              {runBadgeCounts.running > 0 && (
-                <span
-                  data-testid="algo-badge-running"
-                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+              {(runBadgeCounts.done > 0 || runBadgeCounts.failed > 0 || runBadgeCounts.draft > 0) && (
+                <button
+                  type="button"
+                  onClick={() => void markAllSeen(
+                    rawJobs
+                      .filter(j => (j.status === "done" || j.status === "failed") && j.error_message !== "cancelled_by_user")
+                      .map(j => j.id)
+                  )}
+                  className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
                 >
+                  סמן הכל כנראה
+                </button>
+              )}
+              {runBadgeCounts.running > 0 && (
+                <span data-testid="algo-badge-running" className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                   {runBadgeCounts.running}
                 </span>
               )}
               {runBadgeCounts.draft > 0 && (
-                <span
-                  data-testid="algo-badge-draft"
-                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                >
+                <span data-testid="algo-badge-draft" className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                   {runBadgeCounts.draft}
                 </span>
               )}
               {runBadgeCounts.done > 0 && (
-                <span
-                  data-testid="algo-badge-done"
-                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                >
+                <span data-testid="algo-badge-done" className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                   {runBadgeCounts.done}
                 </span>
               )}
               {runBadgeCounts.failed > 0 && (
-                <span
-                  data-testid="algo-badge-failed"
-                  className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                >
+                <span data-testid="algo-badge-failed" className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                   {runBadgeCounts.failed}
                 </span>
               )}

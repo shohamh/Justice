@@ -121,13 +121,21 @@ function AlgorithmTab() {
 
       {/* Flow diagram */}
       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
-        <FlowStep icon="📋" text="כל המשמרות הפתוחות נאספות יחד" color="gray" />
+        <FlowStep icon="📋" text="כל המשמרות והחיילים נאספים; נבנה גרף כשירות" color="gray" />
         <Arrow />
-        <FlowStep icon="🚫" text="לכל משמרת: מסננים חיילים לא כשירים (פטורים, אילוצים, יחידה)" color="amber" />
+        <FlowStep icon="🔗" text="חלוקה לרכיבים קשורים — קבוצות משמרות+חיילים עצמאיות" color="gray" />
         <Arrow />
-        <FlowStep icon="⚖️" text="מחפשים שיבוץ שמכסה את הכל ועומד בכל המגבלות" color="blue" />
+        <FlowStep icon="0️⃣" text="פאז 0: ניסיון לכסות את כל הרכיב בבת אחת" color="blue" />
         <Arrow />
-        <FlowStep icon="📊" text="בין פתרונות תקינים — מעדיפים חיילים עם עומס רבעוני נמוך" color="indigo" />
+        <FlowStep icon="1️⃣" text="פאז 1: חיילים ממוינים לפי עומס, נפתרים קבוצה-קבוצה" color="indigo" />
+        <Arrow />
+        <FlowStep icon="2️⃣" text="פאז 2: כל החיילים — כיסוי רך על מה שנשאר" color="indigo" />
+        <Arrow />
+        <FlowStep icon="🪜" text="עדיין חסרות? חיפוש בינארי על סולם ההרפיה (R/T)" color="amber" />
+        <Arrow />
+        <FlowStep icon="🎯" text="שבירת שוויון: פינוי L1 → מזעור טווח עומסים" color="blue" />
+        <Arrow />
+        <FlowStep icon="🔄" text="מעבר החלפות גריד'י — העברת תורנויות לשיפור הוגנות" color="indigo" />
         <Arrow />
         <FlowStep icon="✅" text="שיבוץ בוצע!" color="green" />
       </div>
@@ -138,6 +146,7 @@ function AlgorithmTab() {
           { icon: "📊", title: "עומס רבעוני", desc: "מי שחלקו בתורנויות ברבעונים האחרונים נמוך מחבריו מקבל עדיפות. חייל חדש בעל עומס אפס יזכה בתורנויות עד שישתווה לשאר. ראו הסבר מלא בטאב הוגנות." },
           { icon: "🚫", title: "פטורים ואילוצים", desc: "חיילים עם פטור רלוונטי מוסרים. אילוצים אישיים (תאריכים) גם מסננים." },
           { icon: "🎖️", title: "דרישות המשמרת", desc: "חוגרים/קצינים, בה\"ד 1, מין — כל משמרת מגדירה את הדרישות שלה." },
+          { icon: "🌳", title: "תת-יחידה כשירה", desc: "כל משמרת יכולה להיות מוגבלת לתת-עץ יחידה ספציפי. האלגוריתם בודק אם הצומת של החייל נמצא בתוך עץ המשנה של הצמתים הכשירים — בדיקת עצמו או אב-קדמון. משמרת ללא הגבלה פתוחה לכולם." },
           { icon: "🔒", title: "איזון עומסים", desc: "האלגוריתם ממזער את סכום הסטיות המוחלטות מהממוצע (נורמת L1): כל חייל תורם |עומסו הצפוי − ממוצע| למטרה. פתרון שמפזר תורנויות בהפרשים שווים תמיד מנצח פתרון שיוצר חריגים. אם אין מספיק חיילים כשירים, האלגוריתם עושה מיטבו בתוך האילוצים." },
           { icon: "⏱️", title: "מגבלת עומס (T/W)", desc: "חייל לא יכול לקבל יותר מ-T ימי תורנות בכל חלון W ימים ברצף. זה מונע עומס יתר על חייל אחד." },
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
@@ -498,6 +507,30 @@ function DeepDiveTab() {
         </div>
       </section>
 
+      {/* ── Section 2.5: Pending-quarter denominator inflation ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🛡️ תיקון רבעון דק — ניפוח המכנה</h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          <strong>הבעיה:</strong> בתחילת רבעון, אם היחידה עדיין ביצעה מעט תורנויות, המכנה <InlineMath math="U_q" /> (ניקוד יחידה ברבעון) קטן מאוד.
+          כתוצאה, חלקו היחסי של כל חייל (<InlineMath math="s_q / U_q" />) מתנפח — ויוצר רושם שהם כבר נשאו עומס גדול, גם אם עשו כמה תורנויות בלבד.
+          הפותר יקבל אות מוטעה ויימנע מלשבץ את אותם חיילים לתורנויות שלפניו — בעוד שבמציאות הרבעון עוד רחוק מסיומו.
+        </p>
+        <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs space-y-2">
+          <p className="font-medium text-amber-800 dark:text-amber-200">🔑 הפתרון: ניפוח מוקדם של המכנה</p>
+          <p className="text-amber-700 dark:text-amber-300">
+            לפני חישוב ניקוד העומס ההיסטורי (<code>effort_score</code>) של כל חייל, המערכת מוסיפה לניקוד היחידה ברבעון הנוכחי (<InlineMath math="U_q" />) את סך ניקוד התורנויות שהפותר עומד לשבץ בסיבוב הנוכחי.
+            כלומר: גם אם הרבעון עדיין דק, המכנה כבר "יודע" שעוד תורנויות עומדות להגיע — והחלק היחסי נשאר הוגן.
+          </p>
+          <div className="bg-white dark:bg-gray-800 rounded p-2 border border-amber-200 dark:border-amber-700 space-y-1 font-mono text-amber-700 dark:text-amber-300">
+            <div>U_q_inflated = U_q + pending_run_score</div>
+            <div>share_q = s_q / U_q_inflated</div>
+          </div>
+          <p className="text-amber-700 dark:text-amber-300">
+            תיקון זה חל רק על הרבעון שבו מתבצע הסיבוב ("רבעון נוכחי"). רבעונות עבר אינם מושפעים — הם כבר סגורים ומלאים.
+          </p>
+        </div>
+      </section>
+
       {/* ── Section 3: Integer bridge ── */}
       <section className="space-y-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-200">🔢 מהמספר לשלם — <code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_offset</code> ו-<code className="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">effort_per_milli</code></h3>
@@ -525,12 +558,12 @@ function DeepDiveTab() {
                 {
                   name: "effort_offset",
                   formula: "int(effort_score × EFFORT_SCALE)",
-                  meaning: "ניקוד העומס ההיסטורי כשלם קבוע. לא משתנה בזמן הפתרון.",
+                  meaning: "ניקוד העומס ההיסטורי כשלם קבוע — כולל תיקון ניפוח מכנה לרבעון הנוכחי. לא משתנה בזמן הפתרון.",
                 },
                 {
                   name: "unit_score_milli",
-                  formula: "Σ block_score(d) × 1000 לכל תורנויות החלון",
-                  meaning: "סך ניקוד כל התורנויות שהפותר יכול לשבץ — קבוע.",
+                  formula: "Σ block_score(d) × 1000 לכל תורנויות הסיבוב",
+                  meaning: "סך ניקוד כל התורנויות שהפותר עומד לשבץ בסיבוב הנוכחי — כולל תורנויות של כל הבאצ'ים. ניקוד זה הוא גם הניקוד שמנופח לתוך המכנה (ראו סעיף הקודם).",
                 },
                 {
                   name: "C_over_D",
@@ -686,7 +719,38 @@ function DeepDiveTab() {
         </div>
       </section>
 
-      {/* ── Section 7: Worked example ── */}
+      {/* ── Section 7: Subtree eligibility ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🌳 כשירות לפי תת-עץ היררכיה</h3>
+        <p className="text-gray-700 dark:text-gray-300">
+          כל משמרת יכולה להיות מוגבלת לרשימת צמתים ("תת-יחידה אחראית"). האלגוריתם מסנן מועמדים לפי מבנה העץ ההיררכי ולא לפי שיוך ישיר בלבד:
+        </p>
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-2">
+          <p className="font-medium text-gray-800 dark:text-gray-200">🔎 כיצד נבדקת הכשירות</p>
+          <p className="text-gray-600 dark:text-gray-300">
+            לכל צומת בהיררכיה שמור מסלול אבות-קדמונים (<code>path_ids</code>) — רשימה מהשורש ועד לצומת עצמו.
+            חייל נחשב כשיר למשמרת המוגבלת לצמתים <code>eligible_node_ids</code> אם:
+          </p>
+          <div className="bg-white dark:bg-gray-800 rounded p-2 border border-gray-200 dark:border-gray-700 font-mono text-indigo-700 dark:text-indigo-300 text-xs">
+            {"eligible_node_ids ∩ soldier.path_ids ≠ ∅"}
+          </div>
+          <p className="text-gray-600 dark:text-gray-300">
+            כלומר: אם אחד מהצמתים הכשירים הוא הצומת של החייל עצמו <strong>או</strong> אחד מאבות-הקדמונים שלו, החייל כשיר.
+            כך, הגבלה ל"פלוגה א'" כוללת אוטומטית גם חיילים של "כיתה 1 / פלוגה א'" — ללא צורך לפרט כל תת-יחידה.
+          </p>
+        </div>
+        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-1">
+          <p className="font-medium text-green-800 dark:text-green-200">📝 דוגמה</p>
+          <p className="text-green-700 dark:text-green-300">
+            היררכיה: <code>גדוד → פלוגה א → כיתה 1</code>.
+            חייל משויך ל"כיתה 1", כך שה-<code>path_ids</code> שלו הוא <code>[גדוד, פלוגה א, כיתה 1]</code>.
+            משמרת עם <code>eligible_node_ids = [פלוגה א]</code> תכלול אותו — כי "פלוגה א" נמצאת ב-<code>path_ids</code> שלו.
+            משמרת ללא <code>eligible_node_ids</code> פתוחה לכלל היחידה.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Section 8: Worked example ── */}
       <section className="space-y-3">
         <h3 className="font-semibold text-gray-800 dark:text-gray-200">🧮 דוגמה מספרית מלאה</h3>
 
@@ -766,6 +830,172 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
             כי היא חדשה. שיבוץ אחד יזניק אותה ל-50% ויצור חריג גדול.
             עדיף לפזר בין שני הוותיקים ולאפשר ליעל להתכנס בהדרגה לאורך מספר סיבובים.
           </p>
+        </div>
+      </section>
+
+      {/* ── Section 9: Three phases ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🔬 שלושת שלבי הפתרון</h3>
+
+        <p className="text-gray-700 dark:text-gray-300">
+          לפני שמתחילים לפתור, האלגוריתם מחלק את הבעיה לחתיכות קטנות יותר.
+          הוא בונה גרף בין משמרות לחיילים — קשר בין כל משמרת לכל חייל שכשיר לה.
+          אם קיימות שתי קבוצות שאין ביניהן שום חיתוך (לדוגמה, תורנויות פלוגה א׳ שרק חיילי פלוגה א׳ יכולים לבצע, ותורנויות פלוגה ב׳ שרק חיילי פלוגה ב׳ יכולים לבצע), אין שום סיבה לפתור אותן יחד — הן עצמאיות לחלוטין.
+          פירוק זה מאפשר לפותר לעבוד על מודלים קטנים ומהירים, במקום מודל ענק אחד שיכול לקחת עשרות שניות.
+        </p>
+
+        <p className="text-gray-700 dark:text-gray-300">לכל קבוצה כזו האלגוריתם מנסה שלושה שלבים לפי הסדר:</p>
+
+        <div className="space-y-2">
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs space-y-1.5">
+            <p className="font-semibold text-blue-800 dark:text-blue-200">שלב א׳ — ניסיון כולל אחד</p>
+            <p className="text-blue-700 dark:text-blue-300">
+              הפותר מנסה לכסות את <em>כל</em> המשמרות בקבוצה בבת אחת. ברוב המקרים זה מצליח — וזהו המסלול המהיר.
+              אם יש פתרון שמכסה הכל ועומד בכל האילוצים, הפותר ימצא אותו כאן ויעצור.
+              הבעיה מתחילה רק כשמספר החיילים הכשירים קטן מדי ביחס לכמות המשמרות הנדרשות — אז הפותר מכריז שהמשימה בלתי אפשרית, ועוברים לשלב הבא.
+            </p>
+          </div>
+
+          <div className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 text-xs space-y-1.5">
+            <p className="font-semibold text-indigo-800 dark:text-indigo-200">שלב ב׳ — חיילים לפי תור, עומס נמוך ראשון</p>
+            <p className="text-indigo-700 dark:text-indigo-300">
+              שלב א׳ נכשל, כלומר אי אפשר לכסות הכל בבת אחת.
+              כדי שלא לוותר סתם, האלגוריתם ממיין את החיילים לפי עומסם ההיסטורי — מי שעשה הכי פחות ראשון — ומחלק אותם לקבוצות קטנות.
+              כל קבוצה מקבלת הזדמנות לקחת את המשמרות שנשארו פתוחות עד כה, כשהפותר מנסה לכסות כמה שיותר אך אינו מחויב לכסות הכל.
+              כך החיילים שנשאו פחות עומס ב"תור" הראשון ולא "יפלו בין הכיסאות" אחרי ששאר הקבוצות לקחו את המשמרות הנגישות להן.
+            </p>
+          </div>
+
+          <div className="bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 text-xs space-y-1.5">
+            <p className="font-semibold text-indigo-800 dark:text-indigo-200">שלב ג׳ — סיום עם כל המאגר</p>
+            <p className="text-indigo-700 dark:text-indigo-300">
+              לאחר שלב ב׳ ייתכן שנשארו משמרות שאף קבוצה לא כיסתה — למשל, משמרת שדורשת שני חיילים מקבוצות שונות בו-זמנית.
+              שלב ג׳ מריץ ניסיון אחרון עם <em>כל</em> החיילים יחד, רק על המשמרות שלא כוסו עדיין.
+              הפותר כעת "רואה" את כל האפשרויות ויכול למצוא שיבוץ שחוצה גבולות הקבוצות מהשלב הקודם.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-xs space-y-1">
+          <p className="font-medium text-gray-800 dark:text-gray-200">📌 עומס עובר בין השלבים</p>
+          <p className="text-gray-600 dark:text-gray-300">
+            כל שיבוץ שנעשה בשלב מסוים מיד מעדכן את עומס החייל שקיבל אותו, וגם חוסם את התאריכים שלו לשלבים הבאים.
+            כך, חייל שקיבל תורנות בשלב א׳ לא יוכל לקבל תורנות חופפת בשלב ב׳ — וגם העומס שלו ייחשב גבוה יותר בחישוב ההוגנות.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Section 10: Relaxation ladder ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🪜 הרפיה הדרגתית — כשהיחידה קטנה מדי</h3>
+
+        <p className="text-gray-700 dark:text-gray-300">
+          גם אחרי שלושת השלבים, ייתכן שנשארו משמרות לא מכוסות.
+          הסיבה הנפוצה: מגבלת הצפיפות — כל חייל מוגבל במספר ימי התורנות שהוא יכול לקבל בכל תקופה — אינה מאפשרת לבצע כיסוי שלם.
+          האלגוריתם לא מוותר; הוא <strong>מרפה את המגבלה בהדרגה</strong> ומנסה מחדש מהתחלה.
+        </p>
+
+        <div className="space-y-2 text-xs">
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
+            <p className="font-medium text-amber-800 dark:text-amber-200">🔑 שני סוגי מגבלת צפיפות</p>
+            <div className="text-amber-700 dark:text-amber-300 space-y-1.5">
+              <p><strong>T — מגבלת ימי שירות אמיתיים:</strong> מספר ימי התורנות שחייל יכול לקבל בכל חלון של Wt ימים. מונעת מחייל לשרת כל השבוע.</p>
+              <p><strong>R — מגבלה כוללת (כולל רזרבה):</strong> גם ימי רזרבה נספרים. מגבלה זו מרפה ראשונה, כי רזרבה קלה יותר מתורנות אמיתית.</p>
+              <p>ההרפיה מגדילה את R בשניים ראשונה (עד לתקרה), ורק אז מגדילה את T. כך נשמר ההיגיון: קודם נרפה את מה שפחות פוגע בחיילים.</p>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 space-y-1.5">
+            <p className="font-medium text-gray-800 dark:text-gray-200">⚡ חיפוש חכם — לא ניסוי וטעייה</p>
+            <p className="text-gray-600 dark:text-gray-300">
+              לכל רמת הרפיה צריך להריץ מחדש את שלושת השלבים — מה שיכול לקחת זמן רב אם יש הרבה רמות.
+              לכן האלגוריתם לא עובר על הסולם רמה אחרי רמה; הוא קודם בודק את <em>הרמה הגבוהה ביותר</em> (הכי מרוחקת): אם גם בה אי אפשר לכסות הכל, אין טעם לחפש. אם כן אפשר — הוא מחפש בינארית את הרמה <em>הנמוכה ביותר</em> שמספיקה.
+              כך מגיעים לתשובה לאחר מספר ניסיונות שהוא לוגריתמי בגודל הסולם, לא ליניארי.
+            </p>
+          </div>
+
+          <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 space-y-1">
+            <p className="font-medium text-green-800 dark:text-green-200">✅ תמיד מוחזר הטוב ביותר שנמצא</p>
+            <p className="text-green-700 dark:text-green-300">
+              אפילו אם לא הגענו לכיסוי מלא, האלגוריתם מחזיר את הפתרון שכיסה הכי הרבה משמרות.
+              כל הרפיה שהופעלה מתועדת ומוצגת בטאב ״ריצות״ — כך ניתן לראות האם הצורך בהרפיה נובע ממחסור אמיתי בחיילים או ממגבלות לא אופטימליות.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Section 11: Lexicographic tiebreaker ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🎯 שבירת שוויון — כשהוגנות לא מספיקה לבדה</h3>
+
+        <p className="text-gray-700 dark:text-gray-300">
+          מטרת ההוגנות — מזעור סכום הסטיות מהממוצע — יכולה להשאיר <em>ענן של פתרונות שקולים</em>:
+          אם שני חיילים שניהם מתחת לממוצע, חלוקה 8:0 ביניהם נותנת בדיוק אותו ניקוד כמו חלוקה 4:4 — כי ה-L1 לא "רואה" את ההבדל בתוך אותו צד של הממוצע.
+          זה פגם ידוע בנורמת L1, והאלגוריתם פותר אותו עם שלב שני נפרד.
+        </p>
+
+        <div className="space-y-2 text-xs">
+          <div className="flex gap-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs mt-0.5">1</div>
+            <div className="text-indigo-700 dark:text-indigo-300 space-y-0.5">
+              <p className="font-semibold text-indigo-800 dark:text-indigo-200">נועל את רמת ההוגנות שהושגה</p>
+              <p>מוסיפים אילוץ: סכום כל הסטיות לא יעלה על מה שהשלב הראשון השיג. כך השלב השני לא יכול להיות <em>פחות</em> הוגן, רק שווה או יותר.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs mt-0.5">2</div>
+            <div className="text-indigo-700 dark:text-indigo-300 space-y-0.5">
+              <p className="font-semibold text-indigo-800 dark:text-indigo-200">ממזמין את הטווח בין הגבוה לנמוך</p>
+              <p>המטרה החדשה: להקטין את ההפרש בין החייל שקיבל הכי הרבה לבין זה שקיבל הכי מעט. כך 4:4 מנצח 8:0 גם כשה-L1 שלהם זהה.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs mt-0.5">3</div>
+            <div className="text-indigo-700 dark:text-indigo-300 space-y-0.5">
+              <p className="font-semibold text-indigo-800 dark:text-indigo-200">פותר נפרד, בלי סיכון</p>
+              <p>השלב הזה רץ בפותר נפרד עם תקציב זמן קצר יותר. אם לא מצא פתרון שיפור בזמן — הפתרון של השלב הראשון נשמר ללא שינוי. אין סיכון להידרדרות.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg p-3 text-xs space-y-1">
+          <p className="font-medium text-purple-800 dark:text-purple-200">🗺️ גם קרבת היררכיה לרזרבות נשמרת</p>
+          <p className="text-purple-700 dark:text-purple-300">
+            בשלב השני, בנוסף לטווח, הפותר מעדיף לשבץ תורנות רזרבה לחיילים <em>קרובים</em> לפלוגה שצריכה גיבוי.
+            אם שני שיבוצים שקולים לחלוטין על ההוגנות ועל הטווח — יגבר זה שממקם את הרזרבות קרוב יותר היררכית.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Section 12: Swap pass ── */}
+      <section className="space-y-3">
+        <h3 className="font-semibold text-gray-800 dark:text-gray-200">🔄 מעבר איזון סופי — העברות בין חיילים</h3>
+
+        <p className="text-gray-700 dark:text-gray-300">
+          הפותר עבד על כל קבוצה בנפרד — ומה שהוגן בתוך קבוצה אחת אינו בהכרח הוגן כשרואים את כל היחידה יחד.
+          לדוגמה, חייל בקבוצה א׳ אולי קיבל תורנויות רבות, ואילו חייל דומה בקבוצה ב׳ קיבל מעט — אך הפותר לא ראה אותם ביחד.
+          לכן, בסיום, האלגוריתם מריץ <strong>מעבר איזון</strong> שבוחן את כל החיילים יחד ומעביר תורנויות כדי לאזן.
+        </p>
+
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1 text-sm">
+          <FlowStep icon="📊" text="מחשבים עומס סופי לכל חייל על פי כל מה שקיבל" color="gray" />
+          <Arrow />
+          <FlowStep icon="🔝" text="מזהים תורמים (עומס מעל ממוצע) וקולטים (עומס מתחת ממוצע)" color="indigo" />
+          <Arrow />
+          <FlowStep icon="🔍" text="לכל תורם: מחפשים את התורנות הכבדה ביותר שניתן להעביר לקולט כשיר" color="blue" />
+          <Arrow />
+          <FlowStep icon="✅" text="מעבירים רק אם ההעברה מקטינה את פער העומסים הכולל" color="green" />
+          <Arrow />
+          <FlowStep icon="🔁" text="חוזרים עד שאין עוד העברה שמשפרת, עד לתקרה של 3 × מספר חיילים" color="gray" />
+        </div>
+
+        <div className="space-y-2 text-xs">
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-1">
+            <p className="font-medium text-blue-800 dark:text-blue-200">🔒 כל האילוצים נשמרים גם בהעברה</p>
+            <p className="text-blue-700 dark:text-blue-300">לפני כל העברה נבדקים ארבעה תנאים: הקולט כשיר לסוג המשמרת ולתת-היחידה שלה; אין לו כבר תורנות באותם תאריכים; הוא לא חורג ממכסת ימי השירות שלו (T); והוא לא חורג ממכסת הימים הכוללת כולל רזרבה (R). רק אם כל ארבעתם מתקיימים — ההעברה מתבצעת.</p>
+          </div>
         </div>
       </section>
 

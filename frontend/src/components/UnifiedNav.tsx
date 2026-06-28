@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,8 +13,8 @@ import { getIncomingSwapCount } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { getPendingHakpazaCount } from "../api/hakpaza";
 import { listJobs } from "../api/algorithm";
-import { computeRunBadgeCounts, RunBadgeCounts } from "../utils/algorithmRunBadges";
-import { getSeenJobIds } from "../utils/seenAlgorithmJobs";
+import { computeRunBadgeCounts, RunBadgeCounts, RunBadgeJob } from "../utils/algorithmRunBadges";
+import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
 import NavSheet, { BadgeColor } from "./NavSheet";
 
 interface NavTab {
@@ -50,8 +50,14 @@ export default function UnifiedNav() {
 
   const [pendingCount, setPendingCount] = useState(0);
   const [swapIncomingCount, setSwapIncomingCount] = useState(0);
-  const [algorithmBadgeCount, setAlgorithmBadgeCount] = useState(0);
-  const [algorithmBadgeColor, setAlgorithmBadgeColor] = useState<BadgeColor>("red");
+  const { seenIds, seedSeenIds } = useSeenJobs();
+  const [algorithmJobs, setAlgorithmJobs] = useState<RunBadgeJob[]>([]);
+  const algorithmCounts = useMemo(
+    () => computeRunBadgeCounts(algorithmJobs, seenIds),
+    [algorithmJobs, seenIds]
+  );
+  const algorithmBadgeCount = algorithmCounts.running + algorithmCounts.draft + algorithmCounts.done + algorithmCounts.failed;
+  const algorithmBadgeColor = pickBadgeColor(algorithmCounts);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
 
@@ -82,9 +88,8 @@ export default function UnifiedNav() {
     async function fetchAlgorithmBadge() {
       try {
         const result = await listJobs(50);
-        const counts = computeRunBadgeCounts(result.items, getSeenJobIds());
-        setAlgorithmBadgeCount(counts.running + counts.draft + counts.done + counts.failed);
-        setAlgorithmBadgeColor(pickBadgeColor(counts));
+        setAlgorithmJobs(result.items);
+        seedSeenIds(result.items);
       } catch {
         // ignore
       }
@@ -94,7 +99,7 @@ export default function UnifiedNav() {
 
     const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
     return () => clearInterval(interval);
-  }, [canPlan, location.pathname]);
+  }, [canPlan, location.pathname, seedSeenIds]);
 
   useEffect(() => {
     const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;

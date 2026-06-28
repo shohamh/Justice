@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import ShiftsManagementPage from "./ShiftsManagementPage";
+import { AlgorithmSeenProvider } from "../../contexts/AlgorithmSeenContext";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -24,10 +25,12 @@ vi.mock("../AlgorithmPage", () => ({
 const mockListJobs = vi.fn();
 vi.mock("../../api/algorithm", () => ({
   listJobs: (...args: unknown[]) => mockListJobs(...args),
+  markJobSeen: vi.fn(),
+  markAllJobsSeen: vi.fn(),
 }));
 
 function job(status: string, mode: string, error_message: string | null = null) {
-  return { status, mode, error_message };
+  return { status, mode, error_message, id: `job-${Math.random()}`, seen: false };
 }
 
 describe("ShiftsManagementPage — algorithm run badges", () => {
@@ -37,7 +40,11 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
 
   test("renders no badges when there are no jobs", async () => {
     mockListJobs.mockResolvedValue({ items: [], total: 0 });
-    render(<ShiftsManagementPage />);
+    render(
+      <AlgorithmSeenProvider>
+        <ShiftsManagementPage />
+      </AlgorithmSeenProvider>
+    );
     await waitFor(() => expect(mockListJobs).toHaveBeenCalled());
     expect(screen.queryByTestId("algo-badge-running")).not.toBeInTheDocument();
     expect(screen.queryByTestId("algo-badge-draft")).not.toBeInTheDocument();
@@ -57,7 +64,11 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       ],
       total: 6,
     });
-    render(<ShiftsManagementPage />);
+    render(
+      <AlgorithmSeenProvider>
+        <ShiftsManagementPage />
+      </AlgorithmSeenProvider>
+    );
 
     expect(await screen.findByTestId("algo-badge-running")).toHaveTextContent("2");
     expect(await screen.findByTestId("algo-badge-draft")).toHaveTextContent("2");
@@ -70,7 +81,11 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       items: [job("pending", "shadow")],
       total: 1,
     });
-    render(<ShiftsManagementPage />);
+    render(
+      <AlgorithmSeenProvider>
+        <ShiftsManagementPage />
+      </AlgorithmSeenProvider>
+    );
 
     expect(await screen.findByTestId("algo-badge-running")).toHaveTextContent("1");
     expect(screen.queryByTestId("algo-badge-draft")).not.toBeInTheDocument();
@@ -86,7 +101,11 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       ],
       total: 2,
     });
-    render(<ShiftsManagementPage />);
+    render(
+      <AlgorithmSeenProvider>
+        <ShiftsManagementPage />
+      </AlgorithmSeenProvider>
+    );
 
     expect(await screen.findByTestId("algo-badge-failed")).toHaveTextContent("1");
   });

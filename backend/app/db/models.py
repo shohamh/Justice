@@ -628,6 +628,20 @@ class AlgorithmJob(Base):
         return sum(br.get("assigned_count", 0) for br in (self.batch_results or []))
 
 
+class AlgorithmJobSeen(Base):
+    __tablename__ = "algorithm_job_seen"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("algorithm_jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE"), primary_key=True
+    )
+    seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class DutyDismissal(Base):
     __tablename__ = "duty_dismissals"
 
