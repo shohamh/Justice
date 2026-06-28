@@ -53,7 +53,7 @@ frontend/src/
 
 ## Daily changelog
 
-At the end of each working session (evening), update `CHANGELOG.md` with a new `## YYYY-MM-DD` section summarising the day's changes. Group into **Features**, **Fixes**, and **Chores** as appropriate. Use the git log since the previous changelog entry (`git log --oneline <last-date-sha>..HEAD`) to reconstruct what shipped. Commit the update directly to `master` with message `docs: update changelog YYYY-MM-DD`.
+At the end of each working session (evening), update `frontend/CHANGELOG.md` with a new `## YYYY-MM-DD` section summarising the day's changes. Group into **Features**, **Fixes**, and **Chores** as appropriate. Use the git log since the previous changelog entry (`git log --oneline <last-date-sha>..HEAD`) to reconstruct what shipped. Commit the update directly to `master` with message `docs: update changelog YYYY-MM-DD`.
 
 ## Common one-liners
 
