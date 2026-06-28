@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-28
+
+### Features
+- **Per-user algorithm job seen state** — clicking a done or failed algorithm run marks it as seen, immediately removing it from the תכנון nav button badge and the per-section chips in `ShiftsManagementPage`. Seen state is persisted per user in the database (`algorithm_job_seen` table) so it survives page reloads and is consistent across devices.
+- **"Mark all as seen" button** — added to both `AlgorithmPage` and `ShiftsManagementPage` to clear all unseen done/failed runs at once.
+- **`AlgorithmSeenContext`** — React context wrapping the app with `seenIds`, `seedSeenIds`, `markJobSeen`, and `markAllSeen`. Badge counts re-render immediately on interaction without waiting for the 30-second poll.
+
+### Chores
+- **Removed `seenAlgorithmJobs.ts`** — deleted the old `localStorage`-based seen tracking utility; context is now the sole source of truth.
+
+---
+
 ## 2026-06-27
 
 ### Features
