@@ -20,7 +20,7 @@ RECOVERY_TARGET_TIME="${RECOVERY_TARGET_TIME:-}"
 if [ -z "$BASE_BACKUP" ]; then
     echo "Usage: $0 <base_backup_dir>"
     echo "Available base backups:"
-    ls -lt /opt/justice/backups/ | grep base_
+    ls -lt "${BACKUP_DIR:-/opt/justice/backups}/" 2>/dev/null | grep base_ || echo "(no base backups found)"
     exit 1
 fi
 
@@ -28,6 +28,11 @@ log() { echo "[$(date -Iseconds)] $*"; }
 
 log "Restoring from $BASE_BACKUP to $PGDATA_RESTORE"
 mkdir -p "$PGDATA_RESTORE"
+
+if [ -n "$(ls -A "$PGDATA_RESTORE" 2>/dev/null)" ]; then
+    echo "ERROR: $PGDATA_RESTORE already exists and is non-empty. Remove it first or set PGDATA_RESTORE to a different path."
+    exit 1
+fi
 
 # Extract base backup
 if [ -f "$BASE_BACKUP/base.tar.gz" ]; then
