@@ -162,8 +162,8 @@ export default function MyRequestsPage() {
         </div>
 
         <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
-          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
-          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="req-end" />
+          <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
+          <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="req-end" />
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("my_requests.reason")} required data-testid="req-reason" />
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting} data-testid="req-submit">
             {submitting ? t("app.loading") : t("my_requests.send")}
@@ -249,11 +249,11 @@ export default function MyRequestsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
-                <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
+                <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(e) => setErStart(e.target.value)} required data-testid="er-start" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
-                <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
+                <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(e) => setErEnd(e.target.value)} data-testid="er-end" />
               </div>
               <div className="flex flex-col gap-1 flex-1 min-w-32">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.reason")}</label>

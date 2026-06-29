@@ -90,7 +90,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
           <label className="block text-sm">
             <span className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t("shift_templates.from_date", "מתאריך")}</span>
             <input
-              type="date"
+              type="date" lang="he"
               value={fromDate}
               onChange={(e) => { setFromDate(e.target.value); setPreview(null); setResult(null); }}
               className="block w-full border rounded p-1.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -100,7 +100,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
           <label className="block text-sm">
             <span className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t("shift_templates.to_date", "עד תאריך")}</span>
             <input
-              type="date"
+              type="date" lang="he"
               value={toDate}
               min={fromDate}
               onChange={(e) => { setToDate(e.target.value); setPreview(null); setResult(null); }}

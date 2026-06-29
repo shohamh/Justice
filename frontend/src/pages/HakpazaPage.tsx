@@ -270,7 +270,7 @@ export default function HakpazaPage() {
                   תאריך הקפצה (מתי החייל יוחלף):
                 </label>
                 <input
-                  type="date"
+                  type="date" lang="he"
                   min={today}
                   max={lastDutyDay(selectedAssignment.end_date)}
                   value={pullDate}

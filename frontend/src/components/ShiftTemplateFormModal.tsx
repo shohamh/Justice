@@ -489,7 +489,7 @@ export default function ShiftTemplateFormModal({
                 <label className="block text-sm">
                   {t("shift_templates.auto_roll_until")}
                   <input
-                    type="date"
+                    type="date" lang="he"
                     value={autoRollUntil}
                     min={todayStr()}
                     onChange={e => setAutoRollUntil(e.target.value)}

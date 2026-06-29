@@ -214,10 +214,10 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
             placeholder={t("exemptions.type")}
             testId="grant-type"
           />
-          <input type="date" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
+          <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
           <div className="flex items-center gap-2">
             <input
-              type="date"
+              type="date" lang="he"
               className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
               value={indefinite ? "" : end}
               onChange={(e) => setEnd(e.target.value)}

@@ -145,11 +145,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
+            <input type="date" lang="he" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
+            <input type="date" lang="he" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
           </label>
           <label className="block text-sm">
             {t("shifts.required_count")}

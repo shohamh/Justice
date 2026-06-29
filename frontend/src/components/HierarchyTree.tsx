@@ -499,6 +499,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
           nodes={nodes}
           onClose={() => setEditSoldier(null)}
           onRefresh={onChanged}
+          initialEditing={true}
         />
       )}
     </>

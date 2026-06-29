@@ -490,7 +490,7 @@ export default function SwapsPage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_from")}</label>
                   <input
-                    type="date"
+                    type="date" lang="he"
                     value={boardFilters.dateFrom ?? ""}
                     onChange={e => applyFilters({ dateFrom: e.target.value || undefined })}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -499,7 +499,7 @@ export default function SwapsPage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_to")}</label>
                   <input
-                    type="date"
+                    type="date" lang="he"
                     value={boardFilters.dateTo ?? ""}
                     onChange={e => applyFilters({ dateTo: e.target.value || undefined })}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"

@@ -7,18 +7,40 @@ import { validateInviteCode, fetchRegisterNodes, register, NodeOut } from "../ap
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
 
-const ALL_RANKS = [
-  "טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג",
-  "קמא","סגמ","סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף",
-];
-const OFFICER_RANKS = new Set(["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"]);
+const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
+const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
+const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS_LIST];
+const OFFICER_RANKS = new Set(OFFICER_RANKS_LIST);
+
+function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const childrenOf = new Map<string | null, NodeOut[]>();
+  for (const n of nodes) {
+    const p = n.parent_id ?? null;
+    if (!childrenOf.has(p)) childrenOf.set(p, []);
+    childrenOf.get(p)!.push(n);
+  }
+  const result: { node: NodeOut; depth: number }[] = [];
+  function walk(parentId: string | null, depth: number) {
+    for (const n of childrenOf.get(parentId) ?? []) {
+      result.push({ node: n, depth });
+      walk(n.id, depth + 1);
+    }
+  }
+  // Find roots: nodes whose parent_id is null or not in the set
+  const rootParentId = nodes.find(n => !byId.has(n.parent_id ?? ""))?.parent_id ?? null;
+  walk(rootParentId, 0);
+  // Fallback: if tree walk produced nothing, show flat
+  if (result.length === 0) nodes.forEach(n => result.push({ node: n, depth: 0 }));
+  return result;
+}
 
 interface ExemptionRow { exemption_type_id: string; start_date: string; end_date: string; reason: string; }
 interface ConstraintRow { start_date: string; end_date: string; reason: string; }
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
-  gender: string; is_officer: boolean; rank: string; bahad1_graduate: boolean;
+  gender: string; is_officer: boolean; is_career: boolean; rank: string; bahad1_graduate: boolean;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   requested_node_id: string;
@@ -28,7 +50,7 @@ interface FormData {
 
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
-  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
+  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, is_career: false, rank: "",
   bahad1_graduate: false, enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
@@ -49,7 +71,9 @@ export default function RegisterPage() {
   // Nodes are fetched after invite code is validated (see checkCode)
 
   const fuse = new Fuse(nodes, { keys: ["name", "commander_name"], threshold: 0.4 });
-  const searchResults = nodeSearch ? fuse.search(nodeSearch).map(r => r.item) : nodes.slice(0, 20);
+  const searchResultIds = nodeSearch ? new Set(fuse.search(nodeSearch).map(r => r.item.id)) : null;
+  const treeRows = buildTree(nodes);
+  const filteredTree = searchResultIds ? treeRows.filter(r => searchResultIds.has(r.node.id)) : treeRows;
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -136,17 +160,23 @@ export default function RegisterPage() {
         {step === 2 && (
           <div className="space-y-2">
             <h2 className="font-semibold">{t("register.step_personal")}</h2>
-            {([["personal_number","מספר אישי","text"],["full_name","שם מלא","text"],["phone","טלפון","tel"],
-               ["email","אימייל","email"],
-               ["enlistment_date","תאריך גיוס","date"],["mandatory_end_date","סיום חובה","date"],
-               ["discharge_date","שחרור","date"],["last_mitvahim_date","מטווח אחרון","date"],
-               ["last_alal_date","אל\"ל אחרון","date"]] as [keyof FormData, string, string][]).map(([key, label, type]) => (
-              <label key={key as string} className="block text-sm">{label}
-                <input type={type} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  value={form[key] as string}
-                  onChange={e => set(key, e.target.value)} />
-              </label>
-            ))}
+            <p className="text-xs text-gray-400">שדות עם <span className="text-red-500">*</span> הם חובה</p>
+            <label className="block text-sm">מספר אישי <span className="text-red-500">*</span>
+              <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.personal_number} onChange={e => set("personal_number", e.target.value)} />
+            </label>
+            <label className="block text-sm">שם מלא <span className="text-red-500">*</span>
+              <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.full_name} onChange={e => set("full_name", e.target.value)} />
+            </label>
+            <label className="block text-sm">טלפון
+              <input type="tel" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.phone} onChange={e => set("phone", e.target.value)} />
+            </label>
+            <label className="block text-sm">אימייל
+              <input type="email" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.email} onChange={e => set("email", e.target.value)} />
+            </label>
             <label className="block text-sm">מגדר
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
@@ -154,22 +184,43 @@ export default function RegisterPage() {
             </label>
             <label className="block text-sm">דרגה
               <Combobox
-                items={ALL_RANKS.map(r => ({ id: r, name: r }))}
+                items={[
+                  ...ENLISTED_RANKS.map(r => ({ id: r, name: r, group: "חיילים" })),
+                  ...OFFICER_RANKS_LIST.map(r => ({ id: r, name: r, group: "קצינים" })),
+                ]}
                 value={form.rank}
                 onChange={v => {
                   const isOfficer = OFFICER_RANKS.has(v);
-                  setForm(prev => ({ ...prev, rank: v, is_officer: isOfficer, bahad1_graduate: isOfficer }));
+                  setForm(prev => ({ ...prev, rank: v, is_officer: isOfficer, bahad1_graduate: isOfficer, last_alal_date: isOfficer ? prev.last_alal_date : "" }));
                 }}
                 placeholder="בחר"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.is_officer} onChange={e => set("is_officer", e.target.checked)} /> קצין
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.bahad1_graduate} onChange={e => set("bahad1_graduate", e.target.checked)} /> {"בוגר בה\"ד 1"}
-            </label>
-            <label className="block text-sm">סיסמה
+            {form.rank && (
+              <div className="text-xs text-gray-500 space-x-3 flex gap-3">
+                {form.is_officer && <span className="text-indigo-600 dark:text-indigo-300">✓ קצין</span>}
+                {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה"ד 1</span>}
+              </div>
+            )}
+            {!form.is_officer && (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={form.is_career} onChange={e => setForm(prev => ({ ...prev, is_career: e.target.checked, last_alal_date: e.target.checked ? prev.last_alal_date : "" }))} />
+                שירות קבע
+              </label>
+            )}
+            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+              <label key={key as string} className="block text-sm">{label}
+                <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={form[key] as string} onChange={e => set(key, e.target.value)} />
+              </label>
+            ))}
+            {(form.is_officer || form.is_career) && (
+              <label className="block text-sm">אל"ל אחרון
+                <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={form.last_alal_date} onChange={e => set("last_alal_date", e.target.value)} />
+              </label>
+            )}
+            <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
             </label>
             {form.password.length > 0 && form.password.length < 10 && (
@@ -178,7 +229,7 @@ export default function RegisterPage() {
             {form.password.length >= 10 && (
               <p className="text-green-600 dark:text-green-400 text-xs">✓ אורך סיסמה תקין</p>
             )}
-            <label className="block text-sm">אימות סיסמה
+            <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (
@@ -200,9 +251,9 @@ export default function RegisterPage() {
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
                 <input placeholder="מזהה סוג פטור (UUID)" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.exemption_type_id}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], exemption_type_id: e.target.value}; set("exemption_requests", rows); }} />
-                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
+                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: e.target.value}; set("exemption_requests", rows); }} />
-                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
+                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: e.target.value}; set("exemption_requests", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.reason}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], reason: e.target.value}; set("exemption_requests", rows); }} />
@@ -225,9 +276,9 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_constraints")}</h2>
             {form.personal_constraints.map((pc, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
-                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
+                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], start_date: e.target.value}; set("personal_constraints", rows); }} />
-                <input type="date" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
+                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: e.target.value}; set("personal_constraints", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.reason}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], reason: e.target.value}; set("personal_constraints", rows); }} />
@@ -247,18 +298,19 @@ export default function RegisterPage() {
 
         {step === 5 && (
           <div className="space-y-3">
-            <h2 className="font-semibold">{t("register.step_commander")}</h2>
+            <h2 className="font-semibold">{t("register.step_commander")} <span className="text-red-500">*</span></h2>
             <input className="block w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder={t("register.search_commander")}
               value={nodeSearch} onChange={e => setNodeSearch(e.target.value)} />
-            <div className="max-h-52 overflow-y-auto border rounded divide-y text-sm">
-              {searchResults.length === 0 && <p className="p-2 text-gray-400">{t("register.no_results")}</p>}
-              {searchResults.map(n => (
+            <div className="max-h-60 overflow-y-auto border rounded text-sm">
+              {filteredTree.length === 0 && <p className="p-2 text-gray-400">{t("register.no_results")}</p>}
+              {filteredTree.map(({ node: n, depth }) => (
                 <button key={n.id}
-                  className={`w-full text-right p-2 hover:bg-indigo-50 ${form.requested_node_id === n.id ? "bg-indigo-100 font-semibold" : ""}`}
+                  className={`w-full text-right flex items-center gap-1 py-1.5 px-2 hover:bg-indigo-50 dark:hover:bg-indigo-950 border-b dark:border-gray-700 last:border-b-0 ${form.requested_node_id === n.id ? "bg-indigo-100 dark:bg-indigo-900 font-semibold" : ""}`}
+                  style={{ paddingRight: `${0.5 + depth * 1.25}rem` }}
                   onClick={() => set("requested_node_id", n.id)}>
-                  <span>{n.name}</span>
-                  {n.commander_name && <span className="text-gray-400 text-xs mr-2">({n.commander_name})</span>}
-                  <span className="text-gray-300 text-xs mr-1">{n.level}</span>
+                  {depth > 0 && <span className="text-gray-300 dark:text-gray-600 shrink-0">└</span>}
+                  <span className="truncate">{n.name}</span>
+                  {n.commander_name && <span className="text-gray-400 text-xs shrink-0 mr-1">({n.commander_name})</span>}
                 </button>
               ))}
             </div>

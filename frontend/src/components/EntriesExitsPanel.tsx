@@ -99,9 +99,9 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
                 placeholder={t("command_dashboard.none")}
               />
               <label className="block text-sm">{t("command_dashboard.exemption_start")}</label>
-              <input type="date" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(e) => setExemptStart(e.target.value)} />
+              <input type="date" lang="he" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(e) => setExemptStart(e.target.value)} />
               <label className="block text-sm">{t("command_dashboard.exemption_end")}</label>
-              <input type="date" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(e) => setExemptEnd(e.target.value)} />
+              <input type="date" lang="he" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(e) => setExemptEnd(e.target.value)} />
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setExemptTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleGrantExemption} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.exempt")}</button>

@@ -36,12 +36,13 @@ interface Props {
   nodes: NodeDTO[];
   onClose: () => void;
   onRefresh: () => void;
+  initialEditing?: boolean;
 }
 
 const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_history"] as const;
 type TabKey = (typeof ALL_TABS)[number];
 
-export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh }: Props) {
+export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const isSelf = user?.personal_number === soldier.personal_number;
@@ -61,7 +62,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   useEffect(() => { setSoldierData(soldier); }, [soldier]);
 
   const [tab, setTab] = useState<TabKey>("details");
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");
   const [hierarchyNodeId, setHierarchyNodeId] = useState(soldier.hierarchy_node_id ?? "");
@@ -328,7 +329,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                     {t("transparency.enrolled_at")}
                   </label>
                   <input
-                    type="date"
+                    type="date" lang="he"
                     className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     value={enrolledAt}
                     onChange={(e) => setEnrolledAt(e.target.value)}
@@ -398,16 +399,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
-                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={(e) => setProfileEnlistment(e.target.value)} />
+                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={(e) => setProfileEnlistment(e.target.value)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.mandatory_end_date")}</span>
-                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={(e) => setProfileMandEnd(e.target.value)} />
+                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={(e) => setProfileMandEnd(e.target.value)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
                 <div className="flex gap-1 items-center">
-                  <input type="date" className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={(e) => setProfileDischarge(e.target.value)} />
+                  <input type="date" lang="he" className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={(e) => setProfileDischarge(e.target.value)} />
                   {profileDischarge && (
                     <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setProfileDischarge("")}>{t("soldier_profile.clear")}</button>
                   )}
@@ -415,12 +416,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
-                <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
+                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
               </label>
               {profileIsOfficer && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
-                  <input type="date" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                  <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
                 </label>
               )}
               {isAdmin && (

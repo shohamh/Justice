@@ -56,6 +56,9 @@ def register(
     except SettingNotFound as exc:
         raise RegistrationError("holding node not bootstrapped") from exc
 
+    if session.get(HierarchyNode, holding_node_id) is None:
+        raise RegistrationError("holding node not bootstrapped")
+
     if session.get(HierarchyNode, requested_node_id) is None:
         raise RegistrationError("requested node not found")
 
