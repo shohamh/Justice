@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 import string
 import uuid
@@ -27,6 +28,10 @@ class PasswordPolicyError(SoldierError):
 def validate_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise PasswordPolicyError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if not re.search(r"[A-Za-z]", password):
+        raise PasswordPolicyError("password must contain at least one letter")
+    if not re.search(r"[0-9]", password):
+        raise PasswordPolicyError("password must contain at least one digit")
 
 
 def generate_temp_password(length: int = 14) -> str:

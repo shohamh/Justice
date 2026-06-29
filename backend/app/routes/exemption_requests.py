@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can_see_private, scope_root_ids
+from app.rate_limit import limiter
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
@@ -298,7 +300,7 @@ async def upload_exemption_file(
         raise HTTPException(status_code=400, detail="file_too_large")
     ef = ExemptionRequestFile(
         exemption_request_id=request_id,
-        file_name=file.filename or "file",
+        file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file"))[:200],
         content_type=file.content_type,
         data=data,
         uploaded_by=user.id,
@@ -343,8 +345,10 @@ def list_exemption_files(
     ]
 
 
+@limiter.limit("30/minute")
 @router.get("/exemption-requests/{request_id}/files/{file_id}")
 def download_exemption_file(
+    request: Request,
     request_id: uuid.UUID,
     file_id: uuid.UUID,
     session: Session = Depends(get_session),

@@ -3,10 +3,12 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
 from app.email_worker import run_email_worker
 from app.logging_config import setup_logging
@@ -46,6 +48,16 @@ from app.settings import get_settings
 
 setup_logging("backend.log")
 logger = logging.getLogger(__name__)
+
+
+class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    _LIMIT = 50 * 1024 * 1024  # 50 MB
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > self._LIMIT:
+            return StarletteResponse("Payload too large", status_code=413)
+        return await call_next(request)
 
 
 def _handle_async_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
@@ -107,6 +119,7 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(_BodySizeLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

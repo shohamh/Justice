@@ -274,9 +274,17 @@ def list_soldiers(
         return [_out(user, include_private=True, telegram_linked=user.id in linked_ids)]
 
     rows = session.execute(select(Soldier)).scalars().all()
+    node_ids = {s.hierarchy_node_id for s in rows if s.hierarchy_node_id}
+    nodes_by_id: dict[uuid.UUID, HierarchyNode] = {}
+    if node_ids:
+        nodes_by_id = {
+            n.id: n for n in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+            ).scalars().all()
+        }
     out: list[SoldierOut] = []
     for s in rows:
-        node = _node_of(session, s)
+        node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         in_scope = node is not None and any(r in node.path_ids for r in roots)
         include_private = in_scope or s.id == user.id
         out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids))
@@ -285,7 +293,7 @@ def list_soldiers(
 
 # NOTE: /ranks, /field-updates/pending, and /{soldier_id}/duty-history MUST come before /{soldier_id} routes
 @router.get("/ranks")
-def get_ranks() -> dict[str, list[str]]:
+def get_ranks(_user: Soldier = Depends(require_password_changed)) -> dict[str, list[str]]:
     return {"enlisted": ENLISTED_RANKS, "officers": OFFICER_RANKS}
 
 

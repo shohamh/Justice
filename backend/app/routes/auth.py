@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime as _dt, timedelta as _td
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -133,11 +133,21 @@ def login(
         )
 
     if not verify_password(body.password, soldier.password_hash):
-        count = getattr(soldier, "failed_login_count", 0) + 1
-        soldier.failed_login_count = count
-        if count >= _LOCKOUT_THRESHOLD:
-            soldier.locked_until = _now_utc + _td(minutes=_LOCKOUT_MINUTES)
-            soldier.failed_login_count = 0
+        new_count = Soldier.failed_login_count + 1
+        session.execute(
+            sa_update(Soldier)
+            .where(Soldier.id == soldier.id)
+            .values(
+                failed_login_count=sa_case(
+                    (new_count >= _LOCKOUT_THRESHOLD, 0),
+                    else_=new_count,
+                ),
+                locked_until=sa_case(
+                    (new_count >= _LOCKOUT_THRESHOLD, _now_utc + _td(minutes=_LOCKOUT_MINUTES)),
+                    else_=Soldier.locked_until,
+                ),
+            )
+        )
         write_audit(
             session, actor_id=soldier.id, action="auth.login.failure", entity_type="soldier",
             entity_id=soldier.id, context={**_client_context(request), "personal_number": body.personal_number},
@@ -302,17 +312,24 @@ def register_nodes(
     if not validate_code(session, code=invite_code):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_invite_code")
     nodes = session.execute(sa_select(HierarchyNode)).scalars().all()
-    result = []
-    for n in nodes:
-        commander_name: str | None = None
-        if n.commander_id:
-            s = session.get(Soldier, n.commander_id)
-            commander_name = s.full_name if s else None
-        result.append(NodeOut(
+    commander_ids = {n.commander_id for n in nodes if n.commander_id}
+    commanders: dict[uuid.UUID, str] = {}
+    if commander_ids:
+        commanders = {
+            s.id: s.full_name
+            for s in session.execute(
+                sa_select(Soldier).where(Soldier.id.in_(commander_ids))
+            ).scalars().all()
+        }
+    return [
+        NodeOut(
             id=n.id, name=n.name, level=n.level,
-            path_ids=n.path_ids, commander_name=commander_name, parent_id=n.parent_id,
-        ))
-    return result
+            path_ids=n.path_ids,
+            commander_name=commanders.get(n.commander_id) if n.commander_id else None,
+            parent_id=n.parent_id,
+        )
+        for n in nodes
+    ]
 
 
 @router.get("/register/validate-code")
