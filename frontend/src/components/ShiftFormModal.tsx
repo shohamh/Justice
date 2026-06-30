@@ -1,10 +1,25 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { CreateShiftInput, DutyShift, createShift, updateShift } from "../api/shifts";
+import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
+import { NodeDTO, fetchTree } from "../api/hierarchy";
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
 import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
+
+interface QuotaRow {
+  hierarchy_node_id: string;
+  count: number;
+}
+
+function flattenNodes(nodes: NodeDTO[]): { id: string; name: string }[] {
+  const result: { id: string; name: string }[] = [];
+  for (const n of nodes) {
+    result.push({ id: n.id, name: n.name });
+    if (n.children?.length) result.push(...flattenNodes(n.children));
+  }
+  return result;
+}
 
 interface Props {
   dutyTypes: DutyType[];
@@ -30,6 +45,30 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     existing?.eligible_node_ids ?? dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []
   );
   const [error, setError] = useState<string | null>(null);
+  const [quotaRows, setQuotaRows] = useState<QuotaRow[]>(
+    (existing?.node_quotas ?? []).map((q) => ({ hierarchy_node_id: q.hierarchy_node_id, count: q.count }))
+  );
+  const [nodeOptions, setNodeOptions] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    void fetchTree().then((nodes) => setNodeOptions(flattenNodes(nodes)));
+  }, []);
+
+  const quotaTotal = quotaRows.reduce((sum, r) => sum + (r.count || 0), 0);
+  const quotaOverAllocated = quotaTotal > count;
+
+  function addQuotaRow() {
+    const firstAvailable = nodeOptions.find((n) => !quotaRows.some((r) => r.hierarchy_node_id === n.id));
+    setQuotaRows((prev) => [...prev, { hierarchy_node_id: firstAvailable?.id ?? "", count: 1 }]);
+  }
+
+  function removeQuotaRow(index: number) {
+    setQuotaRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateQuotaRow(index: number, patch: Partial<QuotaRow>) {
+    setQuotaRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
 
   useEffect(() => {
     if (!existing) {
@@ -66,8 +105,13 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (quotaOverAllocated) {
+      setError(t("shifts.quotas_over_allocated", { total: quotaTotal, required: count }));
+      return;
+    }
     try {
       const exclusiveEndDate = toExclusiveEndDate(endDate);
+      let shiftId: string;
       if (existing) {
         await updateShift(existing.id, {
           start_date: startDate,
@@ -77,6 +121,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
           eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         });
+        shiftId = existing.id;
       } else {
         const input: CreateShiftInput = {
           duty_type_id: dtId,
@@ -88,7 +133,12 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
           eligible_node_ids: scopeNodeIds.length > 0 ? scopeNodeIds : null,
         };
-        await createShift(input);
+        const created = await createShift(input);
+        shiftId = created.id;
+      }
+      const validQuotaRows = quotaRows.filter((r) => r.hierarchy_node_id);
+      if (validQuotaRows.length > 0) {
+        await setShiftQuotas(shiftId, validQuotaRows);
       }
       await onSaved();
     } catch (err: unknown) {
@@ -171,10 +221,60 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t("hierarchy_scope.help")}</p>
             <SubHierarchySelector value={scopeNodeIds} onChange={setScopeNodeIds} />
           </div>
+          <div className="border dark:border-gray-600 rounded p-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t("shifts.quotas_title")}</p>
+            <div className="space-y-1">
+              {quotaRows.map((row, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <select
+                    aria-label={t("shifts.quotas_select_node")}
+                    value={row.hierarchy_node_id}
+                    onChange={(e) => updateQuotaRow(i, { hierarchy_node_id: e.target.value })}
+                    className="flex-1 border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  >
+                    <option value="">{t("shifts.quotas_select_node")}</option>
+                    {nodeOptions.map((n) => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    value={row.count}
+                    data-testid="quota-count-input"
+                    onChange={(e) => updateQuotaRow(i, { count: parseInt(e.target.value) || 0 })}
+                    className="w-16 border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeQuotaRow(i)}
+                    className="px-2 py-1 text-xs border dark:border-gray-600 dark:text-gray-300 rounded"
+                  >
+                    {t("shifts.quotas_remove")}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addQuotaRow}
+              className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              + {t("shifts.quotas_add")}
+            </button>
+            <p className={`text-xs mt-2 ${quotaOverAllocated ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
+              {t("shifts.quotas_total")}: {quotaTotal} / {count}
+            </p>
+            {quotaOverAllocated && (
+              <p className="text-red-500 text-xs">
+                {t("shifts.quotas_over_allocated", { total: quotaTotal, required: count })}
+              </p>
+            )}
+          </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shifts.cancel")}</button>
-            <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">{t("shifts.save")}</button>
+            <button type="submit" disabled={quotaOverAllocated} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("shifts.save")}</button>
           </div>
         </form>
       </div>
