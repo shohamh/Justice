@@ -32,6 +32,7 @@ from app.db.models import (
     DutyAssignment,
     DutyReserveLink,
     DutyShift,
+    DutyShiftNodeQuota,
     DutyType,
     ExemptionDutyTypeMap,
     ExemptionType,
@@ -325,6 +326,19 @@ def load_duty_blocks_from_shifts(
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
     score_map = {dt.id: dt.score_per_day for dt in types_q}
 
+    # Batch-load per-shift node quotas, then expand each shift's quota dict
+    # ({node_id: count}) into a flat list of singleton {node_id: 1} dicts — one per
+    # quota'd slot. These are assigned, in order, to that shift's PRIMARY DutyBlocks
+    # only (reserve/standby slots are not subject to node quotas). Any primary slots
+    # beyond the expanded quota list (e.g. quotas summing to less than required_count)
+    # get node_quotas=None, i.e. unconstrained.
+    quota_rows = session.execute(
+        select(DutyShiftNodeQuota).where(DutyShiftNodeQuota.duty_shift_id.in_(shift_ids))
+    ).scalars().all()
+    quotas_by_shift: dict[uuid.UUID, list[tuple[uuid.UUID, int]]] = {}
+    for q in quota_rows:
+        quotas_by_shift.setdefault(q.duty_shift_id, []).append((q.hierarchy_node_id, q.count))
+
     blocks: list[DutyBlock] = []
     block_to_shift: dict[uuid.UUID, uuid.UUID] = {}
     today = date.today()
@@ -356,7 +370,12 @@ def load_duty_blocks_from_shifts(
 
         score = score_map.get(shift.duty_type_id, Decimal("1.00"))
         primary_needed = max(0, shift.required_count - filled_primary)
-        for _ in range(primary_needed):
+        expanded_quotas: list[dict[uuid.UUID, int]] = [
+            {node_id: 1}
+            for node_id, count in quotas_by_shift.get(shift.id, [])
+            for _ in range(count)
+        ]
+        for i in range(primary_needed):
             block_id = uuid.uuid4()
             blocks.append(DutyBlock(
                 id=block_id,
@@ -369,6 +388,7 @@ def load_duty_blocks_from_shifts(
                 score_per_day=score,
                 is_reserve=False,
                 eligible_node_ids=shift.eligible_node_ids,
+                node_quotas=expanded_quotas[i] if i < len(expanded_quotas) else None,
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)

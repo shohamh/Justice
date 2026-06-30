@@ -5,8 +5,16 @@ from datetime import date
 from decimal import Decimal
 
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
-from app.services.algorithm_bridge import resolve_solver_settings, serialize_solver_inputs
+from app.db.models import DutyLocation
+from app.services.algorithm_bridge import (
+    load_duty_blocks_from_shifts,
+    resolve_solver_settings,
+    serialize_solver_inputs,
+)
+from app.services.duty_config import create_duty_type
 from app.services.settings_loader import set_setting
+from app.services.shift_quotas import set_shift_quotas
+from app.services.shifts import create_shift
 
 
 def test_resolve_solver_settings_uses_system_defaults(admin_session):
@@ -220,3 +228,38 @@ def test_load_soldier_inputs_unassigned_soldier_has_empty_path_ids(admin_session
     inputs = load_soldier_inputs(admin_session, as_of=_date(2026, 6, 1))
     by_id = {s.id: s for s in inputs}
     assert by_id[soldier.id].path_ids == []
+
+
+def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
+    from tests.helpers import create_node
+
+    dt = create_duty_type(admin_session, name="dt_bridge_quota", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_bridge_quota")
+    admin_session.add(loc)
+    admin_session.flush()
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 11),
+        required_count=3,
+    )
+    admin_session.flush()
+
+    node_a = create_node(admin_session, level="branch", name="ענף ברידג'")
+    set_shift_quotas(admin_session, shift_id=shift.id, quotas=[(node_a.id, 1)])
+    admin_session.commit()
+
+    blocks, block_to_shift = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    primary_blocks = [b for b in blocks if not b.is_reserve]
+    assert len(primary_blocks) == 3
+
+    quota_blocks = [b for b in primary_blocks if b.node_quotas]
+    assert len(quota_blocks) == 1
+    assert quota_blocks[0].node_quotas == {node_a.id: 1}
+
+    unquota_blocks = [b for b in primary_blocks if not b.node_quotas]
+    assert len(unquota_blocks) == 2
+    for b in unquota_blocks:
+        assert b.node_quotas is None
