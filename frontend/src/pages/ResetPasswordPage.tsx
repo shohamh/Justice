@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
 import { resetPassword } from "../api/auth";
+import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
@@ -67,6 +68,7 @@ export default function ResetPasswordPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
           />
+          <PasswordStrengthHint password={password} />
         </label>
 
         <label className="block text-sm">
@@ -85,7 +87,7 @@ export default function ResetPasswordPage() {
 
         <button
           onClick={handleSubmit}
-          disabled={submitting || !password || mismatch}
+          disabled={submitting || !passwordValid(password) || mismatch}
           className="w-full bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
         >
           {submitting ? t("reset_password.submitting") : t("reset_password.submit")}

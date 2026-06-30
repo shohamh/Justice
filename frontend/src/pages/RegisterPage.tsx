@@ -6,6 +6,7 @@ import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
+import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
@@ -222,13 +223,8 @@ export default function RegisterPage() {
             )}
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
+              <PasswordStrengthHint password={form.password} />
             </label>
-            {form.password.length > 0 && form.password.length < 10 && (
-              <p className="text-amber-600 dark:text-amber-400 text-xs">{`${form.password.length}/10 תווים — נדרשים לפחות 10`}</p>
-            )}
-            {form.password.length >= 10 && (
-              <p className="text-green-600 dark:text-green-400 text-xs">✓ אורך סיסמה תקין</p>
-            )}
             <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
               <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
             </label>
@@ -238,7 +234,7 @@ export default function RegisterPage() {
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={!form.personal_number || !form.full_name || form.password.length < 10 || form.password !== form.confirm_password}
+                disabled={!form.personal_number || !form.full_name || !passwordValid(form.password) || form.password !== form.confirm_password}
                 onClick={() => setStep(3)}>{t("register.next")}</button>
             </div>
           </div>

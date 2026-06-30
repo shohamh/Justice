@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { AxiosError } from "axios";
 
 import { useAuth } from "../auth/AuthContext";
+import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 
 export default function ChangePasswordPage() {
   const { t } = useTranslation();
@@ -17,10 +18,6 @@ export default function ChangePasswordPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (next.length < 10) {
-      setError(t("change_password.min_length"));
-      return;
-    }
     setSubmitting(true);
     try {
       await changePassword(current, next);
@@ -55,9 +52,10 @@ export default function ChangePasswordPage() {
           <span className="text-sm font-medium">{t("change_password.new")}</span>
           <input type="password" required className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={next}
                  onChange={(e) => setNext(e.target.value)} data-testid="new-password" />
+          <PasswordStrengthHint password={next} />
         </label>
         {error && <div className="text-rejected text-sm" data-testid="change-password-error">{error}</div>}
-        <button type="submit" disabled={submitting}
+        <button type="submit" disabled={submitting || !passwordValid(next)}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium py-2 rounded-md"
                 data-testid="change-password-submit">
           {t("change_password.submit")}
