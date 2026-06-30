@@ -212,9 +212,8 @@ def put_shift_quotas(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ) -> SetQuotasResponse:
-    authorize(session, actor, Action.SHIFT_MANAGE, target_node=None)
     try:
-        entries = set_shift_quotas(
+        set_shift_quotas(
             session,
             shift_id=shift_id,
             quotas=[(q.hierarchy_node_id, q.count) for q in body.quotas],
@@ -225,22 +224,7 @@ def put_shift_quotas(
         session.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    nodes = {
-        n.id: n.name
-        for n in session.execute(
-            select(HierarchyNode).where(
-                HierarchyNode.id.in_([e.hierarchy_node_id for e in entries])
-            )
-        ).scalars().all()
-    }
-    return SetQuotasResponse(quotas=[
-        NodeQuotaOut(
-            hierarchy_node_id=e.hierarchy_node_id,
-            node_name=nodes.get(e.hierarchy_node_id, ""),
-            count=e.count,
-        )
-        for e in entries
-    ])
+    return SetQuotasResponse(quotas=_resolve_node_quotas(session, shift_id))
 
 
 @router.patch("/{shift_id}", response_model=ShiftOut)
