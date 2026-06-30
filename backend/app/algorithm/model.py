@@ -360,6 +360,20 @@ def build_model(
     for di, d in enumerate(duty_list):
         if not d.node_quotas:
             continue
+
+        # Under soft coverage, a quota'd duty must still be left feasible to
+        # leave entirely unfilled (the soft escape valve). Reify "this duty
+        # is covered" as a bool and only enforce quotas when it's set; the
+        # reification is equivalent to the bare `sum(vars_for_d) <= 1` above
+        # since the sum is 0 or 1 either way. Hard coverage already forces
+        # sum(vars_for_d) == 1, so the quota always applies unconditionally.
+        covered: IntVar | None = None
+        if coverage == "soft":
+            vars_for_d = [x[(di, si)] for (dii, si) in eligible if dii == di]
+            if vars_for_d:
+                covered = model.NewBoolVar(f"covered_d{di}")
+                model.Add(sum(vars_for_d) == covered)
+
         for node_id, count in d.node_quotas.items():
             matching_vars = [
                 x[(di, si)] for (dii, si) in eligible
@@ -367,7 +381,9 @@ def build_model(
             ]
             if not matching_vars:
                 continue
-            model.Add(sum(matching_vars) == count)
+            constraint = model.Add(sum(matching_vars) == count)
+            if covered is not None:
+                constraint.OnlyEnforceIf(covered)
 
     # Hard constraint 2: No overlap — a soldier cannot be assigned two duties covering the same day
     all_dates_set: set[date] = set()
