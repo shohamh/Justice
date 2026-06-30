@@ -121,6 +121,41 @@ Three tabs: **חיילים / שיבוצים / תבניות משמרות**
 
 ---
 
+## Permissions
+
+### Who can import what
+
+| Role | Scope |
+|---|---|
+| `admin` | Can import soldiers, assignments, and templates for any hierarchy node |
+| `duty_manager` | Can only import rows whose `hierarchy_node` falls within the nodes they manage (their subtree, as defined by `dm_scope`) |
+| Other roles | Cannot access import endpoints at all (403) |
+
+### How scope is enforced
+
+During `POST /import/sessions` (initial parse) and `POST /import/sessions/{id}/reparse`, each row is checked against the actor's managed subtree:
+
+- **Soldier rows**: the `hierarchy_node_id` resolved from `hierarchy_node_name` must be within the DM's scope. If the node is unknown (not yet in the system), it cannot be scoped — treated as `out_of_scope` unless the DM creates/assigns the node first and reparsing resolves it into their scope.
+- **Assignment rows**: the resolved soldier's `hierarchy_node_id` must be in scope.
+- **Template rows**: templates are not node-scoped by default (they apply to a duty type globally). Duty managers can import templates freely, since templates do not assign soldiers directly. Admins only restriction applies if a future node-scoped template concept is added.
+
+### Row status: `out_of_scope`
+
+A new row action value: `out_of_scope`. Displayed as a gray/orange chip "מחוץ לטווח" in the review table. These rows:
+- Cannot be selected or included (toggle is disabled).
+- Show a tooltip: "יחידה זו אינה תחת אחריותך".
+- Are automatically skipped on confirm.
+- Are still shown in the review table so the DM understands which rows were excluded.
+
+Admins never see `out_of_scope` rows — all rows are either `new`, `update`, or `error`.
+
+### Session list visibility
+
+- A DM sees only their own sessions.
+- An admin sees all sessions (all users).
+
+---
+
 ## Alembic Migration
 
 1. Create enum `import_session_status` with values `draft, confirmed, cancelled, done`.
@@ -139,3 +174,8 @@ Three tabs: **חיילים / שיבוצים / תבניות משמרות**
 - Mark confirmed session as done → hidden from default list, still viewable.
 - Confirmed session links → clicking link navigates to correct object in system.
 - Admin can see all users' sessions; non-admin sees only own.
+- DM uploads xlsx with soldiers from mixed nodes (some in scope, some not) → in-scope rows show as `new`/`update`, out-of-scope rows show as `out_of_scope` and cannot be selected.
+- DM confirms → only in-scope rows are applied; out-of-scope rows are skipped.
+- Admin uploads same file → all rows valid, no `out_of_scope` rows.
+- Soldier with unknown node creates/assigns node within DM scope → reparse → row becomes valid.
+- Soldier with unknown node creates/assigns node outside DM scope → reparse → row stays `out_of_scope`.
