@@ -86,10 +86,11 @@ def _out(
     user_is_commander: bool,
     user_is_duty_manager: bool,
     duty_managers: list[DutyManagerEntryOut] | None = None,
+    commander: Soldier | None = None,
 ) -> NodeOut:
     commander_name = None
     if n.commander_id:
-        cmdr = session.get(Soldier, n.commander_id)
+        cmdr = commander if commander is not None else session.get(Soldier, n.commander_id)
         if cmdr:
             commander_name = cmdr.full_name
 
@@ -278,6 +279,16 @@ def get_tree(
                 DutyManagerEntryOut(scope_id=entry.id, soldier_id=entry.duty_manager_id, name=name)
             )
 
+    # Bulk-load commanders
+    commander_ids = {n.commander_id for n in nodes if n.commander_id}
+    commanders_by_id: dict[uuid.UUID, Soldier] = {}
+    if commander_ids:
+        commanders_by_id = {
+            s.id: s for s in session.execute(
+                select(Soldier).where(Soldier.id.in_(commander_ids))
+            ).scalars().all()
+        }
+
     return [
         _out(
             n, session, user=user,
@@ -285,6 +296,7 @@ def get_tree(
             user_is_commander=user_is_commander,
             user_is_duty_manager=user_is_duty_manager,
             duty_managers=dm_by_node[n.id],
+            commander=commanders_by_id.get(n.commander_id) if n.commander_id else None,
         )
         for n in nodes
     ]
