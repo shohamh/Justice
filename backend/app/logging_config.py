@@ -8,9 +8,11 @@ thread is logged before the process dies.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -27,6 +29,17 @@ _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 _UVICORN_LOGGER_NAMES = ("uvicorn", "uvicorn.error", "uvicorn.access")
 
 
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({
+            "ts": datetime.now(tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+            **({"exc": self.formatException(record.exc_info)} if record.exc_info else {}),
+        }, ensure_ascii=False)
+
+
 def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
     logging.getLogger("uncaught").critical(
         "UNCAUGHT EXCEPTION", exc_info=(exc_type, exc_value, exc_tb)
@@ -36,7 +49,8 @@ def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
 
 def setup_logging(log_filename: str) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    formatter = logging.Formatter(_FORMAT)
+    use_json = os.environ.get("LOG_FORMAT", "").lower() == "json"
+    formatter = _JsonFormatter() if use_json else logging.Formatter(_FORMAT)
 
     file_handler = RotatingFileHandler(
         LOG_DIR / log_filename, maxBytes=10_000_000, backupCount=5

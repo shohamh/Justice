@@ -1,5 +1,7 @@
+import asyncio
 import json as _json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 
@@ -26,6 +28,8 @@ from app.db.models import (
 from app.db.session import get_session
 from app.services.algorithm_bridge import run_algorithm_job
 from app.audit.writer import write_audit
+
+_solver_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="solver")
 
 router = APIRouter(prefix="/algorithm", tags=["algorithm"])
 
@@ -502,7 +506,17 @@ def _submit_job(
     session.commit()
     session.refresh(job)
 
-    background_tasks.add_task(run_algorithm_job, job.id, actor_id)
+    async def _run_in_thread() -> None:
+        loop = asyncio.get_event_loop()
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(_solver_executor, run_algorithm_job, job.id, actor_id),
+                timeout=3600,
+            )
+        except asyncio.TimeoutError:
+            pass
+
+    background_tasks.add_task(_run_in_thread)
     return job
 
 

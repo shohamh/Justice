@@ -9,7 +9,15 @@ from app.settings import get_settings
 
 def _make_engine_factory() -> tuple[Engine, sessionmaker[Session]]:
     settings = get_settings()
-    engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+    engine = create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        future=True,
+        pool_size=20,
+        max_overflow=10,
+        pool_recycle=3600,
+        pool_timeout=30,
+    )
     factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
     return engine, factory
 

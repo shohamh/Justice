@@ -6,7 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-_HSTS_MAX_AGE = int(os.environ.get("HSTS_MAX_AGE", "0"))
+_HSTS_MAX_AGE = int(os.environ.get("HSTS_MAX_AGE", "31536000"))
 
 # Tight CSP: same-origin scripts/styles only, no inline eval, block framing.
 _CSP = (
