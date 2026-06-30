@@ -387,6 +387,26 @@ class DutyShift(Base):
     )
 
 
+class DutyShiftNodeQuota(Base):
+    __tablename__ = "duty_shift_node_quotas"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_shift_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_shifts.id", ondelete="CASCADE")
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT")
+    )
+    count: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (
+        sa.UniqueConstraint("duty_shift_id", "hierarchy_node_id", name="uq_shift_node_quota"),
+        sa.CheckConstraint("count >= 1", name="ck_shift_node_quota_count_positive"),
+    )
+
+
 class ShiftTemplate(Base):
     __tablename__ = "shift_templates"
 
