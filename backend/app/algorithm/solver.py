@@ -208,6 +208,11 @@ def _relax_unsatisfiable_quotas(
             if parent_id is None:
                 new_quotas[node_id] = count  # nothing to relax to
                 continue
+            # Merge-on-collision: defensive for the general case where a duty has
+            # multiple quota entries that map to the same parent. Today's per-slot
+            # DutyBlock construction (see algorithm_bridge.py) means each duty only
+            # ever carries a single {node_id: 1} entry, so this branch doesn't
+            # currently execute in practice — kept intentional, not dead/buggy code.
             new_quotas[parent_id] = new_quotas.get(parent_id, 0) + count
             relaxed_log.append({
                 "duty_id": d.id, "original_node_id": node_id,
