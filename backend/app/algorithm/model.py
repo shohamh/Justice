@@ -352,6 +352,23 @@ def build_model(
         else:
             model.Add(sum(vars_for_d) == 1)
 
+    # ── Sub-unit node quotas ────────────────────────────────────────────────
+    # For each duty with node_quotas, force the exact count of assigned
+    # soldiers whose path_ids contains that node (itself or any descendant).
+    # Slots not covered by any quota remain governed only by the coverage
+    # constraint above (any eligible soldier).
+    for di, d in enumerate(duty_list):
+        if not d.node_quotas:
+            continue
+        for node_id, count in d.node_quotas.items():
+            matching_vars = [
+                x[(di, si)] for (dii, si) in eligible
+                if dii == di and node_id in soldier_list[si].path_ids
+            ]
+            if not matching_vars:
+                continue
+            model.Add(sum(matching_vars) == count)
+
     # Hard constraint 2: No overlap — a soldier cannot be assigned two duties covering the same day
     all_dates_set: set[date] = set()
     for di in range(len(duty_list)):

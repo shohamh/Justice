@@ -56,6 +56,11 @@ class DutyBlock:
     eligible_node_ids: list[uuid.UUID] | None = None
     start_time: str = "00:00"
     end_time: str = "23:59"
+    # Exact per-node soldier counts required for this shift's slots. Slots not
+    # covered by any entry are unconstrained. Keys are hierarchy_node_id; the
+    # constraint matches any soldier whose path_ids contains that node (i.e.
+    # the node itself or any descendant), same semantics as eligible_node_ids.
+    node_quotas: dict[uuid.UUID, int] | None = None
 
 
 @dataclass

@@ -1243,3 +1243,58 @@ def test_solve_subtree_match_end_to_end() -> None:
     assert result.status in ("OPTIMAL", "FEASIBLE")
     assert len(result.assignments) == 1
     assert result.assignments[0].soldier_id == s_in_subtree
+
+
+def test_node_quota_exact_assignment():
+    """Each DutyBlock represents one slot of a shift (matching how
+    algorithm_bridge.py expands shift.required_count into one DutyBlock per
+    slot, each with its own id — see DutyBlock(...) construction loops in
+    app/services/algorithm_bridge.py). A slot's node_quotas reserves that
+    specific slot for soldiers under a given hierarchy node; build_model's
+    coverage constraint already forces exactly one assignee per slot
+    (sum(vars_for_d) == 1), so a per-slot quota dict must have exactly one
+    node with count=1 — not an aggregate split across multiple slots sharing
+    the same dict, which would be self-contradictory (sum == 1 from coverage
+    vs. sum == 2/3 from the quota, on the very same slot). Here, 2 of the 5
+    slots are reserved for node_a and 3 for node_b, forcing an exact 2/3
+    split across the shift as a whole."""
+    node_a = uuid.uuid4()
+    node_b = uuid.uuid4()
+    duty_type = uuid.uuid4()
+    location = uuid.uuid4()
+
+    soldiers = [
+        SoldierInput(id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_a, path_ids=[node_a])
+        for _ in range(2)
+    ] + [
+        SoldierInput(id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_b, path_ids=[node_b])
+        for _ in range(3)
+    ]
+
+    def _slot(node_id: uuid.UUID) -> DutyBlock:
+        return DutyBlock(
+            id=uuid.uuid4(), duty_type_id=duty_type, duty_location_id=location,
+            start_date=date(2024, 6, 1), end_date=date(2024, 6, 1),
+            score_per_day=Decimal("1.0"),
+            node_quotas={node_id: 1},
+        )
+
+    duties = [_slot(node_a) for _ in range(2)] + [_slot(node_b) for _ in range(3)]
+
+    model, x = build_model(soldiers, duties, [], SolverSettings(time_limit_seconds=5))
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    assigned_a = sum(
+        1 for (di, si), var in x.items()
+        if soldiers[si].hierarchy_node_id == node_a and solver.Value(var) == 1
+    )
+    assigned_b = sum(
+        1 for (di, si), var in x.items()
+        if soldiers[si].hierarchy_node_id == node_b and solver.Value(var) == 1
+    )
+    assert assigned_a == 2
+    assert assigned_b == 3
