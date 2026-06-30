@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import threading
 import time
+import uuid
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 
@@ -116,6 +117,7 @@ def solve(
     cancel_event: threading.Event | None = None,
     progress_cb: ProgressCb | None = None,
     swap_progress_cb: "Callable[[], None] | None" = None,
+    node_parents: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> SolverResult:
     """Build the CP-SAT model and solve it. Returns assignments + metrics.
 
@@ -131,6 +133,14 @@ def solve(
 
     ``swap_progress_cb()`` is called (no arguments) just before the post-solve
     swap pass begins, so the UI can show a distinct "balancing loads…" label.
+
+    ``node_parents`` (hierarchy_node_id -> parent hierarchy_node_id) enables
+    one-level-up node-quota relaxation when ``settings.auto_relax_node_quotas``
+    is True: any duty with ``node_quotas`` set that's still unfilled after the
+    main solve gets one retry with its quota's node_id replaced by its parent
+    (widening the eligible pool to the parent's whole subtree). See
+    ``_relax_unsatisfiable_quotas``. Has no effect without both the setting
+    and this argument.
     """
     if settings.decomposition == "interleaved" and settings.batching_enabled:
         result = _interleaved_solve(soldiers, duties, existing, settings, reserve_dist,
@@ -150,12 +160,126 @@ def solve(
         if progress_cb:
             progress_cb(total_duties, total_duties)
 
+    if (
+        settings.auto_relax_node_quotas
+        and node_parents
+        and result.status in ("OPTIMAL", "FEASIBLE")
+    ):
+        result = _auto_relax_node_quotas(
+            soldiers, duties, existing, settings, result, node_parents,
+            reserve_dist=reserve_dist, cancel_event=cancel_event,
+        )
+
     if result.status in ("OPTIMAL", "FEASIBLE") and result.assignments:
         if swap_progress_cb:
             swap_progress_cb()
         swapped = _swap_pass(soldiers, duties, existing, result.assignments, settings)
         result = dataclasses.replace(result, assignments=swapped)
     return result
+
+
+# ── Node quota relaxation (one level up) ───────────────────────────────────────
+
+
+def _relax_unsatisfiable_quotas(
+    duties: list[DutyBlock],
+    node_parents: dict[uuid.UUID, uuid.UUID],
+    unsatisfiable_duty_ids: set[uuid.UUID],
+) -> tuple[list[DutyBlock], list[dict]]:
+    """Rewrite node_quotas for duties that proved unsatisfiable: replace each
+    quota node with its parent (per node_parents), so the constraint matches
+    the parent's whole subtree (siblings included). Duties whose node has no
+    known parent are left as-is — there's nothing higher to relax to.
+
+    Pure: returns a new duty list (only duties in `unsatisfiable_duty_ids` are
+    replaced; all others are passed through unchanged) plus a log of what was
+    relaxed, suitable for both the automatic retry in `solve()` and a future
+    manual-retry API caller (Task B4).
+    """
+    relaxed_log: list[dict] = []
+    new_duties: list[DutyBlock] = []
+    for d in duties:
+        if d.id not in unsatisfiable_duty_ids or not d.node_quotas:
+            new_duties.append(d)
+            continue
+        new_quotas: dict[uuid.UUID, int] = {}
+        for node_id, count in d.node_quotas.items():
+            parent_id = node_parents.get(node_id)
+            if parent_id is None:
+                new_quotas[node_id] = count  # nothing to relax to
+                continue
+            new_quotas[parent_id] = new_quotas.get(parent_id, 0) + count
+            relaxed_log.append({
+                "duty_id": d.id, "original_node_id": node_id,
+                "relaxed_node_id": parent_id, "count": count,
+            })
+        new_duties.append(dataclasses.replace(d, node_quotas=new_quotas))
+    return new_duties, relaxed_log
+
+
+def _auto_relax_node_quotas(
+    soldiers: Sequence[SoldierInput],
+    duties: Sequence[DutyBlock],
+    existing: Sequence[ExistingAssignment],
+    settings: SolverSettings,
+    result: SolverResult,
+    node_parents: dict[uuid.UUID, uuid.UUID],
+    reserve_dist: dict[tuple[int, int], int] | None = None,
+    cancel_event: threading.Event | None = None,
+) -> SolverResult:
+    """Retry once, with quotas relaxed one level up, for any duty that has
+    `node_quotas` set and ended up unfilled after the main solve.
+
+    This is the simplest correct attribution of "unfilled because of a quota":
+    relaxing a node_quotas constraint can only loosen it (never tightens
+    anything else), so applying it to every unfilled quota'd duty — rather
+    than trying to prove the quota specifically (as opposed to density caps,
+    saturation, etc.) caused the shortfall — can't make the result worse, and
+    correctly recovers the cases it's meant for (see
+    test_unsatisfiable_quota_relaxes_to_parent).
+    """
+    assigned_ids = {a.duty_id for a in result.assignments}
+    unfilled_ids = {d.id for d in duties if d.id not in assigned_ids and d.node_quotas}
+    if not unfilled_ids:
+        return result
+
+    relaxed_duties, relaxed_log = _relax_unsatisfiable_quotas(list(duties), node_parents, unfilled_ids)
+    if not relaxed_log:
+        return result
+
+    duty_by_id = {d.id: d for d in duties}
+    relaxed_by_id = {d.id: d for d in relaxed_duties}
+    retry_duties = [relaxed_by_id[did] for did in unfilled_ids]
+
+    # Carry the already-made assignments forward as "existing" so the retry's
+    # density/no-overlap constraints stay consistent with what's already booked.
+    carry_existing = list(existing) + [
+        ExistingAssignment(
+            soldier_id=a.soldier_id,
+            duty_type_id=duty_by_id[a.duty_id].duty_type_id,
+            start_date=duty_by_id[a.duty_id].start_date,
+            end_date=duty_by_id[a.duty_id].end_date,
+            is_reserve=duty_by_id[a.duty_id].is_reserve,
+        )
+        for a in result.assignments
+    ]
+
+    retry_result = _solve_soft_coverage(
+        soldiers, retry_duties, carry_existing, settings, reserve_dist, cancel_event=cancel_event,
+    )
+    if retry_result.status == "CANCELLED" or not retry_result.assignments:
+        return result
+
+    new_assignments = list(result.assignments) + retry_result.assignments
+    new_assignments.sort(key=lambda a: a.duty_id)
+    assigned_total = {a.duty_id for a in new_assignments}
+    status = "OPTIMAL" if len(assigned_total) == len(duties) else "FEASIBLE"
+    return dataclasses.replace(
+        result,
+        assignments=new_assignments,
+        status=status,
+        relaxed_node_quotas=list(result.relaxed_node_quotas) + relaxed_log,
+    )
 
 
 # ── Decomposition + chronological batching ────────────────────────────────────

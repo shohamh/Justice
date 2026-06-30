@@ -143,6 +143,16 @@ class SolverSettings:
     # single-stage behaviour exactly.
     tiebreak_mode: Literal["off", "range"] = "range"
     tiebreak_time_limit_seconds: int = 20
+    # When True, duties whose node_quotas constraint left them unfilled after
+    # the main solve are retried once with each unsatisfied node_id replaced
+    # by its hierarchy parent (see solver._relax_unsatisfiable_quotas), widening
+    # the eligible pool to the parent's whole subtree (siblings included).
+    # Requires the caller to also pass `node_parents` to `solve()`; without it
+    # (or with this False) no quota relaxation is attempted. Off by default —
+    # auto-relaxing silently changes which sub-unit actually filled a quota'd
+    # slot, which callers may want to surface for manual approval instead
+    # (see Task B4, not yet built).
+    auto_relax_node_quotas: bool = False
 
 
 @dataclass
@@ -206,6 +216,10 @@ class SolverResult:
     solver_metrics: dict[str, Any] = field(default_factory=dict)
     relaxed: list[str] = field(default_factory=list)
     batch_results: list[BatchResult] = field(default_factory=list)
+    # One entry per (duty, node) quota relaxed from a child node to its parent
+    # by solver._relax_unsatisfiable_quotas (see SolverSettings.auto_relax_node_quotas).
+    # Shape: {"duty_id": UUID, "original_node_id": UUID, "relaxed_node_id": UUID, "count": int}.
+    relaxed_node_quotas: list[dict] = field(default_factory=list)
 
 
 @dataclass

@@ -246,3 +246,67 @@ def test_search_relaxation_ladder_skips_search_when_base_already_covers(monkeypa
     assert calls == [2], "no ladder probes should run when the base attempt already fully covers"
     assert labels == []
     assert len(result.assignments) == 1
+
+
+# ── Task B3: one-level-up node quota relaxation ──────────────────────────────
+
+def test_unsatisfiable_quota_relaxes_to_parent():
+    from app.algorithm.solver import solve
+
+    # NOTE: this module's `_duty_dates`/no-overlap convention treats
+    # [start_date, end_date) as half-open (mirrors _swap_pass's `while dt <
+    # ea.end_date` and other tests' `end_date=base + timedelta(days=1)` for a
+    # single-day duty) — start_date == end_date would yield an EMPTY date
+    # range, so the no-overlap constraint that's central to this test
+    # (two same-day quota=1 duties competing for the one node_a soldier)
+    # would never engage. Use end_date = start_date + 1 day.
+    parent = uuid4()
+    node_a = uuid4()  # child of parent
+    node_b = uuid4()  # sibling of node_a, also child of parent
+    duty_type = uuid4()
+    location = uuid4()
+
+    soldiers = [
+        SoldierInput(id=uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_a, path_ids=[parent, node_a]),
+        SoldierInput(id=uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_b, path_ids=[parent, node_b]),
+    ]
+    # Two single-slot duty blocks, same day, each demanding exactly 1 soldier
+    # from node_a specifically. Only one soldier exists under node_a, so the
+    # second duty cannot be satisfied at node_a (the soldier is already
+    # consumed by the first duty on the same date, and no-overlap forbids
+    # double-booking) — but it CAN be satisfied once the quota is relaxed to
+    # node_a's parent, whose subtree also includes node_b's soldier.
+    #
+    # NOTE on the original sketch: a single DutyBlock with node_quotas=
+    # {node_a: 2} would NOT be a valid test of this. B1/B2 model each
+    # DutyBlock as exactly one slot, so the block-level coverage constraint
+    # is `sum(matching_vars) == 1` (see model.py's hard-coverage loop just
+    # above the node_quotas block). A `count=2` quota on that same slot's
+    # matching_vars (a subset of the same vars the coverage constraint sums)
+    # would force a subset-sum of 2 while the total sum is pinned to 1 —
+    # structurally infeasible for ANY soldier population, not because node_a
+    # specifically lacks soldiers. That's a model-shape bug, not an
+    # "unsatisfiable due to scarcity" case, so it wouldn't exercise the
+    # relaxation-to-parent logic this test is meant to cover. Using two
+    # separate quota=1 blocks (as suggested as an alternative in the task
+    # description) avoids the bug and tests genuine scarcity-driven
+    # relaxation instead.
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=location,
+                  start_date=date(2024, 6, 1), end_date=date(2024, 6, 2), score_per_day=Decimal("1.0"),
+                  node_quotas={node_a: 1}),
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=location,
+                  start_date=date(2024, 6, 1), end_date=date(2024, 6, 2), score_per_day=Decimal("1.0"),
+                  node_quotas={node_a: 1}),
+    ]
+
+    settings = SolverSettings(time_limit_seconds=5, auto_relax_node_quotas=True)
+    result = solve(soldiers, duties, [], settings, node_parents={node_a: parent, node_b: parent})
+
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert len(result.assignments) == 2
+    assert len(result.relaxed_node_quotas) == 1
+    assert result.relaxed_node_quotas[0]["original_node_id"] == node_a
+    assert result.relaxed_node_quotas[0]["relaxed_node_id"] == parent
