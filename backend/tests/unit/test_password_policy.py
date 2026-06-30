@@ -9,7 +9,7 @@ def test_validate_rejects_short_password():
 
 
 def test_validate_accepts_long_password():
-    validate_password("this-is-long-enough")  # no raise
+    validate_password("this-is-long-enough1")  # no raise
 
 
 def test_generated_temp_password_meets_policy():

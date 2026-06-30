@@ -55,8 +55,12 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self._LIMIT:
-            return StarletteResponse("Payload too large", status_code=413)
+        if content_length:
+            try:
+                if int(content_length) > self._LIMIT:
+                    return StarletteResponse("Payload too large", status_code=413)
+            except ValueError:
+                return StarletteResponse("Invalid Content-Length header", status_code=400)
         return await call_next(request)
 
 

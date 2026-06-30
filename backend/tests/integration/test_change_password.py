@@ -24,7 +24,7 @@ def test_change_password_clears_flag(client: TestClient, admin_session: Session)
     r = client.post(
         "/api/auth/change-password",
         headers=auth_headers(s),
-        json={"current_password": "old-password-123", "new_password": "brand-new-password"},
+        json={"current_password": "old-password-123", "new_password": "brand-new-password1"},
     )
     assert r.status_code == 200
     admin_session.expire_all()

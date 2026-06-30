@@ -507,7 +507,7 @@ def _submit_job(
     session.refresh(job)
 
     async def _run_in_thread() -> None:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             await asyncio.wait_for(
                 loop.run_in_executor(_solver_executor, run_algorithm_job, job.id, actor_id),
