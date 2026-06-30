@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from app.db.models import DutyLocation
+from sqlalchemy import select
+
+from app.db.models import AuditLog, DutyLocation
 from app.services.duty_config import create_duty_type
 from app.services.shift_quotas import ShiftQuotaError, get_shift_quotas, set_shift_quotas
 from app.services.shifts import create_shift
@@ -68,3 +70,24 @@ def test_set_quotas_replaces_existing(admin_session):
 
     result = get_shift_quotas(admin_session, shift_id=shift.id)
     assert {(q.hierarchy_node_id, q.count) for q in result} == {(node_b.id, 3)}
+
+
+def test_set_quotas_writes_audit_log(admin_session):
+    shift = _make_shift(admin_session, "5", required_count=5)
+    node_a = create_node(admin_session, level="branch", name="ענף פוקוס")
+    actor_id = uuid.uuid4()
+
+    set_shift_quotas(
+        admin_session, shift_id=shift.id, quotas=[(node_a.id, 2)], actor_id=actor_id,
+    )
+    admin_session.flush()
+
+    audit_entry = admin_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "shift.set_node_quotas",
+            AuditLog.entity_id == shift.id,
+        )
+    ).scalar_one()
+    assert audit_entry.actor_id == actor_id
+    assert audit_entry.before == []
+    assert audit_entry.after == [{"node_id": str(node_a.id), "count": 2}]

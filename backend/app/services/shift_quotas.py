@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.db.models import DutyShift, DutyShiftNodeQuota, HierarchyNode
 
 
@@ -25,6 +26,7 @@ def set_shift_quotas(
     *,
     shift_id: uuid.UUID,
     quotas: list[tuple[uuid.UUID, int]],
+    actor_id: uuid.UUID | None = None,
 ) -> list[DutyShiftNodeQuota]:
     """Replace all quota entries for a shift. Validates node existence, no
     duplicate nodes, and that the sum does not exceed required_count."""
@@ -49,6 +51,9 @@ def set_shift_quotas(
             f"sum of quota counts ({total}) exceeds required_count ({shift.required_count})"
         )
 
+    existing = get_shift_quotas(session, shift_id=shift_id)
+    before = [{"node_id": str(q.hierarchy_node_id), "count": q.count} for q in existing]
+
     session.execute(delete(DutyShiftNodeQuota).where(DutyShiftNodeQuota.duty_shift_id == shift_id))
     session.flush()
 
@@ -59,4 +64,15 @@ def set_shift_quotas(
     for e in entries:
         session.add(e)
     session.flush()
+
+    after = [{"node_id": str(node_id), "count": count} for node_id, count in quotas]
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="shift.set_node_quotas",
+        entity_type="duty_shift",
+        entity_id=shift_id,
+        before=before,
+        after=after,
+    )
     return entries
