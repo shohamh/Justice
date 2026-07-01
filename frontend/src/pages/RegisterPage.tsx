@@ -251,7 +251,7 @@ export default function RegisterPage() {
             {form.exemption_requests.map((er, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
                 <Combobox
-                  items={exemptionTypes.map(t => ({ id: t.id, name: t.name }))}
+                  items={exemptionTypes.map(et => ({ id: et.id, name: et.name }))}
                   value={er.exemption_type_id}
                   onChange={v => {
                     const rows = [...form.exemption_requests];
