@@ -56,9 +56,29 @@ describe("ImportUploadPage", () => {
     });
   });
 
-  it("shows an error banner and resets the loading state when uploadSession rejects", async () => {
+  it("shows the backend detail message when uploadSession rejects with one", async () => {
+    vi.mocked(importSessionsApi.uploadSession).mockRejectedValue({
+      response: { data: { detail: "עמודה חסרה: soldier_id" } },
+    });
+
+    render(<ImportUploadPage />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile()] } });
+
+    expect(
+      await screen.findByText("עמודה חסרה: soldier_id"),
+    ).toBeInTheDocument();
+
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    const button = screen.getByRole("button", { name: "בחר קובץ" });
+    expect(button).not.toBeDisabled();
+  });
+
+  it("falls back to the generic error banner when uploadSession rejects without a detail", async () => {
     vi.mocked(importSessionsApi.uploadSession).mockRejectedValue(
-      new Error("boom"),
+      new Error("network fail"),
     );
 
     render(<ImportUploadPage />);

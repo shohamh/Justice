@@ -15,8 +15,9 @@ export default function ImportUploadPage() {
     try {
       const { session_id } = await uploadSession(file);
       navigate(`/import/sessions/${session_id}`);
-    } catch {
-      setError("שגיאה בפענוח הקובץ — ודא שהוא xlsx תקין");
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? "שגיאה בפענוח הקובץ — ודא שהוא xlsx תקין");
     } finally {
       setLoading(false);
     }
