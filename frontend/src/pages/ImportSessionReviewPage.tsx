@@ -212,7 +212,7 @@ export default function ImportSessionReviewPage() {
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
-                  <th className="text-right p-3">מ"א</th>
+                  <th className="text-right p-3">מ&quot;א</th>
                   <th className="text-right p-3">יחידה</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}

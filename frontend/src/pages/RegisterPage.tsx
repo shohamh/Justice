@@ -205,7 +205,7 @@ export default function RegisterPage() {
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
                 {form.is_officer && <span className="text-indigo-600 dark:text-indigo-300">✓ קצין</span>}
-                {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה"ד 1</span>}
+                {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
             )}
             {!form.is_officer && (
@@ -221,7 +221,7 @@ export default function RegisterPage() {
               </label>
             ))}
             {(form.is_officer || form.is_career) && (
-              <label className="block text-sm">אל"ל אחרון
+              <label className="block text-sm">אל&quot;ל אחרון
                 <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form.last_alal_date} onChange={e => set("last_alal_date", e.target.value)} />
               </label>

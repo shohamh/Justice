@@ -220,7 +220,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
           ))}
           {(isOfficer || isCareer) && (
             <label className="block">
-              <span className="text-xs text-gray-500">אל"ל אחרון</span>
+              <span className="text-xs text-gray-500">אל&quot;ל אחרון</span>
               <input
                 type="date"
                 lang="he"
@@ -234,7 +234,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
           {req.exemption_requests.length > 0 && (
             <div className="border-t dark:border-gray-600 pt-2">
               <p className="text-xs font-medium text-gray-500 mb-1">
-                פטורים מבוקשים (יטופלו ע"י אחראי תורנויות):
+                פטורים מבוקשים (יטופלו ע&quot;י אחראי תורנויות):
               </p>
               <ul className="space-y-1">
                 {req.exemption_requests.map(er => (

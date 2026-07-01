@@ -132,7 +132,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       mandatory_end_date: profileMandEnd || null,
       discharge_date: profileDischarge || null,
       last_mitvahim_date: profileMitvahim || null,
-      ...(profileIsOfficer ? { last_alal_date: profileAlal || null } : {}),
+      ...(soldierData.is_officer ? { last_alal_date: profileAlal || null } : {}),
       ...(isAdmin ? { email: profileEmail || null } : {}),
       profile_picture_url: profilePictureUrl || null,
     });
@@ -404,7 +404,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
                 <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
               </label>
-              {profileIsOfficer && (
+              {soldierData.is_officer && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
                   <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
