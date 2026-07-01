@@ -39,14 +39,19 @@ export default function ImportSessionsListPage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const result = await listSessions(
         showAll ? "draft,confirmed,cancelled,done" : undefined,
       );
       setSessions(result);
+    } catch {
+      setError("שגיאה בטעינת רשימת הייבואים");
     } finally {
       setLoading(false);
     }
@@ -57,13 +62,34 @@ export default function ImportSessionsListPage() {
   }, [loadSessions]);
 
   async function handleCancel(id: string) {
-    await cancelSession(id);
-    await loadSessions();
+    if (pendingId) return;
+    if (!window.confirm("לבטל את הטיוטה?")) return;
+    setPendingId(id);
+    try {
+      await cancelSession(id);
+      await loadSessions();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
+      alert(detail ?? "שגיאה בביטול הייבוא");
+    } finally {
+      setPendingId(null);
+    }
   }
 
   async function handleMarkDone(id: string) {
-    await markSessionDone(id);
-    await loadSessions();
+    if (pendingId) return;
+    setPendingId(id);
+    try {
+      await markSessionDone(id);
+      await loadSessions();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
+      alert(detail ?? "שגיאה בעדכון הייבוא");
+    } finally {
+      setPendingId(null);
+    }
   }
 
   return (
@@ -78,6 +104,12 @@ export default function ImportSessionsListPage() {
             ייבוא חדש
           </button>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
           <input
@@ -129,7 +161,8 @@ export default function ImportSessionsListPage() {
                             המשך
                           </button>
                           <button
-                            className="text-red-600 hover:underline text-sm"
+                            className="text-red-600 hover:underline text-sm disabled:opacity-50"
+                            disabled={pendingId === session.id}
                             onClick={() => void handleCancel(session.id)}
                           >
                             בטל
@@ -147,7 +180,8 @@ export default function ImportSessionsListPage() {
                             צפה
                           </button>
                           <button
-                            className="text-green-600 hover:underline text-sm"
+                            className="text-green-600 hover:underline text-sm disabled:opacity-50"
+                            disabled={pendingId === session.id}
                             onClick={() => void handleMarkDone(session.id)}
                           >
                             סמן כבוצע
