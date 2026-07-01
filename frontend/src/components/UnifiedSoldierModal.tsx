@@ -72,9 +72,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [savingProfile, setSavingProfile] = useState(false);
   // Profile fields
   const [profileGender, setProfileGender] = useState(soldier.gender ?? "");
-  const [profileIsOfficer, setProfileIsOfficer] = useState(soldier.is_officer ?? false);
   const [profileRank, setProfileRank] = useState(soldier.rank ?? "");
-  const [profileBahad1, setProfileBahad1] = useState(soldier.bahad1_graduate);
   const [profileEnlistment, setProfileEnlistment] = useState(soldier.enlistment_date ?? "");
   const [profileMandEnd, setProfileMandEnd] = useState(soldier.mandatory_end_date ?? "");
   const [profileDischarge, setProfileDischarge] = useState(soldier.discharge_date ?? "");
@@ -129,9 +127,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     setSavingProfile(true);
     await updateSoldierProfile(soldierData.id, {
       gender: profileGender || null,
-      is_officer: profileIsOfficer,
       rank: profileRank || null,
-      bahad1_graduate: profileBahad1,
       enlistment_date: profileEnlistment || null,
       mandatory_end_date: profileMandEnd || null,
       discharge_date: profileDischarge || null,
@@ -355,8 +351,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           <div className="space-y-2 text-sm">
             {soldierData.gender && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.gender")}</span><span>{t(`soldier_profile.gender_${soldierData.gender}`)}</span></div>}
             {soldierData.rank && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.rank")}</span><span>{soldierData.rank}</span></div>}
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.is_officer")}</span><span>{soldierData.is_officer ? "✓" : "—"}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.bahad1_graduate")}</span><span>{soldierData.bahad1_graduate ? "✓" : "—"}</span></div>
             {soldierData.enlistment_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.enlistment_date")}</span><span>{formatDate(soldierData.enlistment_date)}</span></div>}
             {soldierData.mandatory_end_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.mandatory_end_date")}</span><span>{formatDate(soldierData.mandatory_end_date)}</span></div>}
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
@@ -377,10 +371,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <option value="other">{t("soldier_profile.gender_other")}</option>
                 </select>
               </label>
-              <label className="flex items-center gap-3 cursor-pointer col-span-1">
-                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.is_officer")}</span>
-                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileIsOfficer} onChange={(e) => setProfileIsOfficer(e.target.checked)} />
-              </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.rank")}</span>
                 <Combobox
@@ -392,10 +382,6 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   onChange={setProfileRank}
                   placeholder="—"
                 />
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer col-span-1">
-                <span className="text-xs text-gray-600 dark:text-gray-300">{t("soldier_profile.bahad1_graduate")}</span>
-                <input type="checkbox" className="w-4 h-4 accent-indigo-600 cursor-pointer" checked={profileBahad1} onChange={(e) => setProfileBahad1(e.target.checked)} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
