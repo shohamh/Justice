@@ -5,8 +5,18 @@ from datetime import date
 from decimal import Decimal
 
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
-from app.services.algorithm_bridge import resolve_solver_settings, serialize_solver_inputs
+from app.db.models import DutyLocation, HierarchyNode
+from app.services.algorithm_bridge import (
+    _build_node_parents,
+    build_hierarchy_maps,
+    load_duty_blocks_from_shifts,
+    resolve_solver_settings,
+    serialize_solver_inputs,
+)
+from app.services.duty_config import create_duty_type
 from app.services.settings_loader import set_setting
+from app.services.shift_quotas import set_shift_quotas
+from app.services.shifts import create_shift
 
 
 def test_resolve_solver_settings_uses_system_defaults(admin_session):
@@ -57,6 +67,35 @@ def test_resolve_solver_settings_decomposition_override(admin_session):
     s = resolve_solver_settings(admin_session, {"decomposition": "calendar", "round_soldier_count": 30})
     assert s.decomposition == "calendar"
     assert s.round_soldier_count == 30
+
+
+def test_resolve_solver_settings_auto_relax_node_quotas_default_false(admin_session):
+    s = resolve_solver_settings(admin_session, {})
+    assert s.auto_relax_node_quotas is False
+
+
+def test_resolve_solver_settings_auto_relax_node_quotas_per_run_override(admin_session):
+    s = resolve_solver_settings(admin_session, {"auto_relax_node_quotas": True})
+    assert s.auto_relax_node_quotas is True
+
+
+def test_build_node_parents_maps_ids_to_immediate_parent(admin_session):
+    root = HierarchyNode(level="division", name="root", parent_id=None, commander_id=None, path_ids=[])
+    admin_session.add(root)
+    admin_session.flush()
+    root.path_ids = [root.id]
+
+    child = HierarchyNode(level="brigade", name="child", parent_id=root.id, commander_id=None, path_ids=[])
+    admin_session.add(child)
+    admin_session.flush()
+    child.path_ids = [root.id, child.id]
+    admin_session.flush()
+
+    hierarchy_parent, _, _, _ = build_hierarchy_maps(admin_session)
+    node_parents = _build_node_parents(hierarchy_parent)
+
+    assert node_parents[child.id] == root.id
+    assert root.id not in node_parents
 
 
 def test_serialize_solver_inputs_shape():
@@ -220,3 +259,38 @@ def test_load_soldier_inputs_unassigned_soldier_has_empty_path_ids(admin_session
     inputs = load_soldier_inputs(admin_session, as_of=_date(2026, 6, 1))
     by_id = {s.id: s for s in inputs}
     assert by_id[soldier.id].path_ids == []
+
+
+def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
+    from tests.helpers import create_node
+
+    dt = create_duty_type(admin_session, name="dt_bridge_quota", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_bridge_quota")
+    admin_session.add(loc)
+    admin_session.flush()
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 10),
+        end_date=date(2026, 7, 11),
+        required_count=3,
+    )
+    admin_session.flush()
+
+    node_a = create_node(admin_session, level="branch", name="ענף ברידג'")
+    set_shift_quotas(admin_session, shift_id=shift.id, quotas=[(node_a.id, 1)])
+    admin_session.commit()
+
+    blocks, block_to_shift = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    primary_blocks = [b for b in blocks if not b.is_reserve]
+    assert len(primary_blocks) == 3
+
+    quota_blocks = [b for b in primary_blocks if b.node_quotas]
+    assert len(quota_blocks) == 1
+    assert quota_blocks[0].node_quotas == {node_a.id: 1}
+
+    unquota_blocks = [b for b in primary_blocks if not b.node_quotas]
+    assert len(unquota_blocks) == 2
+    for b in unquota_blocks:
+        assert b.node_quotas is None

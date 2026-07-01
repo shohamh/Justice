@@ -32,6 +32,7 @@ from app.db.models import (
     DutyAssignment,
     DutyReserveLink,
     DutyShift,
+    DutyShiftNodeQuota,
     DutyType,
     ExemptionDutyTypeMap,
     ExemptionType,
@@ -325,6 +326,19 @@ def load_duty_blocks_from_shifts(
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
     score_map = {dt.id: dt.score_per_day for dt in types_q}
 
+    # Batch-load per-shift node quotas, then expand each shift's quota dict
+    # ({node_id: count}) into a flat list of singleton {node_id: 1} dicts — one per
+    # quota'd slot. These are assigned, in order, to that shift's PRIMARY DutyBlocks
+    # only (reserve/standby slots are not subject to node quotas). Any primary slots
+    # beyond the expanded quota list (e.g. quotas summing to less than required_count)
+    # get node_quotas=None, i.e. unconstrained.
+    quota_rows = session.execute(
+        select(DutyShiftNodeQuota).where(DutyShiftNodeQuota.duty_shift_id.in_(shift_ids))
+    ).scalars().all()
+    quotas_by_shift: dict[uuid.UUID, list[tuple[uuid.UUID, int]]] = {}
+    for q in quota_rows:
+        quotas_by_shift.setdefault(q.duty_shift_id, []).append((q.hierarchy_node_id, q.count))
+
     blocks: list[DutyBlock] = []
     block_to_shift: dict[uuid.UUID, uuid.UUID] = {}
     today = date.today()
@@ -356,7 +370,12 @@ def load_duty_blocks_from_shifts(
 
         score = score_map.get(shift.duty_type_id, Decimal("1.00"))
         primary_needed = max(0, shift.required_count - filled_primary)
-        for _ in range(primary_needed):
+        expanded_quotas: list[dict[uuid.UUID, int]] = [
+            {node_id: 1}
+            for node_id, count in quotas_by_shift.get(shift.id, [])
+            for _ in range(count)
+        ]
+        for i in range(primary_needed):
             block_id = uuid.uuid4()
             blocks.append(DutyBlock(
                 id=block_id,
@@ -369,6 +388,7 @@ def load_duty_blocks_from_shifts(
                 score_per_day=score,
                 is_reserve=False,
                 eligible_node_ids=shift.eligible_node_ids,
+                node_quotas=expanded_quotas[i] if i < len(expanded_quotas) else None,
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
@@ -529,6 +549,18 @@ def build_hierarchy_maps(
             node_soldiers.setdefault(nid, []).append(sid)
 
     return hierarchy_parent, hierarchy_children, soldier_node, node_soldiers
+
+
+def _build_node_parents(
+    hierarchy_parent: dict[uuid.UUID, uuid.UUID | None],
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Maps every hierarchy node id to its immediate parent id, for the
+    solver's one-level-up quota relaxation (see app.algorithm.solver).
+
+    Root nodes (parent_id is None) are omitted since there's no parent to
+    relax onto.
+    """
+    return {node_id: parent_id for node_id, parent_id in hierarchy_parent.items() if parent_id is not None}
 
 
 def _explanation_payload(
@@ -792,6 +824,9 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         num_workers=int(settings_json.get("num_workers", 1)),
         tiebreak_mode=str(settings_json.get("tiebreak_mode", _setting_str("algorithm.tiebreak_mode", "range"))),
         tiebreak_time_limit_seconds=int(settings_json.get("tiebreak_time_limit_seconds", _setting_int("algorithm.tiebreak_time_limit_seconds", 20))),
+        auto_relax_node_quotas=bool(settings_json.get(
+            "auto_relax_node_quotas", _setting_bool("algorithm.auto_relax_node_quotas", False)
+        )),
     )
 
 
@@ -1181,12 +1216,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     "[job %s] calling solve() — %d soldiers, %d duties, %d existing",
                     job_id, len(soldiers), len(duties), len(existing),
                 )
+                node_parents = _build_node_parents(hier_parent) if settings.auto_relax_node_quotas else None
                 try:
                     result = solve(
                         soldiers, duties, existing, settings,
                         reserve_dist=reserve_dist, cancel_event=cancel_event,
                         progress_cb=_report_progress,
                         swap_progress_cb=_report_swap_start,
+                        node_parents=node_parents,
                     )
                 except BaseException as _solve_exc:
                     _log.critical(

@@ -352,6 +352,39 @@ def build_model(
         else:
             model.Add(sum(vars_for_d) == 1)
 
+    # ── Sub-unit node quotas ────────────────────────────────────────────────
+    # For each duty with node_quotas, force the exact count of assigned
+    # soldiers whose path_ids contains that node (itself or any descendant).
+    # Slots not covered by any quota remain governed only by the coverage
+    # constraint above (any eligible soldier).
+    for di, d in enumerate(duty_list):
+        if not d.node_quotas:
+            continue
+
+        # Under soft coverage, a quota'd duty must still be left feasible to
+        # leave entirely unfilled (the soft escape valve). Reify "this duty
+        # is covered" as a bool and only enforce quotas when it's set; the
+        # reification is equivalent to the bare `sum(vars_for_d) <= 1` above
+        # since the sum is 0 or 1 either way. Hard coverage already forces
+        # sum(vars_for_d) == 1, so the quota always applies unconditionally.
+        covered: IntVar | None = None
+        if coverage == "soft":
+            vars_for_d = [x[(di, si)] for (dii, si) in eligible if dii == di]
+            if vars_for_d:
+                covered = model.NewBoolVar(f"covered_d{di}")
+                model.Add(sum(vars_for_d) == covered)
+
+        for node_id, count in d.node_quotas.items():
+            matching_vars = [
+                x[(di, si)] for (dii, si) in eligible
+                if dii == di and node_id in soldier_list[si].path_ids
+            ]
+            if not matching_vars:
+                continue
+            constraint = model.Add(sum(matching_vars) == count)
+            if covered is not None:
+                constraint.OnlyEnforceIf(covered)
+
     # Hard constraint 2: No overlap — a soldier cannot be assigned two duties covering the same day
     all_dates_set: set[date] = set()
     for di in range(len(duty_list)):

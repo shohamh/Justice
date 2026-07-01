@@ -1243,3 +1243,150 @@ def test_solve_subtree_match_end_to_end() -> None:
     assert result.status in ("OPTIMAL", "FEASIBLE")
     assert len(result.assignments) == 1
     assert result.assignments[0].soldier_id == s_in_subtree
+
+
+def test_node_quota_exact_assignment():
+    """Each DutyBlock represents one slot of a shift (matching how
+    algorithm_bridge.py expands shift.required_count into one DutyBlock per
+    slot, each with its own id — see DutyBlock(...) construction loops in
+    app/services/algorithm_bridge.py). A slot's node_quotas reserves that
+    specific slot for soldiers under a given hierarchy node; build_model's
+    coverage constraint already forces exactly one assignee per slot
+    (sum(vars_for_d) == 1), so a per-slot quota dict must have exactly one
+    node with count=1 — not an aggregate split across multiple slots sharing
+    the same dict, which would be self-contradictory (sum == 1 from coverage
+    vs. sum == 2/3 from the quota, on the very same slot). Here, 2 of the 5
+    slots are reserved for node_a and 3 for node_b, forcing an exact 2/3
+    split across the shift as a whole."""
+    node_a = uuid.uuid4()
+    node_b = uuid.uuid4()
+    duty_type = uuid.uuid4()
+    location = uuid.uuid4()
+
+    soldiers = [
+        SoldierInput(id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_a, path_ids=[node_a])
+        for _ in range(2)
+    ] + [
+        SoldierInput(id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+                     active_days=100, hierarchy_node_id=node_b, path_ids=[node_b])
+        for _ in range(3)
+    ]
+
+    def _slot(node_id: uuid.UUID) -> DutyBlock:
+        return DutyBlock(
+            id=uuid.uuid4(), duty_type_id=duty_type, duty_location_id=location,
+            start_date=date(2024, 6, 1), end_date=date(2024, 6, 1),
+            score_per_day=Decimal("1.0"),
+            node_quotas={node_id: 1},
+        )
+
+    duties = [_slot(node_a) for _ in range(2)] + [_slot(node_b) for _ in range(3)]
+
+    model, x = build_model(soldiers, duties, [], SolverSettings(time_limit_seconds=5))
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    assigned_a = sum(
+        1 for (di, si), var in x.items()
+        if soldiers[si].hierarchy_node_id == node_a and solver.Value(var) == 1
+    )
+    assigned_b = sum(
+        1 for (di, si), var in x.items()
+        if soldiers[si].hierarchy_node_id == node_b and solver.Value(var) == 1
+    )
+    assert assigned_a == 2
+    assert assigned_b == 3
+
+
+def test_node_quota_soft_coverage_leaves_unfillable_duty_unassigned():
+    """Under coverage='soft', a duty carrying a node_quotas entry must still be
+    leave-able entirely unfilled when the only soldier who could satisfy the
+    quota is actually unavailable (blocked by an overlapping existing
+    assignment) — the quota's `== count` constraint must not override the
+    soft escape valve and force INFEASIBLE. The quota's matching_vars is
+    non-empty (the soldier is under the quota node and otherwise eligible),
+    but the no-overlap constraint pins that var to 0, so satisfying
+    `sum(matching_vars) == 1` unconditionally would be globally infeasible.
+    With the fix, the duty is simply left unassigned instead."""
+    node_quota = uuid.uuid4()
+    duty_type = uuid.uuid4()
+    location = uuid.uuid4()
+    soldier_id = uuid.uuid4()
+
+    soldier = SoldierInput(
+        id=soldier_id, enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+        active_days=100, hierarchy_node_id=node_quota, path_ids=[node_quota],
+    )
+    # Note: both DutyBlock and ExistingAssignment date ranges are half-open
+    # ([start, end)), so end_date must be the day *after* the covered day for
+    # the range to actually include 2024-06-01.
+    duty = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=duty_type, duty_location_id=location,
+        start_date=date(2024, 6, 1), end_date=date(2024, 6, 2),
+        score_per_day=Decimal("1.0"),
+        eligible_node_ids=[node_quota],
+        node_quotas={node_quota: 1},
+    )
+    # Soldier already has a published assignment covering the same day, so
+    # the no-overlap constraint forces their var for this duty to 0.
+    existing = [
+        ExistingAssignment(
+            soldier_id=soldier_id, duty_type_id=duty_type,
+            start_date=date(2024, 6, 1), end_date=date(2024, 6, 2),
+        )
+    ]
+
+    model, x = build_model(
+        [soldier], [duty], existing, SolverSettings(time_limit_seconds=5), coverage="soft",
+    )
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert all(solver.Value(var) == 0 for var in x.values())
+
+
+def test_node_quota_soft_coverage_enforces_quota_when_filled():
+    """Under coverage='soft', if a quota'd duty IS filled, the quota must
+    still be honored exactly — the soft escape valve only relaxes the
+    'must be covered' requirement, not the quota itself once covered.
+    Two soldiers are eligible; only one is under the quota node, so the
+    solver is forced to pick the matching one (or leave unassigned)."""
+    node_quota = uuid.uuid4()
+    node_other = uuid.uuid4()
+    root = uuid.uuid4()
+    duty_type = uuid.uuid4()
+    location = uuid.uuid4()
+
+    s_match = SoldierInput(
+        id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+        active_days=100, hierarchy_node_id=node_quota, path_ids=[root, node_quota],
+    )
+    s_other = SoldierInput(
+        id=uuid.uuid4(), enrolled_at=date(2024, 1, 1), cumulative_score=Decimal(0),
+        active_days=100, hierarchy_node_id=node_other, path_ids=[root, node_other],
+    )
+    duty = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=duty_type, duty_location_id=location,
+        start_date=date(2024, 6, 1), end_date=date(2024, 6, 1),
+        score_per_day=Decimal("1.0"),
+        eligible_node_ids=[root],
+        node_quotas={node_quota: 1},
+    )
+
+    model, x = build_model(
+        [s_match, s_other], [duty], [], SolverSettings(time_limit_seconds=5), coverage="soft",
+    )
+    # Soft coverage alone doesn't require the duty to be filled; force it here
+    # so we can verify the quota still binds correctly when it IS filled.
+    model.Add(sum(x.values()) == 1)
+
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    assigned = {si for (di, si), var in x.items() if solver.Value(var) == 1}
+    # Forced to fill, but the quota forbids picking the non-matching soldier
+    # (index 1) — only the matching soldier (index 0) can satisfy it.
+    assert assigned == {0}

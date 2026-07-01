@@ -23,6 +23,8 @@ from app.db.models import (
     Soldier,
 )
 from app.db.session import get_session
+from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
+from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -127,28 +129,6 @@ class ApplyResult(BaseModel):
     updated: int
     skipped: int
     errors: list[str]
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _parse_date(val: Any) -> str | None:
-    """Accept dd.mm.yyyy or yyyy-mm-dd strings, or date objects."""
-    if val is None:
-        return None
-    if isinstance(val, date_type):
-        return val.isoformat()
-    s = str(val).strip()
-    if len(s) == 10 and s[2] == "." and s[5] == ".":
-        d, m, y = s.split(".")
-        return f"{y}-{m}-{d}"
-    return s  # assume ISO
-
-
-def _parse_bool(val: Any) -> bool | None:
-    if val is None:
-        return None
-    s = str(val).strip().lower()
-    return s in ("true", "1", "yes", "כן", "נכון")
 
 
 # ── Preview endpoint ───────────────────────────────────────────────────────────

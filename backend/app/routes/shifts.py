@@ -9,12 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
-from app.auth.deps import require_password_changed
+from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from sqlalchemy import delete as sa_delete, func
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, ShiftTemplate, Soldier, SwapRequest
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, ShiftTemplate, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
+from app.services.shift_quotas import ShiftQuotaError, get_shift_quotas, set_shift_quotas
 from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -37,6 +38,26 @@ class ShiftOut(BaseModel):
     eligible_node_ids: list[uuid.UUID] | None = None
     generated_from_template_id: uuid.UUID | None = None
     generated_from_template_name: str | None = None
+    node_quotas: list["NodeQuotaOut"] = Field(default_factory=list)
+
+
+class NodeQuotaIn(BaseModel):
+    hierarchy_node_id: uuid.UUID
+    count: int
+
+
+class NodeQuotaOut(BaseModel):
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+    count: int
+
+
+class SetQuotasRequest(BaseModel):
+    quotas: list[NodeQuotaIn]
+
+
+class SetQuotasResponse(BaseModel):
+    quotas: list[NodeQuotaOut]
 
 
 class CreateShiftRequest(BaseModel):
@@ -61,7 +82,34 @@ class UpdateShiftRequest(BaseModel):
     eligible_node_ids: list[uuid.UUID] | None = None
 
 
-def _out(s: svc.ShiftWithFill, session: Session | None = None, template_name: str | None = None) -> ShiftOut:
+def _resolve_node_quotas(session: Session, shift_id: uuid.UUID) -> list[NodeQuotaOut]:
+    entries = get_shift_quotas(session, shift_id=shift_id)
+    if not entries:
+        return []
+    nodes = {
+        n.id: n.name
+        for n in session.execute(
+            select(HierarchyNode).where(
+                HierarchyNode.id.in_([e.hierarchy_node_id for e in entries])
+            )
+        ).scalars().all()
+    }
+    return [
+        NodeQuotaOut(
+            hierarchy_node_id=e.hierarchy_node_id,
+            node_name=nodes.get(e.hierarchy_node_id, ""),
+            count=e.count,
+        )
+        for e in entries
+    ]
+
+
+def _out(
+    s: svc.ShiftWithFill,
+    session: Session | None = None,
+    template_name: str | None = None,
+    node_quotas: list[NodeQuotaOut] | None = None,
+) -> ShiftOut:
     calculated = None
     if session is not None:
         from app.services.algorithm_bridge import reserve_count_for_shift
@@ -86,6 +134,7 @@ def _out(s: svc.ShiftWithFill, session: Session | None = None, template_name: st
         eligible_node_ids=s.eligible_node_ids,
         generated_from_template_id=s.generated_from_template_id,
         generated_from_template_name=template_name,
+        node_quotas=node_quotas or [],
     )
 
 
@@ -153,7 +202,29 @@ def get_shift(
     result = svc.get_shift_fill(session, shift_id=shift_id)
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return _out(result, session)
+    return _out(result, session, node_quotas=_resolve_node_quotas(session, shift_id))
+
+
+@router.put("/{shift_id}/quotas", response_model=SetQuotasResponse)
+def put_shift_quotas(
+    shift_id: uuid.UUID,
+    body: SetQuotasRequest,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> SetQuotasResponse:
+    try:
+        set_shift_quotas(
+            session,
+            shift_id=shift_id,
+            quotas=[(q.hierarchy_node_id, q.count) for q in body.quotas],
+            actor_id=actor.id,
+        )
+        session.commit()
+    except ShiftQuotaError as exc:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return SetQuotasResponse(quotas=_resolve_node_quotas(session, shift_id))
 
 
 @router.patch("/{shift_id}", response_model=ShiftOut)

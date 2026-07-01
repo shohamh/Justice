@@ -387,6 +387,26 @@ class DutyShift(Base):
     )
 
 
+class DutyShiftNodeQuota(Base):
+    __tablename__ = "duty_shift_node_quotas"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_shift_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_shifts.id", ondelete="CASCADE")
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT")
+    )
+    count: Mapped[int] = mapped_column(Integer)
+
+    __table_args__ = (
+        sa.UniqueConstraint("duty_shift_id", "hierarchy_node_id", name="uq_shift_node_quota"),
+        sa.CheckConstraint("count >= 1", name="ck_shift_node_quota_count_positive"),
+    )
+
+
 class ShiftTemplate(Base):
     __tablename__ = "shift_templates"
 
@@ -633,6 +653,29 @@ class AlgorithmJob(Base):
     @property
     def assigned_duties(self) -> int:
         return sum(br.get("assigned_count", 0) for br in (self.batch_results or []))
+
+
+class ImportSession(Base):
+    __tablename__ = "import_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    filename: Mapped[str] = mapped_column(Text)
+    raw_excel: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    status: Mapped[str] = mapped_column(
+        Enum("draft", "confirmed", "cancelled", "done", name="import_session_status"),
+        server_default="draft", default="draft",
+    )
+    parsed_state: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'"), default_factory=dict)
+    user_selections: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'"), default_factory=dict)
+    created_links: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'"), default_factory=dict)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
 
 
 class AlgorithmJobSeen(Base):

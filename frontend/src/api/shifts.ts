@@ -17,6 +17,13 @@ export interface DutyShift {
   eligible_node_ids?: string[] | null;
   generated_from_template_id?: string | null;
   generated_from_template_name?: string | null;
+  node_quotas?: NodeQuota[];
+}
+
+export interface NodeQuota {
+  hierarchy_node_id: string;
+  node_name: string;
+  count: number;
 }
 
 export interface CreateShiftInput {
@@ -57,6 +64,13 @@ export async function updateShift(id: string, input: UpdateShiftInput): Promise<
 
 export async function deleteShift(id: string): Promise<void> {
   await api.delete(`/shifts/${id}`);
+}
+
+export async function setShiftQuotas(
+  shiftId: string,
+  quotas: { hierarchy_node_id: string; count: number }[]
+): Promise<{ quotas: NodeQuota[] }> {
+  return (await api.put<{ quotas: NodeQuota[] }>(`/shifts/${shiftId}/quotas`, { quotas })).data;
 }
 
 export async function assignBatch(
