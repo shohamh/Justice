@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date as date_type
 from typing import Any
 
 import openpyxl
 
+from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
+from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportDutyShiftRow,
@@ -15,30 +16,6 @@ from app.services.import_parsers.schema import (
 )
 
 KNOWN_SHEETS = {"soldiers", "duty_shifts", "shift_templates", "assignments"}
-
-
-def _parse_date(val: Any) -> str | None:
-    """Accept dd.mm.yyyy or yyyy-mm-dd strings, or date objects.
-
-    Ported from app/routes/import_excel.py's `_parse_date` helper.
-    """
-    if val is None:
-        return None
-    if isinstance(val, date_type):
-        return val.isoformat()
-    s = str(val).strip()
-    if len(s) == 10 and s[2] == "." and s[5] == ".":
-        d, m, y = s.split(".")
-        return f"{y}-{m}-{d}"
-    return s  # assume ISO
-
-
-def _parse_bool(val: Any) -> bool | None:
-    """Ported from app/routes/import_excel.py's `_parse_bool` helper."""
-    if val is None:
-        return None
-    s = str(val).strip().lower()
-    return s in ("true", "1", "yes", "כן", "נכון")
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
@@ -59,19 +36,37 @@ def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
     return out
 
 
-def _parse_node_quotas(raw: Any) -> list[ImportNodeQuota]:
-    """Parse the new `node_quotas` column: "node_name:count;node_name:count"."""
+def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota], list[str]]:
+    """Parse the new `node_quotas` column: "node_name:count;node_name:count".
+
+    Malformed entries (missing colon, or a non-integer count) are skipped
+    individually rather than crashing the whole import or vanishing silently;
+    each produces a row-tagged warning string.
+    """
     s = str(raw or "").strip()
     if not s:
-        return []
-    quotas = []
+        return [], []
+    quotas: list[ImportNodeQuota] = []
+    warnings: list[str] = []
     for part in s.split(";"):
         part = part.strip()
-        if not part or ":" not in part:
+        if not part:
+            continue
+        if ":" not in part:
+            warnings.append(
+                f"row {source_row}: invalid node_quotas entry '{part}' — expected 'node_name:count'"
+            )
             continue
         name, count_s = part.rsplit(":", 1)
-        quotas.append(ImportNodeQuota(node_name=name.strip(), count=int(count_s.strip())))
-    return quotas
+        try:
+            count = int(count_s.strip())
+        except ValueError:
+            warnings.append(
+                f"row {source_row}: invalid node_quotas entry '{part}' — expected 'node_name:count'"
+            )
+            continue
+        quotas.append(ImportNodeQuota(node_name=name.strip(), count=count))
+    return quotas, warnings
 
 
 class V1StandardParser:
@@ -130,21 +125,24 @@ class V1StandardParser:
                     "notes": None,
                 })
 
-        duty_shifts = [
-            ImportDutyShiftRow(
-                source_row=r["_row"],
-                duty_type_name=str(r.get("duty_type_name") or "").strip(),
-                duty_location_name=str(r.get("duty_location_name") or "").strip(),
-                start_date=_parse_date(r.get("start_date")) or "",
-                end_date=_parse_date(r.get("end_date")) or "",
-                start_time=str(r.get("start_time") or "").strip() or None,
-                end_time=str(r.get("end_time") or "").strip() or None,
-                required_count=int(r.get("required_count") or 1),
-                node_quotas=_parse_node_quotas(r.get("node_quotas")),
-                notes=str(r.get("notes") or "").strip() or None,
+        duty_shifts = []
+        for r in duty_shift_rows:
+            node_quotas, node_quota_warnings = _parse_node_quotas(r.get("node_quotas"), r["_row"])
+            warnings.extend(node_quota_warnings)
+            duty_shifts.append(
+                ImportDutyShiftRow(
+                    source_row=r["_row"],
+                    duty_type_name=str(r.get("duty_type_name") or "").strip(),
+                    duty_location_name=str(r.get("duty_location_name") or "").strip(),
+                    start_date=_parse_date(r.get("start_date")) or "",
+                    end_date=_parse_date(r.get("end_date")) or "",
+                    start_time=str(r.get("start_time") or "").strip() or None,
+                    end_time=str(r.get("end_time") or "").strip() or None,
+                    required_count=int(r.get("required_count") or 1),
+                    node_quotas=node_quotas,
+                    notes=str(r.get("notes") or "").strip() or None,
+                )
             )
-            for r in duty_shift_rows
-        ]
 
         shift_templates = [
             ImportShiftTemplateRow(

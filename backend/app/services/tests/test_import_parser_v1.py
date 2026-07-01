@@ -40,6 +40,36 @@ def test_parses_duty_shifts_without_node_quotas():
     assert data.duty_shifts[0].node_quotas == []
 
 
+def test_node_quotas_missing_colon_is_skipped_with_warning():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 3, "badformat", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_shifts[0].node_quotas == []
+    assert any("badformat" in w for w in data.parser_warnings)
+
+
+def test_node_quotas_non_integer_count_is_skipped_with_warning():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 3, "node:notanumber", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_shifts[0].node_quotas == []
+    assert any("node:notanumber" in w for w in data.parser_warnings)
+
+
+def test_node_quotas_mix_of_valid_and_invalid_entries():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 3,
+         "ענף פוקוס:2;badformat;node:notanumber", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.duty_shifts[0]
+    assert {(q.node_name, q.count) for q in row.node_quotas} == {("ענף פוקוס", 2)}
+    assert any("badformat" in w for w in data.parser_warnings)
+    assert any("node:notanumber" in w for w in data.parser_warnings)
+
+
 def test_detect_scores_high_for_known_sheet_names():
     wb = _wb_with_duty_shifts_sheet([])
     score = V1StandardParser().detect(wb)
