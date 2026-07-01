@@ -40,13 +40,22 @@ function extractDetail(err: unknown): string | undefined {
     ?.detail;
 }
 
-function StatusChip({ action }: { action: ActionValue }) {
+function StatusChip({ action, errors }: { action: ActionValue; errors?: string[] }) {
   return (
-    <span
-      className={`px-1.5 py-0.5 rounded text-xs font-medium ${ACTION_CHIP[action]}`}
-    >
-      {ACTION_LABEL[action]}
-    </span>
+    <div className="space-y-0.5">
+      <span
+        className={`px-1.5 py-0.5 rounded text-xs font-medium ${ACTION_CHIP[action]}`}
+      >
+        {ACTION_LABEL[action]}
+      </span>
+      {errors && errors.length > 0 && (
+        <ul className="text-red-600 text-xs list-none">
+          {errors.map((e, i) => (
+            <li key={i}>{e}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -266,7 +275,7 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
-                        <StatusChip action={row.action} />
+                        <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
                         <td className="p-3">
@@ -379,7 +388,7 @@ export default function ImportSessionReviewPage() {
                         </div>
                       </td>
                       <td className="p-3">
-                        <StatusChip action={row.action} />
+                        <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
                         <td className="p-3">
@@ -460,7 +469,7 @@ export default function ImportSessionReviewPage() {
                         {row.required_primary}+{row.required_reserve}
                       </td>
                       <td className="p-3">
-                        <StatusChip action={row.action} />
+                        <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
                         <td className="p-3">

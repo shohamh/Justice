@@ -276,6 +276,22 @@ describe("ImportSessionReviewPage", () => {
     });
   });
 
+  it("shows the row's error messages next to an error status chip", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.soldiers[0] = {
+      ...detail.parsed_state.soldiers[0],
+      action: "error",
+      errors: ["personal_number is required", "full_name is required"],
+    };
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("שגיאה");
+
+    expect(screen.getByText("personal_number is required")).toBeInTheDocument();
+    expect(screen.getByText("full_name is required")).toBeInTheDocument();
+  });
+
   it("pre-fills the create-node dialog with the unresolved soldier row name", async () => {
     renderPage();
     await screen.findByText("יוסי כהן");
