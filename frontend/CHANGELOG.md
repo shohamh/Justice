@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-07-01
+
+### Features
+- **Dual-approval enrollment flow** — enrollment now requires both a commander approval and an exemption-status check before a soldier is activated as career. `EnrollmentApprovalModal` lets commanders review pending enrollment requests from `ApprovalsPage`; approving/rejecting an exemption request tied to an enrollment now automatically re-checks and triggers `try_activate`. Registration sends `is_career` and links exemption requests to the enrollment request, notifying commanders and duty managers.
+- **`PATCH /exemption-requests/{id}`** and a DM-level filter for enrollment-linked exemptions; enrollment pending list enriched with soldier data; **`PATCH /enrollment-requests/{id}`** added.
+- **Public `GET /auth/exemption-types`** endpoint so the registration page can populate the exemption-type combobox before login.
+- **Soldier lookup endpoint** — name / personal-number / hierarchy filters, used by the new import-lookup support endpoints for duty types and hierarchy nodes.
+
+### Fixes
+- **ALAL alert** now shown only for officers and career soldiers.
+- **Hierarchy edit button label** clarified to make edit intent unambiguous.
+- **Dismiss-from-duty buttons** hidden for non-managers.
+- **Soldier lookup** now queries all roles (was missing some); N+1 fixed by bulk-loading hierarchy node data instead of per-row lookups; unused imports removed.
+- **Rate limiter** added to the public exemption-types endpoint.
+- **Migration downgrade** now uses the hardcoded FK constraint name instead of a lookup that could resolve incorrectly.
+- **Enrollment PATCH**: re-authorizes when `requested_node_id` changes; commits instead of only flushing; fixed `end_date` null-clear; calls `try_activate` for enrollment-linked exemptions; raises `EnrollmentError` instead of asserting in `try_activate`.
+- **Quick-approve buttons** no longer bubble their click event; removed an unused `useTranslation` import from a modal; renamed a shadowing map parameter (`t` → `et`) that collided with `useTranslation`'s `t`.
+- **Registration exemption combobox** now correctly sends `is_career`.
+- **`min_dm_level_rank` setting**: guarded its `int()` cast against `ValueError`.
+
+### Docs
+- Added an Excel import parser guide covering the import-lookup endpoints' format, plus date-format notes and a complete example JSON.
+
+## 2026-06-30
+
+### Features
+- **`PasswordStrengthHint` component** — live password-policy feedback; registration, reset-password, and change-password forms now gate their submit button on the hint reporting a valid password.
+- **Production hardening** — DB connection pooling, liveness/readiness probes, a dedicated threadpool for the solver, JSON structured logging, and HSTS enabled by default.
+
+### Fixes
+- **Broken test passwords** after the password-policy tightening; a malformed `Content-Length` crash; general asyncio modernisation.
+- **`CHECK` constraints** added to prevent `start_date > end_date` across duty, constraint, and exemption tables.
+
+### Chores
+- **Perf**: fixed N+1 queries in the soldiers list, hierarchy nodes, and node registration paths.
+
+## 2026-06-29
+
+### Fixes
+- **Deployment artifact corrections** — WAL health check, HSTS header, container discovery, and a restore guard.
+
 ## 2026-06-28
 
 ### Features
