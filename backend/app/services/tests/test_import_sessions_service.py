@@ -297,6 +297,58 @@ def test_confirm_session_duty_shift_with_node_quota_writes_quota(admin_session):
     assert quotas[0].count == 3
 
 
+def test_confirm_session_duty_shift_quota_failure_leaves_no_partial_shift(admin_session):
+    # Regression test: shift creation succeeds and is flushed, but the
+    # subsequent set_shift_quotas call fails (here, because the quota's
+    # hierarchy node was deleted after parsing but before confirmation,
+    # even though parsed_state still marks it "resolved": true). The row
+    # must have zero effect overall — no orphaned DutyShift persisted
+    # without its quotas.
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, f"{node.name}:3", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    assert sess.parsed_state["duty_shifts"][0]["node_quotas"][0]["resolved"] is True
+
+    # Delete the node after parsing so parsed_state still says resolved=True
+    # but set_shift_quotas will fail with "hierarchy node not found".
+    admin_session.delete(admin_session.get(type(node), node.id))
+    admin_session.commit()
+
+    from app.db.models import DutyShift
+
+    count_before = admin_session.execute(select(DutyShiftNodeQuota)).scalars().all()
+    shifts_before = admin_session.execute(select(DutyShift)).scalars().all()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 0
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["type"] == "duty_shifts"
+
+    shifts_after = admin_session.execute(select(DutyShift)).scalars().all()
+    assert len(shifts_after) == len(shifts_before)
+
+    quotas_after = admin_session.execute(select(DutyShiftNodeQuota)).scalars().all()
+    assert len(quotas_after) == len(count_before)
+
+    assert sess.created_links["duty_shifts"] == []
+
+
 def test_confirm_session_non_draft_raises(admin_session):
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")

@@ -346,34 +346,43 @@ def confirm_session(
         if row["action"] in ("error", "out_of_scope") or effective == "skip":
             skipped += 1
             continue
+        if effective != "new":
+            skipped += 1
+            continue
         try:
-            if effective != "new":
-                skipped += 1
-                continue
-            shift = DutyShift(
-                duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
-                duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
-                start_date=date_type.fromisoformat(row["start_date"]),
-                end_date=date_type.fromisoformat(row["end_date"]),
-                required_count=row["required_count"],
-                notes=row.get("notes"),
-            )
-            if row.get("start_time"):
-                shift.start_time = row["start_time"]
-            if row.get("end_time"):
-                shift.end_time = row["end_time"]
-            session.add(shift)
-            session.flush()
-
-            resolved_quotas = [
-                (uuid.UUID(q["node_id"]), q["count"])
-                for q in row.get("node_quotas", [])
-                if q.get("resolved")
-            ]
-            if resolved_quotas:
-                set_shift_quotas(
-                    session, shift_id=shift.id, quotas=resolved_quotas, actor_id=actor.id
+            # Nested transaction (SAVEPOINT): shift creation and quota
+            # application are two separate writes. If the quota write fails
+            # after the shift has already been flushed, we must not leave a
+            # partially-created DutyShift (without its quotas) in the
+            # session for the caller's eventual outer commit. Wrapping both
+            # steps in begin_nested() means any exception rolls back only
+            # this row's SAVEPOINT, leaving previously-successful rows and
+            # the outer session/transaction untouched.
+            with session.begin_nested():
+                shift = DutyShift(
+                    duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
+                    duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
+                    start_date=date_type.fromisoformat(row["start_date"]),
+                    end_date=date_type.fromisoformat(row["end_date"]),
+                    required_count=row["required_count"],
+                    notes=row.get("notes"),
                 )
+                if row.get("start_time"):
+                    shift.start_time = row["start_time"]
+                if row.get("end_time"):
+                    shift.end_time = row["end_time"]
+                session.add(shift)
+                session.flush()
+
+                resolved_quotas = [
+                    (uuid.UUID(q["node_id"]), q["count"])
+                    for q in row.get("node_quotas", [])
+                    if q.get("resolved")
+                ]
+                if resolved_quotas:
+                    set_shift_quotas(
+                        session, shift_id=shift.id, quotas=resolved_quotas, actor_id=actor.id
+                    )
 
             created += 1
             created_duty_shifts.append(str(shift.id))
