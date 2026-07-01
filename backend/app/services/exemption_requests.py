@@ -107,6 +107,9 @@ def approve_request(
                         title="בקשת הפטור אושרה",
                         reference_type="exemption_request", reference_id=req.id,
                         actor_id=decided_by)
+    if req.enrollment_request_id:
+        from app.services.enrollment import try_activate
+        try_activate(session, req.enrollment_request_id)
     return req
 
 
@@ -131,4 +134,7 @@ def reject_request(
                         title="בקשת הפטור נדחתה",
                         reference_type="exemption_request", reference_id=req.id,
                         actor_id=decided_by)
+    if req.enrollment_request_id:
+        from app.services.enrollment import try_activate
+        try_activate(session, req.enrollment_request_id)
     return req
