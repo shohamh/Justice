@@ -4,8 +4,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportSessionReviewPage from "./ImportSessionReviewPage";
 import * as importSessionsApi from "../api/importSessions";
 import type { SessionDetail } from "../api/importSessions";
+import * as hierarchyApi from "../api/hierarchy";
 
 vi.mock("../api/importSessions");
+vi.mock("../api/hierarchy");
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -148,6 +150,17 @@ describe("ImportSessionReviewPage", () => {
       skipped: 0,
       errors: [],
     });
+    vi.mocked(hierarchyApi.renameNode).mockResolvedValue({
+      id: "picked-node-id",
+      level: "team",
+      name: "פלוגה א",
+      parent_id: null,
+      commander_id: null,
+      commander_name: null,
+      path_ids: [],
+      duty_managers: [],
+      dm_manageable: true,
+    });
   });
 
   it("loads and renders session data with correct tab counts", async () => {
@@ -203,6 +216,48 @@ describe("ImportSessionReviewPage", () => {
     expect(await screen.findByText(/נוצרו: 2/)).toBeInTheDocument();
     expect(screen.getByText(/עודכנו: 1/)).toBeInTheDocument();
     expect(screen.getByText(/דולגו: 0/)).toBeInTheDocument();
+  });
+
+  it("renames the picked node to the unresolved soldier row name, then reparses", async () => {
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    fireEvent.click(within(row).getByText("שנה"));
+
+    expect(await screen.findByTestId("hierarchy-node-picker-modal")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("pick-node"));
+
+    await waitFor(() => {
+      expect(hierarchyApi.renameNode).toHaveBeenCalledWith("picked-node-id", "פלוגה א");
+    });
+    await waitFor(() => {
+      expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
+    });
+  });
+
+  it("renames the picked node to the unresolved duty-shift quota name, then reparses", async () => {
+    // Structurally identical to the soldier-row picker above: same nodePickerContext
+    // state, same onPicked handler. Verifying here mainly confirms the quota row's
+    // "שנה" button wires the correct unresolved name (q.node_name) into the context.
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("משמרות (1)"));
+    await screen.findByText("שמירה");
+
+    const quotaButton = await screen.findByText("שנה", { selector: "button" });
+    fireEvent.click(quotaButton);
+
+    expect(await screen.findByTestId("hierarchy-node-picker-modal")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("pick-node"));
+
+    await waitFor(() => {
+      expect(hierarchyApi.renameNode).toHaveBeenCalledWith("picked-node-id", "פלוגה א");
+    });
+    await waitFor(() => {
+      expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
+    });
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {

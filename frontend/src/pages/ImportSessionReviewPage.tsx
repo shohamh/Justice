@@ -4,6 +4,7 @@ import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
+import { renameNode } from "../api/hierarchy";
 import {
   type SessionDetail,
   type ConfirmSessionResult,
@@ -63,7 +64,9 @@ export default function ImportSessionReviewPage() {
   // dialog state
   const [dutyTypeModalOpen, setDutyTypeModalOpen] = useState(false);
   const [nodeCreateOpen, setNodeCreateOpen] = useState(false);
-  const [nodePickerOpen, setNodePickerOpen] = useState(false);
+  const [nodePickerContext, setNodePickerContext] = useState<{
+    unresolvedName: string;
+  } | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,6 +114,18 @@ export default function ImportSessionReviewPage() {
       setSelections(result.user_selections ?? {});
     } catch {
       setError("שגיאה ברענון הנתונים");
+    }
+  }
+
+  async function handleNodePicked(pickedNodeId: string) {
+    const context = nodePickerContext;
+    setNodePickerContext(null);
+    if (!context) return;
+    try {
+      await renameNode(pickedNodeId, context.unresolvedName);
+      await handleReparse();
+    } catch {
+      setError("שגיאה בשינוי שם היחידה");
     }
   }
 
@@ -221,7 +236,11 @@ export default function ImportSessionReviewPage() {
                                 </button>
                                 <button
                                   className="text-indigo-600 hover:underline text-xs"
-                                  onClick={() => setNodePickerOpen(true)}
+                                  onClick={() =>
+                                    setNodePickerContext({
+                                      unresolvedName: row.hierarchy_node_name ?? "",
+                                    })
+                                  }
                                 >
                                   שנה
                                 </button>
@@ -325,7 +344,11 @@ export default function ImportSessionReviewPage() {
                                   </button>
                                   <button
                                     className="text-indigo-600 hover:underline text-xs"
-                                    onClick={() => setNodePickerOpen(true)}
+                                    onClick={() =>
+                                      setNodePickerContext({
+                                        unresolvedName: q.node_name,
+                                      })
+                                    }
                                   >
                                     שנה
                                   </button>
@@ -505,13 +528,10 @@ export default function ImportSessionReviewPage() {
         />
       )}
 
-      {nodePickerOpen && (
+      {nodePickerContext && (
         <HierarchyNodePickerModal
-          onPicked={() => {
-            setNodePickerOpen(false);
-            void handleReparse();
-          }}
-          onClose={() => setNodePickerOpen(false)}
+          onPicked={(nodeId) => void handleNodePicked(nodeId)}
+          onClose={() => setNodePickerContext(null)}
         />
       )}
     </Layout>
