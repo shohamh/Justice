@@ -11,7 +11,7 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import email_verification as ev_svc
@@ -398,3 +398,17 @@ def verify_email(
         return {}
     session.rollback()
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
+
+
+class PublicExemptionTypeOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+
+
+@router.get("/exemption-types", response_model=list[PublicExemptionTypeOut])
+def list_public_exemption_types(
+    session: Session = Depends(get_session),
+) -> list[PublicExemptionTypeOut]:
+    types = session.execute(select(ExemptionType).order_by(ExemptionType.name)).scalars().all()
+    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description) for et in types]

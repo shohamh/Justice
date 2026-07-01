@@ -53,6 +53,7 @@ export interface RegisterPayload {
   email?: string | null;
   gender: string | null;
   is_officer: boolean | null;
+  is_career: boolean;
   rank: string | null;
   bahad1_graduate: boolean;
   enlistment_date: string | null;
@@ -96,6 +97,17 @@ export async function fetchRegisterNodes(inviteCode: string): Promise<NodeOut[]>
 export async function validateInviteCode(code: string): Promise<boolean> {
   const r = await api.get<{ valid: boolean }>(`/auth/register/validate-code?code=${encodeURIComponent(code)}`);
   return r.data.valid;
+}
+
+export interface PublicExemptionType {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export async function listPublicExemptionTypes(): Promise<PublicExemptionType[]> {
+  const r = await api.get<PublicExemptionType[]>("/auth/exemption-types");
+  return r.data;
 }
 
 export async function checkForgotPasswordChannels(personal_number: string): Promise<string[]> {
