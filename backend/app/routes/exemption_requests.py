@@ -42,6 +42,7 @@ class ExemptionRequestOut(BaseModel):
     decision_note: str | None
     created_at: str
     files: list[ExemptionFileOut] = []
+    enrollment_request_id: uuid.UUID | None = None
 
 
 class CreateExemptionRequest(BaseModel):
@@ -83,6 +84,7 @@ def _out(
         decision_note=req.decision_note,
         created_at=req.created_at.isoformat(),
         files=files or [],
+        enrollment_request_id=req.enrollment_request_id,
     )
 
 
@@ -123,6 +125,34 @@ def get_pending_exemption_requests(
     root_ids = scope_root_ids(session, user)
     if not root_ids:
         return []
+
+    from app.db.models import DutyManagerScope, HierarchyLevelType
+    from app.services.settings_loader import get_setting, SettingNotFound
+
+    try:
+        min_dm_rank = int(get_setting(session, "enrollment.min_dm_level_rank"))
+    except SettingNotFound:
+        min_dm_rank = 0
+
+    # Compute the maximum level rank of this user's DM scope nodes
+    user_dm_node_ids = session.execute(
+        select(DutyManagerScope.hierarchy_node_id).where(
+            DutyManagerScope.duty_manager_id == user.id
+        )
+    ).scalars().all()
+    user_max_scope_rank = 0
+    for nid in user_dm_node_ids:
+        n = session.get(HierarchyNode, nid)
+        if n:
+            lt = session.execute(
+                select(HierarchyLevelType).where(HierarchyLevelType.key == n.level)
+            ).scalar_one_or_none()
+            if lt and lt.rank > user_max_scope_rank:
+                user_max_scope_rank = lt.rank
+    user_can_see_enrollment_exemptions = (
+        user.role == "admin" or user_max_scope_rank >= min_dm_rank
+    )
+
     subq = (
         select(HierarchyNode.id)
         .where(HierarchyNode.path_ids.overlap(list(root_ids)))
@@ -176,6 +206,8 @@ def get_pending_exemption_requests(
         )
     result = []
     for r in reqs:
+        if r.enrollment_request_id and not user_can_see_enrollment_exemptions:
+            continue
         s = soldiers_by_id.get(r.soldier_id)
         soldier_name = s.full_name if s else str(r.soldier_id)[:8]
         node_name = (
@@ -220,6 +252,47 @@ def get_pending_exemption_count(
     )
     soldier_ids = list(enrolled_ids | pending_enrollment_ids)
     return {"count": count_pending_requests(session, soldier_ids)}
+
+
+class PatchExemptionBody(BaseModel):
+    exemption_type_id: uuid.UUID | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    reason: str | None = None
+
+
+@router.patch("/exemption-requests/{request_id}", response_model=ExemptionRequestOut)
+def patch_exemption_request(
+    request_id: uuid.UUID,
+    body: PatchExemptionBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionRequestOut:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
+    if req.status != "pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="exemption_request_not_pending")
+    target_soldier = session.get(Soldier, req.soldier_id)
+    target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+    authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
+    if body.exemption_type_id is not None:
+        from app.db.models import ExemptionType
+        if session.get(ExemptionType, body.exemption_type_id) is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_type_not_found")
+        req.exemption_type_id = body.exemption_type_id
+    if body.start_date is not None:
+        from datetime import date as _date
+        req.start_date = _date.fromisoformat(body.start_date)
+    if body.end_date is not None:
+        from datetime import date as _date
+        req.end_date = _date.fromisoformat(body.end_date)
+    elif body.end_date == "":
+        req.end_date = None
+    if body.reason is not None:
+        req.reason = body.reason or None
+    session.flush()
+    return _out(req, include_sensitive=True)
 
 
 @router.post("/exemption-requests/{request_id}/approve", response_model=ExemptionRequestOut)
