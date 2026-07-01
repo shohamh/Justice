@@ -34,7 +34,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint(
-        op.f('exemption_requests_enrollment_request_id_fkey'),
+        'exemption_requests_enrollment_request_id_fkey',
         'exemption_requests',
         type_='foreignkey',
     )
