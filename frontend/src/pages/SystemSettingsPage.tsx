@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import { getSystemSettings, updateSystemSettings, SettingsMap } from "../api/systemSettings";
 import ReactMarkdown from "react-markdown";
-import changelogRaw from "../../../CHANGELOG.md?raw";
+import changelogRaw from "../../CHANGELOG.md?raw";
 
 interface SettingDef {
   key: string;
