@@ -89,8 +89,11 @@ export default function AlertBanners({ lastMitvahimDate, lastAlalDate, settings 
   const mitvMsg = alertMessage(lastMitvahimDate, mitvahimValidity, mitvahimWarn, "מטווחים");
   if (mitvMsg) alerts.push({ key: "mitvahim", message: mitvMsg });
 
-  const alalMsg = alertMessage(lastAlalDate, alalValidity, alalWarn, 'אל"ל');
-  if (alalMsg) alerts.push({ key: "alal", message: alalMsg });
+  const isAlalRelevant = user?.is_officer || user?.is_career;
+  if (isAlalRelevant) {
+    const alalMsg = alertMessage(lastAlalDate, alalValidity, alalWarn, 'אל"ל');
+    if (alalMsg) alerts.push({ key: "alal", message: alalMsg });
+  }
 
   const visible = alerts.filter((a) => !dismissed.has(a.key));
 

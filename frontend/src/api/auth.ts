@@ -32,6 +32,7 @@ export interface Me {
   direct_commander_id?: string | null;
   direct_commander_name?: string | null;
   profile_picture_url?: string | null;
+  is_career?: boolean;
 }
 
 export interface NodeOut {
