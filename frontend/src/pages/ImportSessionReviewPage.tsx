@@ -287,9 +287,7 @@ export default function ImportSessionReviewPage() {
                                 setRowAction("soldiers", row.row, e.target.value)
                               }
                             >
-                              <option value={row.action}>
-                                {ACTION_LABEL[row.action]}
-                              </option>
+                              <option value={row.action}>אישור</option>
                               {row.action !== "skip" && (
                                 <option value="skip">דלג</option>
                               )}
@@ -404,9 +402,7 @@ export default function ImportSessionReviewPage() {
                                 )
                               }
                             >
-                              <option value={row.action}>
-                                {ACTION_LABEL[row.action]}
-                              </option>
+                              <option value={row.action}>אישור</option>
                               {row.action !== "skip" && (
                                 <option value="skip">דלג</option>
                               )}
@@ -485,9 +481,7 @@ export default function ImportSessionReviewPage() {
                                 )
                               }
                             >
-                              <option value={row.action}>
-                                {ACTION_LABEL[row.action]}
-                              </option>
+                              <option value={row.action}>אישור</option>
                               {row.action !== "skip" && (
                                 <option value="skip">דלג</option>
                               )}
