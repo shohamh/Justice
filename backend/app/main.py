@@ -43,6 +43,7 @@ from app.routes import system_settings as system_settings_routes
 from app.routes import hakpaza as hakpaza_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
+from app.routes import import_sessions as import_sessions_routes
 from app.routes import gimelim as gimelim_routes
 from app.routes import public_settings as public_settings_routes
 from app.settings import get_settings
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(hakpaza_routes.router, prefix="/api")
     app.include_router(import_excel_routes.router, prefix="/api")
     app.include_router(import_lookup_routes.router, prefix="/api")
+    app.include_router(import_sessions_routes.router, prefix="/api")
     app.include_router(gimelim_routes.router, prefix="/api")
     app.include_router(public_settings_routes.router, prefix="/api")
     return app
