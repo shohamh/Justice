@@ -5,8 +5,10 @@ from datetime import date
 from decimal import Decimal
 
 from app.algorithm.types import DutyBlock, ExistingAssignment, SoldierInput, SolverSettings
-from app.db.models import DutyLocation
+from app.db.models import DutyLocation, HierarchyNode
 from app.services.algorithm_bridge import (
+    _build_node_parents,
+    build_hierarchy_maps,
     load_duty_blocks_from_shifts,
     resolve_solver_settings,
     serialize_solver_inputs,
@@ -65,6 +67,35 @@ def test_resolve_solver_settings_decomposition_override(admin_session):
     s = resolve_solver_settings(admin_session, {"decomposition": "calendar", "round_soldier_count": 30})
     assert s.decomposition == "calendar"
     assert s.round_soldier_count == 30
+
+
+def test_resolve_solver_settings_auto_relax_node_quotas_default_false(admin_session):
+    s = resolve_solver_settings(admin_session, {})
+    assert s.auto_relax_node_quotas is False
+
+
+def test_resolve_solver_settings_auto_relax_node_quotas_per_run_override(admin_session):
+    s = resolve_solver_settings(admin_session, {"auto_relax_node_quotas": True})
+    assert s.auto_relax_node_quotas is True
+
+
+def test_build_node_parents_maps_ids_to_immediate_parent(admin_session):
+    root = HierarchyNode(level="division", name="root", parent_id=None, commander_id=None, path_ids=[])
+    admin_session.add(root)
+    admin_session.flush()
+    root.path_ids = [root.id]
+
+    child = HierarchyNode(level="brigade", name="child", parent_id=root.id, commander_id=None, path_ids=[])
+    admin_session.add(child)
+    admin_session.flush()
+    child.path_ids = [root.id, child.id]
+    admin_session.flush()
+
+    hierarchy_parent, _, _, _ = build_hierarchy_maps(admin_session)
+    node_parents = _build_node_parents(hierarchy_parent)
+
+    assert node_parents[child.id] == root.id
+    assert root.id not in node_parents
 
 
 def test_serialize_solver_inputs_shape():

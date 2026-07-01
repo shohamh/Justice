@@ -551,6 +551,18 @@ def build_hierarchy_maps(
     return hierarchy_parent, hierarchy_children, soldier_node, node_soldiers
 
 
+def _build_node_parents(
+    hierarchy_parent: dict[uuid.UUID, uuid.UUID | None],
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Maps every hierarchy node id to its immediate parent id, for the
+    solver's one-level-up quota relaxation (see app.algorithm.solver).
+
+    Root nodes (parent_id is None) are omitted since there's no parent to
+    relax onto.
+    """
+    return {node_id: parent_id for node_id, parent_id in hierarchy_parent.items() if parent_id is not None}
+
+
 def _explanation_payload(
     exp: AlgoExplanation,
     *,
@@ -812,6 +824,9 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         num_workers=int(settings_json.get("num_workers", 1)),
         tiebreak_mode=str(settings_json.get("tiebreak_mode", _setting_str("algorithm.tiebreak_mode", "range"))),
         tiebreak_time_limit_seconds=int(settings_json.get("tiebreak_time_limit_seconds", _setting_int("algorithm.tiebreak_time_limit_seconds", 20))),
+        auto_relax_node_quotas=bool(settings_json.get(
+            "auto_relax_node_quotas", _setting_bool("algorithm.auto_relax_node_quotas", False)
+        )),
     )
 
 
@@ -1201,12 +1216,14 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     "[job %s] calling solve() — %d soldiers, %d duties, %d existing",
                     job_id, len(soldiers), len(duties), len(existing),
                 )
+                node_parents = _build_node_parents(hier_parent) if settings.auto_relax_node_quotas else None
                 try:
                     result = solve(
                         soldiers, duties, existing, settings,
                         reserve_dist=reserve_dist, cancel_event=cancel_event,
                         progress_cb=_report_progress,
                         swap_progress_cb=_report_swap_start,
+                        node_parents=node_parents,
                     )
                 except BaseException as _solve_exc:
                     _log.critical(

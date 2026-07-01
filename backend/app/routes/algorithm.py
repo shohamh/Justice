@@ -73,6 +73,7 @@ class SolverSettingsIn(BaseModel):
     Wr: int = 28
     alpha: float = 1.0
     time_limit_seconds: int = Field(default=30, ge=5, le=120)
+    auto_relax_node_quotas: bool = False
 
 
 class CreateJobRequest(BaseModel):

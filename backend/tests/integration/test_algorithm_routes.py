@@ -58,6 +58,31 @@ def test_create_job_returns_202(client, admin_session):
     assert data["status"] == "pending"
 
 
+def test_create_job_accepts_auto_relax_node_quotas(client, admin_session):
+    dm, _node = _setup_dm(admin_session, "route_alg_arnq")
+    shift, _dt, _loc = _make_shift(admin_session, "route_arnq", "2027-07-03")
+    create_soldier(admin_session, personal_number="route_soldier_arnq", role="soldier")
+
+    resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(shift.id)],
+            "mode": "shadow",
+            "settings": {
+                "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15,
+                "auto_relax_node_quotas": True,
+            },
+        },
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["id"]
+
+    admin_session.expire_all()
+    job = admin_session.get(AlgorithmJob, job_id)
+    assert job.settings_json["auto_relax_node_quotas"] is True
+
+
 def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
     from app.services.settings_loader import set_setting
     dm, _node = _setup_dm(admin_session, "route_alg_def")

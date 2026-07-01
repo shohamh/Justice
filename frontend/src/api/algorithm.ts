@@ -10,6 +10,7 @@ export interface SolverSettings {
   beta: number;
   time_limit_seconds: number;
   num_workers: number;
+  auto_relax_node_quotas?: boolean;
 }
 
 export interface AlgorithmDefaults {

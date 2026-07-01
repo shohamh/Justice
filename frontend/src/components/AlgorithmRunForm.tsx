@@ -16,6 +16,7 @@ interface Props {
 
 const DEFAULT_SETTINGS: SolverSettings = {
   K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
+  auto_relax_node_quotas: false,
 };
 
 function todayStr() {
@@ -258,6 +259,14 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
               />
             </div>
           ))}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={settings.auto_relax_node_quotas ?? false}
+              onChange={e => setSettings(s => ({ ...s, auto_relax_node_quotas: e.target.checked }))}
+            />
+            אפשר הרחבת יחידה אוטומטית במכסות
+          </label>
         </div>
       )}
 
