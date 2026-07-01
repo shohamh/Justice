@@ -28,7 +28,9 @@ import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
 import ExportPage from "./pages/planning/ExportPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import HakpazaPage from "./pages/HakpazaPage";
-import ImportPage from "./pages/ImportPage";
+import ImportSessionsListPage from "./pages/ImportSessionsListPage";
+import ImportUploadPage from "./pages/ImportUploadPage";
+import ImportSessionReviewPage from "./pages/ImportSessionReviewPage";
 import ActionPage from "./pages/ActionPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
@@ -81,7 +83,9 @@ export default function App() {
             {/* Admin */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
-            <Route path="/import" element={<AppGate><ImportPage /></AppGate>} />
+            <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
+            <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
+            <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />
             {/* Redirects from old routes */}
             <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
             <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
