@@ -205,10 +205,12 @@ def patch_enrollment(
     if body.last_alal_date is not None:
         s.last_alal_date = date.fromisoformat(body.last_alal_date) if body.last_alal_date else None
     if body.requested_node_id is not None:
-        if session.get(HierarchyNode, body.requested_node_id) is None:
+        new_node = session.get(HierarchyNode, body.requested_node_id)
+        if new_node is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node not found")
+        authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=new_node)
         req.requested_node_id = body.requested_node_id
-    session.flush()
+    session.commit()
     exemptions = session.execute(
         select(ExemptionRequest).where(ExemptionRequest.enrollment_request_id == req.id)
     ).scalars().all()
