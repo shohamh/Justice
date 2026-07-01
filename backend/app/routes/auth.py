@@ -54,6 +54,7 @@ class RegisterRequest(BaseModel):
     email: str | None = Field(default=None, max_length=200)
     gender: str | None = None
     is_officer: bool | None = None
+    is_career: bool = False
     rank: str | None = None
     bahad1_graduate: bool = False
     enlistment_date: date | None = None
@@ -279,6 +280,7 @@ def register(
             email=body.email,
             gender=body.gender,
             is_officer=body.is_officer,
+            is_career=body.is_career,
             rank=body.rank,
             bahad1_graduate=body.bahad1_graduate,
             enlistment_date=body.enlistment_date,
