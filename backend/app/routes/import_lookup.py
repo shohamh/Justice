@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import is_commander, is_duty_manager, scope_root_ids
@@ -63,4 +66,64 @@ def list_hierarchy_for_import(
             commander=commanders_by_id.get(n.commander_id) if n.commander_id else None,
         )
         for n in nodes
+    ]
+
+
+class SoldierLookupOut(BaseModel):
+    id: uuid.UUID
+    personal_number: str
+    full_name: str
+    rank: str | None
+    hierarchy_node_id: uuid.UUID | None
+    hierarchy_node_name: str | None
+
+
+@router.get("/soldiers", response_model=list[SoldierLookupOut])
+def lookup_soldiers_for_import(
+    personal_number: str | None = None,
+    name: str | None = None,
+    hierarchy_node_id: uuid.UUID | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_duty_manager_or_admin),
+) -> list[SoldierLookupOut]:
+    if personal_number is None and name is None and hierarchy_node_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_filter_provided")
+
+    query = select(Soldier).where(Soldier.role == "soldier")
+    if personal_number is not None:
+        query = query.where(Soldier.personal_number == personal_number)
+    if name is not None:
+        query = query.where(Soldier.full_name.ilike(f"%{name}%"))
+    if hierarchy_node_id is not None:
+        descendant_ids = session.execute(
+            select(HierarchyNode.id).where(
+                or_(
+                    HierarchyNode.id == hierarchy_node_id,
+                    HierarchyNode.path_ids.any(hierarchy_node_id),
+                )
+            )
+        ).scalars().all()
+        query = query.where(Soldier.hierarchy_node_id.in_(descendant_ids))
+
+    soldiers = list(session.execute(query).scalars().all())
+
+    node_ids = {s.hierarchy_node_id for s in soldiers if s.hierarchy_node_id}
+    nodes_by_id: dict[uuid.UUID, HierarchyNode] = {}
+    if node_ids:
+        nodes_by_id = {
+            n.id: n for n in session.execute(
+                select(HierarchyNode).where(HierarchyNode.id.in_(node_ids))
+            ).scalars().all()
+        }
+
+    return [
+        SoldierLookupOut(
+            id=s.id,
+            personal_number=s.personal_number,
+            full_name=s.full_name,
+            rank=s.rank,
+            hierarchy_node_id=s.hierarchy_node_id,
+            hierarchy_node_name=nodes_by_id[s.hierarchy_node_id].name if s.hierarchy_node_id in nodes_by_id else None,
+        )
+        for s in soldiers
     ]
