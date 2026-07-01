@@ -407,7 +407,9 @@ class PublicExemptionTypeOut(BaseModel):
 
 
 @router.get("/exemption-types", response_model=list[PublicExemptionTypeOut])
+@limiter.limit("60/minute")
 def list_public_exemption_types(
+    request: Request,
     session: Session = Depends(get_session),
 ) -> list[PublicExemptionTypeOut]:
     types = session.execute(select(ExemptionType).order_by(ExemptionType.name)).scalars().all()
