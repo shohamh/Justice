@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import SoldierLink from "../components/SoldierLink";
+import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
+import { listPublicExemptionTypes } from "../api/auth";
+import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import {
   PersonalConstraint,
   approveConstraint,
@@ -72,21 +75,37 @@ export default function ApprovalsPage() {
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
   const [enrollItems, setEnrollItems] = useState<EnrollmentRequestDTO[]>([]);
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
+  const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
+  const [nodes, setNodes] = useState<{ id: string; name: string }[]>([]);
+  const [exemptionTypes, setExemptionTypes] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     void (async () => {
-      const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
+      const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments, tree, etypes] = await Promise.all([
         listPendingApprovals(),
         listPendingExemptionRequests(),
         listPendingFieldUpdates(),
         listPendingSwaps(),
         listPendingEnrollments(),
+        fetchFullTree(),
+        listPublicExemptionTypes(),
       ]);
       setItems(constraints);
       setErItems(exemptionReqs);
       setFuItems(fieldUpdates);
       setSwapItems(swaps);
       setEnrollItems(enrollments);
+      // Flatten tree into id+name list
+      const flatNodes: { id: string; name: string }[] = [];
+      function flatten(nodes: NodeDTO[]) {
+        for (const n of nodes) {
+          flatNodes.push({ id: n.id, name: n.name });
+          if (n.children) flatten(n.children);
+        }
+      }
+      flatten(tree);
+      setNodes(flatNodes);
+      setExemptionTypes(etypes.map(et => ({ id: et.id, name: et.name })));
     })();
   }, []);
 
@@ -404,7 +423,7 @@ export default function ApprovalsPage() {
             {enrollItems.map(req => {
               const nodeName = req.requested_node_name ?? req.requested_node_id.slice(0, 8);
               return (
-                <div key={req.id} className="border rounded p-3 text-sm space-y-2">
+                <div key={req.id} className="border rounded p-3 text-sm space-y-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => setSelectedEnrollment(req)}>
                   <div className="flex items-center gap-2">
                     <strong><SoldierLink id={req.soldier_id} name={req.soldier_name} /></strong>
                     <span className="text-xs text-gray-400">{t("enrollment.click_to_view_profile")}</span>
@@ -433,6 +452,15 @@ export default function ApprovalsPage() {
           </div>
         )}
       </section>
+      {selectedEnrollment && (
+        <EnrollmentApprovalModal
+          req={selectedEnrollment}
+          nodes={nodes}
+          exemptionTypes={exemptionTypes}
+          onClose={() => setSelectedEnrollment(null)}
+          onDone={async () => { setSelectedEnrollment(null); await refresh(); }}
+        />
+      )}
     </Layout>
   );
 }
