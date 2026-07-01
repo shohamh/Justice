@@ -6,11 +6,12 @@ import { useLevelTypes } from "../hooks/useLevelTypes";
 interface Props {
   onClose: () => void;
   onCreated: () => void;
+  initialName?: string;
 }
 
-export default function AddRootNodeDialog({ onClose, onCreated }: Props) {
+export default function AddRootNodeDialog({ onClose, onCreated, initialName = "" }: Props) {
   const { t } = useTranslation();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const { levelTypes } = useLevelTypes();
   const sortedTypes = [...levelTypes].sort((a, b) => a.rank - b.rank);
   const [level, setLevel] = useState("");

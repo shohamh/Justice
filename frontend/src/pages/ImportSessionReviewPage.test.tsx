@@ -31,8 +31,16 @@ vi.mock("../components/DutyTypeFormModal", () => ({
 }));
 
 vi.mock("../components/AddRootNodeDialog", () => ({
-  default: ({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) => (
-    <div data-testid="add-root-node-dialog">
+  default: ({
+    onCreated,
+    onClose,
+    initialName,
+  }: {
+    onCreated: () => void;
+    onClose: () => void;
+    initialName?: string;
+  }) => (
+    <div data-testid="add-root-node-dialog" data-initial-name={initialName ?? ""}>
       <button onClick={() => { onCreated(); onClose(); }}>create-node</button>
       <button onClick={onClose}>close-node</button>
     </div>
@@ -258,6 +266,31 @@ describe("ImportSessionReviewPage", () => {
     await waitFor(() => {
       expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
     });
+  });
+
+  it("pre-fills the create-node dialog with the unresolved soldier row name", async () => {
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    fireEvent.click(within(row).getByText("צור יחידה"));
+
+    const dialog = await screen.findByTestId("add-root-node-dialog");
+    expect(dialog.getAttribute("data-initial-name")).toBe("פלוגה א");
+  });
+
+  it("pre-fills the create-node dialog with the unresolved duty-shift quota name", async () => {
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("משמרות (1)"));
+    await screen.findByText("שמירה");
+
+    const createButton = await screen.findByText("צור", { selector: "button" });
+    fireEvent.click(createButton);
+
+    const dialog = await screen.findByTestId("add-root-node-dialog");
+    expect(dialog.getAttribute("data-initial-name")).toBe("פלוגה א");
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {

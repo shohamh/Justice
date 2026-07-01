@@ -63,7 +63,9 @@ export default function ImportSessionReviewPage() {
 
   // dialog state
   const [dutyTypeModalOpen, setDutyTypeModalOpen] = useState(false);
-  const [nodeCreateOpen, setNodeCreateOpen] = useState(false);
+  const [nodeCreateContext, setNodeCreateContext] = useState<{
+    unresolvedName: string;
+  } | null>(null);
   const [nodePickerContext, setNodePickerContext] = useState<{
     unresolvedName: string;
   } | null>(null);
@@ -88,6 +90,12 @@ export default function ImportSessionReviewPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
@@ -230,7 +238,11 @@ export default function ImportSessionReviewPage() {
                               <>
                                 <button
                                   className="text-indigo-600 hover:underline text-xs"
-                                  onClick={() => setNodeCreateOpen(true)}
+                                  onClick={() =>
+                                    setNodeCreateContext({
+                                      unresolvedName: row.hierarchy_node_name ?? "",
+                                    })
+                                  }
                                 >
                                   צור יחידה
                                 </button>
@@ -338,7 +350,11 @@ export default function ImportSessionReviewPage() {
                                 <>
                                   <button
                                     className="text-indigo-600 hover:underline text-xs"
-                                    onClick={() => setNodeCreateOpen(true)}
+                                    onClick={() =>
+                                      setNodeCreateContext({
+                                        unresolvedName: q.node_name,
+                                      })
+                                    }
                                   >
                                     צור
                                   </button>
@@ -519,12 +535,13 @@ export default function ImportSessionReviewPage() {
         />
       )}
 
-      {nodeCreateOpen && (
+      {nodeCreateContext && (
         <AddRootNodeDialog
+          initialName={nodeCreateContext.unresolvedName}
           onCreated={() => {
             void handleReparse();
           }}
-          onClose={() => setNodeCreateOpen(false)}
+          onClose={() => setNodeCreateContext(null)}
         />
       )}
 
