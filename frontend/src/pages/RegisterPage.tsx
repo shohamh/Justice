@@ -1,16 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
-import { validateInviteCode, fetchRegisterNodes, register, NodeOut } from "../api/auth";
+import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
-const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS_LIST];
 const OFFICER_RANKS = new Set(OFFICER_RANKS_LIST);
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
@@ -67,7 +66,12 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [nodes, setNodes] = useState<NodeOut[]>([]);
   const [nodeSearch, setNodeSearch] = useState("");
+  const [exemptionTypes, setExemptionTypes] = useState<PublicExemptionType[]>([]);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
+  }, []);
 
   // Nodes are fetched after invite code is validated (see checkCode)
 
@@ -102,6 +106,7 @@ export default function RegisterPage() {
         email: form.email || null,
         gender: form.gender || null,
         is_officer: form.is_officer,
+        is_career: form.is_career,
         rank: form.rank || null,
         bahad1_graduate: form.bahad1_graduate,
         enlistment_date: form.enlistment_date || null,
@@ -245,8 +250,16 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_exemptions")}</h2>
             {form.exemption_requests.map((er, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
-                <input placeholder="מזהה סוג פטור (UUID)" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.exemption_type_id}
-                  onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], exemption_type_id: e.target.value}; set("exemption_requests", rows); }} />
+                <Combobox
+                  items={exemptionTypes.map(et => ({ id: et.id, name: et.name }))}
+                  value={er.exemption_type_id}
+                  onChange={v => {
+                    const rows = [...form.exemption_requests];
+                    rows[i] = { ...rows[i], exemption_type_id: v };
+                    set("exemption_requests", rows);
+                  }}
+                  placeholder="סוג פטור"
+                />
                 <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: e.target.value}; set("exemption_requests", rows); }} />
                 <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}

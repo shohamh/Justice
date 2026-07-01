@@ -44,6 +44,7 @@ class MeResponse(BaseModel):
     direct_commander_id: uuid.UUID | None = None
     direct_commander_name: str | None = None
     profile_picture_url: str | None = None
+    is_career: bool = False
 
 
 class SetEmailRequest(BaseModel):
@@ -113,6 +114,7 @@ def me(
         direct_commander_id=commander.id if commander else None,
         direct_commander_name=commander.full_name if commander else None,
         profile_picture_url=user.profile_picture_url,
+        is_career=user.is_career,
     )
 
 

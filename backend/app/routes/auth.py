@@ -11,7 +11,7 @@ from app.audit.writer import write_audit
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.rate_limit import limiter
 from app.services import email_verification as ev_svc
@@ -54,6 +54,7 @@ class RegisterRequest(BaseModel):
     email: str | None = Field(default=None, max_length=200)
     gender: str | None = None
     is_officer: bool | None = None
+    is_career: bool = False
     rank: str | None = None
     bahad1_graduate: bool = False
     enlistment_date: date | None = None
@@ -279,6 +280,7 @@ def register(
             email=body.email,
             gender=body.gender,
             is_officer=body.is_officer,
+            is_career=body.is_career,
             rank=body.rank,
             bahad1_graduate=body.bahad1_graduate,
             enlistment_date=body.enlistment_date,
@@ -398,3 +400,19 @@ def verify_email(
         return {}
     session.rollback()
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result)
+
+
+class PublicExemptionTypeOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+
+
+@router.get("/exemption-types", response_model=list[PublicExemptionTypeOut])
+@limiter.limit("60/minute")
+def list_public_exemption_types(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> list[PublicExemptionTypeOut]:
+    types = session.execute(select(ExemptionType).order_by(ExemptionType.name)).scalars().all()
+    return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description) for et in types]

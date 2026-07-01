@@ -225,12 +225,14 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                             {t("swaps.offer_replace")}
                           </button>
                         )}
-                        <button
-                          className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
-                          onClick={() => setDismissTarget(a)}
-                        >
-                          {t("dismiss_action")}
-                        </button>
+                        {(user?.role === "admin" || user?.is_duty_manager) && (
+                          <button
+                            className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                            onClick={() => setDismissTarget(a)}
+                          >
+                            {t("dismiss_action")}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -344,12 +346,14 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
                         {t("swaps.offer_replace")}
                       </button>
                     )}
-                    <button
-                      className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
-                      onClick={() => setReserveDismissTarget(a)}
-                    >
-                      {t("dismiss_action")}
-                    </button>
+                    {(user?.role === "admin" || user?.is_duty_manager) && (
+                      <button
+                        className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded hover:bg-amber-200"
+                        onClick={() => setReserveDismissTarget(a)}
+                      >
+                        {t("dismiss_action")}
+                      </button>
+                    )}
                     <span
                       className={`text-xs px-2 py-0.5 rounded ${
                         a.called_up_from ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-600"
