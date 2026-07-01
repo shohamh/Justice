@@ -32,6 +32,9 @@ The workbook may contain up to three sheets, each optional: `soldiers`,
 - `hierarchy_node_name` must match a node in the current hierarchy tree —
   validate it against `GET /api/import-lookup/hierarchy` before generating
   rows that reference it (see below).
+- `enrolled_at` and `enlistment_date` are dates, parsed by `_parse_date` in
+  `backend/app/routes/import_excel.py`: both `dd.mm.yyyy` and ISO
+  `yyyy-mm-dd` are accepted.
 
 ### `assignments` sheet columns
 
@@ -40,6 +43,9 @@ The workbook may contain up to three sheets, each optional: `soldiers`,
 - `personal_number` must reference a soldier — new or already existing.
 - `duty_type_name` must match an existing duty type — validate against
   `GET /api/import-lookup/duty-types`.
+- `start_date` and `end_date` are dates, parsed by `_parse_date` in
+  `backend/app/routes/import_excel.py`: both `dd.mm.yyyy` and ISO
+  `yyyy-mm-dd` are accepted.
 
 ### `shift_templates` sheet columns
 
@@ -77,7 +83,14 @@ Authorization: Bearer <token>
     "active": true,
     "requirements": {},
     "reserve_ratio": "0.000",
-    "reserve_minimum": 0
+    "reserve_minimum": 0,
+    "contact_name": "רב\"ט כהן",
+    "contact_phone": "050-1234567",
+    "start_time": "20:00:00",
+    "end_time": "06:00:00",
+    "instructions": "הצטיידות במקלע בשער הראשי",
+    "is_external": false,
+    "eligible_node_ids": ["8f14e45f-ceea-467e-bd5d-1e0c5f0e8f9c"]
   }
 ]
 ```
@@ -98,12 +111,20 @@ Authorization: Bearer <token>
 200 OK
 [
   {
-    "id": "...",
+    "id": "8f14e45f-ceea-467e-bd5d-1e0c5f0e8f9c",
     "level": "unit",
     "name": "יחידה 1",
-    "parent_id": "...",
+    "parent_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "commander_id": null,
-    "path_ids": ["...", "..."],
+    "commander_name": null,
+    "path_ids": ["3fa85f64-5717-4562-b3fc-2c963f66afa6", "8f14e45f-ceea-467e-bd5d-1e0c5f0e8f9c"],
+    "duty_managers": [
+      {
+        "scope_id": "8f14e45f-ceea-467e-bd5d-1e0c5f0e8f9c",
+        "soldier_id": "d290f1ee-6c54-4b01-90e6-d701748f0851",
+        "name": "רב\"ט לוי"
+      }
+    ],
     "dm_manageable": false
   }
 ]
@@ -124,11 +145,11 @@ Authorization: Bearer <token>
 200 OK
 [
   {
-    "id": "...",
+    "id": "d290f1ee-6c54-4b01-90e6-d701748f0851",
     "personal_number": "1234567",
     "full_name": "ישראל ישראלי",
     "rank": "רב\"ט",
-    "hierarchy_node_id": "...",
+    "hierarchy_node_id": "8f14e45f-ceea-467e-bd5d-1e0c5f0e8f9c",
     "hierarchy_node_name": "יחידה 1"
   }
 ]
