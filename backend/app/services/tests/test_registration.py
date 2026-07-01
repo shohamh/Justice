@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 
-from app.db.models import HierarchyNode, SoldierEnrollmentRequest, SystemSetting
+from app.db.models import ExemptionRequest, ExemptionType, HierarchyNode, SoldierEnrollmentRequest, SystemSetting
 from tests.helpers import create_node, create_soldier
 
 
@@ -31,6 +31,7 @@ def _base(**overrides):
         "full_name": "Test Soldier",
         "password": "password-secure-1",
         "phone": "050-0000000",
+        "email": None,
         "gender": "male",
         "is_officer": False,
         "rank": "טוראי",
@@ -105,3 +106,55 @@ def test_register_duplicate_personal_number_raises(admin_session):
     with pytest.raises(RegistrationError, match="personal_number"):
         register(admin_session, invite_code=invite.code, requested_node_id=node.id,
                  exemption_requests=[], personal_constraints=[], **_base(personal_number=pn))
+
+
+def test_register_stores_is_career(admin_session):
+    import sqlalchemy as sa
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    soldier = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[], is_career=True, **_base()
+    )
+    admin_session.commit()
+
+    assert soldier.is_career is True
+
+
+def test_register_links_exemptions_to_enrollment(admin_session):
+    import sqlalchemy as sa
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    # Create an exemption type to reference
+    ex_type = ExemptionType(name=f"test_type_{_uid()}")
+    admin_session.add(ex_type)
+    admin_session.commit()
+
+    soldier = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[{
+            "exemption_type_id": ex_type.id,
+            "start_date": date(2024, 1, 1),
+            "end_date": date(2024, 12, 31),
+            "reason": "test reason",
+        }],
+        personal_constraints=[], **_base()
+    )
+    admin_session.commit()
+
+    enrollment_req = admin_session.execute(
+        sa.select(SoldierEnrollmentRequest).where(SoldierEnrollmentRequest.soldier_id == soldier.id)
+    ).scalar_one()
+    exemption = admin_session.execute(
+        sa.select(ExemptionRequest).where(ExemptionRequest.soldier_id == soldier.id)
+    ).scalar_one()
+
+    assert exemption.enrollment_request_id == enrollment_req.id

@@ -33,6 +33,7 @@ def register(
     email: str | None,
     gender: str | None,
     is_officer: bool | None,
+    is_career: bool = False,
     rank: str | None,
     bahad1_graduate: bool,
     enlistment_date: date | None,
@@ -73,6 +74,7 @@ def register(
         must_change_password=False,
         gender=gender,
         is_officer=is_officer,
+        is_career=is_career,
         rank=rank,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
@@ -84,6 +86,14 @@ def register(
     session.add(soldier)
     session.flush()
 
+    enrollment_req = SoldierEnrollmentRequest(
+        soldier_id=soldier.id,
+        requested_node_id=requested_node_id,
+        status="pending",
+    )
+    session.add(enrollment_req)
+    session.flush()
+
     for er in exemption_requests:
         session.add(ExemptionRequest(
             soldier_id=soldier.id,
@@ -92,6 +102,7 @@ def register(
             end_date=er.get("end_date"),
             reason=er.get("reason"),
             status="pending",
+            enrollment_request_id=enrollment_req.id,
         ))
 
     for pc in personal_constraints:
@@ -103,10 +114,14 @@ def register(
             status="pending",
         ))
 
-    session.add(SoldierEnrollmentRequest(
-        soldier_id=soldier.id,
-        requested_node_id=requested_node_id,
-        status="pending",
-    ))
     session.flush()
+
+    from app.services.notifications import notify_enrollment_received
+    notify_enrollment_received(
+        session,
+        soldier=soldier,
+        enrollment_req=enrollment_req,
+        has_exemptions=len(exemption_requests) > 0,
+    )
+
     return soldier

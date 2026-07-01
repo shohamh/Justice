@@ -396,6 +396,76 @@ def _create_notif(
     )
 
 
+def notify_enrollment_received(
+    session: Session,
+    *,
+    soldier: Soldier,
+    enrollment_req: "SoldierEnrollmentRequest",
+    has_exemptions: bool,
+) -> None:
+    from app.db.models import DutyManagerScope, HierarchyLevelType, SoldierEnrollmentRequest
+    from app.services.settings_loader import get_setting, SettingNotFound
+
+    requested_node = session.get(HierarchyNode, enrollment_req.requested_node_id)
+    if not requested_node or not requested_node.path_ids:
+        return
+
+    title = f"בקשת הצטרפות: {soldier.full_name}"
+
+    # Notify commanders with scope over the requested node's path
+    cmdr_scopes = session.execute(
+        select(CommanderNotificationScope).where(
+            CommanderNotificationScope.hierarchy_node_id.in_(requested_node.path_ids)
+        )
+    ).scalars().all()
+    seen: set[uuid.UUID] = set()
+    for scope in cmdr_scopes:
+        if scope.commander_id in seen or scope.commander_id == soldier.id:
+            continue
+        seen.add(scope.commander_id)
+        _create_notif(
+            session, soldier_id=scope.commander_id,
+            type=NotificationType.enrollment_request_received,
+            title=title, body=None,
+            reference_type="enrollment_request", reference_id=enrollment_req.id,
+            actor_id=None,
+        )
+
+    if not has_exemptions:
+        return
+
+    # Notify eligible DMs (scope over path, level rank >= setting)
+    try:
+        min_rank = int(get_setting(session, "enrollment.min_dm_level_rank"))
+    except SettingNotFound:
+        min_rank = 0
+
+    dm_scopes = session.execute(
+        select(DutyManagerScope).where(
+            DutyManagerScope.hierarchy_node_id.in_(requested_node.path_ids)
+        )
+    ).scalars().all()
+    for dm_scope in dm_scopes:
+        if dm_scope.duty_manager_id in seen or dm_scope.duty_manager_id == soldier.id:
+            continue
+        scope_node = session.get(HierarchyNode, dm_scope.hierarchy_node_id)
+        if not scope_node:
+            continue
+        lt = session.execute(
+            select(HierarchyLevelType).where(HierarchyLevelType.key == scope_node.level)
+        ).scalar_one_or_none()
+        if lt is None or lt.rank < min_rank:
+            continue
+        seen.add(dm_scope.duty_manager_id)
+        _create_notif(
+            session, soldier_id=dm_scope.duty_manager_id,
+            type=NotificationType.enrollment_request_received,
+            title=title, body=None,
+            reference_type="enrollment_request", reference_id=enrollment_req.id,
+            actor_id=None,
+        )
+
+
 def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
     existing = set(
         session.execute(
