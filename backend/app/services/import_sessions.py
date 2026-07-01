@@ -47,6 +47,11 @@ def _resolve_soldiers(session: Session, data: ParsedImportData, actor: Soldier) 
             action = "new"
 
         if action != "error" and node is not None:
+            # Per-row scope check: re-runs scope_root_ids(session, actor) on every
+            # iteration instead of hoisting it out of the loop. Fine for typical
+            # single-Excel-import row counts; if import volumes grow significantly,
+            # this is the first place to optimize (precompute scope_root_ids once
+            # and inline the subtree check).
             if actor.role != "admin" and not is_node_in_actor_scope(
                 session=session, actor=actor, node_id=node.id
             ):
@@ -118,6 +123,10 @@ def _resolve_duty_shifts(session: Session, data: ParsedImportData, actor: Soldie
                 uuid.UUID(qd["node_id"]) for qd in quota_dicts if qd["resolved"]
             ]
             for node_id in resolved_node_ids:
+                # Same per-row trade-off as in _resolve_soldiers above: this calls
+                # is_node_in_actor_scope (and thus scope_root_ids) per node_id rather
+                # than hoisting scope_root_ids(session, actor) out of the loop.
+                # Acceptable for typical import volumes; revisit if row counts grow.
                 if not is_node_in_actor_scope(session=session, actor=actor, node_id=node_id):
                     action = "out_of_scope"
                     break
