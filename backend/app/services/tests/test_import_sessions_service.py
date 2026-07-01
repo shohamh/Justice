@@ -6,11 +6,20 @@ from decimal import Decimal
 
 import openpyxl
 import pytest
+from sqlalchemy import select
 
-from app.db.models import DutyManagerScope, DutyLocation
+from app.db.models import DutyManagerScope, DutyLocation, DutyShiftNodeQuota, Soldier
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401  (registers "v1_standard" parser)
-from app.services.import_sessions import ImportSessionError, create_session, reparse_session
+from app.services.import_sessions import (
+    ImportSessionError,
+    cancel_session,
+    confirm_session,
+    create_session,
+    mark_done,
+    reparse_session,
+    set_selections,
+)
 from tests.helpers import create_node, create_soldier
 
 
@@ -184,3 +193,177 @@ def test_reparse_session_not_found_raises(admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     with pytest.raises(ImportSessionError, match="not found"):
         reparse_session(admin_session, session_id=uuid.uuid4(), actor=admin)
+
+
+def test_set_selections_persists(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    selections = {"duty_shifts": {"1": "skip"}}
+    updated = set_selections(admin_session, session_id=sess.id, selections=selections)
+    assert updated.user_selections == selections
+
+    admin_session.commit()
+    admin_session.refresh(sess)
+    assert sess.user_selections == selections
+
+
+def test_confirm_session_mixed_actions(admin_session):
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_soldiers([
+        ["1111111", "New Soldier", "", "", "", "", "", "", "", ""],
+        ["2222222", "Skip Soldier", "", "", "", "", "", "", "", ""],
+        ["no_such_node_soldier", "Error Soldier", "", "", "", node.name + "_bogus", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    rows = sess.parsed_state["soldiers"]
+    assert rows[0]["action"] == "new"
+    assert rows[1]["action"] == "new"
+    assert rows[2]["action"] == "error"
+
+    # User selects "skip" for row 2 (the second row, effective row number = its source_row)
+    row2_num = str(rows[1]["row"])
+    set_selections(admin_session, session_id=sess.id, selections={"soldiers": {row2_num: "skip"}})
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    assert result["skipped"] == 2
+    assert result["updated"] == 0
+
+    admin_session.refresh(sess)
+    assert sess.status == "confirmed"
+    assert sess.confirmed_at is not None
+    assert len(sess.created_links["soldiers"]) == 1
+
+    created_id = sess.created_links["soldiers"][0]
+    created_soldier = admin_session.get(Soldier, uuid.UUID(created_id))
+    assert created_soldier is not None
+    assert created_soldier.personal_number == "1111111"
+
+
+def test_confirm_session_duty_shift_with_node_quota_writes_quota(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, f"{node.name}:3", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    assert result["skipped"] == 0
+
+    shift_id = uuid.UUID(sess.created_links["duty_shifts"][0])
+    quotas = admin_session.execute(
+        select(DutyShiftNodeQuota).where(DutyShiftNodeQuota.duty_shift_id == shift_id)
+    ).scalars().all()
+    assert len(quotas) == 1
+    assert quotas[0].hierarchy_node_id == node.id
+    assert quotas[0].count == 3
+
+
+def test_confirm_session_non_draft_raises(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    sess.status = "confirmed"
+    admin_session.commit()
+
+    with pytest.raises(ImportSessionError, match="only draft sessions"):
+        confirm_session(admin_session, session_id=sess.id, actor=admin)
+
+
+def test_cancel_session_draft(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    cancelled = cancel_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert cancelled.status == "cancelled"
+    assert cancelled.cancelled_at is not None
+
+
+def test_mark_done_requires_confirmed(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    with pytest.raises(ImportSessionError, match="confirmed"):
+        mark_done(admin_session, session_id=sess.id, actor=admin)
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    assert result["created"] == 1
+
+    done = mark_done(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    assert done.status == "done"

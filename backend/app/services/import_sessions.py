@@ -1,16 +1,28 @@
 from __future__ import annotations
 
 import io
+import secrets
 import uuid
+from datetime import UTC, date as date_type, datetime
 
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyLocation, DutyType, HierarchyNode, ImportSession, Soldier
+from app.auth.password import hash_password
+from app.db.models import (
+    DutyLocation,
+    DutyShift,
+    DutyType,
+    HierarchyNode,
+    ImportSession,
+    ShiftTemplate,
+    Soldier,
+)
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
+from app.services.shift_quotas import set_shift_quotas
 
 
 class ImportSessionError(Exception):
@@ -226,5 +238,213 @@ def reparse_session(session: Session, *, session_id: uuid.UUID, actor: Soldier) 
     parsed_state = _resolve_and_score(session, data, actor)
 
     import_session.parsed_state = parsed_state
+    session.flush()
+    return import_session
+
+
+def set_selections(
+    session: Session, *, session_id: uuid.UUID, selections: dict
+) -> ImportSession:
+    import_session = session.get(ImportSession, session_id)
+    if import_session is None:
+        raise ImportSessionError("session not found")
+
+    import_session.user_selections = selections
+    session.flush()
+    return import_session
+
+
+def _effective_action(selections: dict, group: str, row: dict) -> str:
+    return selections.get(group, {}).get(str(row["row"]), row["action"])
+
+
+def confirm_session(
+    session: Session, *, session_id: uuid.UUID, actor: Soldier
+) -> dict:
+    import_session = session.get(ImportSession, session_id)
+    if import_session is None:
+        raise ImportSessionError("session not found")
+    if import_session.status != "draft":
+        raise ImportSessionError("only draft sessions can be confirmed")
+
+    selections = import_session.user_selections or {}
+    state = import_session.parsed_state
+
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: list[dict] = []
+    created_soldiers: list[str] = []
+    created_duty_shifts: list[str] = []
+    created_shift_templates: list[str] = []
+
+    # ── Soldiers ────────────────────────────────────────────────────────
+    for row in state.get("soldiers", []):
+        effective = _effective_action(selections, "soldiers", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            if effective == "new":
+                new_soldier = Soldier(
+                    personal_number=row["personal_number"],
+                    full_name=row["full_name"],
+                    password_hash=hash_password(secrets.token_hex(16)),
+                    must_change_password=True,
+                    rank=row.get("rank"),
+                    gender=row.get("gender"),
+                    is_officer=row.get("is_officer"),
+                    hierarchy_node_id=(
+                        uuid.UUID(row["hierarchy_node_id"])
+                        if row.get("hierarchy_node_id")
+                        else None
+                    ),
+                    phone=row.get("phone"),
+                    email=row.get("email"),
+                )
+                if row.get("enrolled_at"):
+                    new_soldier.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
+                if row.get("enlistment_date"):
+                    new_soldier.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                session.add(new_soldier)
+                session.flush()
+                created += 1
+                created_soldiers.append(str(new_soldier.id))
+            elif effective == "update" and row.get("existing_id"):
+                s = session.get(Soldier, uuid.UUID(row["existing_id"]))
+                if s is not None:
+                    s.full_name = row["full_name"]
+                    if row.get("rank") is not None:
+                        s.rank = row["rank"]
+                    if row.get("gender") is not None:
+                        s.gender = row["gender"]
+                    if row.get("is_officer") is not None:
+                        s.is_officer = row["is_officer"]
+                    if row.get("hierarchy_node_id") is not None:
+                        s.hierarchy_node_id = uuid.UUID(row["hierarchy_node_id"])
+                    if row.get("phone") is not None:
+                        s.phone = row["phone"]
+                    if row.get("email") is not None:
+                        s.email = row["email"]
+                    if row.get("enrolled_at"):
+                        s.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
+                    if row.get("enlistment_date"):
+                        s.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                    session.flush()
+                    updated += 1
+                    created_soldiers.append(str(s.id))
+                else:
+                    skipped += 1
+            else:
+                skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldiers", "error": str(exc)})
+
+    # ── Duty shifts ─────────────────────────────────────────────────────
+    for row in state.get("duty_shifts", []):
+        effective = _effective_action(selections, "duty_shifts", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            if effective != "new":
+                skipped += 1
+                continue
+            shift = DutyShift(
+                duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
+                duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
+                start_date=date_type.fromisoformat(row["start_date"]),
+                end_date=date_type.fromisoformat(row["end_date"]),
+                required_count=row["required_count"],
+                notes=row.get("notes"),
+            )
+            if row.get("start_time"):
+                shift.start_time = row["start_time"]
+            if row.get("end_time"):
+                shift.end_time = row["end_time"]
+            session.add(shift)
+            session.flush()
+
+            resolved_quotas = [
+                (uuid.UUID(q["node_id"]), q["count"])
+                for q in row.get("node_quotas", [])
+                if q.get("resolved")
+            ]
+            if resolved_quotas:
+                set_shift_quotas(
+                    session, shift_id=shift.id, quotas=resolved_quotas, actor_id=actor.id
+                )
+
+            created += 1
+            created_duty_shifts.append(str(shift.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
+
+    # ── Shift templates ─────────────────────────────────────────────────
+    for row in state.get("shift_templates", []):
+        effective = _effective_action(selections, "shift_templates", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            if effective != "new":
+                skipped += 1
+                continue
+            loc = session.execute(select(DutyLocation).limit(1)).scalar_one_or_none()
+            if loc is None:
+                raise ImportSessionError(
+                    f"Row {row['row']}: no duty location exists — cannot import template"
+                )
+            template = ShiftTemplate(
+                name=row["name"],
+                duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
+                duty_location_id=loc.id,
+                weekdays=row["days_of_week"],
+                required_count=row["required_primary"] + row["required_reserve"],
+            )
+            session.add(template)
+            session.flush()
+            created += 1
+            created_shift_templates.append(str(template.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "shift_templates", "error": str(exc)})
+
+    import_session.created_links = {
+        "soldiers": created_soldiers,
+        "duty_shifts": created_duty_shifts,
+        "shift_templates": created_shift_templates,
+    }
+    import_session.status = "confirmed"
+    import_session.confirmed_at = datetime.now(tz=UTC)
+    session.flush()
+
+    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+def cancel_session(
+    session: Session, *, session_id: uuid.UUID, actor: Soldier
+) -> ImportSession:
+    import_session = session.get(ImportSession, session_id)
+    if import_session is None:
+        raise ImportSessionError("session not found")
+    if import_session.status != "draft":
+        raise ImportSessionError("only draft sessions can be cancelled")
+
+    import_session.status = "cancelled"
+    import_session.cancelled_at = datetime.now(tz=UTC)
+    session.flush()
+    return import_session
+
+
+def mark_done(
+    session: Session, *, session_id: uuid.UUID, actor: Soldier
+) -> ImportSession:
+    import_session = session.get(ImportSession, session_id)
+    if import_session is None:
+        raise ImportSessionError("session not found")
+    if import_session.status != "confirmed":
+        raise ImportSessionError("only confirmed sessions can be marked done")
+
+    import_session.status = "done"
     session.flush()
     return import_session
