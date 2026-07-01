@@ -52,6 +52,18 @@ API payloads are in English.
   (**שקיפות**).
 - **Enforces process**: soldiers submit personal-constraint and exemption requests;
   commanders / duty managers approve or reject them; quotas are enforced.
+- **Imports from Excel**: a duty manager uploads an `.xlsx` file and reviews a
+  persistent, resumable import session — per-row status (new/update/error/out of
+  scope), inline creation of missing duty types or hierarchy nodes, and partial
+  confirm (valid rows apply even if some rows are skipped or fixed later). Import
+  is scoped to the DM's managed subtree; admins see everything. Parsing is
+  pluggable (`backend/app/services/import_parsers/`) so new spreadsheet layouts
+  can be supported without touching the review/confirm pipeline.
+- **Sub-unit shift quotas**: a single duty shift can require an exact number of
+  soldiers from specific hierarchy nodes (e.g. 2 from ענף פוקוס, 3 from ענף
+  אלומות) alongside unconstrained slots. The CP-SAT solver enforces these as hard
+  constraints, with an optional one-level-up relaxation (manual or automatic) when
+  a quota can't be met at the exact node.
 - **Audits everything**: every state change is recorded in an append-only audit log.
 
 ## Roles at a glance
@@ -283,6 +295,10 @@ uv pip install --no-index --find-links vendor/ -r requirements-vendor.txt
 - **v2 — Recurring templates + swaps** ✅: weekly shift templates with
   DM-triggered idempotent generation; duty swap/cover system (direct request + open
   board) with configurable two-sided manager approval.
+- **v2.1 — Excel import + sub-unit quotas** ✅: persistent, resumable import
+  sessions with pluggable parsers, DM-scoped row resolution, inline fix-and-retry
+  for missing entities, and partial confirm; per-shift exact sub-unit soldier
+  quotas enforced by the solver with one-level-up relaxation.
 - **Next**: production deployment artefacts (Caddy, TLS, prod compose);
   notifications (SMS/push) for swap offers and approval decisions; greedy online
   assignment for ad-hoc single duties; no-show / punishment-duty mechanic;
