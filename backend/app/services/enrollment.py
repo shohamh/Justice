@@ -31,7 +31,8 @@ def try_activate(
     if pending:
         return
     soldier = session.get(Soldier, req.soldier_id)
-    assert soldier is not None
+    if soldier is None:
+        raise EnrollmentError("soldier not found for enrollment request")
     soldier.hierarchy_node_id = req.requested_node_id
     req.status = "approved"
     session.flush()
