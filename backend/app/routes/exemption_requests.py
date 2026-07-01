@@ -286,12 +286,17 @@ def patch_exemption_request(
         req.start_date = _date.fromisoformat(body.start_date)
     if body.end_date is not None:
         from datetime import date as _date
-        req.end_date = _date.fromisoformat(body.end_date)
-    elif body.end_date == "":
-        req.end_date = None
+        if body.end_date == "":
+            req.end_date = None
+        else:
+            req.end_date = _date.fromisoformat(body.end_date)
     if body.reason is not None:
         req.reason = body.reason or None
-    session.flush()
+    session.commit()
+    if req.enrollment_request_id:
+        from app.services.enrollment import try_activate
+        try_activate(session, req.enrollment_request_id)
+        session.commit()
     return _out(req, include_sensitive=True)
 
 
