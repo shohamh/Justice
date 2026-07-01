@@ -30,10 +30,24 @@ export interface ExemptionRequest {
   end_date: string | null;
   reason: string | null;
   status: "pending" | "approved" | "rejected";
+  enrollment_request_id: string | null;
   decided_by: string | null;
   decision_note: string | null;
   created_at: string;
   files: ExemptionFile[];
+}
+
+export async function patchExemptionRequest(
+  id: string,
+  data: {
+    exemption_type_id?: string;
+    start_date?: string;
+    end_date?: string | null;
+    reason?: string | null;
+  }
+): Promise<ExemptionRequest> {
+  const r = await api.patch<ExemptionRequest>(`/exemption-requests/${id}`, data);
+  return r.data;
 }
 
 export async function listMyExemptionRequests(): Promise<ExemptionRequest[]> {
