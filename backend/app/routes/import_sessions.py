@@ -76,6 +76,9 @@ async def upload_import_session(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="invalid_file_type")
+
     content = await file.read()
     if content[:4] != b"PK\x03\x04":
         raise HTTPException(status_code=400, detail="invalid_file_type")

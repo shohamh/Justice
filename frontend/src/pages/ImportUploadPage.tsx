@@ -10,6 +10,10 @@ export default function ImportUploadPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setError("יש להעלות קובץ בפורמט xlsx בלבד");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {

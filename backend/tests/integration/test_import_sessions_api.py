@@ -81,6 +81,18 @@ def test_upload_invalid_file_type_400(client, admin_session):
     assert resp.status_code == 400
 
 
+def test_upload_wrong_extension_400(client, admin_session):
+    xlsx, _, _ = _make_wb_bytes(admin_session)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    resp = client.post(
+        "/api/import/sessions",
+        files={"file": ("import.docx", xlsx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "invalid_file_type"
+
+
 def test_list_sessions_respects_status_filter_and_ownership(client, admin_session):
     xlsx, _, _ = _make_wb_bytes(admin_session)
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")

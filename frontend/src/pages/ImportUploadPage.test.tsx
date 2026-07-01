@@ -96,6 +96,23 @@ describe("ImportUploadPage", () => {
     expect(button).not.toBeDisabled();
   });
 
+  it("rejects a non-xlsx file client-side without calling the API", async () => {
+    render(<ImportUploadPage />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const wrongFile = new File(["dummy"], "import.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    fireEvent.change(input, { target: { files: [wrongFile] } });
+
+    expect(
+      await screen.findByText("יש להעלות קובץ בפורמט xlsx בלבד"),
+    ).toBeInTheDocument();
+
+    expect(importSessionsApi.uploadSession).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("renders a template download link with the correct href", () => {
     render(<ImportUploadPage />);
 
