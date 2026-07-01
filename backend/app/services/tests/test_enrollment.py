@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 import pytest
 
-from app.db.models import HierarchyNode, SoldierEnrollmentRequest, SystemSetting
+from app.db.models import ExemptionRequest, HierarchyNode, SoldierEnrollmentRequest, SystemSetting
 from tests.helpers import create_node, create_soldier
 
 
@@ -31,7 +31,29 @@ def _make_req(session, soldier, node):
     return req
 
 
-def test_approve_moves_soldier_to_requested_node(admin_session):
+def _make_exemption(session, soldier, enrollment_req, status="pending"):
+    from app.db.models import ExemptionType
+    from datetime import date
+    # find or create an exemption type
+    from sqlalchemy import select
+    et = session.execute(select(ExemptionType).limit(1)).scalar_one_or_none()
+    if et is None:
+        et = ExemptionType(name=f"type_{_uid()}", description=None)
+        session.add(et)
+        session.flush()
+    ex = ExemptionRequest(
+        soldier_id=soldier.id,
+        exemption_type_id=et.id,
+        start_date=date.today(),
+        enrollment_request_id=enrollment_req.id,
+        status=status,
+    )
+    session.add(ex)
+    session.flush()
+    return ex
+
+
+def test_approve_without_exemptions_activates_immediately(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
@@ -47,6 +69,64 @@ def test_approve_moves_soldier_to_requested_node(admin_session):
     assert soldier.hierarchy_node_id == node.id
     assert req.status == "approved"
     assert req.decided_by == decider.id
+
+
+def test_approve_with_pending_exemptions_sets_commander_approved(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, node)
+    _make_exemption(admin_session, soldier, req, status="pending")
+    admin_session.commit()
+
+    from app.services.enrollment import approve_enrollment
+    approve_enrollment(admin_session, request_id=req.id, decider_id=decider.id, decision_note=None)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+    admin_session.refresh(req)
+
+    assert req.status == "commander_approved"
+    assert soldier.hierarchy_node_id == holding.id
+
+
+def test_try_activate_activates_when_all_exemptions_closed(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, node)
+    # Manually set to commander_approved
+    req.status = "commander_approved"
+    ex = _make_exemption(admin_session, soldier, req, status="approved")
+    admin_session.commit()
+
+    from app.services.enrollment import try_activate
+    try_activate(admin_session, req.id)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+    admin_session.refresh(req)
+
+    assert req.status == "approved"
+    assert soldier.hierarchy_node_id == node.id
+
+
+def test_try_activate_does_not_activate_when_exemption_still_pending(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, node)
+    req.status = "commander_approved"
+    _make_exemption(admin_session, soldier, req, status="pending")
+    admin_session.commit()
+
+    from app.services.enrollment import try_activate
+    try_activate(admin_session, req.id)
+    admin_session.commit()
+    admin_session.refresh(soldier)
+    admin_session.refresh(req)
+
+    assert req.status == "commander_approved"
+    assert soldier.hierarchy_node_id == holding.id
 
 
 def test_reject_leaves_soldier_in_holding(admin_session):
