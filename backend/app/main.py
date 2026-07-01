@@ -47,6 +47,11 @@ from app.routes import gimelim as gimelim_routes
 from app.routes import public_settings as public_settings_routes
 from app.settings import get_settings
 
+# Importing v1_standard registers it in the import-parser registry as a
+# side effect (see app/services/import_parsers/v1_standard.py's bottom-level
+# `register(...)` call). Imported here so it's registered once at app startup.
+from app.services.import_parsers import v1_standard as _v1_standard_import_parser  # noqa: F401
+
 setup_logging("backend.log")
 logger = logging.getLogger(__name__)
 
