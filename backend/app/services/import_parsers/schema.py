@@ -39,12 +39,22 @@ class ImportShiftTemplateRow(BaseModel):
     source_row: int
     name: str
     duty_type_name: str
+    # ISO weekday numbering used throughout this codebase: Mon=1 ... Sun=7
+    # (matches date.isoweekday(), see app/services/shift_templates.py).
     days_of_week: list[int]
     required_primary: int
     required_reserve: int = 0
 
 
 class ParsedImportData(BaseModel):
+    """Canonical output every import parser implementation must produce.
+
+    This decouples "reading a particular Excel layout" (each `ImportParser`)
+    from "validating/applying rows" (the import route/service layer), so new
+    spreadsheet layouts can be supported by adding a parser without changing
+    how imported data is validated or applied.
+    """
+
     soldiers: list[ImportSoldierRow] = []
     duty_shifts: list[ImportDutyShiftRow] = []
     shift_templates: list[ImportShiftTemplateRow] = []
