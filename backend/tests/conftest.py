@@ -88,6 +88,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_soldier_profile": "soldiers",
     "test_soldiers_api": "soldiers",
     "test_import_excel": "soldiers",
+    "test_import_lookup": "soldiers",
     # misc: health check, audit log, settings loader
     "test_health": "misc",
     "test_audit_append_only": "misc",
