@@ -437,7 +437,7 @@ def notify_enrollment_received(
     # Notify eligible DMs (scope over path, level rank >= setting)
     try:
         min_rank = int(get_setting(session, "enrollment.min_dm_level_rank"))
-    except SettingNotFound:
+    except (SettingNotFound, ValueError, TypeError):
         min_rank = 0
 
     dm_scopes = session.execute(
