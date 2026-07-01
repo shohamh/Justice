@@ -90,10 +90,11 @@ def test_soldiers_lookup_by_partial_name_case_insensitive(client, admin_session)
 
 
 def test_soldiers_lookup_by_hierarchy_includes_descendants(client, admin_session):
+    dm_node = create_node(admin_session, level="branch", name="il_dm_node_006")
+    dm = create_soldier(admin_session, personal_number="il_dm_006", role="duty_manager", hierarchy_node_id=dm_node.id)
     top = create_node(admin_session, level="branch", name="il_top_006")
     mid = create_node(admin_session, level="unit", name="il_mid_006", parent=top)
     leaf = create_node(admin_session, level="squad", name="il_leaf_006", parent=mid)
-    dm = create_soldier(admin_session, personal_number="il_dm_006", role="duty_manager", hierarchy_node_id=top.id)
     create_soldier(admin_session, personal_number="il_direct_006", hierarchy_node_id=top.id)
     create_soldier(admin_session, personal_number="il_grandchild_006", hierarchy_node_id=leaf.id)
     elsewhere_node = create_node(admin_session, level="branch", name="il_elsewhere_006")

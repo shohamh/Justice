@@ -89,7 +89,7 @@ def lookup_soldiers_for_import(
     if personal_number is None and name is None and hierarchy_node_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_filter_provided")
 
-    query = select(Soldier).where(Soldier.role == "soldier")
+    query = select(Soldier)
     if personal_number is not None:
         query = query.where(Soldier.personal_number == personal_number)
     if name is not None:
