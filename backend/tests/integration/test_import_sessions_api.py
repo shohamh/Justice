@@ -248,3 +248,159 @@ def test_selections_patch_returns_ok(client, admin_session):
     )
     assert patched.status_code == 200
     assert patched.json() == {"ok": True}
+
+
+def _dm_and_other_dm(admin_session):
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    dm = create_soldier(admin_session, personal_number=f"dm_{_uid()}", role="duty_manager", hierarchy_node_id=node.id)
+    other_node = create_node(admin_session, level="branch", name=f"node2_{_uid()}")
+    other_dm = create_soldier(
+        admin_session, personal_number=f"dm2_{_uid()}", role="duty_manager", hierarchy_node_id=other_node.id
+    )
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    return dm, other_dm, admin
+
+
+def _upload_owned_session(client, admin_session, owner):
+    xlsx, _, _ = _make_wb_bytes(admin_session)
+    resp = _upload(client, _token(owner), xlsx)
+    assert resp.status_code == 200
+    return resp.json()["session_id"]
+
+
+def test_reparse_enforces_ownership(client, admin_session):
+    dm, other_dm, admin = _dm_and_other_dm(admin_session)
+
+    forbidden_session_id = _upload_owned_session(client, admin_session, dm)
+    forbidden = client.post(
+        f"/api/import/sessions/{forbidden_session_id}/reparse",
+        headers={"Authorization": f"Bearer {_token(other_dm)}"},
+    )
+    assert forbidden.status_code == 403
+
+    admin_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    admin_ok = client.post(
+        f"/api/import/sessions/{admin_ok_session_id}/reparse",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert admin_ok.status_code == 200
+
+    owner_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    owner_ok = client.post(
+        f"/api/import/sessions/{owner_ok_session_id}/reparse",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert owner_ok.status_code == 200
+
+
+def test_selections_enforces_ownership(client, admin_session):
+    dm, other_dm, admin = _dm_and_other_dm(admin_session)
+
+    forbidden_session_id = _upload_owned_session(client, admin_session, dm)
+    forbidden = client.patch(
+        f"/api/import/sessions/{forbidden_session_id}/selections",
+        json={"selections": {"duty_shifts": {"2": "skip"}}},
+        headers={"Authorization": f"Bearer {_token(other_dm)}"},
+    )
+    assert forbidden.status_code == 403
+
+    admin_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    admin_ok = client.patch(
+        f"/api/import/sessions/{admin_ok_session_id}/selections",
+        json={"selections": {"duty_shifts": {"2": "skip"}}},
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert admin_ok.status_code == 200
+
+    owner_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    owner_ok = client.patch(
+        f"/api/import/sessions/{owner_ok_session_id}/selections",
+        json={"selections": {"duty_shifts": {"2": "skip"}}},
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert owner_ok.status_code == 200
+
+
+def test_confirm_enforces_ownership(client, admin_session):
+    dm, other_dm, admin = _dm_and_other_dm(admin_session)
+
+    forbidden_session_id = _upload_owned_session(client, admin_session, dm)
+    forbidden = client.post(
+        f"/api/import/sessions/{forbidden_session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(other_dm)}"},
+    )
+    assert forbidden.status_code == 403
+
+    admin_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    admin_ok = client.post(
+        f"/api/import/sessions/{admin_ok_session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert admin_ok.status_code == 200
+
+    owner_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    owner_ok = client.post(
+        f"/api/import/sessions/{owner_ok_session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert owner_ok.status_code == 200
+
+
+def test_cancel_enforces_ownership(client, admin_session):
+    dm, other_dm, admin = _dm_and_other_dm(admin_session)
+
+    forbidden_session_id = _upload_owned_session(client, admin_session, dm)
+    forbidden = client.post(
+        f"/api/import/sessions/{forbidden_session_id}/cancel",
+        headers={"Authorization": f"Bearer {_token(other_dm)}"},
+    )
+    assert forbidden.status_code == 403
+
+    admin_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    admin_ok = client.post(
+        f"/api/import/sessions/{admin_ok_session_id}/cancel",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert admin_ok.status_code == 200
+
+    owner_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    owner_ok = client.post(
+        f"/api/import/sessions/{owner_ok_session_id}/cancel",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert owner_ok.status_code == 200
+
+
+def test_done_enforces_ownership(client, admin_session):
+    dm, other_dm, admin = _dm_and_other_dm(admin_session)
+
+    forbidden_session_id = _upload_owned_session(client, admin_session, dm)
+    forbidden = client.post(
+        f"/api/import/sessions/{forbidden_session_id}/done",
+        headers={"Authorization": f"Bearer {_token(other_dm)}"},
+    )
+    assert forbidden.status_code == 403
+
+    admin_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    confirm_admin = client.post(
+        f"/api/import/sessions/{admin_ok_session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert confirm_admin.status_code == 200
+    admin_ok = client.post(
+        f"/api/import/sessions/{admin_ok_session_id}/done",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert admin_ok.status_code == 200
+
+    owner_ok_session_id = _upload_owned_session(client, admin_session, dm)
+    confirm_owner = client.post(
+        f"/api/import/sessions/{owner_ok_session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert confirm_owner.status_code == 200
+    owner_ok = client.post(
+        f"/api/import/sessions/{owner_ok_session_id}/done",
+        headers={"Authorization": f"Bearer {_token(dm)}"},
+    )
+    assert owner_ok.status_code == 200

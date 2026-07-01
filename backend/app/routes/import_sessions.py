@@ -130,6 +130,7 @@ def reparse_import_session(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    _get_owned_or_404(session, session_id, actor)
     try:
         sess = reparse_session(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
@@ -147,6 +148,7 @@ def update_import_session_selections(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    _get_owned_or_404(session, session_id, actor)
     try:
         set_selections(session, session_id=session_id, selections=req.selections)
     except ImportSessionError as exc:
@@ -163,6 +165,7 @@ def confirm_import_session(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    _get_owned_or_404(session, session_id, actor)
     try:
         result = confirm_session(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
@@ -179,6 +182,7 @@ def cancel_import_session(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    _get_owned_or_404(session, session_id, actor)
     try:
         sess = cancel_session(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
@@ -195,6 +199,7 @@ def mark_import_session_done(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    _get_owned_or_404(session, session_id, actor)
     try:
         sess = mark_done(session, session_id=session_id, actor=actor)
     except ImportSessionError as exc:
