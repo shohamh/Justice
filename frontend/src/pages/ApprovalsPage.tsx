@@ -429,7 +429,7 @@ export default function ApprovalsPage() {
                     <span className="text-xs text-gray-400">{t("enrollment.click_to_view_profile")}</span>
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => onEnrollApprove(req.id, req.soldier_name, nodeName)}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs">
                       {t("enrollment.approve")}

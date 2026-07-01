@@ -1,5 +1,4 @@
 import { FormEvent, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
 
@@ -26,7 +25,6 @@ interface Props {
 }
 
 export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
-  const { t } = useTranslation();
 
   const [fullName, setFullName] = useState(req.soldier_name);
   const [personalNumber, setPersonalNumber] = useState(req.soldier_personal_number);
@@ -91,8 +89,6 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
       setSaving(false);
     }
   }
-
-  void t; // i18n hook reserved for future use
 
   return (
     <div
