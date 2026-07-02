@@ -36,6 +36,16 @@ class TransparencyRow(BaseModel):
     effort_score: float = 0.0
     c_over_d: float = 0.0
     effort_offset_raw: int = 0
+    exemptions_display: str = ""
+    exemptions_visible: bool = False
+    has_global_exemption: bool | None = None
+    has_partial_exemption: bool | None = None
+    has_temporary_exemption: bool | None = None
+
+
+class TransparencyOut(BaseModel):
+    rows: list[TransparencyRow]
+    can_see_exemption_aggregates: bool
 
 
 class PerTypeRow(BaseModel):
@@ -81,12 +91,16 @@ def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
 
 
-@router.get("/transparency", response_model=list[TransparencyRow])
+@router.get("/transparency", response_model=TransparencyOut)
 def transparency(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> list[TransparencyRow]:
-    return [TransparencyRow(**row) for row in svc.transparency_rows(session)]
+) -> TransparencyOut:
+    result = svc.transparency_rows(session, viewer=user)
+    return TransparencyOut(
+        rows=[TransparencyRow(**row) for row in result["rows"]],
+        can_see_exemption_aggregates=result["can_see_exemption_aggregates"],
+    )
 
 
 @router.get("/fairness-components")
