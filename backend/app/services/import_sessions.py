@@ -16,7 +16,6 @@ from app.db.models import (
     DutyType,
     HierarchyNode,
     ImportSession,
-    ShiftTemplate,
     Soldier,
 )
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
@@ -29,7 +28,15 @@ class ImportSessionError(Exception):
     pass
 
 
-def _resolve_soldiers(session: Session, data: ParsedImportData, actor: Soldier) -> list[dict]:
+def _resolve_soldiers(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
     existing_by_pn = {
         s.personal_number: s for s in session.execute(select(Soldier)).scalars()
     }
@@ -39,15 +46,20 @@ def _resolve_soldiers(session: Session, data: ParsedImportData, actor: Soldier) 
     for row in data.soldiers:
         errors: list[str] = []
         if not row.personal_number:
-            errors.append("missing personal_number")
+            errors.append("חסר מספר אישי")
         if not row.full_name:
-            errors.append("missing full_name")
+            errors.append("חסר שם מלא")
 
         node = None
         if row.hierarchy_node_name:
-            node = nodes_by_name.get(row.hierarchy_node_name)
+            row_key = f"soldiers:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.hierarchy_node_name)
+            if mapped_id:
+                node = session.get(HierarchyNode, uuid.UUID(mapped_id))
             if node is None:
-                errors.append(f"unresolved hierarchy_node_name '{row.hierarchy_node_name}'")
+                node = nodes_by_name.get(row.hierarchy_node_name)
+            if node is None:
+                errors.append(f"יחידה לא מזוהה '{row.hierarchy_node_name}'")
 
         existing = existing_by_pn.get(row.personal_number) if row.personal_number else None
 
@@ -89,7 +101,19 @@ def _resolve_soldiers(session: Session, data: ParsedImportData, actor: Soldier) 
     return out
 
 
-def _resolve_duty_shifts(session: Session, data: ParsedImportData, actor: Soldier) -> list[dict]:
+def _resolve_duty_shifts(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    dt_by_name: dict[str, str] | None = None,
+    dt_by_row: dict[str, str] | None = None,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    dt_by_name = dt_by_name or {}
+    dt_by_row = dt_by_row or {}
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
     locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
@@ -98,23 +122,36 @@ def _resolve_duty_shifts(session: Session, data: ParsedImportData, actor: Soldie
     for row in data.duty_shifts:
         errors: list[str] = []
 
-        duty_type = duty_types_by_name.get(row.duty_type_name) if row.duty_type_name else None
+        duty_type = None
+        if row.duty_type_name:
+            row_key = f"duty_shifts:{row.source_row}"
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            if mapped_id:
+                duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+            if duty_type is None:
+                duty_type = duty_types_by_name.get(row.duty_type_name)
         if duty_type is None:
-            errors.append(f"unresolved duty_type_name '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
 
         location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
         if location is None:
-            errors.append(f"unresolved duty_location_name '{row.duty_location_name}'")
+            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
 
         if not row.start_date:
-            errors.append("missing start_date")
+            errors.append("חסר תאריך התחלה")
         if not row.end_date:
-            errors.append("missing end_date")
+            errors.append("חסר תאריך סיום")
 
         quota_dicts = []
         quota_total = 0
         for q in row.node_quotas:
-            node = nodes_by_name.get(q.node_name)
+            quota_key = f"duty_shifts:{row.source_row}:{q.node_name}"
+            mapped_node_id = node_by_row.get(quota_key) or node_by_name.get(q.node_name)
+            node = None
+            if mapped_node_id:
+                node = session.get(HierarchyNode, uuid.UUID(mapped_node_id))
+            if node is None:
+                node = nodes_by_name.get(q.node_name)
             quota_dicts.append({
                 "node_name": q.node_name,
                 "node_id": str(node.id) if node is not None else None,
@@ -125,7 +162,7 @@ def _resolve_duty_shifts(session: Session, data: ParsedImportData, actor: Soldie
 
         if quota_total > row.required_count:
             errors.append(
-                f"node_quotas total ({quota_total}) exceeds required_count ({row.required_count})"
+                f"סה\"כ מכסות ({quota_total}) גדול מהכמות הנדרשת ({row.required_count})"
             )
 
         action = "error" if errors else "new"
@@ -162,15 +199,29 @@ def _resolve_duty_shifts(session: Session, data: ParsedImportData, actor: Soldie
     return out
 
 
-def _resolve_shift_templates(session: Session, data: ParsedImportData) -> list[dict]:
+def _resolve_shift_templates(
+    session: Session,
+    data: ParsedImportData,
+    dt_by_name: dict[str, str] | None = None,
+    dt_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    dt_by_name = dt_by_name or {}
+    dt_by_row = dt_by_row or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
 
     out = []
-    for row in data.shift_templates:
+    for row in getattr(data, "shift_templates", []):
         errors: list[str] = []
-        duty_type = duty_types_by_name.get(row.duty_type_name) if row.duty_type_name else None
+        duty_type = None
+        if row.duty_type_name:
+            row_key = f"shift_templates:{row.source_row}"
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            if mapped_id:
+                duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+            if duty_type is None:
+                duty_type = duty_types_by_name.get(row.duty_type_name)
         if duty_type is None:
-            errors.append(f"unresolved duty_type_name '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
 
         action = "error" if errors else "new"
 
@@ -188,11 +239,21 @@ def _resolve_shift_templates(session: Session, data: ParsedImportData) -> list[d
     return out
 
 
-def _resolve_and_score(session: Session, data: ParsedImportData, actor: Soldier) -> dict:
+def _resolve_and_score(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    selections: dict | None = None,
+) -> dict:
+    nm = (selections or {}).get("_name_mappings", {})
+    dt_by_name  = nm.get("duty_type", {}).get("by_name", {})
+    dt_by_row   = nm.get("duty_type", {}).get("by_row", {})
+    node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
+    node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
     return {
-        "soldiers": _resolve_soldiers(session, data, actor),
-        "duty_shifts": _resolve_duty_shifts(session, data, actor),
-        "shift_templates": _resolve_shift_templates(session, data),
+        "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
+        "duty_shifts": _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row),
+        "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }
@@ -235,7 +296,7 @@ def reparse_session(session: Session, *, session_id: uuid.UUID, actor: Soldier) 
     wb = openpyxl.load_workbook(io.BytesIO(import_session.raw_excel), data_only=True)
     parser = get_parser(import_session.parsed_state["parser_id"])
     data = parser.parse(wb)
-    parsed_state = _resolve_and_score(session, data, actor)
+    parsed_state = _resolve_and_score(session, data, actor, selections=import_session.user_selections)
 
     import_session.parsed_state = parsed_state
     session.flush()
@@ -276,7 +337,6 @@ def confirm_session(
     errors: list[dict] = []
     created_soldiers: list[str] = []
     created_duty_shifts: list[str] = []
-    created_shift_templates: list[str] = []
 
     # ── Soldiers ────────────────────────────────────────────────────────
     for row in state.get("soldiers", []):
@@ -389,39 +449,9 @@ def confirm_session(
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
 
-    # ── Shift templates ─────────────────────────────────────────────────
-    for row in state.get("shift_templates", []):
-        effective = _effective_action(selections, "shift_templates", row)
-        if row["action"] in ("error", "out_of_scope") or effective == "skip":
-            skipped += 1
-            continue
-        try:
-            if effective != "new":
-                skipped += 1
-                continue
-            loc = session.execute(select(DutyLocation).limit(1)).scalar_one_or_none()
-            if loc is None:
-                raise ImportSessionError(
-                    f"Row {row['row']}: no duty location exists — cannot import template"
-                )
-            template = ShiftTemplate(
-                name=row["name"],
-                duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
-                duty_location_id=loc.id,
-                weekdays=row["days_of_week"],
-                required_count=row["required_primary"] + row["required_reserve"],
-            )
-            session.add(template)
-            session.flush()
-            created += 1
-            created_shift_templates.append(str(template.id))
-        except Exception as exc:
-            errors.append({"row": row["row"], "type": "shift_templates", "error": str(exc)})
-
     import_session.created_links = {
         "soldiers": created_soldiers,
         "duty_shifts": created_duty_shifts,
-        "shift_templates": created_shift_templates,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)
