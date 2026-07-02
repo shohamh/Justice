@@ -18,7 +18,6 @@ vi.mock("../components/Layout", () => ({
 const mockPreview: ParsedState = {
   soldiers: [],
   duty_shifts: [],
-  shift_templates: [],
   parser_id: "default",
   parser_warnings: [],
 };

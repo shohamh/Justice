@@ -19,7 +19,6 @@ from app.db.models import (
     DutyLocation,
     DutyType,
     HierarchyNode,
-    ShiftTemplate,
     Soldier,
 )
 from app.db.session import get_session
@@ -62,22 +61,9 @@ class AssignmentRowPreview(BaseModel):
     errors: list[str]
 
 
-class TemplateRowPreview(BaseModel):
-    row: int
-    action: Literal["new", "error"]
-    name: str
-    duty_type_name: str
-    days_of_week: list[int]
-    required_primary: int
-    required_reserve: int
-    resolved_duty_type_id: uuid.UUID | None
-    errors: list[str]
-
-
 class PreviewResult(BaseModel):
     soldiers: list[SoldierRowPreview]
     assignments: list[AssignmentRowPreview]
-    shift_templates: list[TemplateRowPreview]
 
 
 # ── Apply models ───────────────────────────────────────────────────────────────
@@ -108,20 +94,9 @@ class ApplyAssignmentRow(BaseModel):
     is_reserve: bool
 
 
-class ApplyTemplateRow(BaseModel):
-    row: int
-    action: Literal["new", "skip"]
-    name: str
-    resolved_duty_type_id: uuid.UUID
-    days_of_week: list[int]
-    required_primary: int
-    required_reserve: int
-
-
 class ApplyRequest(BaseModel):
     soldiers: list[ApplySoldierRow]
     assignments: list[ApplyAssignmentRow]
-    shift_templates: list[ApplyTemplateRow]
 
 
 class ApplyResult(BaseModel):
@@ -163,9 +138,8 @@ async def preview(
 
     soldiers = _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name)
     assignments = _parse_assignments_sheet(wb, soldiers_by_pn, duty_types_by_name)
-    shift_templates = _parse_templates_sheet(wb, duty_types_by_name)
 
-    return PreviewResult(soldiers=soldiers, assignments=assignments, shift_templates=shift_templates)
+    return PreviewResult(soldiers=soldiers, assignments=assignments)
 
 
 def _parse_soldiers_sheet(wb, soldiers_by_pn, nodes_by_name) -> list[SoldierRowPreview]:
@@ -256,47 +230,6 @@ def _parse_assignments_sheet(wb, soldiers_by_pn, duty_types_by_name) -> list[Ass
     return results
 
 
-def _parse_templates_sheet(wb, duty_types_by_name) -> list[TemplateRowPreview]:
-    if "shift_templates" not in wb.sheetnames:
-        return []
-    ws = wb["shift_templates"]
-    headers = [str(c.value).strip().lower() if c.value else "" for c in next(ws.iter_rows(min_row=1, max_row=1))]
-    results = []
-    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        if all(v is None for v in row):
-            continue
-        data = dict(zip(headers, row))
-        errors: list[str] = []
-        name = str(data.get("name") or "").strip()
-        dt_name = str(data.get("duty_type_name") or "").strip()
-        if not name:
-            errors.append("name is required")
-        dt = duty_types_by_name.get(dt_name)
-        if not dt:
-            errors.append(f"duty_type_name '{dt_name}' not found")
-        days_raw = str(data.get("days_of_week") or "").strip()
-        try:
-            days = [int(d.strip()) for d in days_raw.split(",") if d.strip()]
-        except ValueError:
-            days = []
-            errors.append("days_of_week must be comma-separated integers (1-7)")
-        required_primary = int(data.get("required_primary") or 1)
-        required_reserve = int(data.get("required_reserve") or 0)
-
-        results.append(TemplateRowPreview(
-            row=i,
-            action="error" if errors else "new",
-            name=name,
-            duty_type_name=dt_name,
-            days_of_week=days,
-            required_primary=required_primary,
-            required_reserve=required_reserve,
-            resolved_duty_type_id=dt.id if dt else None,
-            errors=errors,
-        ))
-    return results
-
-
 # ── Apply endpoint ─────────────────────────────────────────────────────────────
 
 @router.post("/apply", response_model=ApplyResult)
@@ -379,25 +312,6 @@ def apply(
             session.add(assignment)
             created += 1
 
-        # Shift templates
-        for row in req.shift_templates:
-            if row.action == "skip":
-                skipped += 1
-                continue
-            loc = session.execute(select(DutyLocation).limit(1)).scalar_one_or_none()
-            if loc is None:
-                errors.append(f"Row {row.row}: no duty location exists — cannot import template")
-                continue
-            template = ShiftTemplate(
-                name=row.name,
-                duty_type_id=row.resolved_duty_type_id,
-                duty_location_id=loc.id,
-                weekdays=row.days_of_week,
-                required_count=row.required_primary + row.required_reserve,
-            )
-            session.add(template)
-            created += 1
-
         session.commit()
     except Exception as exc:
         session.rollback()
@@ -410,21 +324,37 @@ def apply(
 
 @router.get("/template")
 def download_template():
+    """Download an example workbook for the active import pipeline.
+
+    Matches the `v1_standard` parser's expected sheets (`soldiers`,
+    `duty_shifts`) — see app/services/import_parsers/v1_standard.py. Shift
+    templates are intentionally not included: they're created only through
+    the system UI (app/routes/shift_templates.py), not via Excel import.
+    """
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
     ws_s = wb.create_sheet("soldiers")
     ws_s.append(["personal_number", "full_name", "rank", "gender", "is_officer",
                   "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email"])
-    ws_s.append(["12345", "ישראל ישראלי", "רב", "m", "false", "מדור א", "01.01.2022", "01.03.2020", "", ""])
+    ws_s.append(["12345", "ישראל ישראלי", "רב\"ט", "m", "false", "מדור א", "01.01.2022", "01.03.2020", "050-1234567", "israel@example.com"])
+    ws_s.append(["23456", "משה כהן", "סמל", "m", "false", "מדור א", "15.02.2022", "10.05.2020", "050-2345678", ""])
+    ws_s.append(["34567", "דנה לוי", "רס\"ל", "f", "false", "מדור ב", "01.03.2022", "20.06.2020", "050-3456789", "dana@example.com"])
+    ws_s.append(["45678", "יעל אברהם", "סרן", "f", "true", "מדור ב", "10.01.2021", "01.09.2018", "050-4567890", "yael@example.com"])
+    ws_s.append(["56789", "אבי מזרחי", "רב\"ט", "m", "false", "מדור א", "05.04.2022", "12.07.2020", "", ""])
+    ws_s.append(["67890", "נועה שרון", "טוראי", "f", "false", "מדור ב", "20.05.2023", "01.01.2023", "050-6789012", ""])
+    ws_s.append(["78901", "רון פרידמן", "רב\"ט", "m", "false", "מדור א", "15.06.2022", "01.09.2020", "050-7890123", ""])
+    ws_s.append(["89012", "עידן ברק", "סגן", "m", "true", "מדור ב", "01.02.2021", "01.03.2019", "050-8901234", "idan@example.com"])
 
-    ws_a = wb.create_sheet("assignments")
-    ws_a.append(["personal_number", "duty_type_name", "start_date", "end_date", "is_reserve"])
-    ws_a.append(["12345", "שמירה", "15.06.2024", "16.06.2024", "false"])
-
-    ws_t = wb.create_sheet("shift_templates")
-    ws_t.append(["name", "duty_type_name", "days_of_week", "required_primary", "required_reserve"])
-    ws_t.append(["שמירת שישי", "שמירה", "6", "2", "1"])
+    ws_d = wb.create_sheet("duty_shifts")
+    ws_d.append(["duty_type_name", "duty_location_name", "start_date", "end_date",
+                  "start_time", "end_time", "required_count", "node_quotas", "notes"])
+    ws_d.append(["שמירה", "שער ראשי", "15.06.2024", "16.06.2024", "20:00", "06:00", 4, "מדור א:2;מדור ב:2", "הצטיידות במקלע"])
+    ws_d.append(["שמירה", "שער ראשי", "16.06.2024", "17.06.2024", "20:00", "06:00", 4, "מדור א:2;מדור ב:2", ""])
+    ws_d.append(["מטבח", "מטבח מרכזי", "15.06.2024", "16.06.2024", "05:00", "13:00", 2, "מדור ב:2", ""])
+    ws_d.append(["סיור", "היקף מחנה", "17.06.2024", "18.06.2024", "22:00", "04:00", 3, "מדור א:1;מדור ב:2", "נדרש רכב"])
+    ws_d.append(["משמר לילה", "מגדל שמירה צפוני", "18.06.2024", "19.06.2024", "23:00", "05:00", 2, "", "תורנות רגישה — לוודא תדריך"])
+    ws_d.append(["תורנות סוף שבוע", "שער ראשי", "21.06.2024", "23.06.2024", "", "", 6, "מדור א:3;מדור ב:3", ""])
 
     buf = io.BytesIO()
     wb.save(buf)

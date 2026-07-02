@@ -124,19 +124,6 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
           notes: null,
         },
       ],
-      shift_templates: [
-        {
-          row: 2,
-          action: "new",
-          errors: [],
-          name: "תבנית שבועית",
-          duty_type_name: "שמירה",
-          resolved_duty_type_id: "dt-1",
-          days_of_week: [0, 3],
-          required_primary: 1,
-          required_reserve: 1,
-        },
-      ],
       parser_id: "p1",
       parser_warnings: [],
     },
@@ -185,7 +172,6 @@ describe("ImportSessionReviewPage", () => {
     expect(await screen.findByText("import.xlsx")).toBeInTheDocument();
     expect(screen.getByText("חיילים (2)")).toBeInTheDocument();
     expect(screen.getByText("משמרות (1)")).toBeInTheDocument();
-    expect(screen.getByText("תבניות (1)")).toBeInTheDocument();
 
     expect(screen.getByText("יוסי כהן")).toBeInTheDocument();
     expect(screen.getByText("דני לוי")).toBeInTheDocument();

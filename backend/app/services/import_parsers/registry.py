@@ -21,7 +21,7 @@ def auto_detect_parser(wb: openpyxl.Workbook, threshold: float = 0.5) -> ImportP
         if score > best[0]:
             best = (score, parser)
     if best[1] is None or best[0] < threshold:
-        raise ValueError("unrecognized Excel format — no registered parser matched")
+        raise ValueError("פורמט קובץ אקסל לא מזוהה — לא נמצאה תבנית תואמת")
     return best[1]
 
 

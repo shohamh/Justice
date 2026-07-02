@@ -10,12 +10,11 @@ from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportDutyShiftRow,
     ImportNodeQuota,
-    ImportShiftTemplateRow,
     ImportSoldierRow,
     ParsedImportData,
 )
 
-KNOWN_SHEETS = {"soldiers", "duty_shifts", "shift_templates", "assignments"}
+KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments"}
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
@@ -54,7 +53,7 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
             continue
         if ":" not in part:
             warnings.append(
-                f"row {source_row}: invalid node_quotas entry '{part}' — expected 'node_name:count'"
+                f"שורה {source_row}: ערך מכסה שגוי '{part}' — הפורמט הנדרש הוא 'שם_יחידה:כמות'"
             )
             continue
         name, count_s = part.rsplit(":", 1)
@@ -62,7 +61,7 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
             count = int(count_s.strip())
         except ValueError:
             warnings.append(
-                f"row {source_row}: invalid node_quotas entry '{part}' — expected 'node_name:count'"
+                f"שורה {source_row}: ערך מכסה שגוי '{part}' — הפורמט הנדרש הוא 'שם_יחידה:כמות'"
             )
             continue
         quotas.append(ImportNodeQuota(node_name=name.strip(), count=count))
@@ -70,7 +69,10 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
 
 
 class V1StandardParser:
-    """Standard v1 layout: `soldiers`, `duty_shifts` (primary), `shift_templates`.
+    """Standard v1 layout: `soldiers`, `duty_shifts` (primary).
+
+    Shift templates are not importable via Excel — they're managed only
+    through the system UI. A `shift_templates` sheet, if present, is ignored.
 
     Also accepts the legacy `assignments` sheet as a fallback source for
     duty shifts when no `duty_shifts` sheet is present, converting each
@@ -110,8 +112,8 @@ class V1StandardParser:
         duty_shift_rows = _sheet_rows(wb, "duty_shifts")
         if not duty_shift_rows and "assignments" in wb.sheetnames:
             warnings.append(
-                "no 'duty_shifts' sheet found — falling back to legacy 'assignments' sheet "
-                "(required_count defaulted to 1 per row, no node_quotas support)"
+                "לא נמצא גיליון 'duty_shifts' — נעשה שימוש בגיליון הישן 'assignments' "
+                "(הכמות הנדרשת הוגדרה כברירת מחדל 1 לשורה, ללא תמיכה במכסות יחידה)"
             )
             for r in _sheet_rows(wb, "assignments"):
                 duty_shift_rows.append({
@@ -144,26 +146,9 @@ class V1StandardParser:
                 )
             )
 
-        shift_templates = [
-            ImportShiftTemplateRow(
-                source_row=r["_row"],
-                name=str(r.get("name") or "").strip(),
-                duty_type_name=str(r.get("duty_type_name") or "").strip(),
-                # ISO weekday numbering (Mon=1...Sun=7), matching
-                # app/services/shift_templates.py — source data is expected
-                # to already use this convention (no transformation applied
-                # here, same as the legacy _parse_templates_sheet).
-                days_of_week=[int(d.strip()) for d in str(r.get("days_of_week") or "").split(",") if d.strip()],
-                required_primary=int(r.get("required_primary") or 1),
-                required_reserve=int(r.get("required_reserve") or 0),
-            )
-            for r in _sheet_rows(wb, "shift_templates")
-        ]
-
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
-            shift_templates=shift_templates,
             parser_id=self.id,
             parser_warnings=warnings,
         )

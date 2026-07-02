@@ -17,28 +17,28 @@ const mockSessions: SessionSummary[] = [
     status: "draft",
     filename: "draft-file.xlsx",
     created_at: "2026-06-30T10:00:00Z",
-    row_summary: { soldiers: 2, duty_shifts: 1, shift_templates: 0 },
+    row_summary: { soldiers: 2, duty_shifts: 1 },
   },
   {
     id: "confirmed-1",
     status: "confirmed",
     filename: "confirmed-file.xlsx",
     created_at: "2026-06-29T10:00:00Z",
-    row_summary: { soldiers: 3, duty_shifts: 0, shift_templates: 1 },
+    row_summary: { soldiers: 3, duty_shifts: 0 },
   },
   {
     id: "done-1",
     status: "done",
     filename: "done-file.xlsx",
     created_at: "2026-06-28T10:00:00Z",
-    row_summary: { soldiers: 1, duty_shifts: 1, shift_templates: 1 },
+    row_summary: { soldiers: 1, duty_shifts: 1 },
   },
   {
     id: "cancelled-1",
     status: "cancelled",
     filename: "cancelled-file.xlsx",
     created_at: "2026-06-27T10:00:00Z",
-    row_summary: { soldiers: 0, duty_shifts: 0, shift_templates: 0 },
+    row_summary: { soldiers: 0, duty_shifts: 0 },
   },
 ];
 

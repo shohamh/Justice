@@ -145,8 +145,7 @@ export default function ImportSessionsListPage() {
                   </td>
                   <td className="p-3">
                     {session.row_summary.soldiers} חיילים /{" "}
-                    {session.row_summary.duty_shifts} משמרות /{" "}
-                    {session.row_summary.shift_templates} תבניות
+                    {session.row_summary.duty_shifts} משמרות
                   </td>
                   <td className="p-3">
                     <div className="flex gap-2">

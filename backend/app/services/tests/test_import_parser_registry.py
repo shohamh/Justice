@@ -13,7 +13,7 @@ class _FakeParser:
         return 0.9
 
     def parse(self, wb):
-        return ParsedImportData(soldiers=[], duty_shifts=[], shift_templates=[], parser_id=self.id)
+        return ParsedImportData(soldiers=[], duty_shifts=[], parser_id=self.id)
 
 
 def test_auto_detect_picks_highest_confidence():
@@ -28,7 +28,7 @@ def test_auto_detect_picks_highest_confidence():
 
 def test_auto_detect_raises_when_no_match():
     wb = openpyxl.Workbook()
-    with pytest.raises(ValueError, match="unrecognized"):
+    with pytest.raises(ValueError, match="לא מזוהה"):
         auto_detect_parser(wb, threshold=0.99)
 
 

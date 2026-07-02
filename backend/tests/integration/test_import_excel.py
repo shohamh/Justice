@@ -10,7 +10,7 @@ from app.db.models import DutyLocation, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
-def make_xlsx_bytes(soldiers=None, assignments=None, templates=None) -> bytes:
+def make_xlsx_bytes(soldiers=None, assignments=None) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     if soldiers:
@@ -22,11 +22,6 @@ def make_xlsx_bytes(soldiers=None, assignments=None, templates=None) -> bytes:
         ws = wb.create_sheet("assignments")
         ws.append(["personal_number", "duty_type_name", "start_date", "end_date", "is_reserve"])
         for row in assignments:
-            ws.append(row)
-    if templates:
-        ws = wb.create_sheet("shift_templates")
-        ws.append(["name", "duty_type_name", "days_of_week", "required_primary", "required_reserve"])
-        for row in templates:
             ws.append(row)
     buf = io.BytesIO()
     wb.save(buf)
@@ -79,7 +74,6 @@ def test_apply_creates_soldier(client, admin_session):
                 "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
             }],
             "assignments": [],
-            "shift_templates": [],
         },
         headers={"Authorization": f"Bearer {token}"},
     )
