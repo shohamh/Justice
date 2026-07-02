@@ -305,8 +305,16 @@ export default function TransparencyPage() {
   const [fairnessComponents, setFairnessComponents] = useState<FairnessComponents | null>(null);
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
+  const [canSeeExemptionAggregates, setCanSeeExemptionAggregates] = useState(false);
+  // Not yet read here — consumed by the sub-units tab aggregate columns (separate task).
+  void canSeeExemptionAggregates;
 
-  useEffect(() => { void getTransparency().then(setRows); }, []);
+  useEffect(() => {
+    void getTransparency().then((out) => {
+      setRows(out.rows);
+      setCanSeeExemptionAggregates(out.can_see_exemption_aggregates);
+    });
+  }, []);
   useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
   useEffect(() => { void getFairnessComponents().then(setFairnessComponents).catch(() => {}); }, []);
 
@@ -510,6 +518,13 @@ export default function TransparencyPage() {
       id: "unit", header: t("transparency.unit"),
       cell: (r) => r.node_name ?? "—",
       sortValue: (r) => r.node_name ?? "", filterValue: (r) => r.node_name ?? "",
+    },
+    {
+      id: "exemptions", header: t("transparency.exemptions"),
+      cell: (r) => r.exemptions_display || "—",
+      sortValue: (r) => r.exemptions_display,
+      filterValue: (r) => r.exemptions_display,
+      exportValue: (r) => r.exemptions_display || "—",
     },
     { id: "enrolled_at", header: t("transparency.enrolled_at"), cell: (r) => r.enrolled_at, sortValue: (r) => r.enrolled_at },
     { id: "active_days", header: t("transparency.active_days"), cell: (r) => r.active_days, sortValue: (r) => r.active_days },

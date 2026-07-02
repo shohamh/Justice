@@ -301,6 +301,7 @@
     "adjustments": "תיקוני ניקוד",
     "exempted_count": "פטורים",
     "exempted_count_tooltip": "{{count}} חיילים פטורים (פטור גלובלי)",
+    "exemptions": "פטורים",
     "effort_spread": "פיזור עומס",
     "effort_mean": "ממוצע עומס",
     "effort_stddev": "סטיית תקן",
