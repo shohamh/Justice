@@ -55,7 +55,10 @@ def _resolve_soldiers(
             row_key = f"soldiers:{row.source_row}"
             mapped_id = node_by_row.get(row_key) or node_by_name.get(row.hierarchy_node_name)
             if mapped_id:
-                node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                try:
+                    node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
             if node is None:
                 node = nodes_by_name.get(row.hierarchy_node_name)
             if node is None:
@@ -127,7 +130,10 @@ def _resolve_duty_shifts(
             row_key = f"duty_shifts:{row.source_row}"
             mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
             if mapped_id:
-                duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                try:
+                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
             if duty_type is None:
                 duty_type = duty_types_by_name.get(row.duty_type_name)
         if duty_type is None:
@@ -149,7 +155,10 @@ def _resolve_duty_shifts(
             mapped_node_id = node_by_row.get(quota_key) or node_by_name.get(q.node_name)
             node = None
             if mapped_node_id:
-                node = session.get(HierarchyNode, uuid.UUID(mapped_node_id))
+                try:
+                    node = session.get(HierarchyNode, uuid.UUID(mapped_node_id))
+                except ValueError:
+                    pass
             if node is None:
                 node = nodes_by_name.get(q.node_name)
             quota_dicts.append({
@@ -217,7 +226,10 @@ def _resolve_shift_templates(
             row_key = f"shift_templates:{row.source_row}"
             mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
             if mapped_id:
-                duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                try:
+                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
             if duty_type is None:
                 duty_type = duty_types_by_name.get(row.duty_type_name)
         if duty_type is None:
