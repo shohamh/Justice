@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.algorithm.duration import calendar_days_touched, score_days
 from app.services.eligibility import inferred_service_type
+from app.auth.authz import scope_root_ids
 
 _UNSET: object = object()
 
@@ -415,7 +416,37 @@ def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
     return {ex.soldier_id for ex in exemptions}
 
 
-def transparency_rows(session: Session) -> list[dict[str, Any]]:
+def _active_exemptions_by_soldier(
+    session: Session,
+) -> dict[uuid.UUID, list[tuple[SoldierExemption, ExemptionType]]]:
+    today = date.today()
+    rows = session.execute(
+        select(SoldierExemption, ExemptionType)
+        .join(ExemptionType, SoldierExemption.exemption_type_id == ExemptionType.id)
+        .where(
+            SoldierExemption.start_date <= today,
+            or_(
+                SoldierExemption.end_date.is_(None),
+                SoldierExemption.end_date >= today,
+            ),
+        )
+    ).all()
+    by_soldier: dict[uuid.UUID, list[tuple[SoldierExemption, ExemptionType]]] = defaultdict(list)
+    for exemption, ex_type in rows:
+        by_soldier[exemption.soldier_id].append((exemption, ex_type))
+    return by_soldier
+
+
+def _exemption_label(exemption: SoldierExemption, ex_type: ExemptionType) -> str:
+    category = "גלובלי" if ex_type.is_global else "חלקי"
+    if exemption.end_date is not None:
+        return f"{ex_type.name} ({category}, עד {exemption.end_date.strftime('%d/%m/%Y')})"
+    return f"{ex_type.name} ({category})"
+
+
+def transparency_rows(
+    session: Session, *, viewer: Soldier | None = None
+) -> dict[str, Any]:
     from app.services.effort_score import compute_effort_data, quarter_start
     from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -425,6 +456,11 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
     active_days_map = _bulk_active_days(session, list(soldiers))
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
+    exemptions_by_soldier = _active_exemptions_by_soldier(session)
+    roots = scope_root_ids(session, viewer) if viewer is not None else set()
+    can_see_exemption_aggregates = viewer is not None and (
+        viewer.role == "admin" or bool(roots)
+    )
 
     # Compute effort scores for all active soldiers
     today = date.today()
@@ -459,6 +495,17 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
         cum = duty_scores.get(s.id, Decimal("0")) + adj_scores.get(s.id, Decimal("0"))
         ad = active_days_map.get(s.id, 1)
         node = nodes.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        soldier_exemptions = exemptions_by_soldier.get(s.id, [])
+        in_scope = node is not None and any(root in node.path_ids for root in roots)
+        if in_scope:
+            exemptions_display = ", ".join(
+                _exemption_label(exemption, ex_type) for exemption, ex_type in soldier_exemptions
+            )
+        else:
+            exemptions_display = "חסוי"
+        has_global = any(ex_type.is_global for _, ex_type in soldier_exemptions)
+        has_partial = any(not ex_type.is_global for _, ex_type in soldier_exemptions)
+        has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
         effort_data = effort_map.get(s.id)
         effort_score = float(effort_data.effort_score) if effort_data else 0.0
         c_over_d = float(effort_data.C_over_D) if effort_data else 0.0
@@ -478,6 +525,11 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
                 "cumulative_score": cum,
                 "score_per_day": cum / Decimal(ad),
                 "is_globally_exempted": s.id in exempted_ids,
+                "exemptions_display": exemptions_display,
+                "exemptions_visible": in_scope,
+                "has_global_exemption": has_global if can_see_exemption_aggregates else None,
+                "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
+                "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,
                 "effort_score": effort_score,
                 "c_over_d": c_over_d,
                 "effort_offset_raw": effort_offset_raw,
@@ -492,7 +544,7 @@ def transparency_rows(session: Session) -> list[dict[str, Any]]:
             r["score_per_day"] / avg_spd if avg_spd != Decimal("0") else Decimal("0")
         )
     rows.sort(key=lambda r: r["effort_score"], reverse=True)
-    return rows
+    return {"rows": rows, "can_see_exemption_aggregates": can_see_exemption_aggregates}
 
 
 def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[str, Any]:
@@ -619,7 +671,7 @@ def fairness_components(session: Session) -> dict[str, Any]:
     duty-type eligibility, plus the soldiers exempt from every active duty type."""
     from app.services.algorithm_bridge import load_soldier_inputs
 
-    rows = transparency_rows(session)
+    rows = transparency_rows(session)["rows"]
     effort_by_id = {r["soldier_id"]: float(r["effort_score"]) for r in rows}
     name_by_id = {r["soldier_id"]: r["full_name"] for r in rows}
 
