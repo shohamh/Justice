@@ -57,7 +57,7 @@ export default function MyDutiesPage() {
     if (!user) return;
     const today = new Date().toISOString().split("T")[0];
     void Promise.all([
-      getTransparency().catch(() => [] as TransparencyRow[]),
+      getTransparency().then((out) => out.rows).catch(() => [] as TransparencyRow[]),
       getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] }) as Breakdown),
       listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
       getReserveStats().catch(() => null),

@@ -96,7 +96,9 @@ export default function HomePage() {
     const locsFetch = listLocations().catch(() => [] as DutyLocation[]);
     const swapsFetch = listMySwaps().catch(() => [] as SwapRequest[]);
     const settingsFetch = getSystemSettings().catch(() => ({} as SettingsMap));
-    const transparencyFetch = getTransparency().catch(() => [] as TransparencyRow[]);
+    const transparencyFetch = getTransparency()
+      .then((out) => out.rows)
+      .catch(() => [] as TransparencyRow[]);
     const breakdownFetch = getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] } as Breakdown));
 
     const enrollFetch = canApprove

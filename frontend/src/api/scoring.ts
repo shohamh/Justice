@@ -18,6 +18,16 @@ export interface TransparencyRow {
   effort_score: number;
   c_over_d: number;
   effort_offset_raw: number;
+  exemptions_display: string;
+  exemptions_visible: boolean;
+  has_global_exemption: boolean | null;
+  has_partial_exemption: boolean | null;
+  has_temporary_exemption: boolean | null;
+}
+
+export interface TransparencyOut {
+  rows: TransparencyRow[];
+  can_see_exemption_aggregates: boolean;
 }
 
 export interface Breakdown {
@@ -45,8 +55,8 @@ export interface EffortBreakdown {
   W_i: string;  // Σ(active_frac_q) — historical weight
 }
 
-export async function getTransparency(): Promise<TransparencyRow[]> {
-  return (await api.get<TransparencyRow[]>(`/scoring/transparency`)).data;
+export async function getTransparency(): Promise<TransparencyOut> {
+  return (await api.get<TransparencyOut>(`/scoring/transparency`)).data;
 }
 
 export interface FairnessEffort {
