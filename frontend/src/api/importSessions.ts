@@ -1,5 +1,21 @@
 import { api } from "./client";
 
+export interface NameMappings {
+  duty_type?: {
+    by_name?: Record<string, string>;
+    by_row?: Record<string, string>;
+  };
+  hierarchy_node?: {
+    by_name?: Record<string, string>;
+    by_row?: Record<string, string>;
+  };
+}
+
+export interface Selections {
+  _name_mappings?: NameMappings;
+  [group: string]: Record<string, string> | NameMappings | undefined;
+}
+
 export interface RowBase {
   row: number;
   action: "new" | "update" | "error" | "out_of_scope" | "skip";
@@ -42,7 +58,7 @@ export interface DutyShiftRow extends RowBase {
   notes: string | null;
 }
 
-export interface TemplateRow extends RowBase {
+export interface ShiftTemplateRow extends RowBase {
   name: string;
   duty_type_name: string;
   resolved_duty_type_id: string | null;
@@ -54,7 +70,7 @@ export interface TemplateRow extends RowBase {
 export interface ParsedState {
   soldiers: SoldierRow[];
   duty_shifts: DutyShiftRow[];
-  shift_templates: TemplateRow[];
+  shift_templates: ShiftTemplateRow[];
   parser_id: string;
   parser_warnings: string[];
 }
@@ -67,7 +83,6 @@ export interface SessionSummary {
   row_summary: {
     soldiers: number;
     duty_shifts: number;
-    shift_templates: number;
   };
 }
 
@@ -76,7 +91,7 @@ export interface SessionDetail {
   status: string;
   filename: string;
   parsed_state: ParsedState;
-  user_selections: Record<string, Record<string, string>>;
+  user_selections: Selections;
   created_links: Record<string, string[]>;
 }
 
@@ -126,7 +141,7 @@ export async function reparseSession(id: string): Promise<SessionDetail> {
 
 export async function saveSelections(
   id: string,
-  selections: Record<string, Record<string, string>>,
+  selections: Selections,
 ): Promise<void> {
   await api.patch(`/import/sessions/${id}/selections`, { selections });
 }
@@ -145,4 +160,17 @@ export async function cancelSession(id: string): Promise<void> {
 
 export async function markSessionDone(id: string): Promise<void> {
   await api.post(`/import/sessions/${id}/done`);
+}
+
+export async function listDutyTypesForImport(): Promise<{ id: string; name: string }[]> {
+  return (
+    await api.get<{ id: string; name: string }[]>("/import-lookup/duty-types")
+  ).data;
+}
+
+export async function listNodesForImport(): Promise<{ id: string; name: string }[]> {
+  const nodes = (
+    await api.get<{ id: string; name: string }[]>("/import-lookup/hierarchy")
+  ).data;
+  return nodes.map((n) => ({ id: n.id, name: n.name }));
 }
