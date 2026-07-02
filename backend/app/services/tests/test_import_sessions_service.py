@@ -422,7 +422,6 @@ def test_mark_done_requires_confirmed(admin_session):
 
 
 def test_reparse_resolves_duty_type_via_by_name_mapping(admin_session):
-    from decimal import Decimal
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")
     admin_session.add(loc)
@@ -456,7 +455,6 @@ def test_reparse_resolves_duty_type_via_by_name_mapping(admin_session):
 
 
 def test_reparse_by_row_overrides_by_name_for_duty_type(admin_session):
-    from decimal import Decimal
     dt_name = create_duty_type(admin_session, name=f"dt_name_{_uid()}", score_per_day=Decimal("1.00"))
     dt_row  = create_duty_type(admin_session, name=f"dt_row_{_uid()}",  score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")
@@ -515,7 +513,6 @@ def test_reparse_resolves_hierarchy_node_via_by_name_mapping(admin_session):
 
 
 def test_reparse_resolves_quota_node_via_by_row_mapping(admin_session):
-    from decimal import Decimal
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")
     node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
@@ -530,6 +527,8 @@ def test_reparse_resolves_quota_node_via_by_row_mapping(admin_session):
     sess = create_session(
         admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
     )
+    initial_quotas = sess.parsed_state["duty_shifts"][0]["node_quotas"]
+    assert initial_quotas[0]["resolved"] is False
     row_number = sess.parsed_state["duty_shifts"][0]["row"]
 
     set_selections(admin_session, session_id=sess.id, selections={
@@ -547,8 +546,7 @@ def test_reparse_resolves_quota_node_via_by_row_mapping(admin_session):
     assert quotas[0]["node_id"] == str(node.id)
 
 
-def test_reparse_stale_mapped_uuid_falls_back_to_name_lookup(admin_session):
-    from decimal import Decimal
+def test_reparse_bad_mapped_uuid_falls_back_to_name_lookup(admin_session):
     dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
     loc = DutyLocation(name=f"loc_{_uid()}")
     admin_session.add(loc)
@@ -562,15 +560,17 @@ def test_reparse_stale_mapped_uuid_falls_back_to_name_lookup(admin_session):
     sess = create_session(
         admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
     )
+    assert sess.parsed_state["duty_shifts"][0]["action"] == "new"  # baseline: resolves by name
 
-    # Map to a non-existent UUID — should fall back to name lookup (which succeeds here)
+    bad_uuid = str(uuid.uuid4())  # does not exist in DB
     set_selections(admin_session, session_id=sess.id, selections={
         "_name_mappings": {
-            "duty_type": {"by_name": {dt.name: str(uuid.uuid4())}}
+            "duty_type": {"by_name": {dt.name: bad_uuid}}
         }
     })
     admin_session.commit()
 
     sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
-    # Falls back to name lookup → still resolves
+    # Bad UUID → not found in DB → fallback to name lookup → still resolves correctly
+    assert sess.parsed_state["duty_shifts"][0]["action"] == "new"
     assert sess.parsed_state["duty_shifts"][0]["resolved_duty_type_id"] == str(dt.id)
