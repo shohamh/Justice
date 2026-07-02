@@ -3,16 +3,19 @@ import { useParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
-import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
-import { renameNode } from "../api/hierarchy";
+import FuzzyPickerCombobox from "../components/FuzzyPickerCombobox";
 import {
   type SessionDetail,
   type ConfirmSessionResult,
   type RowBase,
+  type Selections,
+  type ShiftTemplateRow,
   getSession,
   reparseSession,
   saveSelections,
   confirmSession,
+  listDutyTypesForImport,
+  listNodesForImport,
 } from "../api/importSessions";
 
 type ActionValue = RowBase["action"];
@@ -59,13 +62,57 @@ function StatusChip({ action, errors }: { action: ActionValue; errors?: string[]
   );
 }
 
+interface LookupItem {
+  id: string;
+  name: string;
+}
+
+interface PendingPick {
+  pickedId: string;
+  kind: "duty_type" | "hierarchy_node";
+  excelName: string;
+  rowKey: string;
+  sameNameCount: number;
+}
+
+function PendingPickBanner({
+  pick,
+  onApplyAll,
+  onApplyRow,
+  onCancel,
+}: {
+  pick: PendingPick;
+  onApplyAll: () => void;
+  onApplyRow: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-1 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded text-xs space-y-1">
+      <p>
+        יש עוד {pick.sameNameCount - 1} שורות עם השם &ldquo;{pick.excelName}&rdquo;. להחיל על כולן?
+      </p>
+      <div className="flex gap-3">
+        <button className="text-indigo-600 hover:underline" onClick={onApplyAll}>
+          החל על כולן
+        </button>
+        <button className="text-indigo-600 hover:underline" onClick={onApplyRow}>
+          רק שורה זו
+        </button>
+        <button className="text-gray-500 hover:underline" onClick={onCancel}>
+          ביטול
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ImportSessionReviewPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("soldiers");
-  const [selections, setSelections] = useState<Record<string, Record<string, string>>>({});
+  const [selections, setSelections] = useState<Selections>({});
   const [confirming, setConfirming] = useState(false);
   const [confirmResult, setConfirmResult] = useState<ConfirmSessionResult | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -77,9 +124,11 @@ export default function ImportSessionReviewPage() {
   const [nodeCreateContext, setNodeCreateContext] = useState<{
     unresolvedName: string;
   } | null>(null);
-  const [nodePickerContext, setNodePickerContext] = useState<{
-    unresolvedName: string;
-  } | null>(null);
+
+  // lookup data
+  const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
+  const [allNodes, setAllNodes] = useState<LookupItem[]>([]);
+  const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,6 +152,17 @@ export default function ImportSessionReviewPage() {
   }, [load]);
 
   useEffect(() => {
+    void (async () => {
+      const [dts, nodes] = await Promise.all([
+        listDutyTypesForImport(),
+        listNodesForImport(),
+      ]);
+      setAllDutyTypes(dts);
+      setAllNodes(nodes);
+    })();
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
@@ -110,7 +170,7 @@ export default function ImportSessionReviewPage() {
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
-  function setRowAction(group: TabKey, row: number, value: string) {
+  function setRowAction(group: "soldiers" | "duty_shifts" | "shift_templates", row: number, value: string) {
     if (!id) return;
     setSelections((prev) => {
       const next = {
@@ -136,15 +196,72 @@ export default function ImportSessionReviewPage() {
     }
   }
 
-  async function handleNodePicked(pickedNodeId: string) {
-    const context = nodePickerContext;
-    setNodePickerContext(null);
-    if (!context) return;
-    try {
-      await renameNode(pickedNodeId, context.unresolvedName);
-      await handleReparse();
-    } catch {
-      setError("שגיאה בשינוי שם היחידה");
+  async function applyMapping(scope: "all" | "row", pick: PendingPick) {
+    setPendingPick(null);
+    if (!id) return;
+    const nm = selections._name_mappings ?? {};
+    const kindKey = pick.kind === "duty_type" ? "duty_type" : "hierarchy_node";
+    const kindEntry = nm[kindKey] ?? {};
+    let next: Selections;
+    if (scope === "all") {
+      next = {
+        ...selections,
+        _name_mappings: {
+          ...nm,
+          [kindKey]: {
+            ...kindEntry,
+            by_name: { ...(kindEntry.by_name ?? {}), [pick.excelName]: pick.pickedId },
+          },
+        },
+      };
+    } else {
+      next = {
+        ...selections,
+        _name_mappings: {
+          ...nm,
+          [kindKey]: {
+            ...kindEntry,
+            by_row: { ...(kindEntry.by_row ?? {}), [pick.rowKey]: pick.pickedId },
+          },
+        },
+      };
+    }
+    setSelections(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    await saveSelections(id, next);
+    await handleReparse();
+  }
+
+  function handlePick(
+    kind: "duty_type" | "hierarchy_node",
+    excelName: string,
+    rowKey: string,
+    pickedId: string,
+  ) {
+    if (!detail) return;
+    const { soldiers, duty_shifts, shift_templates } = detail.parsed_state;
+    let sameNameCount = 0;
+    if (kind === "hierarchy_node") {
+      sameNameCount += soldiers.filter(
+        (r) => !r.hierarchy_node_id && r.hierarchy_node_name === excelName,
+      ).length;
+      sameNameCount += duty_shifts.reduce(
+        (acc, r) =>
+          acc + r.node_quotas.filter((q) => !q.resolved && q.node_name === excelName).length,
+        0,
+      );
+    } else {
+      sameNameCount += duty_shifts.filter(
+        (r) => !r.resolved_duty_type_id && r.duty_type_name === excelName,
+      ).length;
+      sameNameCount += shift_templates.filter(
+        (r) => !r.resolved_duty_type_id && r.duty_type_name === excelName,
+      ).length;
+    }
+    if (sameNameCount <= 1) {
+      void applyMapping("row", { pickedId, kind, excelName, rowKey, sameNameCount });
+    } else {
+      setPendingPick({ pickedId, kind, excelName, rowKey, sameNameCount });
     }
   }
 
@@ -163,8 +280,8 @@ export default function ImportSessionReviewPage() {
     }
   }
 
-  function currentSelection(group: TabKey, row: RowBase): string {
-    return selections[group]?.[String(row.row)] ?? row.action;
+  function currentSelection(group: "soldiers" | "duty_shifts" | "shift_templates", row: RowBase): string {
+    return (selections[group] as Record<string, string> | undefined)?.[String(row.row)] ?? row.action;
   }
 
   if (loading || !detail) {
@@ -241,12 +358,22 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">{row.personal_number}</td>
                       <td className="p-3">
                         {unresolvedNode ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-600">
-                              {row.hierarchy_node_name}
-                            </span>
-                            {!readOnly && (
-                              <>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <FuzzyPickerCombobox
+                                unresolvedName={row.hierarchy_node_name ?? ""}
+                                candidates={allNodes}
+                                disabled={readOnly}
+                                onPick={(pickedId) =>
+                                  handlePick(
+                                    "hierarchy_node",
+                                    row.hierarchy_node_name ?? "",
+                                    `soldiers:${row.row}`,
+                                    pickedId,
+                                  )
+                                }
+                              />
+                              {!readOnly && (
                                 <button
                                   className="text-indigo-600 hover:underline text-xs"
                                   onClick={() =>
@@ -257,18 +384,17 @@ export default function ImportSessionReviewPage() {
                                 >
                                   צור יחידה
                                 </button>
-                                <button
-                                  className="text-indigo-600 hover:underline text-xs"
-                                  onClick={() =>
-                                    setNodePickerContext({
-                                      unresolvedName: row.hierarchy_node_name ?? "",
-                                    })
-                                  }
-                                >
-                                  שנה
-                                </button>
-                              </>
-                            )}
+                              )}
+                            </div>
+                            {pendingPick?.rowKey === `soldiers:${row.row}` &&
+                              pendingPick.kind === "hierarchy_node" && (
+                                <PendingPickBanner
+                                  pick={pendingPick}
+                                  onApplyAll={() => void applyMapping("all", pendingPick)}
+                                  onApplyRow={() => void applyMapping("row", pendingPick)}
+                                  onCancel={() => setPendingPick(null)}
+                                />
+                              )}
                           </div>
                         ) : (
                           row.hierarchy_node_name
@@ -326,20 +452,41 @@ export default function ImportSessionReviewPage() {
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">
                         {unresolvedType ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-600">
-                              {row.duty_type_name}
-                            </span>
-                            {!readOnly && (
-                              <button
-                                className="text-indigo-600 hover:underline text-xs"
-                                onClick={() =>
-                                  setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <FuzzyPickerCombobox
+                                unresolvedName={row.duty_type_name}
+                                candidates={allDutyTypes}
+                                disabled={readOnly}
+                                onPick={(pickedId) =>
+                                  handlePick(
+                                    "duty_type",
+                                    row.duty_type_name,
+                                    `duty_shifts:${row.row}`,
+                                    pickedId,
+                                  )
                                 }
-                              >
-                                צור סוג תורנות
-                              </button>
-                            )}
+                              />
+                              {!readOnly && (
+                                <button
+                                  className="text-indigo-600 hover:underline text-xs"
+                                  onClick={() =>
+                                    setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                                  }
+                                >
+                                  צור סוג תורנות
+                                </button>
+                              )}
+                            </div>
+                            {pendingPick?.rowKey === `duty_shifts:${row.row}` &&
+                              pendingPick.kind === "duty_type" && (
+                                <PendingPickBanner
+                                  pick={pendingPick}
+                                  onApplyAll={() => void applyMapping("all", pendingPick)}
+                                  onApplyRow={() => void applyMapping("row", pendingPick)}
+                                  onCancel={() => setPendingPick(null)}
+                                />
+                              )}
                           </div>
                         ) : (
                           row.duty_type_name
@@ -352,37 +499,47 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">{row.required_count}</td>
                       <td className="p-3">
                         <div className="flex flex-col gap-1">
-                          {row.node_quotas.map((q, i) => (
-                            <div key={i} className="flex items-center gap-2">
-                              <span className={q.resolved ? "" : "text-red-600"}>
-                                {q.node_name}:{q.count}
-                              </span>
-                              {!q.resolved && !readOnly && (
-                                <>
-                                  <button
-                                    className="text-indigo-600 hover:underline text-xs"
-                                    onClick={() =>
-                                      setNodeCreateContext({
-                                        unresolvedName: q.node_name,
-                                      })
-                                    }
-                                  >
-                                    צור
-                                  </button>
-                                  <button
-                                    className="text-indigo-600 hover:underline text-xs"
-                                    onClick={() =>
-                                      setNodePickerContext({
-                                        unresolvedName: q.node_name,
-                                      })
-                                    }
-                                  >
-                                    שנה
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          ))}
+                          {row.node_quotas.map((q, i) => {
+                            const quotaRowKey = `duty_shifts:${row.row}:${q.node_name}`;
+                            return (
+                              <div key={i} className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={q.resolved ? "" : "text-red-600"}>
+                                    {q.node_name}:{q.count}
+                                  </span>
+                                  {!q.resolved && !readOnly && (
+                                    <>
+                                      <FuzzyPickerCombobox
+                                        unresolvedName={q.node_name}
+                                        candidates={allNodes}
+                                        disabled={readOnly}
+                                        onPick={(pickedId) =>
+                                          handlePick("hierarchy_node", q.node_name, quotaRowKey, pickedId)
+                                        }
+                                      />
+                                      <button
+                                        className="text-indigo-600 hover:underline text-xs"
+                                        onClick={() =>
+                                          setNodeCreateContext({ unresolvedName: q.node_name })
+                                        }
+                                      >
+                                        צור
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                                {pendingPick?.rowKey === quotaRowKey &&
+                                  pendingPick.kind === "hierarchy_node" && (
+                                    <PendingPickBanner
+                                      pick={pendingPick}
+                                      onApplyAll={() => void applyMapping("all", pendingPick)}
+                                      onApplyRow={() => void applyMapping("row", pendingPick)}
+                                      onCancel={() => setPendingPick(null)}
+                                    />
+                                  )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
                       <td className="p-3">
@@ -423,47 +580,68 @@ export default function ImportSessionReviewPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">סוג תורנות</th>
                   <th className="text-right p-3">שם</th>
-                  <th className="text-right p-3">סוג</th>
+                  <th className="text-right p-3">ראשי</th>
+                  <th className="text-right p-3">רזרבה</th>
                   <th className="text-right p-3">ימים</th>
-                  <th className="text-right p-3">נדרש</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
               </thead>
               <tbody>
-                {shift_templates.map((row) => {
+                {shift_templates.map((row: ShiftTemplateRow) => {
                   const canToggle =
                     row.action !== "error" && row.action !== "out_of_scope";
                   const unresolvedType = !row.resolved_duty_type_id;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
                       <td className="p-3">
                         {unresolvedType ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-red-600">
-                              {row.duty_type_name}
-                            </span>
-                            {!readOnly && (
-                              <button
-                                className="text-indigo-600 hover:underline text-xs"
-                                onClick={() =>
-                                  setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <FuzzyPickerCombobox
+                                unresolvedName={row.duty_type_name}
+                                candidates={allDutyTypes}
+                                disabled={readOnly}
+                                onPick={(pickedId) =>
+                                  handlePick(
+                                    "duty_type",
+                                    row.duty_type_name,
+                                    `shift_templates:${row.row}`,
+                                    pickedId,
+                                  )
                                 }
-                              >
-                                צור סוג תורנות
-                              </button>
-                            )}
+                              />
+                              {!readOnly && (
+                                <button
+                                  className="text-indigo-600 hover:underline text-xs"
+                                  onClick={() =>
+                                    setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                                  }
+                                >
+                                  צור סוג תורנות
+                                </button>
+                              )}
+                            </div>
+                            {pendingPick?.rowKey === `shift_templates:${row.row}` &&
+                              pendingPick.kind === "duty_type" && (
+                                <PendingPickBanner
+                                  pick={pendingPick}
+                                  onApplyAll={() => void applyMapping("all", pendingPick)}
+                                  onApplyRow={() => void applyMapping("row", pendingPick)}
+                                  onCancel={() => setPendingPick(null)}
+                                />
+                              )}
                           </div>
                         ) : (
                           row.duty_type_name
                         )}
                       </td>
-                      <td className="p-3">{row.days_of_week.join(",")}</td>
-                      <td className="p-3">
-                        {row.required_primary}+{row.required_reserve}
-                      </td>
+                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">{row.required_primary}</td>
+                      <td className="p-3">{row.required_reserve}</td>
+                      <td className="p-3">{row.days_of_week?.join(", ")}</td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
@@ -552,13 +730,6 @@ export default function ImportSessionReviewPage() {
             void handleReparse();
           }}
           onClose={() => setNodeCreateContext(null)}
-        />
-      )}
-
-      {nodePickerContext && (
-        <HierarchyNodePickerModal
-          onPicked={(nodeId) => void handleNodePicked(nodeId)}
-          onClose={() => setNodePickerContext(null)}
         />
       )}
     </Layout>
