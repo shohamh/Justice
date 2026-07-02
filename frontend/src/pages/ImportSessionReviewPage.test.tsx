@@ -4,10 +4,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportSessionReviewPage from "./ImportSessionReviewPage";
 import * as importSessionsApi from "../api/importSessions";
 import type { SessionDetail } from "../api/importSessions";
-import * as hierarchyApi from "../api/hierarchy";
 
 vi.mock("../api/importSessions");
-vi.mock("../api/hierarchy");
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -51,15 +49,6 @@ vi.mock("../components/AddRootNodeDialog", () => ({
     <div data-testid="add-root-node-dialog" data-initial-name={initialName ?? ""}>
       <button onClick={() => { onCreated(); onClose(); }}>create-node</button>
       <button onClick={onClose}>close-node</button>
-    </div>
-  ),
-}));
-
-vi.mock("../components/HierarchyNodePickerModal", () => ({
-  default: ({ onPicked, onClose }: { onPicked: (id: string) => void; onClose: () => void }) => (
-    <div data-testid="hierarchy-node-picker-modal">
-      <button onClick={() => { onPicked("picked-node-id"); onClose(); }}>pick-node</button>
-      <button onClick={onClose}>close-picker</button>
     </div>
   ),
 }));
@@ -124,6 +113,7 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
           notes: null,
         },
       ],
+      shift_templates: [],
       parser_id: "p1",
       parser_warnings: [],
     },
@@ -153,17 +143,8 @@ describe("ImportSessionReviewPage", () => {
       skipped: 0,
       errors: [],
     });
-    vi.mocked(hierarchyApi.renameNode).mockResolvedValue({
-      id: "picked-node-id",
-      level: "team",
-      name: "פלוגה א",
-      parent_id: null,
-      commander_id: null,
-      commander_name: null,
-      path_ids: [],
-      duty_managers: [],
-      dm_manageable: true,
-    });
+    vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([]);
+    vi.mocked(importSessionsApi.listNodesForImport).mockResolvedValue([]);
   });
 
   it("loads and renders session data with correct tab counts", async () => {
@@ -177,14 +158,14 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("דני לוי")).toBeInTheDocument();
   });
 
-  it("renders an unresolved hierarchy node in red with create/change buttons", async () => {
+  it("renders an unresolved hierarchy node in red with a create button and picker combobox", async () => {
     renderPage();
     await screen.findByText("יוסי כהן");
 
     const row = screen.getByText("יוסי כהן").closest("tr")!;
     expect(within(row).getByText("פלוגה א")).toBeInTheDocument();
     expect(within(row).getByText("צור יחידה")).toBeInTheDocument();
-    expect(within(row).getByText("שנה")).toBeInTheDocument();
+    expect(row.querySelector('input[role="combobox"]')).toBeInTheDocument();
   });
 
   it("calls saveSelections when a row action select is changed to skip", async () => {
@@ -192,7 +173,7 @@ describe("ImportSessionReviewPage", () => {
     await screen.findByText("יוסי כהן");
 
     const row = screen.getByText("יוסי כהן").closest("tr")!;
-    const select = within(row).getByRole("combobox");
+    const select = row.querySelector("select")!;
     fireEvent.change(select, { target: { value: "skip" } });
 
     await waitFor(() => {
@@ -220,42 +201,80 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText(/דולגו: 0/)).toBeInTheDocument();
   });
 
-  it("renames the picked node to the unresolved soldier row name, then reparses", async () => {
+  it("picking an existing node for the unresolved soldier row saves a name mapping and reparses", async () => {
+    // Both the soldier row and the duty-shift quota below share the excel name
+    // "פלוגה א", so picking here has sameNameCount === 2 and surfaces the
+    // PendingPickBanner rather than applying immediately.
+    vi.mocked(importSessionsApi.listNodesForImport).mockResolvedValue([
+      { id: "node-99", name: "פלוגה א", parent_id: null },
+    ]);
+
     renderPage();
     await screen.findByText("יוסי כהן");
 
     const row = screen.getByText("יוסי כהן").closest("tr")!;
-    fireEvent.click(within(row).getByText("שנה"));
+    const input = row.querySelector('input[role="combobox"]') as HTMLInputElement;
+    // The node lookup for the picker loads asynchronously in a separate effect;
+    // retry focusing until its items have arrived and the option renders.
+    await waitFor(() => {
+      fireEvent.focus(input);
+      expect(screen.getByRole("option", { name: /פלוגה א/ })).toBeInTheDocument();
+    });
+    fireEvent.pointerUp(within(screen.getByRole("option", { name: /פלוגה א/ })).getByRole("button"));
 
-    expect(await screen.findByTestId("hierarchy-node-picker-modal")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("pick-node"));
+    fireEvent.click(await screen.findByText("רק שורה זו"));
 
     await waitFor(() => {
-      expect(hierarchyApi.renameNode).toHaveBeenCalledWith("picked-node-id", "פלוגה א");
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _name_mappings: expect.objectContaining({
+            hierarchy_node: expect.objectContaining({
+              by_row: expect.objectContaining({ "soldiers:2": "node-99" }),
+            }),
+          }),
+        }),
+      );
     });
     await waitFor(() => {
       expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
     });
   });
 
-  it("renames the picked node to the unresolved duty-shift quota name, then reparses", async () => {
-    // Structurally identical to the soldier-row picker above: same nodePickerContext
-    // state, same onPicked handler. Verifying here mainly confirms the quota row's
-    // "שנה" button wires the correct unresolved name (q.node_name) into the context.
+  it("picking an existing node for the unresolved duty-shift quota saves a name mapping and reparses", async () => {
+    vi.mocked(importSessionsApi.listNodesForImport).mockResolvedValue([
+      { id: "node-99", name: "פלוגה א", parent_id: null },
+    ]);
+
     renderPage();
     await screen.findByText("יוסי כהן");
 
     fireEvent.click(screen.getByText("משמרות (1)"));
     await screen.findByText("שמירה");
 
-    const quotaButton = await screen.findByText("שנה", { selector: "button" });
-    fireEvent.click(quotaButton);
+    const quotaRow = screen.getByText("שמירה").closest("tr")!;
+    // The row has two pickers: duty-type (first) and node quota (second) — the
+    // duty_type_name here is also unresolved, so both combobox inputs are present.
+    const input = quotaRow.querySelectorAll('input[role="combobox"]')[1] as HTMLInputElement;
+    await waitFor(() => {
+      fireEvent.focus(input);
+      expect(screen.getByRole("option", { name: /פלוגה א/ })).toBeInTheDocument();
+    });
+    fireEvent.pointerUp(within(screen.getByRole("option", { name: /פלוגה א/ })).getByRole("button"));
 
-    expect(await screen.findByTestId("hierarchy-node-picker-modal")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("pick-node"));
+    fireEvent.click(await screen.findByText("רק שורה זו"));
 
     await waitFor(() => {
-      expect(hierarchyApi.renameNode).toHaveBeenCalledWith("picked-node-id", "פלוגה א");
+      expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+        "session-1",
+        expect.objectContaining({
+          _name_mappings: expect.objectContaining({
+            hierarchy_node: expect.objectContaining({
+              by_row: expect.objectContaining({ "duty_shifts:2:פלוגה א": "node-99" }),
+            }),
+          }),
+        }),
+      );
     });
     await waitFor(() => {
       expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
