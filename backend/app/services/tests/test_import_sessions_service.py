@@ -124,7 +124,7 @@ def test_create_session_unresolved_duty_type_errors(admin_session):
 
     row = sess.parsed_state["duty_shifts"][0]
     assert row["action"] == "error"
-    assert any("duty_type" in e for e in row["errors"])
+    assert any("no_such_duty_type" in e for e in row["errors"])
 
 
 def test_create_session_soldier_unresolved_hierarchy_node_errors(admin_session):
@@ -139,7 +139,7 @@ def test_create_session_soldier_unresolved_hierarchy_node_errors(admin_session):
 
     row = sess.parsed_state["soldiers"][0]
     assert row["action"] == "error"
-    assert any("hierarchy_node" in e for e in row["errors"])
+    assert any("no_such_node" in e for e in row["errors"])
 
 
 def test_reparse_session_flips_error_to_new_after_duty_type_created(admin_session):
@@ -419,3 +419,158 @@ def test_mark_done_requires_confirmed(admin_session):
     done = mark_done(admin_session, session_id=sess.id, actor=admin)
     admin_session.commit()
     assert done.status == "done"
+
+
+def test_reparse_resolves_duty_type_via_by_name_mapping(admin_session):
+    from decimal import Decimal
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    # Excel uses a different name than the DB
+    wb = _wb_with_duty_shifts([
+        ["excel_alias", loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    # Initially unresolved
+    assert sess.parsed_state["duty_shifts"][0]["action"] == "error"
+
+    # Apply by_name mapping
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {
+            "duty_type": {"by_name": {"excel_alias": str(dt.id)}}
+        }
+    })
+    admin_session.commit()
+
+    sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_shifts"][0]
+    assert row["action"] == "new"
+    assert row["resolved_duty_type_id"] == str(dt.id)
+
+
+def test_reparse_by_row_overrides_by_name_for_duty_type(admin_session):
+    from decimal import Decimal
+    dt_name = create_duty_type(admin_session, name=f"dt_name_{_uid()}", score_per_day=Decimal("1.00"))
+    dt_row  = create_duty_type(admin_session, name=f"dt_row_{_uid()}",  score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        ["excel_alias", loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row_number = sess.parsed_state["duty_shifts"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {
+            "duty_type": {
+                "by_name": {"excel_alias": str(dt_name.id)},
+                "by_row":  {f"duty_shifts:{row_number}": str(dt_row.id)},
+            }
+        }
+    })
+    admin_session.commit()
+
+    sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
+    assert sess.parsed_state["duty_shifts"][0]["resolved_duty_type_id"] == str(dt_row.id)
+
+
+def test_reparse_resolves_hierarchy_node_via_by_name_mapping(admin_session):
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_soldiers([
+        ["1234567", "Test Soldier", "", "", "", "excel_node_alias", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    assert sess.parsed_state["soldiers"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {
+            "hierarchy_node": {"by_name": {"excel_node_alias": str(node.id)}}
+        }
+    })
+    admin_session.commit()
+
+    sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["soldiers"][0]
+    assert row["action"] == "new"
+    assert row["hierarchy_node_id"] == str(node.id)
+
+
+def test_reparse_resolves_quota_node_via_by_row_mapping(admin_session):
+    from decimal import Decimal
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "excel_quota_node:3", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_number = sess.parsed_state["duty_shifts"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {
+            "hierarchy_node": {
+                "by_row": {f"duty_shifts:{row_number}:excel_quota_node": str(node.id)}
+            }
+        }
+    })
+    admin_session.commit()
+
+    sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
+    quotas = sess.parsed_state["duty_shifts"][0]["node_quotas"]
+    assert quotas[0]["resolved"] is True
+    assert quotas[0]["node_id"] == str(node.id)
+
+
+def test_reparse_stale_mapped_uuid_falls_back_to_name_lookup(admin_session):
+    from decimal import Decimal
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    # Map to a non-existent UUID — should fall back to name lookup (which succeeds here)
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {
+            "duty_type": {"by_name": {dt.name: str(uuid.uuid4())}}
+        }
+    })
+    admin_session.commit()
+
+    sess = reparse_session(admin_session, session_id=sess.id, actor=admin)
+    # Falls back to name lookup → still resolves
+    assert sess.parsed_state["duty_shifts"][0]["resolved_duty_type_id"] == str(dt.id)
