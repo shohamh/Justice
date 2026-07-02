@@ -168,8 +168,12 @@ export async function listDutyTypesForImport(): Promise<{ id: string; name: stri
   ).data;
 }
 
-export async function listNodesForImport(): Promise<{ id: string; name: string }[]> {
+export async function listNodesForImport(): Promise<
+  { id: string; name: string; parent_id: string | null }[]
+> {
   return (
-    await api.get<{ id: string; name: string }[]>("/import-lookup/hierarchy")
-  ).data;
+    await api.get<{ id: string; name: string; parent_id: string | null }[]>(
+      "/import-lookup/hierarchy",
+    )
+  ).data.map((n) => ({ id: n.id, name: n.name, parent_id: n.parent_id }));
 }

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import Fuse from "fuse.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import Combobox, { type ComboboxItem } from "../components/Combobox";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
-import FuzzyPickerCombobox from "../components/FuzzyPickerCombobox";
 import {
   type SessionDetail,
   type ConfirmSessionResult,
@@ -67,6 +68,26 @@ interface LookupItem {
   name: string;
 }
 
+interface LookupNode {
+  id: string;
+  name: string;
+  parent_id: string | null;
+}
+
+function buildPickerItems(
+  unresolvedName: string,
+  candidates: { id: string; name: string }[],
+  sortedItems: ComboboxItem[],
+): ComboboxItem[] {
+  const fuse = new Fuse(candidates, { keys: ["name"], threshold: 0.6, includeScore: true });
+  const top5 = fuse.search(unresolvedName).slice(0, 5).map((r) => r.item);
+  const top5Ids = new Set(top5.map((c) => c.id));
+  return [
+    ...top5.map((c) => ({ id: c.id, name: c.name, group: "הצעות קרובות" })),
+    ...sortedItems.filter((c) => !top5Ids.has(c.id)),
+  ];
+}
+
 interface PendingPick {
   pickedId: string;
   kind: "duty_type" | "hierarchy_node";
@@ -127,8 +148,30 @@ export default function ImportSessionReviewPage() {
 
   // lookup data
   const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
-  const [allNodes, setAllNodes] = useState<LookupItem[]>([]);
+  const [allNodes, setAllNodes] = useState<LookupNode[]>([]);
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
+
+  const sortedNodeItems = useMemo<ComboboxItem[]>(() => {
+    const byParent = new Map<string | null, LookupNode[]>();
+    for (const n of allNodes) {
+      const key = n.parent_id ?? null;
+      byParent.set(key, [...(byParent.get(key) ?? []), n]);
+    }
+    const result: ComboboxItem[] = [];
+    function walk(parentId: string | null, depth: number) {
+      for (const n of byParent.get(parentId) ?? []) {
+        result.push({ id: n.id, name: n.name, depth });
+        walk(n.id, depth + 1);
+      }
+    }
+    walk(null, 0);
+    return result;
+  }, [allNodes]);
+
+  const sortedDutyTypeItems = useMemo<ComboboxItem[]>(
+    () => allDutyTypes.map((dt) => ({ id: dt.id, name: dt.name })),
+    [allDutyTypes],
+  );
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -363,23 +406,30 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">
                         {unresolvedNode ? (
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <FuzzyPickerCombobox
-                                unresolvedName={row.hierarchy_node_name ?? ""}
-                                candidates={allNodes}
-                                disabled={readOnly}
-                                onPick={(pickedId) =>
-                                  handlePick(
-                                    "hierarchy_node",
+                            <span className="text-red-600 text-xs font-medium">
+                              {row.hierarchy_node_name}
+                            </span>
+                            {!readOnly && (
+                              <>
+                                <Combobox
+                                  items={buildPickerItems(
                                     row.hierarchy_node_name ?? "",
-                                    `soldiers:${row.row}`,
-                                    pickedId,
-                                  )
-                                }
-                              />
-                              {!readOnly && (
+                                    allNodes,
+                                    sortedNodeItems,
+                                  )}
+                                  value=""
+                                  onChange={(pickedId) => {
+                                    if (pickedId)
+                                      handlePick(
+                                        "hierarchy_node",
+                                        row.hierarchy_node_name ?? "",
+                                        `soldiers:${row.row}`,
+                                        pickedId,
+                                      );
+                                  }}
+                                />
                                 <button
-                                  className="text-indigo-600 hover:underline text-xs"
+                                  className="text-indigo-600 hover:underline text-xs self-start"
                                   onClick={() =>
                                     setNodeCreateContext({
                                       unresolvedName: row.hierarchy_node_name ?? "",
@@ -388,8 +438,8 @@ export default function ImportSessionReviewPage() {
                                 >
                                   צור יחידה
                                 </button>
-                              )}
-                            </div>
+                              </>
+                            )}
                             {pendingPick?.rowKey === `soldiers:${row.row}` &&
                               pendingPick.kind === "hierarchy_node" && (
                                 <PendingPickBanner
@@ -457,31 +507,38 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">
                         {unresolvedType ? (
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <FuzzyPickerCombobox
-                                unresolvedName={row.duty_type_name}
-                                candidates={allDutyTypes}
-                                disabled={readOnly}
-                                onPick={(pickedId) =>
-                                  handlePick(
-                                    "duty_type",
+                            <span className="text-red-600 text-xs font-medium">
+                              {row.duty_type_name}
+                            </span>
+                            {!readOnly && (
+                              <>
+                                <Combobox
+                                  items={buildPickerItems(
                                     row.duty_type_name,
-                                    `duty_shifts:${row.row}`,
-                                    pickedId,
-                                  )
-                                }
-                              />
-                              {!readOnly && (
+                                    allDutyTypes,
+                                    sortedDutyTypeItems,
+                                  )}
+                                  value=""
+                                  onChange={(pickedId) => {
+                                    if (pickedId)
+                                      handlePick(
+                                        "duty_type",
+                                        row.duty_type_name,
+                                        `duty_shifts:${row.row}`,
+                                        pickedId,
+                                      );
+                                  }}
+                                />
                                 <button
-                                  className="text-indigo-600 hover:underline text-xs"
+                                  className="text-indigo-600 hover:underline text-xs self-start"
                                   onClick={() =>
                                     setDutyTypeContext({ unresolvedName: row.duty_type_name })
                                   }
                                 >
                                   צור סוג תורנות
                                 </button>
-                              )}
-                            </div>
+                              </>
+                            )}
                             {pendingPick?.rowKey === `duty_shifts:${row.row}` &&
                               pendingPick.kind === "duty_type" && (
                                 <PendingPickBanner
@@ -513,13 +570,22 @@ export default function ImportSessionReviewPage() {
                                   </span>
                                   {!q.resolved && !readOnly && (
                                     <>
-                                      <FuzzyPickerCombobox
-                                        unresolvedName={q.node_name}
-                                        candidates={allNodes}
-                                        disabled={readOnly}
-                                        onPick={(pickedId) =>
-                                          handlePick("hierarchy_node", q.node_name, quotaRowKey, pickedId)
-                                        }
+                                      <Combobox
+                                        items={buildPickerItems(
+                                          q.node_name,
+                                          allNodes,
+                                          sortedNodeItems,
+                                        )}
+                                        value=""
+                                        onChange={(pickedId) => {
+                                          if (pickedId)
+                                            handlePick(
+                                              "hierarchy_node",
+                                              q.node_name,
+                                              quotaRowKey,
+                                              pickedId,
+                                            );
+                                        }}
                                       />
                                       <button
                                         className="text-indigo-600 hover:underline text-xs"
@@ -603,31 +669,38 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">
                         {unresolvedType ? (
                           <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <FuzzyPickerCombobox
-                                unresolvedName={row.duty_type_name}
-                                candidates={allDutyTypes}
-                                disabled={readOnly}
-                                onPick={(pickedId) =>
-                                  handlePick(
-                                    "duty_type",
+                            <span className="text-red-600 text-xs font-medium">
+                              {row.duty_type_name}
+                            </span>
+                            {!readOnly && (
+                              <>
+                                <Combobox
+                                  items={buildPickerItems(
                                     row.duty_type_name,
-                                    `shift_templates:${row.row}`,
-                                    pickedId,
-                                  )
-                                }
-                              />
-                              {!readOnly && (
+                                    allDutyTypes,
+                                    sortedDutyTypeItems,
+                                  )}
+                                  value=""
+                                  onChange={(pickedId) => {
+                                    if (pickedId)
+                                      handlePick(
+                                        "duty_type",
+                                        row.duty_type_name,
+                                        `shift_templates:${row.row}`,
+                                        pickedId,
+                                      );
+                                  }}
+                                />
                                 <button
-                                  className="text-indigo-600 hover:underline text-xs"
+                                  className="text-indigo-600 hover:underline text-xs self-start"
                                   onClick={() =>
                                     setDutyTypeContext({ unresolvedName: row.duty_type_name })
                                   }
                                 >
                                   צור סוג תורנות
                                 </button>
-                              )}
-                            </div>
+                              </>
+                            )}
                             {pendingPick?.rowKey === `shift_templates:${row.row}` &&
                               pendingPick.kind === "duty_type" && (
                                 <PendingPickBanner
