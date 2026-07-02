@@ -54,6 +54,10 @@ export default function FuzzyPickerCombobox({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    setQuery(unresolvedName);
+  }, [unresolvedName]);
+
   return (
     <div ref={containerRef} className="relative inline-block">
       <input
@@ -77,6 +81,7 @@ export default function FuzzyPickerCombobox({
               onMouseDown={(e) => {
                 e.preventDefault();
                 setOpen(false);
+                setQuery(c.name);
                 onPick(c.id);
               }}
             >

@@ -169,8 +169,7 @@ export async function listDutyTypesForImport(): Promise<{ id: string; name: stri
 }
 
 export async function listNodesForImport(): Promise<{ id: string; name: string }[]> {
-  const nodes = (
+  return (
     await api.get<{ id: string; name: string }[]>("/import-lookup/hierarchy")
   ).data;
-  return nodes.map((n) => ({ id: n.id, name: n.name }));
 }
