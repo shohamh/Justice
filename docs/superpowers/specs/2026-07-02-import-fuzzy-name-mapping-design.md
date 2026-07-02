@@ -8,27 +8,58 @@ When the Excel import parser cannot match a duty type name or hierarchy node nam
 
 ## Goal
 
-Replace the "שנה" / bare red-name UX with an inline searchable combobox showing the closest-matching existing DB records. Picking one maps the Excel name to that record for the session and triggers a reparse so the row immediately resolves.
+Replace the bare red-name UX with an inline searchable combobox showing the closest-matching existing DB records. Picking one persists a mapping in `user_selections` and triggers a reparse so the row immediately resolves.
+
+Two levels of mapping are supported:
+
+- **Name mappings** — one entry covers every row that shares the same unresolved Excel name.
+- **Row overrides** — per-row entries that take precedence over name mappings (applied first during reparse).
+
+This lets the user say "all rows named X map to record Y" globally, and still override individual rows differently.
 
 ---
 
 ## Data Model
 
-Name mappings are stored inside the existing `user_selections` JSON column under the key `_name_mappings`:
+All mapping data lives inside the existing `user_selections` JSON column under `_name_mappings`:
 
 ```json
 {
   "_name_mappings": {
-    "duty_type":      { "<excel name>": "<uuid>" },
-    "hierarchy_node": { "<excel name>": "<uuid>" }
+    "duty_type": {
+      "by_name": {
+        "<excel name>": "<uuid>"
+      },
+      "by_row": {
+        "duty_shifts:<row>":     "<uuid>",
+        "shift_templates:<row>": "<uuid>"
+      }
+    },
+    "hierarchy_node": {
+      "by_name": {
+        "<excel name>": "<uuid>"
+      },
+      "by_row": {
+        "soldiers:<row>":              "<uuid>",
+        "duty_shifts:<row>:<node_name>": "<uuid>"
+      }
+    }
   },
-  "soldiers":      { "3": "skip" },
-  "duty_shifts":   {},
+  "soldiers":       { "3": "skip" },
+  "duty_shifts":    {},
   "shift_templates": {}
 }
 ```
 
-Keying by name (not row number) means one mapping entry covers every row that shares that unresolved name, with no extra storage.
+**Row key format:**
+- Duty type on a shift row: `"duty_shifts:5"`, `"shift_templates:3"`
+- Hierarchy node on a soldier row: `"soldiers:2"`
+- Hierarchy node inside a node quota (within a shift row): `"duty_shifts:5:<node_name>"` — the node name disambiguates which quota within that row.
+
+**Resolution order during reparse (highest priority first):**
+1. `by_row` override for this specific row (and quota slot if applicable)
+2. `by_name` mapping for this Excel name
+3. Regular DB name lookup
 
 ---
 
@@ -36,36 +67,57 @@ Keying by name (not row number) means one mapping entry covers every row that sh
 
 ### `reparse_session`
 
-Pass the current `user_selections` (read from `import_session.user_selections`) to `_resolve_and_score`.
+Pass `import_session.user_selections` into `_resolve_and_score`.
 
 ### `_resolve_and_score`
 
-Accept a `name_mappings` dict (defaulting to `{}`) and pass the relevant sub-dicts to each resolver:
+Extract the mapping sub-dicts and pass them to each resolver:
 
 ```python
-nm = (selections or {}).get("_name_mappings", {})
-duty_type_map   = nm.get("duty_type", {})
-node_map        = nm.get("hierarchy_node", {})
+nm            = (selections or {}).get("_name_mappings", {})
+dt_by_name    = nm.get("duty_type", {}).get("by_name", {})
+dt_by_row     = nm.get("duty_type", {}).get("by_row", {})
+node_by_name  = nm.get("hierarchy_node", {}).get("by_name", {})
+node_by_row   = nm.get("hierarchy_node", {}).get("by_row", {})
 ```
 
 ### `_resolve_soldiers`
 
-Before `nodes_by_name.get(name)`, check:
+Resolution for `hierarchy_node_name`:
 
 ```python
-mapped_id = node_map.get(row.hierarchy_node_name)
-node = session.get(HierarchyNode, uuid.UUID(mapped_id)) if mapped_id else nodes_by_name.get(row.hierarchy_node_name)
+row_key    = f"soldiers:{row.source_row}"
+mapped_id  = node_by_row.get(row_key) or node_by_name.get(row.hierarchy_node_name)
+node       = session.get(HierarchyNode, uuid.UUID(mapped_id)) if mapped_id else nodes_by_name.get(row.hierarchy_node_name)
 ```
 
 ### `_resolve_duty_shifts`
 
-Apply `duty_type_map` for `row.duty_type_name` and `node_map` for each `q.node_name` in node quotas.
+Duty type resolution:
+
+```python
+row_key   = f"duty_shifts:{row.source_row}"
+mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+duty_type = session.get(DutyType, uuid.UUID(mapped_id)) if mapped_id else duty_types_by_name.get(row.duty_type_name)
+```
+
+Node quota resolution (per quota slot):
+
+```python
+quota_key = f"duty_shifts:{row.source_row}:{q.node_name}"
+mapped_id = node_by_row.get(quota_key) or node_by_name.get(q.node_name)
+node      = session.get(HierarchyNode, uuid.UUID(mapped_id)) if mapped_id else nodes_by_name.get(q.node_name)
+```
 
 ### `_resolve_shift_templates`
 
-Apply `duty_type_map` for `row.duty_type_name`.
+```python
+row_key   = f"shift_templates:{row.source_row}"
+mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+duty_type = session.get(DutyType, uuid.UUID(mapped_id)) if mapped_id else duty_types_by_name.get(row.duty_type_name)
+```
 
-No new endpoints. Mapping is saved via existing `PATCH /{session_id}/selections`, reparse via existing `POST /{session_id}/reparse`.
+No new endpoints. Mapping saved via existing `PATCH /{session_id}/selections`, reparse via `POST /{session_id}/reparse`.
 
 ---
 
@@ -79,51 +131,56 @@ On `ImportSessionReviewPage` mount, fetch in parallel:
 
 ### Fuzzy matching
 
-Install `fuse.js`. For each unresolved name, when the combobox opens, initialize a `Fuse` instance over the candidate list (keyed on `name`) and sort results by score.
+Install `fuse.js`. For each combobox, initialize a `Fuse` instance over the candidate list (keyed on `name`) so results are sorted by similarity to the unresolved name.
 
 ### `FuzzyPickerCombobox` component
 
 Props: `unresolvedName`, `candidates: { id, name }[]`, `onPick(id: string): void`, `disabled: boolean`
 
-Behaviour:
 - Renders inline (no modal).
-- Input is pre-filled with `unresolvedName` as the search query, so the closest matches appear immediately on open.
-- Typing re-filters in real time via Fuse.
-- Shows up to ~8 results in a dropdown list.
-- Picking an item calls `onPick(id)`.
+- Input pre-filled with `unresolvedName` so closest matches appear immediately.
+- Typing re-filters via Fuse in real time.
+- Shows up to 8 results.
+- Calling `onPick(id)` triggers the save flow below.
 
 ### "Apply to all" prompt
 
 After `onPick` fires:
-1. Count rows across the current tab that share the same unresolved name.
-2. If count > 1, show an inline banner below the combobox:
-   > *"יש עוד N שורות עם השם '…'. להחיל על כולן?"*  [כן] [לא, רק שורה זו]
-3. Since the mapping is keyed by name, "כן" is the default and requires no extra work — one entry in `_name_mappings` already covers all rows. "לא" is not supported by the data model (one name → one ID), so the prompt is informational: it tells the user the mapping will cover all matching rows and asks them to confirm or cancel.
+1. Count rows in the current tab (and same entity type) that share the same unresolved name.
+2. If count > 1, show an inline banner:
+   > *"יש עוד N שורות עם השם '…'."*
+   > **[החל על כולן]** &nbsp; **[רק שורה זו]** &nbsp; **[ביטול]**
+
+- **החל על כולן** → write to `by_name` (covers all rows with that name automatically).
+- **רק שורה זו** → write to `by_row` for this specific row key only.
+- **ביטול** → discard pick, no save.
+
+If count === 1, skip the prompt and go straight to `by_row` write (since there is no ambiguity).
 
 ### Save flow
 
 ```
-update local selections: selections["_name_mappings"]["duty_type"|"hierarchy_node"][name] = id
-→ PATCH /selections (debounced 500ms, same as existing action saves)
-→ POST /reparse
-→ setDetail(result), setSelections(result.user_selections)
+build updated selections with new mapping entry
+→ PATCH /selections  (debounced 500ms)
+→ POST  /reparse
+→ setDetail(result), setSelections(result.user_selections ?? {})
 ```
 
 ### Removed UX
 
-The "שנה" button (which renamed the DB node) is removed. The combobox replaces it. The "צור" / "צור סוג תורנות" / "צור יחידה" buttons remain alongside the combobox.
+The "שנה" button (which renamed the DB node) is removed. The combobox replaces it. "צור" / "צור סוג תורנות" / "צור יחידה" buttons remain alongside.
 
 ---
 
 ## Error handling
 
-- If a mapped UUID no longer exists at reparse time (record deleted between sessions), the resolver falls back to name lookup and the row returns to "error" state — same behaviour as before.
-- Fuse.js runs entirely client-side; no extra API calls on keystroke.
+- If a mapped UUID no longer exists at reparse time, the resolver falls back to name lookup; if that also fails, the row returns to "error" state — same as baseline behaviour.
+- Fuse.js runs client-side; no extra API calls on keystroke.
 
 ---
 
 ## Out of scope
 
-- Persisting mappings across sessions (each import session is independent).
-- Fuzzy matching for `duty_location_name` (locations are not currently user-resolvable).
-- Soldiers fuzzy matching by name (soldiers are identified by personal number, not name).
+- Fuzzy matching for `duty_location_name` (not user-resolvable today).
+- Soldiers matched by name (identified by personal number).
+- Cross-session persistence of mappings (each import session is independent).
