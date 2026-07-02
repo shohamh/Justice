@@ -153,12 +153,16 @@ export default function ImportSessionReviewPage() {
 
   useEffect(() => {
     void (async () => {
-      const [dts, nodes] = await Promise.all([
-        listDutyTypesForImport(),
-        listNodesForImport(),
-      ]);
-      setAllDutyTypes(dts);
-      setAllNodes(nodes);
+      try {
+        const [dts, nodes] = await Promise.all([
+          listDutyTypesForImport(),
+          listNodesForImport(),
+        ]);
+        setAllDutyTypes(dts);
+        setAllNodes(nodes);
+      } catch {
+        setError("שגיאה בטעינת נתוני בחירה");
+      }
     })();
   }, []);
 
