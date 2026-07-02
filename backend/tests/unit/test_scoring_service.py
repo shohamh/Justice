@@ -229,12 +229,93 @@ def test_normalised_and_transparency(admin_session):
     )
     admin_session.flush()
     assert normalised_score(admin_session, soldier=s) == Decimal("4.00") / Decimal("10")
-    rows = transparency_rows(admin_session)
+    rows = transparency_rows(admin_session, viewer=s)["rows"]
     mine = next(r for r in rows if r["soldier_id"] == s.id)
     assert mine["cumulative_score"] == Decimal("4.00")
     assert mine["active_days"] == 10
     norms = [r["normalised_score"] for r in rows]
     assert norms == sorted(norms, reverse=True)
+
+
+def test_transparency_exemption_in_scope_shows_real_label(admin_session):
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-exempt-scope")
+    dm = create_soldier(
+        admin_session, personal_number="8500010", role="duty_manager", hierarchy_node_id=node.id
+    )
+    s = create_soldier(admin_session, personal_number="8500011", hierarchy_node_id=node.id)
+    et = ExemptionType(name="מגבלה רפואית", is_global=False)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(
+            soldier_id=s.id,
+            exemption_type_id=et.id,
+            start_date=date.today() - timedelta(days=1),
+            end_date=date.today() + timedelta(days=30),
+        )
+    )
+    admin_session.commit()
+
+    result = transparency_rows(admin_session, viewer=dm)
+    row = next(r for r in result["rows"] if r["soldier_id"] == s.id)
+    assert row["exemptions_visible"] is True
+    assert row["exemptions_display"].startswith("מגבלה רפואית (חלקי, עד ")
+    assert row["has_global_exemption"] is False
+    assert row["has_partial_exemption"] is True
+    assert row["has_temporary_exemption"] is True
+
+
+def test_transparency_exemption_out_of_scope_is_redacted(admin_session):
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-exempt-outscope")
+    other_node = create_node(admin_session, level="division", name="div-exempt-other")
+    viewer_dm = create_soldier(
+        admin_session, personal_number="8500012", role="duty_manager", hierarchy_node_id=other_node.id
+    )
+    s = create_soldier(admin_session, personal_number="8500013", hierarchy_node_id=node.id)
+    et = ExemptionType(name="שחרור", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(soldier_id=s.id, exemption_type_id=et.id, start_date=date.today())
+    )
+    admin_session.commit()
+
+    result = transparency_rows(admin_session, viewer=viewer_dm)
+    row = next(r for r in result["rows"] if r["soldier_id"] == s.id)
+    assert row["exemptions_visible"] is False
+    assert row["exemptions_display"] == "חסוי"
+    # aggregate gate passes (viewer holds a scope somewhere), so booleans are still present
+    assert row["has_global_exemption"] is True
+
+
+def test_transparency_aggregate_flags_absent_for_plain_soldier_viewer(admin_session):
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-exempt-plain")
+    plain_viewer = create_soldier(admin_session, personal_number="8500014", role="soldier")
+    s = create_soldier(admin_session, personal_number="8500015", hierarchy_node_id=node.id)
+    et = ExemptionType(name="שחרור", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(soldier_id=s.id, exemption_type_id=et.id, start_date=date.today())
+    )
+    admin_session.commit()
+
+    result = transparency_rows(admin_session, viewer=plain_viewer)
+    assert result["can_see_exemption_aggregates"] is False
+    row = next(r for r in result["rows"] if r["soldier_id"] == s.id)
+    assert row["exemptions_display"] == "חסוי"
+    assert row["has_global_exemption"] is None
+    assert row["has_partial_exemption"] is None
+    assert row["has_temporary_exemption"] is None
 
 
 def test_breakdown(admin_session):

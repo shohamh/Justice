@@ -66,7 +66,7 @@ export default function ExportPage() {
   const [rows, setRows] = useState<TransparencyRow[]>([]);
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
 
-  useEffect(() => { void getTransparency().then(setRows); }, []);
+  useEffect(() => { void getTransparency().then((out) => setRows(out.rows)); }, []);
   useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
 
   const flatNodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);

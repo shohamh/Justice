@@ -11,7 +11,9 @@ def test_transparency_open_to_any_authed_user(client: TestClient, admin_session:
     s = create_soldier(admin_session, personal_number="5600001", role="soldier")
     r = client.get("/api/scoring/transparency", headers=auth_headers(s))
     assert r.status_code == 200
-    assert isinstance(r.json(), list)
+    body = r.json()
+    assert isinstance(body["rows"], list)
+    assert "can_see_exemption_aggregates" in body
 
 
 def test_transparency_reflects_assignment(client: TestClient, admin_session: Session):
@@ -33,8 +35,33 @@ def test_transparency_reflects_assignment(client: TestClient, admin_session: Ses
         },
     )
     r = client.get("/api/scoring/transparency", headers=auth_headers(admin))
-    row = next(x for x in r.json() if x["soldier_id"] == str(s.id))
+    row = next(x for x in r.json()["rows"] if x["soldier_id"] == str(s.id))
     assert Decimal(row["cumulative_score"]) == Decimal("4.00")
+
+
+def test_transparency_exemptions_redacted_for_plain_soldier(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-api-redact")
+    viewer = create_soldier(admin_session, personal_number="5600007", role="soldier")
+    target = create_soldier(admin_session, personal_number="5600008", hierarchy_node_id=node.id)
+    et = ExemptionType(name="שחרור", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(soldier_id=target.id, exemption_type_id=et.id, start_date=date.today())
+    )
+    admin_session.commit()
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(viewer))
+    body = r.json()
+    assert body["can_see_exemption_aggregates"] is False
+    row = next(x for x in body["rows"] if x["soldier_id"] == str(target.id))
+    assert row["exemptions_display"] == "חסוי"
+    assert row["has_global_exemption"] is None
 
 
 def test_soldier_can_read_own_breakdown(client: TestClient, admin_session: Session):

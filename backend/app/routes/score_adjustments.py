@@ -80,7 +80,7 @@ def preview_adjustment(
     if s.id != user.id:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
 
-    rows = transparency_rows(session)
+    rows = transparency_rows(session, viewer=user)["rows"]
     soldier_row = next((r for r in rows if r["soldier_id"] == soldier_id), None)
     if soldier_row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier_not_in_transparency")
