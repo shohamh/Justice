@@ -146,6 +146,9 @@ interface SubRow {
   avg_normalised: number;
   avg_effort: number;
   cv_effort: number | null;
+  count_global_exemption: number | null;
+  count_partial_exemption: number | null;
+  count_temporary_exemption: number | null;
 }
 
 // ─── fairness card ────────────────────────────────────────────────────────────
@@ -306,8 +309,6 @@ export default function TransparencyPage() {
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [canSeeExemptionAggregates, setCanSeeExemptionAggregates] = useState(false);
-  // Not yet read here — consumed by the sub-units tab aggregate columns (separate task).
-  void canSeeExemptionAggregates;
 
   useEffect(() => {
     void getTransparency().then((out) => {
@@ -445,6 +446,15 @@ export default function TransparencyPage() {
               const stats = computeEffortStats(efforts);
               return stats ? stats.cv : null;
             })(),
+            count_global_exemption: canSeeExemptionAggregates
+              ? nodeRows.filter((r) => r.has_global_exemption === true).length
+              : null,
+            count_partial_exemption: canSeeExemptionAggregates
+              ? nodeRows.filter((r) => r.has_partial_exemption === true).length
+              : null,
+            count_temporary_exemption: canSeeExemptionAggregates
+              ? nodeRows.filter((r) => r.has_temporary_exemption === true).length
+              : null,
           });
         }
         traverse(node.id);
@@ -452,7 +462,7 @@ export default function TransparencyPage() {
     }
     traverse(null);
     return result;
-  }, [flatNodes, nodePathsMap, rows]);
+  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates]);
 
   // ── summary stats (reflect current tab's visible data) ──
   const statsRows = tab === 0 ? visibleRows : null;
@@ -728,6 +738,24 @@ export default function TransparencyPage() {
         </span>
       ),
       sortValue: (r) => r.exempted_count,
+    },
+    {
+      id: "count_global_exemption", header: t("transparency.count_global_exemption"),
+      cell: (r) => r.count_global_exemption === null ? "חסוי" : r.count_global_exemption,
+      sortValue: (r) => r.count_global_exemption ?? -1,
+      exportValue: (r) => r.count_global_exemption === null ? "חסוי" : r.count_global_exemption,
+    },
+    {
+      id: "count_partial_exemption", header: t("transparency.count_partial_exemption"),
+      cell: (r) => r.count_partial_exemption === null ? "חסוי" : r.count_partial_exemption,
+      sortValue: (r) => r.count_partial_exemption ?? -1,
+      exportValue: (r) => r.count_partial_exemption === null ? "חסוי" : r.count_partial_exemption,
+    },
+    {
+      id: "count_temporary_exemption", header: t("transparency.count_temporary_exemption"),
+      cell: (r) => r.count_temporary_exemption === null ? "חסוי" : r.count_temporary_exemption,
+      sortValue: (r) => r.count_temporary_exemption ?? -1,
+      exportValue: (r) => r.count_temporary_exemption === null ? "חסוי" : r.count_temporary_exemption,
     },
     {
       id: "active_count",
