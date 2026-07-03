@@ -272,15 +272,18 @@ def patch_exemption_request(
     req = session.get(ExemptionRequest, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
-    if req.status != "pending":
+    if req.status not in ("pending_commander", "pending_duty_manager"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="exemption_request_not_pending")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     if body.exemption_type_id is not None:
         from app.db.models import ExemptionType
-        if session.get(ExemptionType, body.exemption_type_id) is None:
+        new_type = session.get(ExemptionType, body.exemption_type_id)
+        if new_type is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_type_not_found")
+        if new_type.is_commander_exemption:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="commander_exemption_not_requestable")
         req.exemption_type_id = body.exemption_type_id
     if body.start_date is not None:
         from datetime import date as _date

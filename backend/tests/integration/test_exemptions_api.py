@@ -96,3 +96,50 @@ def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Sess
     ).json()
     r = client.delete(f"/api/soldiers/{b.id}/exemptions/{ex['id']}", headers=auth_headers(admin))
     assert r.status_code == 404
+
+
+def test_patch_pending_commander_request_succeeds(client: TestClient, admin_session: Session):
+    """Regression test: the PATCH route's pending-status check still referenced the
+    single old "pending" status after it was split into pending_commander/pending_duty_manager,
+    which made this endpoint unconditionally reject every request. Confirms it now accepts
+    a request in either new pending sub-state."""
+    admin = create_soldier(admin_session, personal_number="5200011", role="admin")
+    soldier = create_soldier(admin_session, personal_number="5200012")
+    et = _et(admin_session, "פטור-ר6")
+    req = client.post(
+        "/api/me/exemption-requests",
+        headers=auth_headers(soldier),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    ).json()
+    assert req["status"] == "pending_commander"
+    r = client.patch(
+        f"/api/exemption-requests/{req['id']}",
+        headers=auth_headers(admin),
+        json={"reason": "updated reason"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "pending_commander"
+
+
+def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClient, admin_session: Session):
+    """A pending request's exemption_type_id must not be retargeted to a
+    commander-exemption type — that would bypass the rank/level gate that
+    grant_commander_exemption otherwise enforces."""
+    admin = create_soldier(admin_session, personal_number="5200013", role="admin")
+    soldier = create_soldier(admin_session, personal_number="5200014")
+    regular = _et(admin_session, "פטור-ר7")
+    commander_et = ExemptionType(name="פטור-פיקודי-ר7", is_commander_exemption=True)
+    admin_session.add(commander_et)
+    admin_session.commit()
+    req = client.post(
+        "/api/me/exemption-requests",
+        headers=auth_headers(soldier),
+        json={"exemption_type_id": str(regular.id), "start_date": "2026-01-01"},
+    ).json()
+    r = client.patch(
+        f"/api/exemption-requests/{req['id']}",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(commander_et.id)},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "commander_exemption_not_requestable"
