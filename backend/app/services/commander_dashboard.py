@@ -101,7 +101,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         session.execute(
             select(func.count(ExemptionRequest.id)).where(
                 ExemptionRequest.soldier_id.in_(soldier_ids),
-                ExemptionRequest.status == "pending",
+                ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
             )
         ).scalar()
         or 0
@@ -419,7 +419,7 @@ def pending_approvals(session: Session, *, subtree_ids: list[uuid.UUID]) -> list
         session.execute(
             select(ExemptionRequest).where(
                 ExemptionRequest.soldier_id.in_(soldier_ids),
-                ExemptionRequest.status == "pending",
+                ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
             )
         )
         .scalars()

@@ -31,7 +31,7 @@ def _make_req(session, soldier, node):
     return req
 
 
-def _make_exemption(session, soldier, enrollment_req, status="pending"):
+def _make_exemption(session, soldier, enrollment_req, status="pending_commander"):
     from app.db.models import ExemptionType
     from datetime import date
     # find or create an exemption type
@@ -77,7 +77,7 @@ def test_approve_with_pending_exemptions_sets_commander_approved(admin_session):
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
     req = _make_req(admin_session, soldier, node)
-    _make_exemption(admin_session, soldier, req, status="pending")
+    _make_exemption(admin_session, soldier, req, status="pending_commander")
     admin_session.commit()
 
     from app.services.enrollment import approve_enrollment
@@ -116,7 +116,7 @@ def test_try_activate_does_not_activate_when_exemption_still_pending(admin_sessi
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
     req = _make_req(admin_session, soldier, node)
     req.status = "commander_approved"
-    _make_exemption(admin_session, soldier, req, status="pending")
+    _make_exemption(admin_session, soldier, req, status="pending_duty_manager")
     admin_session.commit()
 
     from app.services.enrollment import try_activate

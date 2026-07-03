@@ -8,6 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.db.models import (
     CommanderNotificationDepth,
+    ExemptionRequest,
     NotificationPreference,
     NotificationType,
     TelegramActionToken,
@@ -60,7 +61,15 @@ def execute_action(token_row: TelegramActionToken, session: Session) -> str:
 
     if action == "exemption:approve":
         try:
-            exemption_svc.approve_request(session, request_id=resource_id, decided_by=soldier_id)
+            req = session.get(ExemptionRequest, resource_id)
+            if req is None:
+                return "שגיאה: exemption_request_not_found"
+            if req.status == "pending_commander":
+                exemption_svc.approve_commander_step(session, resource_id, approved_by=soldier_id)
+            elif req.status == "pending_duty_manager":
+                exemption_svc.approve_duty_manager_step(session, resource_id, decided_by=soldier_id)
+            else:
+                return "שגיאה: exemption_request_not_pending"
             return "✅ בקשת הפטור אושרה."
         except exemption_svc.ExemptionRequestError as e:
             return f"שגיאה: {e}"
