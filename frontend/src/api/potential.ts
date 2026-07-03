@@ -6,6 +6,7 @@ export interface SoldierPotentialDetail {
   counted: boolean;
   reason: string | null;
   exemption_names: string[] | null;
+  rank: string | null;
 }
 
 export interface PotentialModifierDTO {

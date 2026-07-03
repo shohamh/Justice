@@ -4,6 +4,7 @@ import { Check, X } from "lucide-react";
 import Layout from "../../components/Layout";
 import { DataTable, type ColDef } from "../../components/DataTable";
 import { ExcelExportButton } from "../../components/ExcelExportButton";
+import SoldierLink from "../../components/SoldierLink";
 import {
   getPotential,
   listModifiers,
@@ -124,9 +125,16 @@ export default function PotentialPage() {
     {
       id: "name",
       header: t("potential.soldier_name"),
-      cell: (s) => s.full_name,
+      cell: (s) => <SoldierLink id={s.soldier_id} name={s.full_name} />,
       sortValue: (s) => s.full_name,
       filterValue: (s) => s.full_name,
+    },
+    {
+      id: "rank",
+      header: t("potential.rank_col"),
+      cell: (s) => s.rank ?? "—",
+      sortValue: (s) => s.rank ?? "",
+      filterValue: (s) => s.rank ?? "",
     },
     {
       id: "counted",
