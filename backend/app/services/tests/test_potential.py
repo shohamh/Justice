@@ -262,3 +262,19 @@ def test_export_potential_table_xlsx_returns_bytes(app_session):
     from app.services.potential import export_potential_table_xlsx
     content = export_potential_table_xlsx(app_session, root_node_id=node.id, reference_date=date(2026, 7, 3))
     assert content[:2] == b"PK"  # xlsx is a zip archive
+
+
+def test_discharged_soldier_reason(app_session):
+    node = create_node(app_session, level="team", name="Test Co Discharged", parent_id=None)
+    app_session.flush()
+    dt = DutyType(name="שמירה", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add(dt)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id, left_at=date(2026, 1, 1))
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    detail = result.soldiers[0]
+    assert detail.counted is False
+    assert detail.reason == "discharged"

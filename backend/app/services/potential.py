@@ -146,7 +146,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         rank = _rank_as_of(s, reference_date)
         if s.left_at is not None and s.left_at <= reference_date:
             details.append(SoldierPotentialDetail(
-                s.id, s.full_name, False, "discharged as of reference date", rank=rank,
+                s.id, s.full_name, False, "discharged", rank=rank,
             ))
             continue
         base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
