@@ -4,6 +4,7 @@ import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas, 
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { getPublicSettings } from "../api/publicSettings";
+import { submitJob, getAlgorithmDefaults, SolverSettings } from "../api/algorithm";
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
 import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
@@ -44,6 +45,11 @@ function commonAncestorName(
   const ancestorId = paths[0][commonLength - 1];
   return nodeOptions.find((n) => n.id === ancestorId)?.name ?? null;
 }
+
+const DEFAULT_RERUN_SETTINGS: SolverSettings = {
+  K: 8, T: 8, Wt: 14, R: 15, Wr: 28, alpha: 1.0, beta: 2.0, time_limit_seconds: 30, num_workers: 1,
+  auto_relax_node_quotas: false,
+};
 
 interface Props {
   dutyTypes: DutyType[];
@@ -101,6 +107,27 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [splitting, setSplitting] = useState(false);
   const [autoSplitEnabled, setAutoSplitEnabled] = useState(false);
   const [autoSplitApplied, setAutoSplitApplied] = useState(false);
+
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunResult, setRerunResult] = useState<string | null>(null);
+
+  async function handleRerunAlgorithm() {
+    if (!existing) return;
+    setRerunning(true);
+    setRerunResult(null);
+    setError(null);
+    try {
+      const defaults = await getAlgorithmDefaults();
+      const settings: SolverSettings = { ...DEFAULT_RERUN_SETTINGS, ...defaults };
+      const resp = await submitJob({ shift_ids: [existing.id], mode: "shadow", settings });
+      setRerunResult(t("shifts.rerun_algorithm_success", { id: resp.id }));
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? "שגיאה");
+    } finally {
+      setRerunning(false);
+    }
+  }
 
   useEffect(() => {
     void getPublicSettings()
@@ -364,6 +391,19 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
               </p>
             )}
           </div>
+          {existing && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRerunAlgorithm}
+                disabled={rerunning}
+                className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded disabled:opacity-50"
+              >
+                {t("shifts.rerun_algorithm")}
+              </button>
+              {rerunResult && <span className="text-xs text-green-600 dark:text-green-400">{rerunResult}</span>}
+            </div>
+          )}
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">{t("shifts.cancel")}</button>

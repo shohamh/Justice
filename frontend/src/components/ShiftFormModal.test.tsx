@@ -198,3 +198,49 @@ test("does not auto-split when the system setting is disabled", async () => {
   await new Promise((r) => setTimeout(r, 500));
   expect(mockGetQuotaSplitPreview).not.toHaveBeenCalled();
 });
+
+test("rerun-algorithm button is hidden for a new (unsaved) shift", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+  expect(screen.queryByText("shifts.rerun_algorithm")).not.toBeInTheDocument();
+});
+
+test("rerun-algorithm button submits a job scoped to the existing shift", async () => {
+  const { submitJob } = await import("../api/algorithm");
+  const existingShift = {
+    id: "shift-42",
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-07-01",
+    end_date: "2026-07-02",
+    required_count: 3,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty" as const,
+    status: "active" as const,
+    node_quotas: [],
+  };
+
+  render(
+    <ShiftFormModal
+      dutyTypes={dutyTypes}
+      locations={locations}
+      existing={existingShift}
+      onSaved={() => {}}
+      onClose={() => {}}
+    />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(await screen.findByText("shifts.rerun_algorithm"));
+
+  await waitFor(() =>
+    expect(submitJob).toHaveBeenCalledWith(
+      expect.objectContaining({ shift_ids: ["shift-42"], mode: "shadow" })
+    )
+  );
+  expect(await screen.findByText(/rerun_algorithm_success/)).toBeInTheDocument();
+});
