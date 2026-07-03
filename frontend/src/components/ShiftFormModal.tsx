@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas } from "../api/shifts";
+import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas, getQuotaSplitPreview } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import Combobox from "./Combobox";
@@ -12,10 +12,10 @@ interface QuotaRow {
   count: number;
 }
 
-function flattenNodes(nodes: NodeDTO[]): { id: string; name: string }[] {
-  const result: { id: string; name: string }[] = [];
+function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: string[] }[] {
+  const result: { id: string; name: string; path_ids: string[] }[] = [];
   for (const n of nodes) {
-    result.push({ id: n.id, name: n.name });
+    result.push({ id: n.id, name: n.name, path_ids: n.path_ids });
     if (n.children?.length) result.push(...flattenNodes(n.children));
   }
   return result;
@@ -48,7 +48,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [quotaRows, setQuotaRows] = useState<QuotaRow[]>(
     (existing?.node_quotas ?? []).map((q) => ({ hierarchy_node_id: q.hierarchy_node_id, count: q.count }))
   );
-  const [nodeOptions, setNodeOptions] = useState<{ id: string; name: string }[]>([]);
+  const [nodeOptions, setNodeOptions] = useState<{ id: string; name: string; path_ids: string[] }[]>([]);
 
   useEffect(() => {
     void fetchTree().then((nodes) => setNodeOptions(flattenNodes(nodes)));
@@ -68,6 +68,27 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
 
   function updateQuotaRow(index: number, patch: Partial<QuotaRow>) {
     setQuotaRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+
+  const [splitting, setSplitting] = useState(false);
+
+  async function handleSplitByPotential() {
+    if (scopeNodeIds.length !== 1) return;
+    setSplitting(true);
+    setError(null);
+    try {
+      const entries = await getQuotaSplitPreview(scopeNodeIds[0], count);
+      setQuotaRows(
+        entries
+          .filter((e) => e.count > 0)
+          .map((e) => ({ hierarchy_node_id: e.hierarchy_node_id, count: e.count }))
+      );
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? "שגיאה");
+    } finally {
+      setSplitting(false);
+    }
   }
 
   useEffect(() => {
@@ -255,13 +276,25 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                 </div>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={addQuotaRow}
-              className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              + {t("shifts.quotas_add")}
-            </button>
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={addQuotaRow}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                + {t("shifts.quotas_add")}
+              </button>
+              {scopeNodeIds.length === 1 && (
+                <button
+                  type="button"
+                  onClick={handleSplitByPotential}
+                  disabled={splitting}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                >
+                  {t("shifts.quotas_split_by_potential")}
+                </button>
+              )}
+            </div>
             <p className={`text-xs mt-2 ${quotaOverAllocated ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
               {t("shifts.quotas_total")}: {quotaTotal} / {count}
             </p>

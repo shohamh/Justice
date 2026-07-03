@@ -525,6 +525,7 @@
     "quotas_total": "סה\"כ הוקצה",
     "quotas_over_allocated": "סך כל המכסות ({{total}}) חורג מהמספר הנדרש ({{required}})",
     "quotas_select_node": "בחר יחידה",
+    "quotas_split_by_potential": "חלק לפי פוטנציאל לתתי מסגרות",
     "assigned_count": "שובץ",
     "reserve_needed": "רזרבה נדרשת",
     "reserve_assigned": "רזרבה שובצה",

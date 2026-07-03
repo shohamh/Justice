@@ -14,6 +14,12 @@ vi.mock("react-i18next", () => ({
 
 const mockCreateShift = vi.fn(() => Promise.resolve({ id: "new-shift-1" }));
 const mockUpdateShift = vi.fn(() => Promise.resolve({}));
+const mockGetQuotaSplitPreview = vi.fn(() =>
+  Promise.resolve([
+    { hierarchy_node_id: "n1", node_name: "פלוגה א", count: 3, weight: 6 },
+    { hierarchy_node_id: "n2", node_name: "פלוגה ב", count: 2, weight: 4 },
+  ])
+);
 vi.mock("../api/shifts", async () => {
   const actual = await vi.importActual<typeof import("../api/shifts")>("../api/shifts");
   return {
@@ -21,6 +27,7 @@ vi.mock("../api/shifts", async () => {
     createShift: (...args: unknown[]) => mockCreateShift(...args),
     updateShift: (...args: unknown[]) => mockUpdateShift(...args),
     setShiftQuotas: vi.fn(() => Promise.resolve({ quotas: [] })),
+    getQuotaSplitPreview: (...args: unknown[]) => mockGetQuotaSplitPreview(...args),
   };
 });
 
@@ -28,9 +35,22 @@ vi.mock("../api/dutyConfig", () => ({
   createLocation: vi.fn(),
 }));
 
+vi.mock("../api/publicSettings", () => ({
+  getPublicSettings: vi.fn(() => Promise.resolve({})),
+}));
+
+vi.mock("../api/algorithm", () => ({
+  submitJob: vi.fn(() => Promise.resolve({ id: "job-1", status: "queued" })),
+  getAlgorithmDefaults: vi.fn(() => Promise.resolve({ T: 8, Wt: 14, R: 15, Wr: 28 })),
+}));
+
 const mockNodes = [
-  { id: "n1", name: "פלוגה א", children: [] },
-  { id: "n2", name: "פלוגה ב", children: [] },
+  {
+    id: "root", name: "אוגדה", path_ids: ["root"], children: [
+      { id: "n1", name: "פלוגה א", path_ids: ["root", "n1"], children: [] },
+      { id: "n2", name: "פלוגה ב", path_ids: ["root", "n2"], children: [] },
+    ],
+  },
 ];
 vi.mock("../api/hierarchy", () => ({
   fetchTree: vi.fn(() => Promise.resolve(mockNodes)),
@@ -42,6 +62,7 @@ const locations = [{ id: "l1", name: "loc1" }];
 beforeEach(() => {
   mockCreateShift.mockClear();
   mockUpdateShift.mockClear();
+  mockGetQuotaSplitPreview.mockClear();
 });
 
 test("allows adding a node quota row", async () => {
@@ -66,4 +87,57 @@ test("shows a warning when quota total exceeds required_count", async () => {
   fireEvent.change(rowCountInput, { target: { value: "5" } });
 
   expect(screen.getByText(/over-allocated:5\/1/)).toBeInTheDocument();
+});
+
+test("split-by-potential button is hidden until exactly one scope node is selected", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  expect(screen.queryByText("shifts.quotas_split_by_potential")).not.toBeInTheDocument();
+
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה א" }));
+  expect(await screen.findByText("shifts.quotas_split_by_potential")).toBeInTheDocument();
+
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה ב" }));
+  expect(screen.queryByText("shifts.quotas_split_by_potential")).not.toBeInTheDocument();
+});
+
+test("clicking split-by-potential populates quota rows from the API response", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה א" }));
+  fireEvent.click(await screen.findByText("shifts.quotas_split_by_potential"));
+
+  await waitFor(() => expect(mockGetQuotaSplitPreview).toHaveBeenCalledWith("n1", 1));
+  const counts = await screen.findAllByTestId("quota-count-input");
+  expect(counts.map((el) => (el as HTMLInputElement).value)).toEqual(["3", "2"]);
+});
+
+test("clicking split-by-potential again (recompute) overwrites existing rows", async () => {
+  mockGetQuotaSplitPreview
+    .mockResolvedValueOnce([{ hierarchy_node_id: "n1", node_name: "פלוגה א", count: 1, weight: 1 }])
+    .mockResolvedValueOnce([{ hierarchy_node_id: "n1", node_name: "פלוגה א", count: 4, weight: 8 }]);
+
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה א" }));
+
+  const splitButton = await screen.findByText("shifts.quotas_split_by_potential");
+  fireEvent.click(splitButton);
+  await waitFor(async () =>
+    expect((await screen.findAllByTestId("quota-count-input"))[0]).toHaveValue(1)
+  );
+
+  fireEvent.click(splitButton);
+  await waitFor(async () =>
+    expect((await screen.findAllByTestId("quota-count-input"))[0]).toHaveValue(4)
+  );
+  expect(await screen.findAllByTestId("quota-count-input")).toHaveLength(1);
 });
