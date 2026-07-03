@@ -24,6 +24,7 @@ for _i, _a in enumerate(_sys.argv):
         _os.environ["DATABASE_URL"] = _sys.argv[_i + 1]
         break
 
+import uuid
 from datetime import date, time
 from decimal import Decimal
 import math
@@ -43,20 +44,19 @@ from app.db.models import (
     PersonalConstraint,
     RegistrationInviteCode,
     ScoreAdjustment,
+    ShiftTemplate,
     Soldier,
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
     SwapRequest,
+    SystemSetting,
 )
 from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
 
 
 def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
-    from app.scripts.bootstrap import main as bootstrap_main
-    bootstrap_main()
-
     clear = force
     with SessionLocal() as session:
         # All regular soldiers share this password.
@@ -76,10 +76,21 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             session.query(SoldierFieldUpdate).delete()
             session.query(HierarchyNode).delete()
             session.query(Soldier).delete()
+            session.query(ShiftTemplate).delete()
             session.query(DutyType).delete()
             session.query(DutyLocation).delete()
             session.query(ExemptionType).delete()
+            session.query(SystemSetting).filter(
+                SystemSetting.key.in_(["system.root_node_id", "system.holding_node_id"])
+            ).delete(synchronize_session=False)
             session.commit()
+
+        # Must run after the wipe above: it's idempotent based on these same
+        # SystemSetting rows, so bootstrapping before a --clear wipe leaves
+        # them dangling (pointing at hierarchy nodes the wipe just deleted)
+        # and they never get recreated on any later run.
+        from app.scripts.bootstrap import main as bootstrap_main
+        bootstrap_main()
 
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
         if admin:
@@ -93,10 +104,15 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             return
 
         # ── Hierarchy: department → branch → group → team ──────────
-        psips = HierarchyNode(level="department", name="פסיפס", path_ids=[])
+        # Attach under the bootstrapped root ("כלל המסגרת") rather than as its
+        # own root, so the demo data lives under the one real top-level node.
+        root_setting = session.get(SystemSetting, "system.root_node_id")
+        root_node_id = uuid.UUID(root_setting.value) if root_setting else None
+        root_path_ids = [root_node_id] if root_node_id else []
+        psips = HierarchyNode(level="department", name="פסיפס", parent_id=root_node_id, path_ids=[])
         session.add(psips)
         session.flush()
-        psips.path_ids = [psips.id]
+        psips.path_ids = root_path_ids + [psips.id]
 
         branches = []
         for bname in ["פוקוס", "אלומות"]:
@@ -210,13 +226,10 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         all_soldiers = []
 
         # Admin — department commander (קבע, officer, veteran 15+ years).
-        # Seeded with must_change_password=True so the E2E "admin first login"
-        # spec exercises the forced-change flow before any other test runs.
-        s_admin = make_soldier(
-            "1000001",
-            "מפמר פסיפס",
-            "admin",
-            psips.id,
+        # bootstrap.py may already have created this exact personal_number
+        # (same "1000001" convention) before this ran; reuse that row instead
+        # of inserting a duplicate.
+        admin_attrs = dict(
             is_officer=True,
             rank='אל"מ',
             bahad1_graduate=True,
@@ -225,6 +238,17 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             discharge_date=date(2035, 1, 1),
             gender="male",
         )
+        if admin:
+            admin.full_name = "מפמר פסיפס"
+            admin.role = "admin"
+            admin.hierarchy_node_id = psips.id
+            admin.enrolled_at = date(2026, 1, 15)
+            for k, v in admin_attrs.items():
+                setattr(admin, k, v)
+            session.flush()
+            s_admin = admin
+        else:
+            s_admin = make_soldier("1000001", "מפמר פסיפס", "admin", psips.id, **admin_attrs)
         session.flush()
         all_soldiers.append(s_admin)
         psips.commander_id = s_admin.id
