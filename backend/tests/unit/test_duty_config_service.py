@@ -15,6 +15,7 @@ from app.services.duty_config import (
     set_duty_type_active,
     set_exemption_duty_types,
     update_duty_type,
+    update_exemption_type,
 )
 from tests.helpers import create_soldier
 
@@ -69,9 +70,17 @@ def test_create_location(admin_session):
 
 
 def test_create_exemption_type_and_map(admin_session):
-    et = create_exemption_type(admin_session, name="פטור רפואי", actor_id=None)
+    et = create_exemption_type(
+        admin_session,
+        name="פטור רפואי",
+        is_medical=True,
+        is_commander_exemption=True,
+        actor_id=None,
+    )
     dt = create_duty_type(admin_session, name="שמירה-מ", score_per_day=Decimal("1"), actor_id=None)
     admin_session.flush()
+    assert et.is_medical is True
+    assert et.is_commander_exemption is True
     map_exemption_to_duty_type(
         admin_session, exemption_type_id=et.id, duty_type_id=dt.id, actor_id=None
     )
@@ -82,6 +91,19 @@ def test_create_exemption_type_and_map(admin_session):
     admin_session.commit()
     rows = admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id).all()
     assert len(rows) == 1
+
+    update_exemption_type(
+        admin_session,
+        exemption_type=et,
+        name=None,
+        description=None,
+        is_medical=False,
+        is_commander_exemption=False,
+        actor_id=None,
+    )
+    admin_session.commit()
+    assert et.is_medical is False
+    assert et.is_commander_exemption is False
 
 
 def test_set_exemption_duty_types_diffs(admin_session):

@@ -77,6 +77,7 @@ export function DutyConfigContent() {
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
   const [exMedical, setExMedical] = useState(false);
+  const [exCommanderExemption, setExCommanderExemption] = useState(false);
   const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
   const [dtModal, setDtModal] = useState<{ initial?: DutyType } | null>(null);
   const [eligModal, setEligModal] = useState<DutyType | null>(null);
@@ -149,8 +150,8 @@ export function DutyConfigContent() {
   }
   async function addExType(e: FormEvent) {
     e.preventDefault();
-    await createExemptionType({ name: exName, is_global: exGlobal, is_medical: exMedical });
-    setExName(""); setExGlobal(false); setExMedical(false);
+    await createExemptionType({ name: exName, is_global: exGlobal, is_medical: exMedical, is_commander_exemption: exCommanderExemption });
+    setExName(""); setExGlobal(false); setExMedical(false); setExCommanderExemption(false);
     await refresh();
   }
   async function toggleMap(etId: string, dtId: string) {
@@ -372,6 +373,10 @@ export function DutyConfigContent() {
             <input type="checkbox" checked={exMedical} onChange={(e) => setExMedical(e.target.checked)} data-testid="et-medical" />
             🏥 {t("duty_config.medical")}
           </label>
+          <label className="flex items-center gap-1 text-xs cursor-pointer">
+            <input type="checkbox" checked={exCommanderExemption} onChange={(e) => setExCommanderExemption(e.target.checked)} data-testid="et-commander-exemption" />
+            🎖️ פטור פיקודי
+          </label>
           <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="et-submit">{t("duty_config.add")}</button>
         </form>
         <ul className="text-sm space-y-2" data-testid="exemption-type-list">
@@ -381,6 +386,7 @@ export function DutyConfigContent() {
                 <span>{et.name}</span>
                 {et.is_global && <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
                 {et.is_medical && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">🏥 {t("duty_config.medical")}</span>}
+                {et.is_commander_exemption && <span className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-0.5 rounded">🎖️ פטור פיקודי</span>}
                 <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400 mr-auto">
                   <input
                     type="checkbox"
@@ -392,6 +398,18 @@ export function DutyConfigContent() {
                     data-testid={`et-medical-toggle-${et.name}`}
                   />
                   🏥 {t("duty_config.medical")}
+                </label>
+                <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={et.is_commander_exemption ?? false}
+                    onChange={async (e) => {
+                      await updateExemptionType(et.id, { is_commander_exemption: e.target.checked });
+                      await refresh();
+                    }}
+                    data-testid={`et-commander-exemption-toggle-${et.name}`}
+                  />
+                  🎖️ פטור פיקודי
                 </label>
               </div>
               {et.is_global ? (

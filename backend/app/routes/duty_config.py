@@ -340,6 +340,7 @@ class ExemptionTypeOut(BaseModel):
     description: str | None
     is_global: bool = False
     is_medical: bool = False
+    is_commander_exemption: bool = False
 
 
 class CreateExemptionTypeRequest(BaseModel):
@@ -347,6 +348,7 @@ class CreateExemptionTypeRequest(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     is_global: bool = False
     is_medical: bool = False
+    is_commander_exemption: bool = False
 
 
 class UpdateExemptionTypeRequest(BaseModel):
@@ -354,6 +356,7 @@ class UpdateExemptionTypeRequest(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     is_global: bool | None = None
     is_medical: bool | None = None
+    is_commander_exemption: bool | None = None
 
 
 class SetDutyTypesRequest(BaseModel):
@@ -361,7 +364,14 @@ class SetDutyTypesRequest(BaseModel):
 
 
 def _et_out(et: ExemptionType) -> ExemptionTypeOut:
-    return ExemptionTypeOut(id=et.id, name=et.name, description=et.description, is_global=et.is_global, is_medical=et.is_medical)
+    return ExemptionTypeOut(
+        id=et.id,
+        name=et.name,
+        description=et.description,
+        is_global=et.is_global,
+        is_medical=et.is_medical,
+        is_commander_exemption=et.is_commander_exemption,
+    )
 
 
 @router.get("/exemption-types", response_model=list[ExemptionTypeOut])
@@ -383,7 +393,13 @@ def create_exemption_type(
 ) -> ExemptionTypeOut:
     try:
         et = svc.create_exemption_type(
-            session, name=body.name, description=body.description, is_global=body.is_global, is_medical=body.is_medical, actor_id=user.id
+            session,
+            name=body.name,
+            description=body.description,
+            is_global=body.is_global,
+            is_medical=body.is_medical,
+            is_commander_exemption=body.is_commander_exemption,
+            actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -410,6 +426,7 @@ def update_exemption_type(
             description=body.description,
             is_global=body.is_global,
             is_medical=body.is_medical,
+            is_commander_exemption=body.is_commander_exemption,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
