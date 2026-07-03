@@ -99,6 +99,43 @@ def test_mitvahim_alal_ignored_for_potential(app_session):
     assert result.raw_eligible_count == 1
 
 
+def test_allowed_service_types_excludes_mandatory_soldier_from_career_only_duty(app_session):
+    node = create_node(app_session, level="team", name="Test Co 4a", parent_id=None)
+    app_session.flush()
+    dt = DutyType(
+        name="שמירה", score_per_day=Decimal("1.0"),
+        requirements={"allowed_service_types": ["קבע"]},
+    )
+    app_session.add(dt)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id)
+    s.mandatory_end_date = date(2027, 1, 1)  # after reference_date -> inferred as "חובה"
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    assert result.raw_eligible_count == 0
+    assert result.soldiers[0].counted is False
+
+
+def test_allowed_service_types_includes_mandatory_soldier_for_mandatory_only_duty(app_session):
+    node = create_node(app_session, level="team", name="Test Co 4b", parent_id=None)
+    app_session.flush()
+    dt = DutyType(
+        name="שמירה", score_per_day=Decimal("1.0"),
+        requirements={"allowed_service_types": ["חובה"]},
+    )
+    app_session.add(dt)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id)
+    s.mandatory_end_date = date(2027, 1, 1)  # after reference_date -> inferred as "חובה"
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    assert result.raw_eligible_count == 1
+
+
 def test_potential_rolls_up_to_parent(app_session):
     parent = create_node(app_session, level="division", name="Battalion", parent_id=None)
     app_session.flush()

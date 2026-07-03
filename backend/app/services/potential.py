@@ -17,7 +17,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
-from app.services.eligibility import DutyTypeRequirements
+from app.services.eligibility import DutyTypeRequirements, inferred_service_type
 
 
 @dataclass
@@ -65,7 +65,7 @@ def _rank_as_of(soldier: Soldier, reference_date: date) -> str | None:
 
 
 def _base_eligible_duty_types(
-    soldier: Soldier, rank: str | None, duty_types: list[DutyType],
+    soldier: Soldier, rank: str | None, duty_types: list[DutyType], reference_date: date,
 ) -> set[uuid.UUID]:
     """Duty types the soldier qualifies for by rank/gender/service-type/officer
     requirements, ignoring mitvahim/alal timing entirely (potential-specific rule)."""
@@ -81,6 +81,10 @@ def _base_eligible_duty_types(
             continue
         if reqs.allowed_ranks and (not rank or rank not in reqs.allowed_ranks):
             continue
+        if reqs.allowed_service_types:
+            stype = inferred_service_type(soldier, reference_date)
+            if not stype or stype not in reqs.allowed_service_types:
+                continue
         if not reqs.officers_allowed and soldier.is_officer:
             continue
         if not reqs.enlisted_allowed and not soldier.is_officer:
@@ -137,7 +141,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             details.append(SoldierPotentialDetail(s.id, s.full_name, False, "discharged as of reference date"))
             continue
         rank = _rank_as_of(s, reference_date)
-        base_eligible = _base_eligible_duty_types(s, rank, duty_types)
+        base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
         excluded: set[uuid.UUID] = set()
         for ex in exemptions_by_soldier.get(s.id, []):
             if ex.start_date <= reference_date and (ex.end_date is None or ex.end_date >= reference_date):
