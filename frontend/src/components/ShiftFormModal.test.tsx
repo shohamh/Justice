@@ -141,3 +141,32 @@ test("clicking split-by-potential again (recompute) overwrites existing rows", a
   );
   expect(await screen.findAllByTestId("quota-count-input")).toHaveLength(1);
 });
+
+test("auto-splits quota rows when the system setting is enabled and a single node is selected", async () => {
+  const { getPublicSettings } = await import("../api/publicSettings");
+  vi.mocked(getPublicSettings).mockResolvedValueOnce({ "shifts.auto_split_node_quotas": true });
+
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה א" }));
+
+  await waitFor(() => expect(mockGetQuotaSplitPreview).toHaveBeenCalled());
+  const counts = await screen.findAllByTestId("quota-count-input");
+  expect(counts.map((el) => (el as HTMLInputElement).value)).toEqual(["3", "2"]);
+  expect(screen.getByText("shifts.quotas_auto_split_hint")).toBeInTheDocument();
+});
+
+test("does not auto-split when the system setting is disabled", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(await screen.findByRole("checkbox", { name: "פלוגה א" }));
+
+  await new Promise((r) => setTimeout(r, 500));
+  expect(mockGetQuotaSplitPreview).not.toHaveBeenCalled();
+});

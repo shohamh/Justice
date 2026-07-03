@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas, getQuotaSplitPreview } from "../api/shifts";
 import { DutyType, DutyLocation, createLocation } from "../api/dutyConfig";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { getPublicSettings } from "../api/publicSettings";
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
 import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
@@ -71,9 +72,17 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   }
 
   const [splitting, setSplitting] = useState(false);
+  const [autoSplitEnabled, setAutoSplitEnabled] = useState(false);
+  const [autoSplitApplied, setAutoSplitApplied] = useState(false);
 
-  async function handleSplitByPotential() {
-    if (scopeNodeIds.length !== 1) return;
+  useEffect(() => {
+    void getPublicSettings()
+      .then((settings) => setAutoSplitEnabled(settings["shifts.auto_split_node_quotas"] === true))
+      .catch(() => {});
+  }, []);
+
+  async function runSplit(): Promise<boolean> {
+    if (scopeNodeIds.length !== 1 || count < 1) return false;
     setSplitting(true);
     setError(null);
     try {
@@ -83,13 +92,29 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           .filter((e) => e.count > 0)
           .map((e) => ({ hierarchy_node_id: e.hierarchy_node_id, count: e.count }))
       );
+      return true;
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setError(detail ?? "שגיאה");
+      return false;
     } finally {
       setSplitting(false);
     }
   }
+
+  async function handleSplitByPotential() {
+    setAutoSplitApplied(false);
+    await runSplit();
+  }
+
+  useEffect(() => {
+    if (!autoSplitEnabled || scopeNodeIds.length !== 1 || count < 1) return;
+    const timer = setTimeout(() => {
+      void runSplit().then((ok) => setAutoSplitApplied(ok));
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSplitEnabled, scopeNodeIds, count]);
 
   useEffect(() => {
     if (!existing) {
@@ -295,6 +320,9 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                 </button>
               )}
             </div>
+            {autoSplitApplied && (
+              <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">{t("shifts.quotas_auto_split_hint")}</p>
+            )}
             <p className={`text-xs mt-2 ${quotaOverAllocated ? "text-red-500" : "text-gray-500 dark:text-gray-400"}`}>
               {t("shifts.quotas_total")}: {quotaTotal} / {count}
             </p>
