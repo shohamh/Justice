@@ -17,8 +17,7 @@ import {
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 import { sortNodesByTree } from "../../utils/sortNodesByTree";
-
-const WHOLE_ORG_ID = "__whole_org__";
+import { WHOLE_ORG_ID } from "../../utils/wholeOrg";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
@@ -65,7 +64,7 @@ export default function PotentialPage() {
   const wholeOrgNode: NodeDTO = useMemo(() => ({
     id: WHOLE_ORG_ID,
     level: "corps",
-    name: t("potential.whole_org"),
+    name: t("common.whole_org"),
     parent_id: null,
     commander_id: null,
     commander_name: null,

@@ -13,6 +13,7 @@ import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
+import { WHOLE_ORG_ID } from "../utils/wholeOrg";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -409,6 +410,45 @@ export default function TransparencyPage() {
   const subRows = useMemo((): SubRow[] => {
     const result: SubRow[] = [];
     const avg = (vals: number[]) => vals.reduce((a, b) => a + b, 0) / vals.length;
+
+    function buildSubRow(nodeId: string, nodeName: string, depth: number, nodeRows: TransparencyRow[]): SubRow {
+      const exemptedCount = nodeRows.filter((r) => r.is_globally_exempted).length;
+      return {
+        node_id: nodeId,
+        node_name: nodeName,
+        depth,
+        count: nodeRows.length,
+        active_count: nodeRows.length - exemptedCount,
+        exempted_count: exemptedCount,
+        avg_cumulative: avg(nodeRows.map((r) => Number(r.cumulative_score))),
+        avg_cumulative_active: (() => {
+          const active = nodeRows.filter((r) => Number(r.cumulative_score) > 0);
+          return active.length > 0 ? avg(active.map((r) => Number(r.cumulative_score))) : 0;
+        })(),
+        total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
+        avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
+        avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
+        avg_effort: (() => {
+          const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+          return efforts.length > 0 ? efforts.reduce((a, b) => a + b, 0) / efforts.length : 0;
+        })(),
+        cv_effort: (() => {
+          const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
+          const stats = computeEffortStats(efforts);
+          return stats ? stats.cv : null;
+        })(),
+        count_global_exemption: canSeeExemptionAggregates
+          ? nodeRows.filter((r) => r.has_global_exemption === true).length
+          : null,
+        count_partial_exemption: canSeeExemptionAggregates
+          ? nodeRows.filter((r) => r.has_partial_exemption === true).length
+          : null,
+        count_temporary_exemption: canSeeExemptionAggregates
+          ? nodeRows.filter((r) => r.has_temporary_exemption === true).length
+          : null,
+      };
+    }
+
     const childrenMap = new Map<string | null, NodeDTO[]>();
     for (const node of flatNodes) {
       const key = node.parent_id ?? null;
@@ -420,49 +460,18 @@ export default function TransparencyPage() {
         const nodeRows = rows.filter(
           (r) => r.node_id != null && nodePathsMap.get(r.node_id)?.includes(node.id),
         );
-        if (nodeRows.length > 0) {
-          const exemptedCount = nodeRows.filter((r) => r.is_globally_exempted).length;
-          result.push({
-            node_id: node.id,
-            node_name: node.name,
-            depth: node.path_ids.length - 1,
-            count: nodeRows.length,
-            active_count: nodeRows.length - exemptedCount,
-            exempted_count: exemptedCount,
-            avg_cumulative: avg(nodeRows.map((r) => Number(r.cumulative_score))),
-            avg_cumulative_active: (() => {
-              const active = nodeRows.filter((r) => Number(r.cumulative_score) > 0);
-              return active.length > 0 ? avg(active.map((r) => Number(r.cumulative_score))) : 0;
-            })(),
-            total_score_per_day: nodeRows.reduce((s, r) => s + Number(r.score_per_day), 0),
-            avg_active_days: Math.round(avg(nodeRows.map((r) => r.active_days))),
-            avg_normalised: avg(nodeRows.map((r) => Number(r.normalised_score))),
-            avg_effort: (() => {
-              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
-              return efforts.length > 0 ? efforts.reduce((a, b) => a + b, 0) / efforts.length : 0;
-            })(),
-            cv_effort: (() => {
-              const efforts = nodeRows.map((r) => r.effort_score).filter((v) => !isNaN(v));
-              const stats = computeEffortStats(efforts);
-              return stats ? stats.cv : null;
-            })(),
-            count_global_exemption: canSeeExemptionAggregates
-              ? nodeRows.filter((r) => r.has_global_exemption === true).length
-              : null,
-            count_partial_exemption: canSeeExemptionAggregates
-              ? nodeRows.filter((r) => r.has_partial_exemption === true).length
-              : null,
-            count_temporary_exemption: canSeeExemptionAggregates
-              ? nodeRows.filter((r) => r.has_temporary_exemption === true).length
-              : null,
-          });
-        }
+        // +1 depth: real top-level roots nest visually under the whole-org row below.
+        if (nodeRows.length > 0) result.push(buildSubRow(node.id, node.name, node.path_ids.length, nodeRows));
         traverse(node.id);
       }
     }
     traverse(null);
+
+    // Stable first row: aggregates every soldier regardless of how many real
+    // top-level roots currently exist.
+    if (rows.length > 0) result.unshift(buildSubRow(WHOLE_ORG_ID, t("common.whole_org"), 0, rows));
     return result;
-  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates]);
+  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t]);
 
   // ── summary stats (reflect current tab's visible data) ──
   const statsRows = tab === 0 ? visibleRows : null;
@@ -717,7 +726,7 @@ export default function TransparencyPage() {
           {r.depth > 0 && <span className="text-gray-300 dark:text-gray-600 ml-1 text-xs">{"└"}</span>}
           <button
             className="text-indigo-600 dark:text-indigo-300 hover:underline text-right"
-            onClick={() => { setSelectedNodeId(r.node_id); setTab(0); }}
+            onClick={() => { setSelectedNodeId(r.node_id === WHOLE_ORG_ID ? null : r.node_id); setTab(0); }}
           >
             {r.node_name}
           </button>
