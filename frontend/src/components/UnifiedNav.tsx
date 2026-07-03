@@ -160,6 +160,7 @@ export default function UnifiedNav() {
     { label: t("nav.score_adjustments"), to: "/planning/score-adjustments", testId: "nav-score-adjustments" },
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
     { label: t("nav.planning_export"), to: "/planning/export", testId: "nav-export" },
+    { label: "פוטנציאל", to: "/planning/potential", testId: "nav-potential" },
   ];
 
   const isActive = (to?: string) => {

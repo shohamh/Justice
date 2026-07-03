@@ -26,6 +26,7 @@ import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
 import ConfigPage from "./pages/planning/ConfigPage";
 import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
 import ExportPage from "./pages/planning/ExportPage";
+import PotentialPage from "./pages/planning/PotentialPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import HakpazaPage from "./pages/HakpazaPage";
 import ImportSessionsListPage from "./pages/ImportSessionsListPage";
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
             <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
             <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
+            <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
             {/* Admin */}
             <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
             <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
