@@ -158,3 +158,51 @@ def test_register_links_exemptions_to_enrollment(admin_session):
     ).scalar_one()
 
     assert exemption.enrollment_request_id == enrollment_req.id
+    assert exemption.status == "pending_commander"
+
+
+def test_register_rejects_commander_exemption_type(admin_session):
+    """A soldier self-registering must not be able to request a commander-exemption
+    (פטור פיקודי) type — that path is gated to authorized commanders/duty-managers via
+    grant_commander_exemption, not the self-service registration/request flow."""
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    commander_type = ExemptionType(name=f"commander_type_{_uid()}", is_commander_exemption=True)
+    admin_session.add(commander_type)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="commander_exemption_not_requestable"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[{
+                "exemption_type_id": commander_type.id,
+                "start_date": date(2024, 1, 1),
+                "end_date": None,
+                "reason": None,
+            }],
+            personal_constraints=[], **_base()
+        )
+
+
+def test_register_rejects_unknown_exemption_type(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="exemption_type_not_found"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[{
+                "exemption_type_id": uuid.uuid4(),
+                "start_date": date(2024, 1, 1),
+                "end_date": None,
+                "reason": None,
+            }],
+            personal_constraints=[], **_base()
+        )

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth.password import hash_password
 from app.db.models import (
     ExemptionRequest,
+    ExemptionType,
     HierarchyNode,
     PersonalConstraint,
     Soldier,
@@ -95,13 +96,18 @@ def register(
     session.flush()
 
     for er in exemption_requests:
+        et = session.get(ExemptionType, er["exemption_type_id"])
+        if et is None:
+            raise RegistrationError("exemption_type_not_found")
+        if et.is_commander_exemption:
+            raise RegistrationError("commander_exemption_not_requestable")
         session.add(ExemptionRequest(
             soldier_id=soldier.id,
             exemption_type_id=er["exemption_type_id"],
             start_date=er["start_date"],
             end_date=er.get("end_date"),
             reason=er.get("reason"),
-            status="pending",
+            status="pending_commander",
             enrollment_request_id=enrollment_req.id,
         ))
 
