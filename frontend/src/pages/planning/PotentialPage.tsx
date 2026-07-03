@@ -18,6 +18,8 @@ import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 import { sortNodesByTree } from "../../utils/sortNodesByTree";
 
+const WHOLE_ORG_ID = "__whole_org__";
+
 export default function PotentialPage() {
   const { t } = useTranslation();
   const { levelTypes } = useLevelTypes();
@@ -35,6 +37,47 @@ export default function PotentialPage() {
   const [exportRows, setExportRows] = useState<NodeDTO[]>([]);
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
+
+  const topLevelRoots = useMemo(() => nodes.filter((n) => n.parent_id === null), [nodes]);
+
+  // Synthetic aggregate row representing the whole organization, so the table
+  // always has a stable top row regardless of how many real root nodes exist.
+  const wholeOrgResult = useMemo((): PotentialResult | null => {
+    if (topLevelRoots.length === 0) return null;
+    const rootResults = topLevelRoots.map((n) => results[n.id]).filter((r): r is PotentialResult => !!r);
+    if (rootResults.length !== topLevelRoots.length) return null; // not all roots loaded yet
+    return {
+      node_id: WHOLE_ORG_ID,
+      as_of: rootResults[0].as_of,
+      raw_eligible_count: rootResults.reduce((s, r) => s + r.raw_eligible_count, 0),
+      total_soldiers: rootResults.reduce((s, r) => s + r.total_soldiers, 0),
+      modifiers: rootResults.flatMap((r) => r.modifiers),
+      final_potential: rootResults.reduce((s, r) => s + r.final_potential, 0),
+      soldiers: rootResults.flatMap((r) => r.soldiers),
+    };
+  }, [topLevelRoots, results]);
+
+  const displayResults = useMemo(
+    () => (wholeOrgResult ? { ...results, [WHOLE_ORG_ID]: wholeOrgResult } : results),
+    [results, wholeOrgResult],
+  );
+
+  const wholeOrgNode: NodeDTO = useMemo(() => ({
+    id: WHOLE_ORG_ID,
+    level: "corps",
+    name: t("potential.whole_org"),
+    parent_id: null,
+    commander_id: null,
+    commander_name: null,
+    path_ids: [WHOLE_ORG_ID],
+    duty_managers: [],
+    dm_manageable: false,
+  }), [t]);
+
+  const tableRows = useMemo(
+    () => (wholeOrgResult ? [wholeOrgNode, ...nodes] : nodes),
+    [wholeOrgResult, wholeOrgNode, nodes],
+  );
 
   useEffect(() => {
     fetchFullTree().then(setTreeNodes);
@@ -56,11 +99,11 @@ export default function PotentialPage() {
   }, [nodes, referenceDate]);
 
   useEffect(() => {
-    if (expandedNodeId) listModifiers(expandedNodeId).then(setModifiers);
+    if (expandedNodeId && expandedNodeId !== WHOLE_ORG_ID) listModifiers(expandedNodeId).then(setModifiers);
   }, [expandedNodeId]);
 
   async function handleAddModifier() {
-    if (!expandedNodeId || !newReason.trim()) return;
+    if (!expandedNodeId || expandedNodeId === WHOLE_ORG_ID || !newReason.trim()) return;
     await createModifier({ hierarchy_node_id: expandedNodeId, delta: newDelta, reason: newReason, start_date: referenceDate });
     setModifiers(await listModifiers(expandedNodeId));
     setNewReason("");
@@ -72,9 +115,10 @@ export default function PotentialPage() {
   }
 
   function pctOfParentValue(n: NodeDTO): number | null {
-    if (!n.parent_id) return null;
-    const parentFinal = results[n.parent_id]?.final_potential;
-    const ownFinal = results[n.id]?.final_potential;
+    if (n.id === WHOLE_ORG_ID) return null;
+    const parentId = n.parent_id ?? WHOLE_ORG_ID;
+    const parentFinal = displayResults[parentId]?.final_potential;
+    const ownFinal = displayResults[n.id]?.final_potential;
     if (parentFinal === undefined || ownFinal === undefined || parentFinal === 0) return null;
     return (ownFinal / parentFinal) * 100;
   }
@@ -85,7 +129,7 @@ export default function PotentialPage() {
   }
 
   function pctEligibleValue(n: NodeDTO): number | null {
-    const r = results[n.id];
+    const r = displayResults[n.id];
     if (!r || r.total_soldiers === 0) return null;
     return (r.raw_eligible_count / r.total_soldiers) * 100;
   }
@@ -118,14 +162,17 @@ export default function PotentialPage() {
     {
       id: "name",
       header: t("potential.node"),
-      cell: (n) => (
-        <span className="flex items-center gap-2" style={{ paddingRight: (n.path_ids.length - 1) * 16 }}>
-          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 shrink-0">
-            {levelLabelByKey.get(n.level) ?? n.level}
+      cell: (n) =>
+        n.id === WHOLE_ORG_ID ? (
+          <span className="font-semibold">{n.name}</span>
+        ) : (
+          <span className="flex items-center gap-2" style={{ paddingRight: (n.path_ids.length - 1) * 16 }}>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 shrink-0">
+              {levelLabelByKey.get(n.level) ?? n.level}
+            </span>
+            <span>{n.name}</span>
           </span>
-          <span>{n.name}</span>
-        </span>
-      ),
+        ),
       sortValue: (n) => n.name,
       filterValue: (n) => n.name,
     },
@@ -133,15 +180,15 @@ export default function PotentialPage() {
       id: "sadach",
       header: t("potential.sadach"),
       headerTooltip: t("potential.sadach_tooltip"),
-      cell: (n) => results[n.id]?.total_soldiers ?? "-",
-      sortValue: (n) => results[n.id]?.total_soldiers ?? -1,
+      cell: (n) => displayResults[n.id]?.total_soldiers ?? "-",
+      sortValue: (n) => displayResults[n.id]?.total_soldiers ?? -1,
     },
     {
       id: "eligible",
       header: t("potential.eligible"),
       headerTooltip: t("potential.eligible_tooltip"),
-      cell: (n) => results[n.id]?.raw_eligible_count ?? "-",
-      sortValue: (n) => results[n.id]?.raw_eligible_count ?? -1,
+      cell: (n) => displayResults[n.id]?.raw_eligible_count ?? "-",
+      sortValue: (n) => displayResults[n.id]?.raw_eligible_count ?? -1,
     },
     {
       id: "pct_eligible",
@@ -158,15 +205,15 @@ export default function PotentialPage() {
       id: "modifiers",
       header: t("potential.modifiers"),
       headerTooltip: t("potential.modifiers_tooltip"),
-      cell: (n) => (results[n.id] ? modifierSum(results[n.id]) : "-"),
-      sortValue: (n) => (results[n.id] ? modifierSum(results[n.id]) : -Infinity),
+      cell: (n) => (displayResults[n.id] ? modifierSum(displayResults[n.id]) : "-"),
+      sortValue: (n) => (displayResults[n.id] ? modifierSum(displayResults[n.id]) : -Infinity),
     },
     {
       id: "final_potential",
       header: t("potential.final_potential"),
       headerTooltip: t("potential.final_potential_tooltip"),
-      cell: (n) => results[n.id]?.final_potential ?? "-",
-      sortValue: (n) => results[n.id]?.final_potential ?? -1,
+      cell: (n) => displayResults[n.id]?.final_potential ?? "-",
+      sortValue: (n) => displayResults[n.id]?.final_potential ?? -1,
     },
     {
       id: "pct_of_parent",
@@ -241,7 +288,7 @@ export default function PotentialPage() {
         </div>
         <DataTable
           columns={cols}
-          data={nodes}
+          data={tableRows}
           filterPlaceholder={t("table.filter_placeholder")}
           rowClassName={(n) => (n.id === expandedNodeId ? "bg-indigo-50 dark:bg-indigo-950" : "")}
           testId="potential-table"
@@ -253,7 +300,7 @@ export default function PotentialPage() {
               <div className="p-2">
                 <DataTable
                   columns={soldierCols}
-                  data={results[n.id]?.soldiers ?? []}
+                  data={displayResults[n.id]?.soldiers ?? []}
                   filterPlaceholder={t("table.filter_placeholder")}
                   emptyMessage={t("potential.no_soldiers")}
                   testId={`potential-soldiers-table-${n.id}`}
@@ -263,7 +310,7 @@ export default function PotentialPage() {
           }}
         />
 
-        {expandedNodeId && (
+        {expandedNodeId && expandedNodeId !== WHOLE_ORG_ID && (
           <div className="border dark:border-gray-700 rounded p-3 space-y-2">
             <h3 className="font-semibold">{t("potential.manual_modifiers_title")}</h3>
             <ul>
