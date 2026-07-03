@@ -15,6 +15,7 @@ import {
   SoldierPotentialDetail,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
+import { useLevelTypes } from "../../hooks/useLevelTypes";
 
 function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
   const result: NodeDTO[] = [];
@@ -28,6 +29,11 @@ function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
 
 export default function PotentialPage() {
   const { t } = useTranslation();
+  const { levelTypes } = useLevelTypes();
+  const levelLabelByKey = useMemo(
+    () => new Map(levelTypes.map((lt) => [lt.key, lt.label])),
+    [levelTypes],
+  );
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [referenceDate, setReferenceDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [results, setResults] = useState<Record<string, PotentialResult>>({});
@@ -74,6 +80,19 @@ export default function PotentialPage() {
     return r ? r.modifiers.reduce((s, m) => s + m.delta, 0) : 0;
   }
 
+  function pctOfParentValue(n: NodeDTO): number | null {
+    if (!n.parent_id) return null;
+    const parentFinal = results[n.parent_id]?.final_potential;
+    const ownFinal = results[n.id]?.final_potential;
+    if (parentFinal === undefined || ownFinal === undefined || parentFinal === 0) return null;
+    return (ownFinal / parentFinal) * 100;
+  }
+
+  function pctOfParentText(n: NodeDTO): string {
+    const pct = pctOfParentValue(n);
+    return pct === null ? "—" : `${pct.toFixed(0)}%`;
+  }
+
   function toggleExpanded(nodeId: string) {
     setExpandedNodeId((prev) => (prev === nodeId ? null : nodeId));
   }
@@ -97,27 +116,48 @@ export default function PotentialPage() {
     {
       id: "name",
       header: t("potential.node"),
-      cell: (n) => n.name,
+      cell: (n) => (
+        <span className="flex items-center gap-2" style={{ paddingRight: (n.path_ids.length - 1) * 16 }}>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 shrink-0">
+            {levelLabelByKey.get(n.level) ?? n.level}
+          </span>
+          <span>{n.name}</span>
+        </span>
+      ),
       sortValue: (n) => n.name,
       filterValue: (n) => n.name,
     },
     {
       id: "eligible",
       header: t("potential.eligible"),
+      headerTooltip: t("potential.eligible_tooltip"),
       cell: (n) => results[n.id]?.raw_eligible_count ?? "-",
       sortValue: (n) => results[n.id]?.raw_eligible_count ?? -1,
     },
     {
       id: "modifiers",
       header: t("potential.modifiers"),
+      headerTooltip: t("potential.modifiers_tooltip"),
       cell: (n) => (results[n.id] ? modifierSum(results[n.id]) : "-"),
       sortValue: (n) => (results[n.id] ? modifierSum(results[n.id]) : -Infinity),
     },
     {
       id: "final_potential",
       header: t("potential.final_potential"),
+      headerTooltip: t("potential.final_potential_tooltip"),
       cell: (n) => results[n.id]?.final_potential ?? "-",
       sortValue: (n) => results[n.id]?.final_potential ?? -1,
+    },
+    {
+      id: "pct_of_parent",
+      header: t("potential.pct_of_parent"),
+      headerTooltip: t("potential.pct_of_parent_tooltip"),
+      cell: (n) => pctOfParentText(n),
+      sortValue: (n) => pctOfParentValue(n) ?? -Infinity,
+      exportValue: (n) => {
+        const pct = pctOfParentValue(n);
+        return pct === null ? "" : Math.round(pct);
+      },
     },
   ];
 
