@@ -165,3 +165,11 @@ def test_delete_modifier(app_session):
     delete_modifier(app_session, modifier_id=m.id)
     app_session.commit()
     assert list_modifiers(app_session, hierarchy_node_id=node.id) == []
+
+
+def test_export_potential_table_xlsx_returns_bytes(app_session):
+    node = create_node(app_session, level="team", name="Export Co", parent_id=None)
+    app_session.commit()
+    from app.services.potential import export_potential_table_xlsx
+    content = export_potential_table_xlsx(app_session, root_node_id=node.id, reference_date=date(2026, 7, 3))
+    assert content[:2] == b"PK"  # xlsx is a zip archive

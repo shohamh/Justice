@@ -248,3 +248,29 @@ def delete_modifier(session: Session, *, modifier_id: uuid.UUID, actor_id: uuid.
         entity_id=modifier_id,
         before=before,
     )
+
+
+def export_potential_table_xlsx(session: Session, *, root_node_id: uuid.UUID, reference_date: date) -> bytes:
+    """Build an .xlsx snapshot of root_node_id and all its descendant nodes' potential."""
+    import io
+    from openpyxl import Workbook
+
+    all_nodes = list(session.execute(select(HierarchyNode)).scalars().all())
+    node_by_id = {n.id: n for n in all_nodes}
+    root = node_by_id.get(root_node_id)
+    if root is None:
+        raise ValueError("hierarchy_node_not_found")
+    subtree = [n for n in all_nodes if root_node_id in n.path_ids]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Potential"
+    ws.append(["Node", "Level", "Raw Eligible", "Modifiers Sum", "Final Potential", "As Of"])
+    for n in subtree:
+        r = compute_potential(session, node_id=n.id, reference_date=reference_date)
+        mod_sum = sum(m.delta for m in r.modifiers)
+        ws.append([n.name, n.level, r.raw_eligible_count, mod_sum, r.final_potential, reference_date.isoformat()])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

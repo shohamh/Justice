@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -152,3 +153,25 @@ def delete_modifier_route(
     authorize(session, user, Action.POTENTIAL_MODIFIER_MANAGE, target_node=node)
     svc.delete_modifier(session, modifier_id=modifier_id, actor_id=user.id)
     session.commit()
+
+
+@router.get("/export")
+def export_potential(
+    node_id: uuid.UUID,
+    reference_date: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> StreamingResponse:
+    import io
+
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    authorize(session, user, Action.POTENTIAL_READ, target_node=node)
+    ref = date.fromisoformat(reference_date) if reference_date else date.today()
+    content = svc.export_potential_table_xlsx(session, root_node_id=node_id, reference_date=ref)
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="potential_{ref.isoformat()}.xlsx"'},
+    )
