@@ -16,16 +16,7 @@ import {
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
-
-function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
-  const result: NodeDTO[] = [];
-  function traverse(node: NodeDTO) {
-    result.push(node);
-    node.children?.forEach(traverse);
-  }
-  nodes.forEach(traverse);
-  return result;
-}
+import { sortNodesByTree } from "../../utils/sortNodesByTree";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
@@ -43,7 +34,7 @@ export default function PotentialPage() {
   const [newDelta, setNewDelta] = useState(0);
   const [exportRows, setExportRows] = useState<NodeDTO[]>([]);
 
-  const nodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);
+  const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
   useEffect(() => {
     fetchFullTree().then(setTreeNodes);
