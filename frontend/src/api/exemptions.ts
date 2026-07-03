@@ -29,7 +29,7 @@ export interface ExemptionRequest {
   start_date: string;
   end_date: string | null;
   reason: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending_commander" | "pending_duty_manager" | "approved" | "rejected";
   enrollment_request_id: string | null;
   decided_by: string | null;
   decision_note: string | null;
@@ -72,11 +72,12 @@ export async function getPendingExemptionCount(): Promise<number> {
   return r.data.count;
 }
 
-export async function approveExemptionRequest(
-  id: string,
-  note?: string | null,
-): Promise<ExemptionRequest> {
-  return (await api.post<ExemptionRequest>(`/exemption-requests/${id}/approve`, { decision_note: note || null })).data;
+export async function approveExemptionRequestCommanderStep(requestId: string): Promise<void> {
+  await api.post(`/exemption-requests/${requestId}/approve-commander`, {});
+}
+
+export async function approveExemptionRequestDutyManagerStep(requestId: string, decisionNote?: string): Promise<void> {
+  await api.post(`/exemption-requests/${requestId}/approve-duty-manager`, { decision_note: decisionNote ?? null });
 }
 
 export async function rejectExemptionRequest(

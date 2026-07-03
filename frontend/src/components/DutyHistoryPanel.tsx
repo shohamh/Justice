@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TimelineEvent, getSoldierDutyHistory } from "../api/dutyHistory";
-import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
+import { approveExemptionRequestCommanderStep, approveExemptionRequestDutyManagerStep, rejectExemptionRequest } from "../api/exemptions";
 import { approveConstraint, rejectConstraint } from "../api/constraints";
 import { acceptProposalDirect, rejectProposalDirect } from "../api/algorithm";
 import { SwapRequest, listSwapsForAssignment, checkCoverEligibility } from "../api/swaps";
@@ -127,7 +127,7 @@ function EventCard({
   isExpanded: boolean;
   onToggle: (id: string) => void;
   canManage: boolean;
-  onApproveExemption: (id: string) => void;
+  onApproveExemption: (id: string, status: string | null) => void;
   onRejectExemption: (id: string) => void;
   onApproveConstraint: (id: string) => void;
   onRejectConstraint: (id: string) => void;
@@ -306,16 +306,21 @@ function EventCard({
                 {t("approvals.decision_note")}: {e.metadata.decision_note}
               </p>
             )}
-            {canManage && e.status === "pending" && (
+            {e.event_type === "exemption_request" && (e.status === "pending_commander" || e.status === "pending_duty_manager") && (
+              <p className="text-xs text-gray-500">
+                {e.status === "pending_commander" ? "ממתין לאישור מפקד" : 'ממתין לאישור קצין אג"ם/מרכז ומעלה'}
+              </p>
+            )}
+            {canManage && (e.status === "pending" || e.status === "pending_commander" || e.status === "pending_duty_manager") && (
               <div className="flex gap-2 mt-2">
                 {e.event_type === "exemption_request" && (
                   <>
                     <button
                       className="text-xs text-green-600 hover:underline"
-                      onClick={(ev) => { ev.stopPropagation(); onApproveExemption(e.id); }}
+                      onClick={(ev) => { ev.stopPropagation(); onApproveExemption(e.id, e.status); }}
                       data-testid={`approve-exemption-${e.id}`}
                     >
-                      {t("approvals.approve")}
+                      {e.status === "pending_duty_manager" ? "אשר (שלב סופי)" : "אשר (שלב מפקד)"}
                     </button>
                     <button
                       className="text-xs text-red-600 hover:underline"
@@ -393,7 +398,7 @@ function Timeline({
   expanded: Set<string>;
   onToggle: (id: string) => void;
   canManage: boolean;
-  onApproveExemption: (id: string) => void;
+  onApproveExemption: (id: string, status: string | null) => void;
   onRejectExemption: (id: string) => void;
   onApproveConstraint: (id: string) => void;
   onRejectConstraint: (id: string) => void;
@@ -541,9 +546,13 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
     });
   }
 
-  async function handleApproveExemption(id: string) {
+  async function handleApproveExemption(id: string, status: string | null) {
     try {
-      await approveExemptionRequest(id);
+      if (status === "pending_duty_manager") {
+        await approveExemptionRequestDutyManagerStep(id);
+      } else {
+        await approveExemptionRequestCommanderStep(id);
+      }
       await load();
     } catch {
       alert("שגיאה בביצוע הפעולה");

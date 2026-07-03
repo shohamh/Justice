@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ApprovalItem } from "../api/commanderDashboard";
 import { approveFieldUpdate, rejectFieldUpdate } from "../api/soldiers";
-import { approveExemptionRequest, rejectExemptionRequest } from "../api/exemptions";
+import { approveExemptionRequestCommanderStep, rejectExemptionRequest } from "../api/exemptions";
 import SoldierLink from "./SoldierLink";
 import { formatDate } from "../utils/formatDate";
 
@@ -24,7 +24,9 @@ export default function ApprovalsFeed({ data, onRefresh }: Props) {
       if (item.request_type === "field_update") {
         await approveFieldUpdate(item.soldier_id, item.id, notes[item.id]);
       } else if (item.request_type === "exemption") {
-        await approveExemptionRequest(item.id, notes[item.id]);
+        // ApprovalItem has no status field to distinguish stage; this component is
+        // currently unused (not imported anywhere), so default to the first-stage action.
+        await approveExemptionRequestCommanderStep(item.id);
       }
       onRefresh();
     } catch { /* ignore */ }
