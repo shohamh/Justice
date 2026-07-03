@@ -13,7 +13,7 @@ class HierarchyError(Exception):
     """Raised on an invalid hierarchy operation (cycle, guard)."""
 
 
-def _get_level_rank(session: Session, level_key: str) -> int | None:
+def get_level_rank(session: Session, level_key: str) -> int | None:
     return session.execute(
         select(HierarchyLevelType.rank).where(HierarchyLevelType.key == level_key)
     ).scalar_one_or_none()
@@ -28,7 +28,7 @@ def create_node(
     commander_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> HierarchyNode:
-    level_rank = _get_level_rank(session, level)
+    level_rank = get_level_rank(session, level)
     if level_rank is None:
         raise HierarchyError(f"unknown level: {level}")
     if parent_id is None:
@@ -37,7 +37,7 @@ def create_node(
         parent = session.get(HierarchyNode, parent_id)
         if parent is None:
             raise HierarchyError("parent not found")
-        parent_rank = _get_level_rank(session, parent.level)
+        parent_rank = get_level_rank(session, parent.level)
         if parent_rank is None or level_rank <= parent_rank:
             raise HierarchyError("child level must rank below parent level")
 
@@ -80,8 +80,8 @@ def move_node(
             raise HierarchyError("parent not found")
         if node.id in parent.path_ids:
             raise HierarchyError("cannot move a node under its own descendant")
-        node_rank = _get_level_rank(session, node.level)
-        parent_rank = _get_level_rank(session, parent.level)
+        node_rank = get_level_rank(session, node.level)
+        parent_rank = get_level_rank(session, parent.level)
         if node_rank is None or parent_rank is None or node_rank <= parent_rank:
             raise HierarchyError("node level must rank below new parent level")
         new_base = list(parent.path_ids)
@@ -257,13 +257,13 @@ def change_node_level(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HierarchyError("node not found")
-    new_rank = _get_level_rank(session, level)
+    new_rank = get_level_rank(session, level)
     if new_rank is None:
         raise HierarchyError("unknown level: " + level)
 
     if node.parent_id is not None:
         parent = session.get(HierarchyNode, node.parent_id)
-        parent_rank = _get_level_rank(session, parent.level) if parent else None
+        parent_rank = get_level_rank(session, parent.level) if parent else None
         if parent_rank is None or new_rank <= parent_rank:
             raise HierarchyError("invalid_level_for_position")
 
@@ -271,7 +271,7 @@ def change_node_level(
         select(HierarchyNode).where(HierarchyNode.parent_id == node_id)
     ).scalars().all()
     if children:
-        child_ranks = [_get_level_rank(session, c.level) for c in children]
+        child_ranks = [get_level_rank(session, c.level) for c in children]
         if any(r is None for r in child_ranks) or new_rank >= min(child_ranks):
             raise HierarchyError("invalid_level_for_position")
 

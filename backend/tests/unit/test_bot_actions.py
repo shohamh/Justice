@@ -40,18 +40,40 @@ def test_execute_action_constraint_approve_calls_service():
     assert "אושרה" in result
 
 
-def test_execute_action_exemption_approve_calls_service():
+def test_execute_action_exemption_approve_commander_step_calls_service():
     from bot.actions import execute_action
 
     session = MagicMock()
     token = _make_token("exemption:approve")
+    req = MagicMock()
+    req.status = "pending_commander"
+    session.get.return_value = req
 
-    with patch("bot.actions.exemption_svc.approve_request") as mock_approve:
+    with patch("bot.actions.exemption_svc.approve_commander_step") as mock_approve:
         mock_approve.return_value = MagicMock()
         result = execute_action(token, session)
 
     mock_approve.assert_called_once_with(
-        session, request_id=token.resource_id, decided_by=token.soldier_id
+        session, token.resource_id, approved_by=token.soldier_id
+    )
+    assert "אושרה" in result
+
+
+def test_execute_action_exemption_approve_duty_manager_step_calls_service():
+    from bot.actions import execute_action
+
+    session = MagicMock()
+    token = _make_token("exemption:approve")
+    req = MagicMock()
+    req.status = "pending_duty_manager"
+    session.get.return_value = req
+
+    with patch("bot.actions.exemption_svc.approve_duty_manager_step") as mock_approve:
+        mock_approve.return_value = MagicMock()
+        result = execute_action(token, session)
+
+    mock_approve.assert_called_once_with(
+        session, token.resource_id, decided_by=token.soldier_id
     )
     assert "אושרה" in result
 

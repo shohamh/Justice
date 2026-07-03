@@ -51,6 +51,7 @@ class Soldier(Base):
     is_officer: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     is_career: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     rank: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    next_rank_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
@@ -201,6 +202,9 @@ class ExemptionType(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     is_global: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     is_medical: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    is_commander_exemption: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -536,6 +540,9 @@ class ExemptionRequest(Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    commander_approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
@@ -599,6 +606,30 @@ class ScoreAdjustment(Base):
         nullable=True,
         default=None,
     )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class PotentialModifier(Base):
+    __tablename__ = "potential_modifiers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT"), index=True
+    )
+    delta: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("soldiers.id", ondelete="SET NULL"),

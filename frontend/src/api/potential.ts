@@ -1,0 +1,54 @@
+import { api } from "./client";
+
+export interface SoldierPotentialDetail {
+  soldier_id: string;
+  full_name: string;
+  counted: boolean;
+  reason: string | null;
+}
+
+export interface PotentialModifierDTO {
+  id: string;
+  delta: number;
+  reason: string;
+  start_date: string;
+  end_date: string | null;
+  created_by: string | null;
+}
+
+export interface PotentialResult {
+  node_id: string;
+  as_of: string;
+  raw_eligible_count: number;
+  modifiers: PotentialModifierDTO[];
+  final_potential: number;
+  soldiers: SoldierPotentialDetail[];
+}
+
+export async function getPotential(nodeId: string, referenceDate?: string): Promise<PotentialResult> {
+  return (await api.get<PotentialResult>("/potential", {
+    params: { node_id: nodeId, reference_date: referenceDate },
+  })).data;
+}
+
+export async function listModifiers(nodeId: string): Promise<PotentialModifierDTO[]> {
+  return (await api.get<PotentialModifierDTO[]>("/potential/modifiers", {
+    params: { hierarchy_node_id: nodeId },
+  })).data;
+}
+
+export async function createModifier(input: {
+  hierarchy_node_id: string; delta: number; reason: string; start_date: string; end_date?: string | null;
+}): Promise<PotentialModifierDTO> {
+  return (await api.post<PotentialModifierDTO>("/potential/modifiers", input)).data;
+}
+
+export async function deleteModifier(modifierId: string): Promise<void> {
+  await api.delete(`/potential/modifiers/${modifierId}`);
+}
+
+export function exportPotentialUrl(nodeId: string, referenceDate?: string): string {
+  const params = new URLSearchParams({ node_id: nodeId });
+  if (referenceDate) params.set("reference_date", referenceDate);
+  return `/api/potential/export?${params.toString()}`;
+}

@@ -341,8 +341,17 @@ def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
         constraint_svc.reject_constraint(session, constraint_id=resource_id, actor_id=actor_id, decision_note="")
         return {"action": action, "status": "ok"}
     elif action == "exemption:approve":
+        from app.db.models import ExemptionRequest
         from app.services import exemption_requests as exemption_svc
-        exemption_svc.approve_request(session, request_id=resource_id, decided_by=actor_id)
+        req = session.get(ExemptionRequest, resource_id)
+        if req is None:
+            raise HTTPException(status_code=404, detail="exemption_request_not_found")
+        if req.status == "pending_commander":
+            exemption_svc.approve_commander_step(session, resource_id, approved_by=actor_id)
+        elif req.status == "pending_duty_manager":
+            exemption_svc.approve_duty_manager_step(session, resource_id, decided_by=actor_id, decision_note="")
+        else:
+            raise HTTPException(status_code=400, detail="exemption_request_not_pending")
         return {"action": action, "status": "ok"}
     elif action == "exemption:reject":
         from app.services import exemption_requests as exemption_svc

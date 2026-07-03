@@ -25,7 +25,7 @@ def try_activate(
     pending = session.execute(
         select(ExemptionRequest).where(
             ExemptionRequest.enrollment_request_id == enrollment_request_id,
-            ExemptionRequest.status == "pending",
+            ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
         )
     ).scalars().all()
     if pending:

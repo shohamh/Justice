@@ -15,7 +15,8 @@ import {
 } from "../api/constraints";
 import {
   ExemptionRequest,
-  approveExemptionRequest,
+  approveExemptionRequestCommanderStep,
+  approveExemptionRequestDutyManagerStep,
   exemptionFileDownloadUrl,
   listPendingExemptionRequests,
   rejectExemptionRequest,
@@ -138,8 +139,12 @@ export default function ApprovalsPage() {
     await refresh();
   }
 
-  async function onErApprove(id: string) {
-    await approveExemptionRequest(id);
+  async function onErApproveCommander(id: string) {
+    await approveExemptionRequestCommanderStep(id);
+    await refresh();
+  }
+  async function onErApproveDutyManager(id: string) {
+    await approveExemptionRequestDutyManagerStep(id);
     await refresh();
   }
   async function onErReject(id: string) {
@@ -289,6 +294,13 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={er.soldier_id} name={er.soldier_name || er.soldier_id.slice(0, 8)} /></strong>
                     {er.node_name && <span className="text-xs text-gray-400">{er.node_name}</span>}
                   </div>
+                  <p className="text-xs text-gray-500 mb-1" data-testid={`er-stage-${er.id}`}>
+                    {er.status === "pending_commander"
+                      ? "ממתין לאישור מפקד"
+                      : er.status === "pending_duty_manager"
+                      ? 'ממתין לאישור קצין אג"ם/מרכז ומעלה'
+                      : null}
+                  </p>
                   <p className="text-sm flex items-center gap-2" dir="ltr">
                     <span>{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
                     <DaysBadge start={er.start_date} end={er.end_date} />
@@ -310,9 +322,16 @@ export default function ApprovalsPage() {
                     </div>
                   )}
                   <div className="flex items-center gap-2">
-                    <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApprove(er.id)} data-testid={`er-approve-${er.id}`}>
-                      {t("approvals.approve")}
-                    </button>
+                    {er.status === "pending_commander" && (
+                      <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveCommander(er.id)} data-testid={`er-approve-${er.id}`}>
+                        אשר (שלב מפקד)
+                      </button>
+                    )}
+                    {er.status === "pending_duty_manager" && (
+                      <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveDutyManager(er.id)} data-testid={`er-approve-${er.id}`}>
+                        אשר (שלב סופי)
+                      </button>
+                    )}
                     <input
                       className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       value={rejectNotes[`er-${er.id}`] ?? ""}

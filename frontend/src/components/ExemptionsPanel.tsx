@@ -5,6 +5,7 @@ import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDut
 import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
 import { formatDate } from "../utils/formatDate";
 import Combobox from "./Combobox";
+import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -60,6 +61,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   }, [refresh]);
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
+  const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -240,6 +242,15 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
           <button type="submit" disabled={!typeId} className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" data-testid="grant-submit">{t("exemptions.grant")}</button>
         </form>
+      )}
+
+      {/* Commander exemption grant form */}
+      {canManage && commanderExemptionTypes.length > 0 && (
+        <CommanderExemptionGrantForm
+          soldierId={soldierId}
+          commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
+          onGranted={() => void refresh()}
+        />
       )}
     </div>
   );

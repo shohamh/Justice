@@ -49,12 +49,3 @@ def set_setting(session: Session, key: str, value: Any, *, actor_id: uuid.UUID |
         after={"value": value},
         context={"key": key},
     )
-
-
-def exemptions_require_rasn(session: Session) -> bool:
-    """Returns True if only commanders of rank >= רסן may approve exemptions."""
-    from app.db.models import SystemSetting
-    row = session.get(SystemSetting, "exemptions.require_rasn_approver")
-    if row is None:
-        return False
-    return bool(row.value)

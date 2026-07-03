@@ -14,10 +14,11 @@ from app.rate_limit import limiter
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
-from app.services.settings_loader import exemptions_require_rasn
+from app.services.authority import dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY
 from app.services.exemption_requests import (
     ExemptionRequestError,
-    approve_request,
+    approve_commander_step,
+    approve_duty_manager_step,
     count_pending_requests,
     list_own_requests,
     list_pending_requests,
@@ -271,15 +272,18 @@ def patch_exemption_request(
     req = session.get(ExemptionRequest, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
-    if req.status != "pending":
+    if req.status not in ("pending_commander", "pending_duty_manager"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="exemption_request_not_pending")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     if body.exemption_type_id is not None:
         from app.db.models import ExemptionType
-        if session.get(ExemptionType, body.exemption_type_id) is None:
+        new_type = session.get(ExemptionType, body.exemption_type_id)
+        if new_type is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_type_not_found")
+        if new_type.is_commander_exemption:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="commander_exemption_not_requestable")
         req.exemption_type_id = body.exemption_type_id
     if body.start_date is not None:
         from datetime import date as _date
@@ -300,8 +304,28 @@ def patch_exemption_request(
     return _out(req, include_sensitive=True)
 
 
-@router.post("/exemption-requests/{request_id}/approve", response_model=ExemptionRequestOut)
-def approve_exemption_request(
+@router.post("/exemption-requests/{request_id}/approve-commander", response_model=ExemptionRequestOut)
+def approve_exemption_request_commander_step(
+    request_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionRequestOut:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
+    target_soldier = session.get(Soldier, req.soldier_id)
+    target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+    authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
+    try:
+        result = approve_commander_step(session, request_id, approved_by=user.id)
+    except ExemptionRequestError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return _out(result, include_sensitive=True)
+
+
+@router.post("/exemption-requests/{request_id}/approve-duty-manager", response_model=ExemptionRequestOut)
+def approve_exemption_request_duty_manager_step(
     request_id: uuid.UUID,
     body: ApproveRejectRequest,
     session: Session = Depends(get_session),
@@ -312,16 +336,20 @@ def approve_exemption_request(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
-    authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
-    if exemptions_require_rasn(session):
-        RASN_AND_ABOVE = {"רסן", "סגן אלוף", "אלוף משנה", "אלוף", "תת אלוף"}
-        if user.role not in ("duty_manager", "admin") and (user.rank is None or user.rank not in RASN_AND_ABOVE):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="insufficient_rank_for_exemption_approval",
-            )
+
+    from app.auth.authz import is_duty_manager, scope_root_ids
+    if user.role != "admin":
+        if not is_duty_manager(session, user.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        roots = scope_root_ids(session, user)
+        if not dm_scope_covers_target(
+            session, scope_root_ids=roots, target_node=target_node,
+            required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient_scope_level_for_exemption_approval")
+
     try:
-        result = approve_request(session, request_id, decided_by=user.id, decision_note=body.decision_note)
+        result = approve_duty_manager_step(session, request_id, decided_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
@@ -341,13 +369,6 @@ def reject_exemption_request(
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
-    if exemptions_require_rasn(session):
-        RASN_AND_ABOVE = {"רסן", "סגן אלוף", "אלוף משנה", "אלוף", "תת אלוף"}
-        if user.role not in ("duty_manager", "admin") and (user.rank is None or user.rank not in RASN_AND_ABOVE):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="insufficient_rank_for_exemption_approval",
-            )
     try:
         result = reject_request(session, request_id, decided_by=user.id, decision_note=body.decision_note)
     except ExemptionRequestError as exc:

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
@@ -11,6 +11,7 @@ import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidg
 import EntriesExitsPanel from "../components/EntriesExitsPanel";
 import UnitCalendar from "../components/UnitCalendar";
 import HierarchyTree from "../components/HierarchyTree";
+import { useAuth } from "../auth/AuthContext";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import { listSoldiers } from "../api/soldiers";
 import type { SoldierDTO } from "../api/soldiers";
@@ -23,6 +24,7 @@ import {
   type NodeFairness, type PotentialCount,
   type UpcomingDay, type Alert,
 } from "../api/commanderDashboard";
+import { getPotential as getNodePotential, type PotentialResult } from "../api/potential";
 import { listPendingEnrollments, type EnrollmentRequestDTO } from "../api/enrollment";
 import { listPendingSwaps, type SwapRequest } from "../api/swaps";
 import { getPendingCount } from "../api/constraints";
@@ -31,6 +33,7 @@ import { getPendingFieldUpdateCount } from "../api/soldiers";
 
 export default function CommandDashboardPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [summaryData, setSummaryData] = useState<SummaryCardsData | null>(null);
   const [soldiers, setSoldiers] = useState<SoldierWithStatus[]>([]);
   const [nodes, setNodes] = useState<NodeDTO[]>([]);
@@ -46,6 +49,7 @@ export default function CommandDashboardPage() {
   const [pendingExemptions, setPendingExemptions] = useState(0);
   const [pendingFieldUpdates, setPendingFieldUpdates] = useState(0);
   const [_activePanel, setActivePanel] = useState<string>("summary");
+  const [ownPotential, setOwnPotential] = useState<Record<string, PotentialResult>>({});
 
   const refresh = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -72,6 +76,34 @@ export default function CommandDashboardPage() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // The nodes this commander directly commands — same scope-resolution used
+  // elsewhere in the app (e.g. TeamHierarchyPage) to find "my" node(s).
+  const myNodes = useMemo(
+    () => nodes.filter((n) => n.commander_id === user?.id),
+    [nodes, user],
+  );
+
+  useEffect(() => {
+    if (myNodes.length === 0) {
+      setOwnPotential({});
+      return;
+    }
+    let cancelled = false;
+    Promise.allSettled(myNodes.map((n) => getNodePotential(n.id))).then((results) => {
+      if (cancelled) return;
+      const byId: Record<string, PotentialResult> = {};
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          byId[myNodes[i].id] = r.value;
+        } else {
+          console.error(`Failed to fetch potential for node ${myNodes[i].id}:`, r.reason);
+        }
+      });
+      setOwnPotential(byId);
+    });
+    return () => { cancelled = true; };
+  }, [myNodes]);
 
   const handleCardClick = (panel: string) => setActivePanel(panel);
 
@@ -134,6 +166,37 @@ export default function CommandDashboardPage() {
       id: "potential",
       title: t("command_dashboard.potential"),
       content: <DutyPotentialPanel data={potentialData} />,
+    },
+    {
+      id: "own_potential",
+      title: t("command_dashboard.own_potential"),
+      content: myNodes.length === 0 ? (
+        <p className="text-gray-500">{t("command_dashboard.no_own_potential")}</p>
+      ) : (
+        <table className="w-full border-collapse" data-testid="own-potential-table">
+          <thead>
+            <tr>
+              <th className="border p-2">{t("command_dashboard.node")}</th>
+              <th className="border p-2">{t("command_dashboard.eligible")}</th>
+              <th className="border p-2">{t("command_dashboard.modifiers")}</th>
+              <th className="border p-2">{t("command_dashboard.final_potential")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {myNodes.map((n) => {
+              const r = ownPotential[n.id];
+              return (
+                <tr key={n.id}>
+                  <td className="border p-2">{n.name}</td>
+                  <td className="border p-2">{r?.raw_eligible_count ?? "-"}</td>
+                  <td className="border p-2">{r ? r.modifiers.reduce((s, m) => s + m.delta, 0) : "-"}</td>
+                  <td className="border p-2">{r?.final_potential ?? "-"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ),
     },
   ];
 
