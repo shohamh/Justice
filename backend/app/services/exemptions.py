@@ -56,6 +56,45 @@ def grant_exemption(
     return ex
 
 
+def grant_commander_exemption(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    exemption_type_id: uuid.UUID,
+    start_date: date,
+    end_date: date | None = None,
+    reason: str | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> SoldierExemption:
+    et = session.get(ExemptionType, exemption_type_id)
+    if et is None:
+        raise ExemptionError("exemption_type_not_found")
+    if not et.is_commander_exemption:
+        raise ExemptionError("not_commander_exemption_type")
+    if session.get(Soldier, soldier_id) is None:
+        raise ExemptionError("soldier_not_found")
+    ex = SoldierExemption(
+        soldier_id=soldier_id,
+        exemption_type_id=exemption_type_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        granted_by=actor_id,
+    )
+    session.add(ex)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="exemption.grant_commander",
+        entity_type="soldier_exemption",
+        entity_id=ex.id,
+        after={"soldier_id": str(soldier_id), "exemption_type_id": str(exemption_type_id)},
+        context={"reason": reason},
+    )
+    return ex
+
+
 def revoke_exemption(
     session: Session,
     *,

@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can_see_private
+from app.auth.authz import Action, authorize, can_see_private, is_commander, is_duty_manager
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierExemption
 from app.db.session import get_session
 from app.services import exemptions as svc
+from app.services.authority import commander_can_grant_commander_exemption
 
 router = APIRouter(prefix="/soldiers/{soldier_id}/exemptions", tags=["exemptions"])
 
@@ -80,6 +81,53 @@ def grant(
     authorize(session, user, Action.EXEMPTION_GRANT, target_node=_node_of(session, s))
     try:
         ex = svc.grant_exemption(
+            session,
+            soldier_id=soldier_id,
+            exemption_type_id=body.exemption_type_id,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            reason=body.reason,
+            actor_id=user.id,
+        )
+    except svc.ExemptionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    session.refresh(ex)
+    return _out(ex, include_sensitive=True)
+
+
+class GrantCommanderExemptionRequest(BaseModel):
+    exemption_type_id: uuid.UUID
+    start_date: date
+    end_date: date | None = None
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/commander-exemption", response_model=ExemptionOut, status_code=status.HTTP_201_CREATED)
+def grant_commander_exemption_route(
+    soldier_id: uuid.UUID,
+    body: GrantCommanderExemptionRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionOut:
+    s = _load_soldier(session, soldier_id)
+    target_node = _node_of(session, s)
+
+    allowed = user.role == "admin"
+    if not allowed and is_duty_manager(session, user.id):
+        from app.auth.authz import _node_in_scope, scope_root_ids
+        allowed = _node_in_scope(target_node, scope_root_ids(session, user))
+    if not allowed and is_commander(session, user.id):
+        from app.auth.authz import _node_in_scope, scope_root_ids
+        in_scope = _node_in_scope(target_node, scope_root_ids(session, user))
+        allowed = in_scope and commander_can_grant_commander_exemption(
+            session, commander_id=user.id, commander_rank=user.rank,
+        )
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    try:
+        ex = svc.grant_commander_exemption(
             session,
             soldier_id=soldier_id,
             exemption_type_id=body.exemption_type_id,
