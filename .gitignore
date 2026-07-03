@@ -27,6 +27,7 @@ Thumbs.db
 # Logs
 *.log
 vite.log
+logs/
 
 # Secrets / env
 .env

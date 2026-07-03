@@ -803,6 +803,8 @@ export default function ImportSessionReviewPage() {
       {nodeCreateContext && (
         <AddRootNodeDialog
           initialName={nodeCreateContext.unresolvedName}
+          parentItems={sortedNodeItems}
+          parentNodes={allNodes}
           onCreated={() => {
             void handleReparse();
           }}

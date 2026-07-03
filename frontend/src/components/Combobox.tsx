@@ -121,7 +121,13 @@ export default function Combobox({ label, items, value, onChange, placeholder, t
         <ul
           id={listboxId}
           role="listbox"
-          style={{ position: "fixed", top: rect.bottom + 2, left: rect.left, width: rect.width, zIndex: 9999 }}
+          style={{
+            position: "fixed",
+            top: rect.bottom + 2,
+            width: Math.max(rect.width, 240),
+            left: Math.min(rect.left, window.innerWidth - Math.max(rect.width, 240) - 4),
+            zIndex: 9999,
+          }}
           className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded shadow-lg max-h-48 overflow-y-auto"
         >
           {results.map((item, idx) => {
