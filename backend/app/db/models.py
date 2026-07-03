@@ -621,7 +621,7 @@ class PotentialModifier(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT")
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT"), index=True
     )
     delta: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(Text)

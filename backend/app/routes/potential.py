@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import date
 
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier
+from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
 from app.services import potential as svc
 
@@ -145,7 +146,6 @@ def delete_modifier_route(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
-    from app.db.models import PotentialModifier
     m = session.get(PotentialModifier, modifier_id)
     if m is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -162,8 +162,6 @@ def export_potential(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> StreamingResponse:
-    import io
-
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

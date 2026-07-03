@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import uuid
 from dataclasses import dataclass, field
 from datetime import date
 
+from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -100,17 +102,16 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
     if node is None:
         raise ValueError("hierarchy_node_not_found")
 
-    soldiers = list(
+    subtree_node_ids = list(
         session.execute(
-            select(Soldier).where(Soldier.hierarchy_node_id.isnot(None))
+            select(HierarchyNode.id).where(HierarchyNode.path_ids.any(node_id))
         ).scalars().all()
     )
-    subtree_soldiers = [s for s in soldiers if s.hierarchy_node_id is not None]
-    node_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
-    subtree_soldiers = [
-        s for s in subtree_soldiers
-        if s.hierarchy_node_id in node_by_id and node_id in node_by_id[s.hierarchy_node_id].path_ids
-    ]
+    subtree_soldiers = list(
+        session.execute(
+            select(Soldier).where(Soldier.hierarchy_node_id.in_(subtree_node_ids))
+        ).scalars().all()
+    )
 
     duty_types = list(session.execute(select(DutyType).where(DutyType.active.is_(True))).scalars().all())
     active_dt_ids = {dt.id for dt in duty_types}
@@ -130,7 +131,10 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             etid_to_dtids[et.id] = set(active_dt_ids)
 
     exemptions_by_soldier: dict[uuid.UUID, list[SoldierExemption]] = {}
-    for ex in session.execute(select(SoldierExemption)).scalars().all():
+    subtree_soldier_ids = [s.id for s in subtree_soldiers]
+    for ex in session.execute(
+        select(SoldierExemption).where(SoldierExemption.soldier_id.in_(subtree_soldier_ids))
+    ).scalars().all():
         if ex.exemption_type_id in regular_types:
             exemptions_by_soldier.setdefault(ex.soldier_id, []).append(ex)
 
@@ -155,9 +159,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
 
     modifier_rows = session.execute(
         select(PotentialModifier).where(
-            PotentialModifier.hierarchy_node_id.in_(
-                [n.id for n in node_by_id.values() if node_id in n.path_ids]
-            )
+            PotentialModifier.hierarchy_node_id.in_(subtree_node_ids)
         )
     ).scalars().all()
     active_modifiers = [
@@ -256,15 +258,14 @@ def delete_modifier(session: Session, *, modifier_id: uuid.UUID, actor_id: uuid.
 
 def export_potential_table_xlsx(session: Session, *, root_node_id: uuid.UUID, reference_date: date) -> bytes:
     """Build an .xlsx snapshot of root_node_id and all its descendant nodes' potential."""
-    import io
-    from openpyxl import Workbook
-
-    all_nodes = list(session.execute(select(HierarchyNode)).scalars().all())
-    node_by_id = {n.id: n for n in all_nodes}
-    root = node_by_id.get(root_node_id)
+    root = session.get(HierarchyNode, root_node_id)
     if root is None:
         raise ValueError("hierarchy_node_not_found")
-    subtree = [n for n in all_nodes if root_node_id in n.path_ids]
+    subtree = list(
+        session.execute(
+            select(HierarchyNode).where(HierarchyNode.path_ids.any(root_node_id))
+        ).scalars().all()
+    )
 
     wb = Workbook()
     ws = wb.active
