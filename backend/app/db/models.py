@@ -201,6 +201,7 @@ class ExemptionType(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     is_global: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     is_medical: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    is_commander_exemption: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
