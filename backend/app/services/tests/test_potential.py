@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from app.db.models import DutyType, ExemptionType, Soldier, SoldierExemption
+from app.db.models import DutyType, ExemptionType, Soldier, SoldierExemption, PotentialModifier
 from app.services.hierarchy import create_node
 from app.services.potential import compute_potential
 
@@ -97,3 +97,38 @@ def test_mitvahim_alal_ignored_for_potential(app_session):
 
     result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
     assert result.raw_eligible_count == 1
+
+
+def test_potential_rolls_up_to_parent(app_session):
+    parent = create_node(app_session, level="division", name="Battalion", parent_id=None)
+    app_session.flush()
+    child_a = create_node(app_session, level="unit", name="Co A", parent_id=parent.id)
+    child_b = create_node(app_session, level="unit", name="Co B", parent_id=parent.id)
+    app_session.flush()
+    dt = DutyType(name="שמירה", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add(dt)
+    app_session.flush()
+
+    _make_soldier(app_session, node_id=child_a.id)
+    _make_soldier(app_session, node_id=child_a.id)
+    _make_soldier(app_session, node_id=child_b.id)
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=parent.id, reference_date=date(2026, 7, 3))
+    assert result.raw_eligible_count == 3
+
+
+def test_modifier_deep_in_subtree_rolls_up(app_session):
+    parent = create_node(app_session, level="division", name="Battalion 2", parent_id=None)
+    app_session.flush()
+    child = create_node(app_session, level="unit", name="Co C", parent_id=parent.id)
+    app_session.flush()
+
+    app_session.add(PotentialModifier(
+        hierarchy_node_id=child.id, delta=-5, reason="external duty",
+        start_date=date(2026, 1, 1), end_date=None,
+    ))
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=parent.id, reference_date=date(2026, 7, 3))
+    assert result.final_potential == -5
