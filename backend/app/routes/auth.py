@@ -414,5 +414,9 @@ def list_public_exemption_types(
     request: Request,
     session: Session = Depends(get_session),
 ) -> list[PublicExemptionTypeOut]:
-    types = session.execute(select(ExemptionType).order_by(ExemptionType.name)).scalars().all()
+    types = session.execute(
+        select(ExemptionType)
+        .where(ExemptionType.is_commander_exemption.is_(False))
+        .order_by(ExemptionType.name)
+    ).scalars().all()
     return [PublicExemptionTypeOut(id=et.id, name=et.name, description=et.description) for et in types]

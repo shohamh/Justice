@@ -28,6 +28,8 @@ def submit_request(
     et = session.get(ExemptionType, exemption_type_id)
     if et is None:
         raise ExemptionRequestError("exemption_type_not_found")
+    if et.is_commander_exemption:
+        raise ExemptionRequestError("commander_exemption_not_requestable")
 
     req = ExemptionRequest(
         soldier_id=soldier_id,

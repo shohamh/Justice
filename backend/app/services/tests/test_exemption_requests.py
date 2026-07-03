@@ -82,6 +82,18 @@ def test_reject_works_at_commander_stage(app_session):
     assert result.status == "rejected"
 
 
+def test_submit_request_rejects_commander_exemption_type(app_session):
+    et = ExemptionType(name="פטור פיקודי", is_commander_exemption=True)
+    app_session.add(et)
+    app_session.flush()
+    soldier = _soldier(app_session)
+    try:
+        submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+        assert False, "expected ExemptionRequestError"
+    except ExemptionRequestError as exc:
+        assert "commander_exemption_not_requestable" in str(exc)
+
+
 def test_reject_works_at_duty_manager_stage(app_session):
     et = ExemptionType(name="פטור רפואי 6")
     app_session.add(et)
