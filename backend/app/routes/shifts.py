@@ -15,7 +15,7 @@ from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutySh
 from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
-from app.services.shift_quotas import ShiftQuotaError, get_shift_quotas, set_shift_quotas
+from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, get_shift_quotas, set_shift_quotas
 from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -161,6 +161,36 @@ def list_shifts(
         rows = session.execute(select(ShiftTemplate).where(ShiftTemplate.id.in_(template_ids))).scalars().all()
         template_names = {t.id: t.name for t in rows}
     return [_out(s, session, template_name=template_names.get(s.generated_from_template_id) if s.generated_from_template_id else None) for s in shifts]
+
+
+class QuotaSplitEntry(BaseModel):
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+    count: int
+    weight: int
+
+
+class QuotaSplitPreviewOut(BaseModel):
+    entries: list[QuotaSplitEntry]
+
+
+@router.get("/quota-split-preview", response_model=QuotaSplitPreviewOut)
+def quota_split_preview(
+    parent_node_id: uuid.UUID,
+    required_count: int,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> QuotaSplitPreviewOut:
+    parent = session.get(HierarchyNode, parent_node_id)
+    if parent is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        entries = compute_potential_split(
+            session, parent_node_id=parent_node_id, required_count=required_count
+        )
+    except ShiftQuotaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return QuotaSplitPreviewOut(entries=[QuotaSplitEntry(**e) for e in entries])
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)

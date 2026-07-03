@@ -72,3 +72,58 @@ def test_get_shift_includes_node_quotas(client, admin_session):
         "node_name": node.name,
         "count": 1,
     }]
+
+
+def test_quota_split_preview_returns_entries_summing_to_required_count(client, admin_session):
+    dm, dt, loc, parent = _setup(admin_session, "sp_001")
+    child_a = create_node(admin_session, level="branch", name="sp_001_a", parent=parent)
+    child_b = create_node(admin_session, level="branch", name="sp_001_b", parent=parent)
+    create_soldier(admin_session, personal_number="sp_001_s1", hierarchy_node_id=child_a.id)
+    create_soldier(admin_session, personal_number="sp_001_s2", hierarchy_node_id=child_b.id)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/shifts/quota-split-preview",
+        params={"parent_node_id": str(parent.id), "required_count": 5},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200, resp.text
+    entries = resp.json()["entries"]
+    assert sum(e["count"] for e in entries) == 5
+    assert {e["node_name"] for e in entries} == {"sp_001_a", "sp_001_b"}
+
+
+def test_quota_split_preview_unknown_parent_returns_404(client, admin_session):
+    dm, dt, loc, _parent = _setup(admin_session, "sp_002")
+
+    resp = client.get(
+        "/api/shifts/quota-split-preview",
+        params={"parent_node_id": "00000000-0000-0000-0000-000000000000", "required_count": 3},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 404
+
+
+def test_quota_split_preview_no_children_returns_400(client, admin_session):
+    dm, dt, loc, leaf = _setup(admin_session, "sp_003")
+
+    resp = client.get(
+        "/api/shifts/quota-split-preview",
+        params={"parent_node_id": str(leaf.id), "required_count": 3},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 400
+
+
+def test_quota_split_preview_forbidden_for_plain_soldier(client, admin_session):
+    dm, dt, loc, parent = _setup(admin_session, "sp_004")
+    create_node(admin_session, level="branch", name="sp_004_a", parent=parent)
+    plain = create_soldier(admin_session, personal_number="sp_004_plain", role="soldier")
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/shifts/quota-split-preview",
+        params={"parent_node_id": str(parent.id), "required_count": 3},
+        headers=auth_headers(plain),
+    )
+    assert resp.status_code == 403
