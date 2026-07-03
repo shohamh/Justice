@@ -35,7 +35,7 @@ def submit_request(
         start_date=start_date,
         end_date=end_date,
         reason=reason,
-        status="pending",
+        status="pending_commander",
     )
     session.add(req)
     session.flush()
@@ -63,7 +63,7 @@ def list_own_requests(session: Session, soldier_id: uuid.UUID) -> list[Exemption
 def list_pending_requests(session: Session, soldier_ids: list[uuid.UUID]) -> list[ExemptionRequest]:
     stmt = select(ExemptionRequest).where(
         ExemptionRequest.soldier_id.in_(soldier_ids),
-        ExemptionRequest.status == "pending",
+        ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
     ).order_by(ExemptionRequest.created_at.desc())
     return list(session.execute(stmt).scalars().all())
 
@@ -71,12 +71,28 @@ def list_pending_requests(session: Session, soldier_ids: list[uuid.UUID]) -> lis
 def count_pending_requests(session: Session, soldier_ids: list[uuid.UUID]) -> int:
     stmt = select(ExemptionRequest).where(
         ExemptionRequest.soldier_id.in_(soldier_ids),
-        ExemptionRequest.status == "pending",
+        ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
     )
     return len(list(session.execute(stmt).scalars().all()))
 
 
-def approve_request(
+def approve_commander_step(
+    session: Session,
+    request_id: uuid.UUID,
+    approved_by: uuid.UUID,
+) -> ExemptionRequest:
+    req = session.get(ExemptionRequest, request_id)
+    if req is None:
+        raise ExemptionRequestError("exemption_request_not_found")
+    if req.status != "pending_commander":
+        raise ExemptionRequestError("exemption_request_not_pending_commander")
+    req.status = "pending_duty_manager"
+    req.commander_approved_by = approved_by
+    session.flush()
+    return req
+
+
+def approve_duty_manager_step(
     session: Session,
     request_id: uuid.UUID,
     decided_by: uuid.UUID,
@@ -85,8 +101,8 @@ def approve_request(
     req = session.get(ExemptionRequest, request_id)
     if req is None:
         raise ExemptionRequestError("exemption_request_not_found")
-    if req.status != "pending":
-        raise ExemptionRequestError("exemption_request_not_pending")
+    if req.status != "pending_duty_manager":
+        raise ExemptionRequestError("exemption_request_not_pending_duty_manager")
 
     req.status = "approved"
     req.decided_by = decided_by
@@ -122,7 +138,7 @@ def reject_request(
     req = session.get(ExemptionRequest, request_id)
     if req is None:
         raise ExemptionRequestError("exemption_request_not_found")
-    if req.status != "pending":
+    if req.status not in ("pending_commander", "pending_duty_manager"):
         raise ExemptionRequestError("exemption_request_not_pending")
 
     req.status = "rejected"
