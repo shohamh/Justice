@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from app.db.models import DutyType, ExemptionType, Soldier, SoldierExemption, PotentialModifier
 from app.services.hierarchy import create_node
-from app.services.potential import compute_potential
+from app.services.potential import PotentialModifierError, compute_potential, create_modifier, delete_modifier, list_modifiers
 
 
 def _make_soldier(session, *, node_id, rank="טוראי", left_at=None, gender="m"):
@@ -132,3 +132,36 @@ def test_modifier_deep_in_subtree_rolls_up(app_session):
 
     result = compute_potential(app_session, node_id=parent.id, reference_date=date(2026, 7, 3))
     assert result.final_potential == -5
+
+
+def test_create_modifier_requires_reason(app_session):
+    node = create_node(app_session, level="team", name="Co D", parent_id=None)
+    app_session.commit()
+    try:
+        create_modifier(app_session, hierarchy_node_id=node.id, delta=-10, reason="  ", start_date=date(2026, 1, 1))
+        assert False, "expected PotentialModifierError"
+    except PotentialModifierError as exc:
+        assert "reason" in str(exc)
+
+
+def test_create_and_list_modifier(app_session):
+    node = create_node(app_session, level="team", name="Co E", parent_id=None)
+    app_session.commit()
+    m = create_modifier(
+        app_session, hierarchy_node_id=node.id, delta=-60, reason="external duties not in system",
+        start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+    )
+    app_session.commit()
+    rows = list_modifiers(app_session, hierarchy_node_id=node.id)
+    assert len(rows) == 1
+    assert rows[0].id == m.id
+
+
+def test_delete_modifier(app_session):
+    node = create_node(app_session, level="team", name="Co F", parent_id=None)
+    app_session.commit()
+    m = create_modifier(app_session, hierarchy_node_id=node.id, delta=5, reason="temp boost", start_date=date(2026, 1, 1))
+    app_session.commit()
+    delete_modifier(app_session, modifier_id=m.id)
+    app_session.commit()
+    assert list_modifiers(app_session, hierarchy_node_id=node.id) == []

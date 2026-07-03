@@ -7,6 +7,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.db.models import (
     DutyType,
     ExemptionDutyTypeMap,
@@ -172,4 +173,78 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         modifiers=modifier_details,
         final_potential=raw_count + modifier_sum,
         soldiers=details,
+    )
+
+
+class PotentialModifierError(Exception):
+    """Raised on an invalid potential-modifier operation."""
+
+
+def create_modifier(
+    session: Session,
+    *,
+    hierarchy_node_id: uuid.UUID,
+    delta: int,
+    reason: str,
+    start_date: date,
+    end_date: date | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> PotentialModifier:
+    if session.get(HierarchyNode, hierarchy_node_id) is None:
+        raise PotentialModifierError("hierarchy_node_not_found")
+    if not reason or not reason.strip():
+        raise PotentialModifierError("reason_required")
+    if end_date is not None and end_date < start_date:
+        raise PotentialModifierError("end_date_before_start_date")
+    m = PotentialModifier(
+        hierarchy_node_id=hierarchy_node_id,
+        delta=delta,
+        reason=reason,
+        start_date=start_date,
+        end_date=end_date,
+        created_by=actor_id,
+    )
+    session.add(m)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="potential_modifier.create",
+        entity_type="potential_modifier",
+        entity_id=m.id,
+        after={
+            "hierarchy_node_id": str(hierarchy_node_id),
+            "delta": delta,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat() if end_date else None,
+        },
+        context={"reason": reason},
+    )
+    return m
+
+
+def list_modifiers(session: Session, *, hierarchy_node_id: uuid.UUID) -> list[PotentialModifier]:
+    return list(
+        session.execute(
+            select(PotentialModifier)
+            .where(PotentialModifier.hierarchy_node_id == hierarchy_node_id)
+            .order_by(PotentialModifier.created_at)
+        ).scalars().all()
+    )
+
+
+def delete_modifier(session: Session, *, modifier_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> None:
+    m = session.get(PotentialModifier, modifier_id)
+    if m is None:
+        raise PotentialModifierError("modifier_not_found")
+    before = {"hierarchy_node_id": str(m.hierarchy_node_id), "delta": m.delta, "reason": m.reason}
+    session.delete(m)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="potential_modifier.delete",
+        entity_type="potential_modifier",
+        entity_id=modifier_id,
+        before=before,
     )
