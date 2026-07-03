@@ -24,6 +24,28 @@ def dm_scope_covers_level(session: Session, *, scope_node: HierarchyNode, requir
     return scope_rank <= required_rank
 
 
+def dm_scope_covers_target(
+    session: Session,
+    *,
+    scope_root_ids: set[uuid.UUID],
+    target_node: HierarchyNode | None,
+    required_level_key: str,
+) -> bool:
+    """True iff target_node is covered by at least one of the given scope roots
+    (i.e. one of the roots is an ancestor-or-self of target_node, per path_ids),
+    AND that covering root's level is at or above required_level_key."""
+    if target_node is None:
+        return False
+    for root_id in scope_root_ids:
+        if root_id in target_node.path_ids:
+            root_node = session.get(HierarchyNode, root_id)
+            if root_node is not None and dm_scope_covers_level(
+                session, scope_node=root_node, required_level_key=required_level_key
+            ):
+                return True
+    return False
+
+
 def commander_can_grant_commander_exemption(
     session: Session, *, commander_id: uuid.UUID, commander_rank: str | None,
 ) -> bool:

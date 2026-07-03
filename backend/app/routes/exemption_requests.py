@@ -14,7 +14,7 @@ from app.rate_limit import limiter
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
-from app.services.authority import dm_scope_covers_level, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY
+from app.services.authority import dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY
 from app.services.exemption_requests import (
     ExemptionRequestError,
     approve_commander_step,
@@ -339,11 +339,10 @@ def approve_exemption_request_duty_manager_step(
         if not is_duty_manager(session, user.id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
         roots = scope_root_ids(session, user)
-        covering_scope_nodes = [
-            n for n in session.execute(select(HierarchyNode)).scalars().all()
-            if n.id in roots and target_node is not None and n.id in target_node.path_ids
-        ]
-        if not any(dm_scope_covers_level(session, scope_node=n, required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY) for n in covering_scope_nodes):
+        if not dm_scope_covers_target(
+            session, scope_root_ids=roots, target_node=target_node,
+            required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="insufficient_scope_level_for_exemption_approval")
 
     try:
