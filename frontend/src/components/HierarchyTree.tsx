@@ -442,6 +442,14 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
 
   return (
     <>
+      {roots.length > 0 && (
+        <div
+          className="px-2 py-1 mb-1 font-semibold text-gray-800 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700"
+          data-testid="tree-whole-org-label"
+        >
+          {t("common.whole_org")}
+        </div>
+      )}
       <DndContext
         sensors={sensors}
         onDragStart={(e) => {
@@ -450,7 +458,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
         }}
         onDragEnd={(e) => void handleDragEnd(e)}
       >
-        <ul className="text-sm text-gray-900 dark:text-white" data-testid="node-tree">
+        <ul className="text-sm text-gray-900 dark:text-white mr-4" data-testid="node-tree">
           {roots.map((node) => renderNode(node, 0))}
         </ul>
         <DragOverlay>
