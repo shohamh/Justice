@@ -101,6 +101,8 @@ def register(
             raise RegistrationError("exemption_type_not_found")
         if et.is_commander_exemption:
             raise RegistrationError("commander_exemption_not_requestable")
+        if er.get("end_date") is not None and er["end_date"] < er["start_date"]:
+            raise RegistrationError("bad_date_range")
         session.add(ExemptionRequest(
             soldier_id=soldier.id,
             exemption_type_id=er["exemption_type_id"],

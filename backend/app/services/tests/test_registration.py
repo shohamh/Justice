@@ -206,3 +206,26 @@ def test_register_rejects_unknown_exemption_type(admin_session):
             }],
             personal_constraints=[], **_base()
         )
+
+
+def test_register_rejects_bad_exemption_date_range(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import RegistrationError, register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    ex_type = ExemptionType(name=f"test_type_{_uid()}")
+    admin_session.add(ex_type)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="bad_date_range"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[{
+                "exemption_type_id": ex_type.id,
+                "start_date": date(2024, 12, 31),
+                "end_date": date(2024, 1, 1),
+                "reason": None,
+            }],
+            personal_constraints=[], **_base()
+        )
