@@ -39,6 +39,22 @@ def test_compute_potential_counts_eligible_soldiers(app_session):
 
     assert result.raw_eligible_count == 2
     assert result.final_potential == 2
+    assert result.total_soldiers == 2
+
+
+def test_total_soldiers_excludes_soldiers_discharged_before_reference_date(app_session):
+    node = create_node(app_session, level="team", name="Test Co Sadach", parent_id=None)
+    app_session.flush()
+    dt = DutyType(name="שמירה", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add(dt)
+    app_session.flush()
+
+    _make_soldier(app_session, node_id=node.id)
+    _make_soldier(app_session, node_id=node.id, left_at=date(2026, 1, 1))  # discharged before reference_date
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    assert result.total_soldiers == 1
 
 
 def test_regular_global_exemption_excludes_soldier(app_session):

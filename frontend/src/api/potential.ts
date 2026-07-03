@@ -22,6 +22,7 @@ export interface PotentialResult {
   node_id: string;
   as_of: string;
   raw_eligible_count: number;
+  total_soldiers: number;
   modifiers: PotentialModifierDTO[];
   final_potential: number;
   soldiers: SoldierPotentialDetail[];

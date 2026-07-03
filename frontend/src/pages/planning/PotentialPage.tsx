@@ -84,6 +84,17 @@ export default function PotentialPage() {
     return pct === null ? "—" : `${pct.toFixed(0)}%`;
   }
 
+  function pctEligibleValue(n: NodeDTO): number | null {
+    const r = results[n.id];
+    if (!r || r.total_soldiers === 0) return null;
+    return (r.raw_eligible_count / r.total_soldiers) * 100;
+  }
+
+  function pctEligibleText(n: NodeDTO): string {
+    const pct = pctEligibleValue(n);
+    return pct === null ? "—" : `${pct.toFixed(0)}%`;
+  }
+
   function toggleExpanded(nodeId: string) {
     setExpandedNodeId((prev) => (prev === nodeId ? null : nodeId));
   }
@@ -119,11 +130,29 @@ export default function PotentialPage() {
       filterValue: (n) => n.name,
     },
     {
+      id: "sadach",
+      header: t("potential.sadach"),
+      headerTooltip: t("potential.sadach_tooltip"),
+      cell: (n) => results[n.id]?.total_soldiers ?? "-",
+      sortValue: (n) => results[n.id]?.total_soldiers ?? -1,
+    },
+    {
       id: "eligible",
       header: t("potential.eligible"),
       headerTooltip: t("potential.eligible_tooltip"),
       cell: (n) => results[n.id]?.raw_eligible_count ?? "-",
       sortValue: (n) => results[n.id]?.raw_eligible_count ?? -1,
+    },
+    {
+      id: "pct_eligible",
+      header: t("potential.pct_eligible"),
+      headerTooltip: t("potential.pct_eligible_tooltip"),
+      cell: (n) => pctEligibleText(n),
+      sortValue: (n) => pctEligibleValue(n) ?? -Infinity,
+      exportValue: (n) => {
+        const pct = pctEligibleValue(n);
+        return pct === null ? "" : Math.round(pct);
+      },
     },
     {
       id: "modifiers",

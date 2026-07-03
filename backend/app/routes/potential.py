@@ -40,6 +40,7 @@ class PotentialOut(BaseModel):
     node_id: uuid.UUID
     as_of: str
     raw_eligible_count: int
+    total_soldiers: int
     modifiers: list[ModifierOut]
     final_potential: int
     soldiers: list[SoldierDetailOut]
@@ -50,6 +51,7 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
         node_id=r.node_id,
         as_of=r.as_of.isoformat(),
         raw_eligible_count=r.raw_eligible_count,
+        total_soldiers=r.total_soldiers,
         modifiers=[
             ModifierOut(
                 id=m.id, delta=m.delta, reason=m.reason,

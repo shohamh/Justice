@@ -47,6 +47,7 @@ class PotentialResult:
     node_id: uuid.UUID
     as_of: date
     raw_eligible_count: int
+    total_soldiers: int = 0
     modifiers: list[ModifierDetail] = field(default_factory=list)
     final_potential: int = 0
     soldiers: list[SoldierPotentialDetail] = field(default_factory=list)
@@ -189,10 +190,16 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
     ]
     modifier_sum = sum(m.delta for m in active_modifiers)
 
+    total_soldiers = sum(
+        1 for s in subtree_soldiers
+        if s.left_at is None or s.left_at > reference_date
+    )
+
     return PotentialResult(
         node_id=node_id,
         as_of=reference_date,
         raw_eligible_count=raw_count,
+        total_soldiers=total_soldiers,
         modifiers=modifier_details,
         final_potential=raw_count + modifier_sum,
         soldiers=details,
