@@ -15,6 +15,7 @@ _PUBLIC_KEYS = {
     "gimalim.enabled",
     "gimalim.default_rest_days",
     "gimalim.reserve_fate",
+    "shifts.auto_split_node_quotas",
 }
 
 

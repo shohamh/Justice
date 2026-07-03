@@ -89,6 +89,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
+    label: "משמרות",
+    settings: [
+      {
+        key: "shifts.auto_split_node_quotas",
+        label: "פיצול מכסות אוטומטי לפי פוטנציאל",
+        description: "כשמופעל, מכסות ליחידות-בת מחושבות אוטומטית לפי פוטנציאל (סה\"כ חיילים) בכל פעם שנבחרת יחידת-אב יחידה ונקבע מספר נדרש בטופס משמרת",
+        type: "boolean" as const,
+        defaultValue: false,
+      },
+    ],
+  },
+  {
     label: "דף הבית",
     settings: [
       { key: "home.mitvahim_validity_days", label: "תוקף מטווחים (ימים)", description: "מספר ימים שמטווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
