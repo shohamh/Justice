@@ -113,3 +113,9 @@ export async function listExemptionFiles(requestId: string): Promise<ExemptionFi
 export function exemptionFileDownloadUrl(requestId: string, fileId: string): string {
   return `/api/exemption-requests/${requestId}/files/${fileId}`;
 }
+
+export async function grantCommanderExemption(soldierId: string, input: {
+  exemption_type_id: string; start_date: string; end_date?: string | null; reason: string;
+}): Promise<void> {
+  await api.post(`/soldiers/${soldierId}/exemptions/commander-exemption`, input);
+}

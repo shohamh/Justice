@@ -15,6 +15,7 @@ vi.mock("../api/exemptions", () => ({
   listExemptions: vi.fn(() => Promise.resolve([])),
   grantExemption: vi.fn(() => Promise.resolve({})),
   revokeExemption: vi.fn(() => Promise.resolve()),
+  grantCommanderExemption: vi.fn(() => Promise.resolve()),
 }));
 
 test("indefinite checkbox disables end-date picker", () => {
