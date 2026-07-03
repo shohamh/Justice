@@ -5,6 +5,7 @@ export interface SoldierPotentialDetail {
   full_name: string;
   counted: boolean;
   reason: string | null;
+  exemption_names: string[] | null;
 }
 
 export interface PotentialModifierDTO {
@@ -45,10 +46,4 @@ export async function createModifier(input: {
 
 export async function deleteModifier(modifierId: string): Promise<void> {
   await api.delete(`/potential/modifiers/${modifierId}`);
-}
-
-export function exportPotentialUrl(nodeId: string, referenceDate?: string): string {
-  const params = new URLSearchParams({ node_id: nodeId });
-  if (referenceDate) params.set("reference_date", referenceDate);
-  return `/api/potential/export?${params.toString()}`;
 }

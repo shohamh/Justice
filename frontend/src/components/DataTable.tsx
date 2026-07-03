@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { Fragment, useMemo, useState, useRef, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -47,6 +47,12 @@ interface DataTableProps<T> {
   rowTestId?: (row: T) => string;
   /** Fires with the fully filtered + sorted row set whenever it changes (e.g. for export). */
   onVisibleRowsChange?: (rows: T[]) => void;
+  /** Optional per-row expand/collapse: adds a toggle column, and renders `content` in an extra row beneath an expanded row. */
+  expandable?: {
+    isExpanded: (row: T) => boolean;
+    onToggle: (row: T) => void;
+    content: (row: T) => React.ReactNode;
+  };
 }
 
 // ─── Column filter dropdown ───────────────────────────────────────────────────
@@ -216,6 +222,7 @@ export function DataTable<T>({
   testId,
   rowTestId,
   onVisibleRowsChange,
+  expandable,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -321,6 +328,7 @@ export function DataTable<T>({
         <thead>
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="bg-gray-100 dark:bg-gray-700 text-right">
+              {expandable && <th className="border dark:border-gray-600 px-2 py-1 w-6" />}
               {hg.headers.map((header) => {
                 const colDef = columns.find((c) => c.id === header.id);
                 return (
@@ -368,25 +376,48 @@ export function DataTable<T>({
         <tbody>
           {table.getRowModel().rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="text-center text-gray-400 py-4">
+              <td colSpan={columns.length + (expandable ? 1 : 0)} className="text-center text-gray-400 py-4">
                 {emptyMessage}
               </td>
             </tr>
           ) : (
-            table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className={rowClassName ? rowClassName(row.original) : undefined}
-                style={rowStyle ? rowStyle(row.original) : undefined}
-                data-testid={rowTestId ? rowTestId(row.original) : undefined}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border dark:border-gray-600 px-2 py-1">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))
+            table.getRowModel().rows.map((row) => {
+              const isExpanded = expandable?.isExpanded(row.original) ?? false;
+              return (
+                <Fragment key={row.id}>
+                  <tr
+                    className={rowClassName ? rowClassName(row.original) : undefined}
+                    style={rowStyle ? rowStyle(row.original) : undefined}
+                    data-testid={rowTestId ? rowTestId(row.original) : undefined}
+                  >
+                    {expandable && (
+                      <td className="border dark:border-gray-600 px-2 py-1 text-center">
+                        <button
+                          type="button"
+                          aria-label={isExpanded ? "כווץ" : "הרחב"}
+                          onClick={() => expandable.onToggle(row.original)}
+                          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                        >
+                          {isExpanded ? "▾" : "◂"}
+                        </button>
+                      </td>
+                    )}
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="border dark:border-gray-600 px-2 py-1">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                  {expandable && isExpanded && (
+                    <tr>
+                      <td colSpan={columns.length + 1} className="border dark:border-gray-600 p-0 bg-gray-50 dark:bg-gray-900">
+                        {expandable.content(row.original)}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })
           )}
         </tbody>
       </table>

@@ -572,6 +572,27 @@
   "table": {
     "filter_placeholder": "סנן..."
   },
+  "potential": {
+    "title": "פוטנציאל",
+    "reference_date": "תאריך ייחוס",
+    "node": "יחידה",
+    "eligible": "כשירים",
+    "modifiers": "התאמות",
+    "final_potential": "פוטנציאל סופי",
+    "soldier_name": "שם חייל",
+    "counted_col": "נספר?",
+    "counted": "נספר",
+    "not_counted_short": "לא נספר",
+    "reason_col": "סיבה",
+    "no_soldiers": "אין חיילים ביחידה זו",
+    "reason_no_eligible_duty_types": "אין סוגי תורנות מתאימים (דרגה/פטורים)",
+    "reason_exempted_restricted": "פטור (אין הרשאה לצפייה בפרטי הפטור)",
+    "manual_modifiers_title": "התאמות ידניות",
+    "modifier_until": "עד",
+    "modifier_delete": "מחק",
+    "modifier_reason_placeholder": "סיבה (חובה)",
+    "modifier_add": "הוסף"
+  },
   "shift_templates": {
     "title": "תבניות משמרת",
     "generate": "צור משמרות",

@@ -28,6 +28,7 @@ class SoldierPotentialDetail:
     full_name: str
     counted: bool
     reason: str | None = None  # populated when counted is False
+    exemption_names: list[str] = field(default_factory=list)  # populated when reason == "exempted"
 
 
 @dataclass
@@ -146,16 +147,27 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             continue
         rank = _rank_as_of(s, reference_date)
         base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
+        active_exemptions = [
+            ex for ex in exemptions_by_soldier.get(s.id, [])
+            if ex.start_date <= reference_date and (ex.end_date is None or ex.end_date >= reference_date)
+        ]
         excluded: set[uuid.UUID] = set()
-        for ex in exemptions_by_soldier.get(s.id, []):
-            if ex.start_date <= reference_date and (ex.end_date is None or ex.end_date >= reference_date):
-                excluded |= etid_to_dtids.get(ex.exemption_type_id, set())
+        for ex in active_exemptions:
+            excluded |= etid_to_dtids.get(ex.exemption_type_id, set())
         remaining = base_eligible - excluded
         if remaining:
             details.append(SoldierPotentialDetail(s.id, s.full_name, True))
             raw_count += 1
+        elif base_eligible:
+            # would have been eligible, but active exemptions excluded every remaining duty type
+            names = sorted({
+                regular_types[ex.exemption_type_id].name
+                for ex in active_exemptions
+                if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
+            })
+            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "exempted", names))
         else:
-            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "no eligible duty types remain (rank/exemptions)"))
+            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "no_eligible_duty_types"))
 
     modifier_rows = session.execute(
         select(PotentialModifier).where(

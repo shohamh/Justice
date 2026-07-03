@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
@@ -23,6 +23,7 @@ class SoldierDetailOut(BaseModel):
     full_name: str
     counted: bool
     reason: str | None = None
+    exemption_names: list[str] | None = None
 
 
 class ModifierOut(BaseModel):
@@ -43,7 +44,7 @@ class PotentialOut(BaseModel):
     soldiers: list[SoldierDetailOut]
 
 
-def _out(r: svc.PotentialResult) -> PotentialOut:
+def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
     return PotentialOut(
         node_id=r.node_id,
         as_of=r.as_of.isoformat(),
@@ -58,9 +59,23 @@ def _out(r: svc.PotentialResult) -> PotentialOut:
         ],
         final_potential=r.final_potential,
         soldiers=[
-            SoldierDetailOut(soldier_id=s.soldier_id, full_name=s.full_name, counted=s.counted, reason=s.reason)
+            SoldierDetailOut(
+                soldier_id=s.soldier_id, full_name=s.full_name, counted=s.counted, reason=s.reason,
+                exemption_names=(s.exemption_names or None) if can_view_exemptions else None,
+            )
             for s in r.soldiers
         ],
+    )
+
+
+def _can_view_exemptions(session: Session, user: Soldier, node: HierarchyNode) -> bool:
+    return can(
+        user,
+        Action.EXEMPTION_READ,
+        target_node=node,
+        roots=scope_root_ids(session, user),
+        is_commander=is_commander(session, user.id),
+        is_duty_manager=is_duty_manager(session, user.id),
     )
 
 
@@ -77,7 +92,7 @@ def get_potential(
     authorize(session, user, Action.POTENTIAL_READ, target_node=node)
     ref = date.fromisoformat(reference_date) if reference_date else date.today()
     result = svc.compute_potential(session, node_id=node_id, reference_date=ref)
-    return _out(result)
+    return _out(result, can_view_exemptions=_can_view_exemptions(session, user, node))
 
 
 class ModifierCreateIn(BaseModel):
