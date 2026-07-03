@@ -24,6 +24,7 @@ class SoldierDetailOut(BaseModel):
     counted: bool
     reason: str | None = None
     exemption_names: list[str] | None = None
+    rank: str | None = None
 
 
 class ModifierOut(BaseModel):
@@ -62,6 +63,7 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
             SoldierDetailOut(
                 soldier_id=s.soldier_id, full_name=s.full_name, counted=s.counted, reason=s.reason,
                 exemption_names=(s.exemption_names or None) if can_view_exemptions else None,
+                rank=s.rank,
             )
             for s in r.soldiers
         ],

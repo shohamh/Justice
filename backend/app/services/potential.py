@@ -29,6 +29,7 @@ class SoldierPotentialDetail:
     counted: bool
     reason: str | None = None  # populated when counted is False
     exemption_names: list[str] = field(default_factory=list)  # populated when reason == "exempted"
+    rank: str | None = None
 
 
 @dataclass
@@ -142,10 +143,12 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
     details: list[SoldierPotentialDetail] = []
     raw_count = 0
     for s in subtree_soldiers:
-        if s.left_at is not None and s.left_at <= reference_date:
-            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "discharged as of reference date"))
-            continue
         rank = _rank_as_of(s, reference_date)
+        if s.left_at is not None and s.left_at <= reference_date:
+            details.append(SoldierPotentialDetail(
+                s.id, s.full_name, False, "discharged as of reference date", rank=rank,
+            ))
+            continue
         base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
         active_exemptions = [
             ex for ex in exemptions_by_soldier.get(s.id, [])
@@ -156,7 +159,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             excluded |= etid_to_dtids.get(ex.exemption_type_id, set())
         remaining = base_eligible - excluded
         if remaining:
-            details.append(SoldierPotentialDetail(s.id, s.full_name, True))
+            details.append(SoldierPotentialDetail(s.id, s.full_name, True, rank=rank))
             raw_count += 1
         elif base_eligible:
             # would have been eligible, but active exemptions excluded every remaining duty type
@@ -165,9 +168,11 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
                 for ex in active_exemptions
                 if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
             })
-            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "exempted", names))
+            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "exempted", names, rank=rank))
         else:
-            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "no_eligible_duty_types"))
+            details.append(SoldierPotentialDetail(
+                s.id, s.full_name, False, "no_eligible_duty_types", rank=rank,
+            ))
 
     modifier_rows = session.execute(
         select(PotentialModifier).where(
