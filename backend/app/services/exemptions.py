@@ -73,6 +73,8 @@ def grant_commander_exemption(
         raise ExemptionError("not_commander_exemption_type")
     if session.get(Soldier, soldier_id) is None:
         raise ExemptionError("soldier_not_found")
+    if end_date is not None and end_date < start_date:
+        raise ExemptionError("bad_date_range")
     ex = SoldierExemption(
         soldier_id=soldier_id,
         exemption_type_id=exemption_type_id,

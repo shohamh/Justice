@@ -29,6 +29,20 @@ def test_grant_commander_exemption_rejects_regular_type(app_session):
         )
 
 
+def test_grant_commander_exemption_rejects_bad_date_range(app_session):
+    et = ExemptionType(name="פטור פיקודי 2", is_commander_exemption=True)
+    app_session.add(et)
+    app_session.flush()
+    soldier = _soldier(app_session)
+    granter = _soldier(app_session, rank="רסן")
+    with pytest.raises(ExemptionError, match="bad_date_range"):
+        grant_commander_exemption(
+            app_session, soldier_id=soldier.id, exemption_type_id=et.id,
+            start_date=date(2026, 1, 10), end_date=date(2026, 1, 1),
+            reason="test", actor_id=granter.id,
+        )
+
+
 def test_grant_commander_exemption_succeeds_for_commander_type(app_session):
     et = ExemptionType(name="פטור פיקודי", is_commander_exemption=True)
     app_session.add(et)
