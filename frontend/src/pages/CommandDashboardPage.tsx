@@ -90,10 +90,16 @@ export default function CommandDashboardPage() {
       return;
     }
     let cancelled = false;
-    Promise.all(myNodes.map((n) => getNodePotential(n.id))).then((results) => {
+    Promise.allSettled(myNodes.map((n) => getNodePotential(n.id))).then((results) => {
       if (cancelled) return;
       const byId: Record<string, PotentialResult> = {};
-      results.forEach((r, i) => { byId[myNodes[i].id] = r; });
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          byId[myNodes[i].id] = r.value;
+        } else {
+          console.error(`Failed to fetch potential for node ${myNodes[i].id}:`, r.reason);
+        }
+      });
       setOwnPotential(byId);
     });
     return () => { cancelled = true; };
@@ -170,10 +176,10 @@ export default function CommandDashboardPage() {
         <table className="w-full border-collapse" data-testid="own-potential-table">
           <thead>
             <tr>
-              <th className="border p-2">יחידה</th>
-              <th className="border p-2">כשירים</th>
-              <th className="border p-2">התאמות</th>
-              <th className="border p-2">פוטנציאל סופי</th>
+              <th className="border p-2">{t("command_dashboard.node")}</th>
+              <th className="border p-2">{t("command_dashboard.eligible")}</th>
+              <th className="border p-2">{t("command_dashboard.modifiers")}</th>
+              <th className="border p-2">{t("command_dashboard.final_potential")}</th>
             </tr>
           </thead>
           <tbody>

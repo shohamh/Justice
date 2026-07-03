@@ -34,9 +34,15 @@ export default function PotentialPage() {
 
   useEffect(() => {
     if (nodes.length === 0) return;
-    Promise.all(nodes.map((n) => getPotential(n.id, referenceDate))).then((all) => {
+    Promise.allSettled(nodes.map((n) => getPotential(n.id, referenceDate))).then((all) => {
       const byId: Record<string, PotentialResult> = {};
-      all.forEach((r, i) => { byId[nodes[i].id] = r; });
+      all.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          byId[nodes[i].id] = r.value;
+        } else {
+          console.error(`Failed to fetch potential for node ${nodes[i].id}:`, r.reason);
+        }
+      });
       setResults(byId);
     });
   }, [nodes, referenceDate]);
