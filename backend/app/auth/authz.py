@@ -55,6 +55,8 @@ class Action:
     ENROLLMENT_APPROVE = "enrollment.approve"
     DM_SCOPE_MANAGE = "dm_scope.manage"
     SHIFT_MANAGE = "shift.manage"
+    POTENTIAL_READ = "potential.read"
+    POTENTIAL_MODIFIER_MANAGE = "potential.modifier_manage"
 
 
 _DM_ACTIONS = {
@@ -73,6 +75,8 @@ _DM_ACTIONS = {
     Action.ASSIGNMENT_MANAGE,
     Action.SCORE_ADJUST,
     Action.ENROLLMENT_APPROVE,
+    Action.POTENTIAL_READ,
+    Action.POTENTIAL_MODIFIER_MANAGE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -138,7 +142,13 @@ def can(
         if action in _DM_ACTIONS and _node_in_scope(target_node, roots):
             allowed = True
     if is_commander:
-        if action == Action.DM_SCOPE_MANAGE:
+        if action in (Action.POTENTIAL_READ, Action.POTENTIAL_MODIFIER_MANAGE):
+            if (
+                bool(user.rank and user.rank in RANKS_RASAN_AND_ABOVE)
+                and _node_in_scope(target_node, roots)
+            ):
+                allowed = True
+        elif action == Action.DM_SCOPE_MANAGE:
             if (
                 bool(user.rank and user.rank in RANKS_RASAN_AND_ABOVE)
                 and _node_in_scope(target_node, roots)
