@@ -22,6 +22,29 @@ function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: s
   return result;
 }
 
+function commonAncestorName(
+  nodeIds: string[],
+  nodeOptions: { id: string; name: string; path_ids: string[] }[]
+): string | null {
+  const paths = nodeIds
+    .map((id) => nodeOptions.find((n) => n.id === id)?.path_ids)
+    .filter((p): p is string[] => !!p && p.length > 0);
+  if (paths.length < 2) return null;
+
+  const minLen = Math.min(...paths.map((p) => p.length));
+  let commonLength = 0;
+  for (let i = 0; i < minLen; i++) {
+    if (paths.every((p) => p[i] === paths[0][i])) {
+      commonLength = i + 1;
+    } else {
+      break;
+    }
+  }
+  if (commonLength === 0) return null;
+  const ancestorId = paths[0][commonLength - 1];
+  return nodeOptions.find((n) => n.id === ancestorId)?.name ?? null;
+}
+
 interface Props {
   dutyTypes: DutyType[];
   locations: DutyLocation[];
@@ -57,6 +80,10 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
 
   const quotaTotal = quotaRows.reduce((sum, r) => sum + (r.count || 0), 0);
   const quotaOverAllocated = quotaTotal > count;
+  const commonAncestor = commonAncestorName(
+    quotaRows.map((r) => r.hierarchy_node_id).filter(Boolean),
+    nodeOptions
+  );
 
   function addQuotaRow() {
     const firstAvailable = nodeOptions.find((n) => !quotaRows.some((r) => r.hierarchy_node_id === n.id));
@@ -269,6 +296,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           </div>
           <div className="border dark:border-gray-600 rounded p-2">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">{t("shifts.quotas_title")}</p>
+            {commonAncestor && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                {t("shifts.quotas_common_ancestor", { name: commonAncestor })}
+              </p>
+            )}
             <div className="space-y-1">
               {quotaRows.map((row, i) => (
                 <div key={i} className="flex items-center gap-1">

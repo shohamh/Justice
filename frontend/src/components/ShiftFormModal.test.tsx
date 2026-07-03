@@ -89,6 +89,34 @@ test("shows a warning when quota total exceeds required_count", async () => {
   expect(screen.getByText(/over-allocated:5\/1/)).toBeInTheDocument();
 });
 
+test("shows the common-ancestor label when 2+ quota rows share a parent", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByText(/quotas_add/));
+  fireEvent.click(screen.getByText(/quotas_add/));
+  const selects = screen.getAllByLabelText("shifts.quotas_select_node");
+  fireEvent.change(selects[0], { target: { value: "n1" } });
+  fireEvent.change(selects[1], { target: { value: "n2" } });
+
+  expect(await screen.findByText("shifts.quotas_common_ancestor")).toBeInTheDocument();
+});
+
+test("hides the common-ancestor label with fewer than 2 quota rows", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  fireEvent.click(screen.getByText(/quotas_add/));
+  const select = screen.getAllByLabelText("shifts.quotas_select_node")[0];
+  fireEvent.change(select, { target: { value: "n1" } });
+
+  expect(screen.queryByText("shifts.quotas_common_ancestor")).not.toBeInTheDocument();
+});
+
 test("split-by-potential button is hidden until exactly one scope node is selected", async () => {
   render(
     <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
