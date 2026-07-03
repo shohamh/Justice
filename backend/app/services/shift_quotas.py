@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import DutyShift, DutyShiftNodeQuota, HierarchyNode
+from app.db.models import DutyShift, DutyShiftNodeQuota, HierarchyNode, Soldier
 
 
 class ShiftQuotaError(Exception):
@@ -76,3 +76,60 @@ def set_shift_quotas(
         after=after,
     )
     return entries
+
+
+def compute_potential_split(
+    session: Session, *, parent_node_id: uuid.UUID, required_count: int
+) -> list[dict]:
+    """Proportionally split `required_count` across `parent_node_id`'s direct
+    children, weighted by each child's total active-soldier subtree count.
+    Uses the largest-remainder method so counts always sum to exactly
+    `required_count`. Falls back to an even split if every child has zero
+    weight (otherwise the split would be all-zero and useless)."""
+    if required_count < 1:
+        raise ShiftQuotaError("required_count must be >= 1")
+
+    children = list(
+        session.execute(
+            select(HierarchyNode)
+            .where(HierarchyNode.parent_id == parent_node_id)
+            .order_by(HierarchyNode.name)
+        ).scalars().all()
+    )
+    if not children:
+        raise ShiftQuotaError("parent node has no direct children")
+
+    weights = [
+        session.execute(
+            select(func.count())
+            .select_from(Soldier)
+            .join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id)
+            .where(HierarchyNode.path_ids.any(child.id), Soldier.left_at.is_(None))
+        ).scalar_one()
+        for child in children
+    ]
+
+    n = len(children)
+    total_weight = sum(weights)
+    if total_weight == 0:
+        base, extra = divmod(required_count, n)
+        shares = [base + (1 if i < extra else 0) for i in range(n)]
+    else:
+        raw_shares = [required_count * w / total_weight for w in weights]
+        shares = [int(r) for r in raw_shares]
+        remainder = required_count - sum(shares)
+        order_by_fraction = sorted(
+            range(n), key=lambda i: raw_shares[i] - shares[i], reverse=True
+        )
+        for i in order_by_fraction[:remainder]:
+            shares[i] += 1
+
+    return [
+        {
+            "hierarchy_node_id": child.id,
+            "node_name": child.name,
+            "count": shares[i],
+            "weight": weights[i],
+        }
+        for i, child in enumerate(children)
+    ]
