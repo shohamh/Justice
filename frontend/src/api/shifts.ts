@@ -26,6 +26,13 @@ export interface NodeQuota {
   count: number;
 }
 
+export interface QuotaSplitEntry {
+  hierarchy_node_id: string;
+  node_name: string;
+  count: number;
+  weight: number;
+}
+
 export interface CreateShiftInput {
   duty_type_id: string;
   duty_location_id: string;
@@ -71,6 +78,16 @@ export async function setShiftQuotas(
   quotas: { hierarchy_node_id: string; count: number }[]
 ): Promise<{ quotas: NodeQuota[] }> {
   return (await api.put<{ quotas: NodeQuota[] }>(`/shifts/${shiftId}/quotas`, { quotas })).data;
+}
+
+export async function getQuotaSplitPreview(
+  parentNodeId: string,
+  requiredCount: number
+): Promise<QuotaSplitEntry[]> {
+  const r = await api.get<{ entries: QuotaSplitEntry[] }>("/shifts/quota-split-preview", {
+    params: { parent_node_id: parentNodeId, required_count: requiredCount },
+  });
+  return r.data.entries;
 }
 
 export async function assignBatch(
