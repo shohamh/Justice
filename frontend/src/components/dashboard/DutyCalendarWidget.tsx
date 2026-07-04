@@ -3,9 +3,11 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import heLocale from "@fullcalendar/core/locales/he";
+import type { DatesSetArg } from "@fullcalendar/core";
 import { EffectiveDuty } from "../../api/assignments";
 import { Holiday, listHolidays } from "../../api/calendarHolidays";
 import { dutyTypeColor } from "../../utils/dutyTypeColor";
+import { calendarViewMinWidth } from "../../utils/calendarViewWidth";
 
 interface Props {
   duties: EffectiveDuty[];
@@ -15,6 +17,7 @@ interface Props {
 
 export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   useEffect(() => {
     const year = new Date().getFullYear();
@@ -68,33 +71,43 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
     info.el.style.filter = "";
   }
 
+  function handleDatesSet(arg: DatesSetArg) {
+    setActiveViewType(arg.view.type);
+  }
+
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
       <h2 className="text-lg font-semibold mb-3">היומן שלי</h2>
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin]}
-        initialView="dayGridMonth"
-        firstDay={0}
-        locale={heLocale}
-        events={[...dutyEvents, ...holidayEvents]}
-        headerToolbar={{ start: "prev,next", center: "title", end: "dayGridMonth,timeGridWeek" }}
-        slotMinTime="00:00:00"
-        slotMaxTime="24:00:00"
-        views={{
-          dayGridMonth: { displayEventTime: false },
-          timeGridWeek: { displayEventTime: true },
-        }}
-        height="auto"
-        editable={false}
-        selectable={false}
-        eventClick={(info) => {
-          if (info.event.extendedProps.isHoliday) return;
-          const duty = info.event.extendedProps.duty as EffectiveDuty;
-          onOpenDuty(duty);
-        }}
-        eventMouseEnter={handleEventMouseEnter}
-        eventMouseLeave={handleEventMouseLeave}
-      />
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: calendarViewMinWidth(activeViewType) }}>
+          <FullCalendar
+            plugins={[dayGridPlugin, timeGridPlugin]}
+            initialView="dayGridMonth"
+            firstDay={0}
+            locale={heLocale}
+            events={[...dutyEvents, ...holidayEvents]}
+            headerToolbar={{ start: "prev,next", center: "title", end: "dayGridMonth,timeGridWeek,timeGridThreeDay" }}
+            datesSet={handleDatesSet}
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            views={{
+              dayGridMonth: { displayEventTime: false },
+              timeGridWeek: { displayEventTime: true },
+              timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true, buttonText: "3 ימים" },
+            }}
+            height="auto"
+            editable={false}
+            selectable={false}
+            eventClick={(info) => {
+              if (info.event.extendedProps.isHoliday) return;
+              const duty = info.event.extendedProps.duty as EffectiveDuty;
+              onOpenDuty(duty);
+            }}
+            eventMouseEnter={handleEventMouseEnter}
+            eventMouseLeave={handleEventMouseLeave}
+          />
+        </div>
+      </div>
     </section>
   );
 }
