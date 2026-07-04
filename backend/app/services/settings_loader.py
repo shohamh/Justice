@@ -29,6 +29,13 @@ def get_setting(session: Session, key: str) -> Any:
     return row.value
 
 
+def get_setting_int(session: Session, key: str, default: int) -> int:
+    try:
+        return int(get_setting(session, key))
+    except SettingNotFound:
+        return default
+
+
 def set_setting(session: Session, key: str, value: Any, *, actor_id: uuid.UUID | None) -> None:
     value = _json_safe(value)
     row = session.get(SystemSetting, key)
