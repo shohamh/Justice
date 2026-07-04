@@ -42,6 +42,17 @@ body {
   box-shadow: 0 0 0 2px #d8b4fe;
 }
 
+/* Calendar day columns keep a minimum width so shift content stays readable
+   in the week/3-day views. Only the grid body (.fc-view-harness) scrolls
+   horizontally when it doesn't fit — the toolbar (nav/view buttons), a
+   sibling of .fc-view-harness, is untouched and never scrolls. */
+.fc-view-harness {
+  overflow-x: auto;
+}
+.fc-view-harness > .fc-view {
+  min-width: var(--fc-grid-min-width, auto);
+}
+
 /* Details/summary disclosure marker in dark mode */
 @media (prefers-color-scheme: dark) {
   details > summary {
