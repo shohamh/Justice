@@ -1,6 +1,83 @@
 # Changelog
 
+## 2026-07-04
+
+### Features
+- **Military driving license (רשנ"צ)** — new license types, a "requires license" eligibility rule, rank-gated `MILITARY_LICENSE_DECIDE` approval action, and a request UI on the soldier profile page.
+- **"כלל המסגרת" whole-org rows** — a stable aggregate row/label added to the potential table, the transparency sub-hierarchy tab, and above hierarchy tree roots, so org-wide totals stay visible regardless of scroll position.
+- **Partial-exemptions column** — potential calc and the `/potential` route now flag and expose soldiers with partial duty-type exemptions; surfaced as a new column in the potential table.
+- **`ExemptionTypeViewModal`** — permission-gated view/edit modal, wired to the exemption chips already shown elsewhere in the UI.
+- **Algorithm page**: run start/finish timestamps shown; mark-all-read label fixed.
+- **Hour-aware calendar week view**; effective-duty `end_date` is now treated as exclusive.
+- **Duty-type/duty-shift dialogs** now pre-fill from unresolved import names.
+
+### Fixes
+- **Bootstrapped root/holding node** no longer gets orphaned beside the root during reseeding — it's now correctly nested under it.
+- **Exemption-type edit modal** now surfaces an error message when a save fails.
+- **Duty-type selection** re-syncs correctly when reopening the edit modal; added missing edit/cancel i18n keys.
+
+### Chores
+- **Refactor**: extracted `can_see_private_node` helper to centralize scope-based private-field checks.
+
+## 2026-07-03
+
+### Features
+- **Potential-based duty responsibility** — new `/planning/potential` page with a drill-down table, hierarchy indentation, column tooltips, % of parent, סד"כ column, eligible-percentage, soldier rank/clickable names, exemption details, and Excel export. Backed by a new `compute_potential` engine, `PotentialModifier` model with CRUD + audit trail, and `POTENTIAL_READ` / `POTENTIAL_MODIFIER_MANAGE` actions gated to duty managers and רסן+ commanders. Own-subunit potential now also shown on the command dashboard.
+- **Sequential dual-approval exemptions** — exemption requests now flow through commander approval then duty-manager approval (`pending_commander` status), with two-stage status/actions surfaced in the UI.
+- **פטור פיקודי (commander exemption)** — single-step grant endpoint and soldier-view grant form, gated by rank/מדור+/DM; the regular request flow now blocks commander-exemption types.
+- **Shift quotas auto-split by potential** — new `compute_potential_split` service, `GET /shifts/quota-split-preview`, a `shifts.auto_split_node_quotas` system setting, and a "split by potential" button in the shift quota editor; quota rows now show their lowest-common-ancestor label. Added a rerun-algorithm button to `ShiftFormModal` for existing shifts.
+
+### Fixes
+- **Potential eligibility** now respects the `allowed_service_types` filter, matching `eligibility.py`.
+- **`PATCH /exemption-requests/{id}`** repaired after the status rename; blocks retargeting to commander-exemption types.
+- **Registration flow**: validates exemption type and date range; fixes a stale pending status.
+- **`grant_commander_exemption`** now validates its date range.
+- **Discharged-soldier reason key** now translates correctly in the Hebrew UI.
+- **Potential table** rows now ordered by real hierarchy instead of raw API order.
+- **Dashboard**: per-node potential fetches use `Promise.allSettled` for resilience; table headers i18n'd.
+
+### Chores
+- **Refactor**: extracted `dm_scope_covers_target` helper (drops a full-table scan); scoped potential queries to subtree and hoisted imports to module level.
+- Added `logs/` to `.gitignore`.
+
+### Docs
+- Design specs and implementation plans for potential core, exemption flows, shift potential-split quotas, and potential page improvements; documented פוטנציאל and פטור פיקודי concepts in the help modal.
+
+## 2026-07-02
+
+### Features
+- **Transparency exemptions column** — a `פטורים` column on the transparency soldiers tab plus exemption-count aggregates on the sub-units tab, scope-gated via a new `can_see_exemption_aggregates` flag and `TransparencyOut` type on `/scoring/transparency`.
+- **Import review UX** — unmatched import names now resolve through an inline fuzzy-picker combobox (later replaced by a two-section `Combobox`), with name mappings applied on reparse; per-row error messages shown next to the שגיאה status chip; row-selection label renamed to אישור/דלג.
+
+### Fixes
+- **Import resolvers**: guarded against malformed `mapped_id` values when parsing UUIDs; lookup fetch errors now surface in the import review page; combobox query stays in sync on prop changes.
+- **`ImportSessionReviewPage` tests** repaired after the combobox picker rewrite.
+
+### Chores
+- Removed dead `shift_templates` import support; added prior planning docs.
+
+### Docs
+- Design spec and implementation plan for import fuzzy name mapping and the transparency exemptions column.
+
 ## 2026-07-01
+
+### Features
+- **Excel import sessions** — replaced the old one-shot import with a session-based flow: upload creates a session, a review page resolves unmatched soldiers/duty-types/hierarchy nodes inline (with prefill from unresolved names), and confirm/cancel/done support partial acceptance with per-row savepoints so failed rows have zero persisted effect. Backed by a pluggable import-parser registry (`v1_standard` parser targeting `duty_shifts`), a new `import_sessions` table, and a DM-scope check helper shared across import rows. Upload now enforces a `.xlsx` extension check on both ends.
+- **Sub-unit shift quotas** — `duty_shift_node_quotas` table, a quota service with validation, `PUT /shifts/{id}/quotas`, quota allocation UI in `ShiftFormModal`, exact per-node quota enforcement in the CP-SAT model (respecting soft-coverage mode), and one-level-up quota relaxation (manual + auto modes) wired into the solver bridge.
+
+### Fixes
+- **Import session routes**: ownership enforced on all mutating endpoints, not just GET detail; error handling, cancel confirmation, and a double-click guard added to the session list page; backend error detail now surfaces on upload failure.
+- **Migration**: merged alembic heads for dual-approval enrollment and import-sessions/shift-quotas landing together.
+- **`UnifiedSoldierModal`**: restored `is_officer`-based ALAL field gating.
+- **`CHANGELOG.md`** import path corrected after it moved into `frontend/`.
+
+### Chores
+- Removed the dead `importExcel` API client, superseded by import sessions.
+
+### Docs
+- Documented Excel import sessions and sub-unit shift quotas in the README.
+
+## 2026-06-30
 
 ### Features
 - **Dual-approval enrollment flow** — enrollment now requires both a commander approval and an exemption-status check before a soldier is activated as career. `EnrollmentApprovalModal` lets commanders review pending enrollment requests from `ApprovalsPage`; approving/rejecting an exemption request tied to an enrollment now automatically re-checks and triggers `try_activate`. Registration sends `is_career` and links exemption requests to the enrollment request, notifying commanders and duty managers.
