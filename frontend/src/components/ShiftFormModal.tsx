@@ -14,6 +14,13 @@ interface QuotaRow {
   count: number;
 }
 
+function dutyTypeHours(dt: DutyType | undefined): { startTime: string; endTime: string } {
+  return {
+    startTime: dt?.start_time?.slice(0, 5) ?? "00:00",
+    endTime: dt?.end_time?.slice(0, 5) ?? "23:59",
+  };
+}
+
 function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: string[] }[] {
   const result: { id: string; name: string; path_ids: string[] }[] = [];
   for (const n of nodes) {
@@ -86,6 +93,9 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(
     existing?.eligible_node_ids ?? dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []
   );
+  const initialHours = dutyTypeHours(dutyTypes.find((d) => d.id === dtId));
+  const [startTime, setStartTime] = useState(initialHours.startTime);
+  const [endTime, setEndTime] = useState(initialHours.endTime);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [quotaRows, setQuotaRows] = useState<QuotaRow[]>(
@@ -184,6 +194,9 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   useEffect(() => {
     if (!existing) {
       setScopeNodeIds(dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []);
+      const hours = dutyTypeHours(dutyTypes.find((d) => d.id === dtId));
+      setStartTime(hours.startTime);
+      setEndTime(hours.endTime);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dtId]);
@@ -255,6 +268,8 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           duty_location_id: locId,
           start_date: startDate,
           end_date: exclusiveEndDate,
+          start_time: startTime,
+          end_time: endTime,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
@@ -318,6 +333,16 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                   <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} />
                 )}
                 {fieldErrors.locId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.locId}</p>}
+              </div>
+              <div className="flex gap-2">
+                <label className="block text-sm flex-1">
+                  {t("shifts.start_time")}
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                </label>
+                <label className="block text-sm flex-1">
+                  {t("shifts.end_time")}
+                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                </label>
               </div>
             </>
           )}

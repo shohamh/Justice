@@ -38,6 +38,8 @@ export interface CreateShiftInput {
   duty_location_id: string;
   start_date: string;
   end_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   required_count: number;
   notes?: string | null;
   reserve_count_override?: number | null;

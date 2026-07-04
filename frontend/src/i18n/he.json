@@ -525,6 +525,8 @@
     "location": "מיקום",
     "start_date": "תאריך התחלה",
     "end_date": "תאריך סיום",
+    "start_time": "שעת התחלה",
+    "end_time": "שעת סיום",
     "required_count": "מספר נדרש",
     "quotas_title": "הקצאת מכסות ליחידות",
     "quotas_add": "הוסף מכסת יחידה",
