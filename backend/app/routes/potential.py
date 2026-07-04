@@ -25,6 +25,7 @@ class SoldierDetailOut(BaseModel):
     reason: str | None = None
     exemption_names: list[str] | None = None
     rank: str | None = None
+    partial_exemption_names: list[str] | None = None
 
 
 class ModifierOut(BaseModel):
@@ -44,6 +45,7 @@ class PotentialOut(BaseModel):
     modifiers: list[ModifierOut]
     final_potential: int
     soldiers: list[SoldierDetailOut]
+    partial_exemption_count: int
 
 
 def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
@@ -66,9 +68,11 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
                 soldier_id=s.soldier_id, full_name=s.full_name, counted=s.counted, reason=s.reason,
                 exemption_names=(s.exemption_names or None) if can_view_exemptions else None,
                 rank=s.rank,
+                partial_exemption_names=(s.partial_exemption_names or None) if can_view_exemptions else None,
             )
             for s in r.soldiers
         ],
+        partial_exemption_count=r.partial_exemption_count,
     )
 
 
