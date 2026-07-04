@@ -93,3 +93,85 @@ def test_ranks_endpoint(client, admin_session):
     assert "enlisted" in data and "officers" in data
     assert "סמל" in data["enlisted"]
     assert "סרן" in data["officers"]
+
+
+import json
+
+
+def test_soldier_submits_military_license_dm_approves(client, admin_session):
+    dm, node = _setup_dm(admin_session, "prof_dm_005")
+    s = create_soldier(admin_session, personal_number="prof_s_005", hierarchy_node_id=node.id)
+
+    resp = client.post(
+        f"/api/soldiers/{s.id}/field-updates",
+        json={
+            "field_name": "military_driving_license",
+            "new_value": json.dumps({"has_license": True, "expiry_date": "2028-01-01"}),
+        },
+        headers=auth_headers(s),
+    )
+    assert resp.status_code == 201
+    update_id = resp.json()["id"]
+
+    resp2 = client.post(
+        f"/api/soldiers/{s.id}/field-updates/{update_id}/approve",
+        json={},
+        headers=auth_headers(dm),
+    )
+    assert resp2.status_code == 200
+
+    profile = client.get(f"/api/soldiers/{s.id}", headers=auth_headers(dm))
+    assert profile.json()["has_military_driving_license"] is True
+    assert profile.json()["military_driving_license_expiry"] == "2028-01-01"
+
+
+def test_commander_below_rasan_cannot_approve_military_license(client, admin_session):
+    node = create_node(admin_session, level="branch", name="branch_prof_006")
+    cmd = create_soldier(admin_session, personal_number="prof_cmd_006", role="commander")
+    cmd.rank = "סרן"
+    node.commander_id = cmd.id
+    admin_session.commit()
+    s = create_soldier(admin_session, personal_number="prof_s_006", hierarchy_node_id=node.id)
+
+    resp = client.post(
+        f"/api/soldiers/{s.id}/field-updates",
+        json={
+            "field_name": "military_driving_license",
+            "new_value": json.dumps({"has_license": True, "expiry_date": None}),
+        },
+        headers=auth_headers(s),
+    )
+    update_id = resp.json()["id"]
+
+    resp2 = client.post(
+        f"/api/soldiers/{s.id}/field-updates/{update_id}/approve",
+        json={},
+        headers=auth_headers(cmd),
+    )
+    assert resp2.status_code == 403
+
+
+def test_commander_rasan_and_above_can_approve_military_license(client, admin_session):
+    node = create_node(admin_session, level="branch", name="branch_prof_007")
+    cmd = create_soldier(admin_session, personal_number="prof_cmd_007", role="commander")
+    cmd.rank = "רסן"
+    node.commander_id = cmd.id
+    admin_session.commit()
+    s = create_soldier(admin_session, personal_number="prof_s_007", hierarchy_node_id=node.id)
+
+    resp = client.post(
+        f"/api/soldiers/{s.id}/field-updates",
+        json={
+            "field_name": "military_driving_license",
+            "new_value": json.dumps({"has_license": True, "expiry_date": None}),
+        },
+        headers=auth_headers(s),
+    )
+    update_id = resp.json()["id"]
+
+    resp2 = client.post(
+        f"/api/soldiers/{s.id}/field-updates/{update_id}/approve",
+        json={},
+        headers=auth_headers(cmd),
+    )
+    assert resp2.status_code == 200, resp2.text

@@ -26,7 +26,7 @@ ALL_RANKS = ENLISTED_RANKS + OFFICER_RANKS
 RANKS_RASAN_AND_ABOVE = OFFICER_RANKS[OFFICER_RANKS.index("רסן"):]
 # ["רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
 
-SOLDIER_EDITABLE_FIELDS = {"last_mitvahim_date", "last_alal_date", "gender", "rank", "phone"}
+SOLDIER_EDITABLE_FIELDS = {"last_mitvahim_date", "last_alal_date", "gender", "rank", "phone", "military_driving_license"}
 
 
 class DutyTypeRequirements(BaseModel):
@@ -38,6 +38,7 @@ class DutyTypeRequirements(BaseModel):
     officers_allowed: bool = True
     enlisted_allowed: bool = True
     requires_bahad1: bool = False
+    requires_military_driving_license: bool = False
 
 
 def inferred_service_type(soldier: Soldier, today: date | None = None) -> str | None:
@@ -89,6 +90,12 @@ def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_month
 
     if reqs.requires_bahad1 and not soldier.bahad1_graduate:
         return False
+
+    if reqs.requires_military_driving_license:
+        if not soldier.has_military_driving_license:
+            return False
+        if soldier.military_driving_license_expiry and soldier.military_driving_license_expiry < today:
+            return False
 
     return True
 

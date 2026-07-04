@@ -17,6 +17,7 @@ export interface DutyType {
     officers_allowed?: boolean;
     enlisted_allowed?: boolean;
     requires_bahad1?: boolean;
+    requires_military_driving_license?: boolean;
   };
   contact_name: string | null;
   contact_phone: string | null;

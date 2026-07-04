@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import string
@@ -196,6 +197,12 @@ def update_soldier_profile(
 
 
 def _get_current_value(soldier: Soldier, field_name: str) -> str | None:
+    if field_name == "military_driving_license":
+        return json.dumps({
+            "has_license": bool(soldier.has_military_driving_license),
+            "expiry_date": soldier.military_driving_license_expiry.isoformat()
+                if soldier.military_driving_license_expiry else None,
+        })
     raw = getattr(soldier, field_name, None)
     if raw is None:
         return None
@@ -269,6 +276,11 @@ def approve_field_update(
         soldier.rank = raw
     elif field == "phone":
         soldier.phone = raw
+    elif field == "military_driving_license":
+        payload = json.loads(raw)
+        soldier.has_military_driving_license = payload["has_license"]
+        expiry = payload.get("expiry_date")
+        soldier.military_driving_license_expiry = date.fromisoformat(expiry) if expiry else None
     update.status = "approved"
     update.decided_by = actor_id
     update.decided_at = datetime.now(tz=timezone.utc)

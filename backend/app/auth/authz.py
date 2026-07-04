@@ -57,6 +57,7 @@ class Action:
     SHIFT_MANAGE = "shift.manage"
     POTENTIAL_READ = "potential.read"
     POTENTIAL_MODIFIER_MANAGE = "potential.modifier_manage"
+    MILITARY_LICENSE_DECIDE = "military_license.decide"
 
 
 _DM_ACTIONS = {
@@ -77,6 +78,7 @@ _DM_ACTIONS = {
     Action.ENROLLMENT_APPROVE,
     Action.POTENTIAL_READ,
     Action.POTENTIAL_MODIFIER_MANAGE,
+    Action.MILITARY_LICENSE_DECIDE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -149,6 +151,12 @@ def can(
             ):
                 allowed = True
         elif action == Action.DM_SCOPE_MANAGE:
+            if (
+                bool(user.rank and user.rank in RANKS_RASAN_AND_ABOVE)
+                and _node_in_scope(target_node, roots)
+            ):
+                allowed = True
+        elif action == Action.MILITARY_LICENSE_DECIDE:
             if (
                 bool(user.rank and user.rank in RANKS_RASAN_AND_ABOVE)
                 and _node_in_scope(target_node, roots)

@@ -104,6 +104,7 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
         { key: "requires_mitvahim", label: t("eligibility.requires_mitvahim") },
         { key: "requires_alal", label: t("eligibility.requires_alal") },
         { key: "requires_bahad1", label: t("eligibility.requires_bahad1") },
+        { key: "requires_military_driving_license", label: t("eligibility.requires_military_driving_license") },
         { key: "officers_allowed", label: t("eligibility.officers_allowed"), defaultVal: true },
         { key: "enlisted_allowed", label: t("eligibility.enlisted_allowed"), defaultVal: true },
       ].map(({ key, label, defaultVal }) => (
