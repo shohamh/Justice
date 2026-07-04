@@ -29,13 +29,18 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
   const dutyEvents = useMemo(() =>
     duties.map((d) => {
       // start_at/end_at carry the duty's real wall-clock times so the week
-      // view can position it within hour slots.
+      // view can position it within hour slots. Duties that just use the
+      // full-day default (00:00-23:59) have no real hour data, so treat them
+      // as all-day: otherwise the week view crams them into narrow near-24h
+      // slivers instead of a compact banner.
+      const isFullDayDefault = d.start_time === "00:00" && d.end_time === "23:59";
       const color = dutyTypeColor(d.duty_type_id);
       return {
         id: d.assignment_id,
         title: typeNames[d.duty_type_id] ?? "תורנות",
-        start: d.start_at,
-        end: d.end_at,
+        start: isFullDayDefault ? d.start_date : d.start_at,
+        end: isFullDayDefault ? d.end_date : d.end_at,
+        allDay: isFullDayDefault,
         backgroundColor: color,
         borderColor: color,
         extendedProps: { duty: d },

@@ -69,6 +69,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       title: string;
       start: string;
       end: string;
+      allDay: boolean;
       backgroundColor: string;
       borderColor: string;
       classNames: string[];
@@ -76,13 +77,17 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     }[] = [];
     for (const s of filteredShifts) {
       // start_at/end_at carry the shift's real wall-clock times, so the week
-      // view can position events within hour slots; the month view still
-      // renders them as day-spanning blocks regardless of time-of-day.
+      // view can position events within hour slots. Shifts that just use the
+      // full-day default (00:00-23:59) have no real hour data, so treat them
+      // as all-day: otherwise the week view crams them into narrow near-24h
+      // slivers instead of a compact banner.
+      const isFullDayDefault = s.start_time === "00:00" && s.end_time === "23:59";
       out.push({
         id: s.id,
         title: `${s.duty_type_name} — ${s.duty_location_name}`,
-        start: s.start_at,
-        end: s.end_at,
+        start: isFullDayDefault ? s.start_date : s.start_at,
+        end: isFullDayDefault ? s.end_date : s.end_at,
+        allDay: isFullDayDefault,
         backgroundColor: s.duty_type_color,
         borderColor: s.duty_type_color,
         classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
