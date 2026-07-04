@@ -18,6 +18,15 @@ import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 import { sortNodesByTree } from "../../utils/sortNodesByTree";
 import { WHOLE_ORG_ID } from "../../utils/wholeOrg";
+import { useAuth } from "../../auth/AuthContext";
+import ExemptionTypeViewModal from "../../components/ExemptionTypeViewModal";
+import {
+  DutyType,
+  ExemptionType,
+  getAllExemptionDutyTypeMaps,
+  listDutyTypes,
+  listExemptionTypes,
+} from "../../api/dutyConfig";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
@@ -34,6 +43,12 @@ export default function PotentialPage() {
   const [newReason, setNewReason] = useState("");
   const [newDelta, setNewDelta] = useState(0);
   const [exportRows, setExportRows] = useState<NodeDTO[]>([]);
+  const { user } = useAuth();
+  const canEditExemptions = user?.role === "admin" || !!user?.is_duty_manager;
+  const [exemptionTypes, setExemptionTypes] = useState<ExemptionType[]>([]);
+  const [exemptionDutyMap, setExemptionDutyMap] = useState<Record<string, string[]>>({});
+  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
+  const [viewingExemption, setViewingExemption] = useState<ExemptionType | null>(null);
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
@@ -81,6 +96,16 @@ export default function PotentialPage() {
 
   useEffect(() => {
     fetchFullTree().then(setTreeNodes);
+  }, []);
+
+  useEffect(() => {
+    Promise.all([listExemptionTypes(), getAllExemptionDutyTypeMaps(), listDutyTypes()]).then(
+      ([ets, map, dts]) => {
+        setExemptionTypes(ets);
+        setExemptionDutyMap(map);
+        setDutyTypes(dts);
+      },
+    );
   }, []);
 
   useEffect(() => {
@@ -149,13 +174,22 @@ export default function PotentialPage() {
   }
 
   function reasonText(s: SoldierPotentialDetail): string {
-    if (s.counted) return "";
+    if (s.counted) {
+      return s.partial_exemption_names && s.partial_exemption_names.length > 0
+        ? s.partial_exemption_names.join(", ")
+        : "";
+    }
     if (s.reason === "exempted") {
       return s.exemption_names && s.exemption_names.length > 0
         ? s.exemption_names.join(", ")
         : t("potential.reason_exempted_restricted");
     }
     return reasonLabel(s.reason);
+  }
+
+  function openExemptionModal(name: string) {
+    const et = exemptionTypes.find((e) => e.name === name);
+    if (et) setViewingExemption(et);
   }
 
   const cols: ColDef<NodeDTO>[] = [
@@ -276,7 +310,26 @@ export default function PotentialPage() {
     {
       id: "reason",
       header: t("potential.reason_col"),
-      cell: (s) => (s.counted ? "—" : reasonText(s)),
+      cell: (s) => {
+        if (s.counted) {
+          if (!s.partial_exemption_names || s.partial_exemption_names.length === 0) return "—";
+          return (
+            <span className="flex flex-wrap gap-1">
+              {s.partial_exemption_names.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => openExemptionModal(name)}
+                  className="text-xs text-blue-600 dark:text-blue-400 underline"
+                >
+                  {name}
+                </button>
+              ))}
+            </span>
+          );
+        }
+        return reasonText(s);
+      },
       filterValue: (s) => reasonText(s),
     },
   ];
@@ -353,6 +406,21 @@ export default function PotentialPage() {
           </div>
         )}
       </section>
+
+      {viewingExemption && (
+        <ExemptionTypeViewModal
+          exemptionType={viewingExemption}
+          mappedDutyTypeIds={exemptionDutyMap[viewingExemption.id] ?? []}
+          dutyTypes={dutyTypes}
+          canEdit={canEditExemptions}
+          onClose={() => setViewingExemption(null)}
+          onSaved={(updated, mappedIds) => {
+            setExemptionTypes((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+            setExemptionDutyMap((prev) => ({ ...prev, [updated.id]: mappedIds }));
+            setViewingExemption(updated);
+          }}
+        />
+      )}
     </Layout>
   );
 }
