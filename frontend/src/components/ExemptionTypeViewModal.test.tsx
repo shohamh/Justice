@@ -78,6 +78,43 @@ test("saving edits calls updateExemptionType and setExemptionDutyTypes, then ret
   expect(mockSetExemptionDutyTypes).toHaveBeenCalledWith("e1", ["d1", "d2"]);
 });
 
+test("re-syncs selected duty types when mappedDutyTypeIds prop changes after save (re-edit shows fresh selection)", async () => {
+  const onSaved = vi.fn();
+  const { rerender } = render(
+    <ExemptionTypeViewModal
+      exemptionType={exemptionType}
+      mappedDutyTypeIds={["d1"]}
+      dutyTypes={dutyTypes}
+      canEdit={true}
+      onClose={() => {}}
+      onSaved={onSaved}
+    />
+  );
+  fireEvent.click(screen.getByTestId("exemption-edit-pencil"));
+  // Deselect d1 locally — this is the stale pre-save selection that must NOT
+  // reappear once the caller passes the fresh post-save mappedDutyTypeIds.
+  fireEvent.click(screen.getByTestId("exemption-edit-dt-שמירה"));
+  fireEvent.click(screen.getByTestId("exemption-edit-save"));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+
+  // Simulate the caller (PotentialPage) re-rendering with the fresh mappedDutyTypeIds after save
+  // (setExemptionDutyTypes mock resolves to ["d1", "d2"], i.e. both duty types remain mapped).
+  rerender(
+    <ExemptionTypeViewModal
+      exemptionType={exemptionType}
+      mappedDutyTypeIds={["d1", "d2"]}
+      dutyTypes={dutyTypes}
+      canEdit={true}
+      onClose={() => {}}
+      onSaved={onSaved}
+    />
+  );
+
+  fireEvent.click(screen.getByTestId("exemption-edit-pencil"));
+  expect(screen.getByTestId("exemption-edit-dt-שמירה")).toBeChecked();
+  expect(screen.getByTestId("exemption-edit-dt-מטבח")).toBeChecked();
+});
+
 test("shows an error and stays in edit mode when updateExemptionType fails", async () => {
   mockUpdateExemptionType.mockRejectedValueOnce({ response: { data: { detail: "שגיאת שרת" } } });
   const onSaved = vi.fn();

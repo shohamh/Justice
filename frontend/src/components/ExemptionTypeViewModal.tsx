@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyType, ExemptionType, setExemptionDutyTypes, updateExemptionType } from "../api/dutyConfig";
 
@@ -23,6 +23,10 @@ export default function ExemptionTypeViewModal({
   const [selectedDutyTypeIds, setSelectedDutyTypeIds] = useState<string[]>(mappedDutyTypeIds);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedDutyTypeIds(mappedDutyTypeIds);
+  }, [mappedDutyTypeIds]);
 
   const mappedNames = dutyTypes.filter((d) => mappedDutyTypeIds.includes(d.id)).map((d) => d.name);
 

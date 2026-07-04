@@ -137,6 +137,8 @@
     "active": "פעיל",
     "add": "הוסף",
     "save": "שמור",
+    "edit": "ערוך",
+    "cancel": "ביטול",
     "exempts_from": "פוטר מ-",
     "global": "גלובלי",
     "global_exempt_desc": "פוטר מכל סוגי התורנויות",
