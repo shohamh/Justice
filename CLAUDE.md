@@ -48,12 +48,24 @@ frontend/src/
 
 ## Branch workflow
 
-- Feature branches off `master`, small per-task commits
-- Do NOT commit directly to `master`
+- Feature branches (including worktrees) branch off `dev`, small per-task commits
+- Finished work merges into `dev` first — never directly into `master`. Use the
+  project skill `merge-worktree-to-dev` (instead of the generic
+  `finishing-a-development-branch` flow) to do this.
+- `dev` is periodically promoted to `master` (a "release"). Use the project
+  skill `release-dev-to-master` for this — it merges `dev` into `master` and
+  updates the changelog in the same step (see below).
+- Do NOT commit directly to `master` or `dev`
 
-## Daily changelog
+## Changelog
 
-At the end of each working session (evening), update `frontend/CHANGELOG.md` with a new `## YYYY-MM-DD` section summarising the day's changes. Group into **Features**, **Fixes**, and **Chores** as appropriate. Use the git log since the previous changelog entry (`git log --oneline <last-date-sha>..HEAD`) to reconstruct what shipped. Commit the update directly to `master` with message `docs: update changelog YYYY-MM-DD`.
+`frontend/CHANGELOG.md` is updated as part of every `dev` → `master` promotion
+(via the `release-dev-to-master` skill), not on an ad hoc daily basis. The
+skill adds a new `## YYYY-MM-DD` section summarising everything that shipped
+since the previous changelog entry, grouped into **Features**, **Fixes**, and
+**Chores**, reconstructed from `git log --oneline <last-date-sha>..dev`. The
+changelog commit lands on `master` as part of the same merge, with message
+`docs: update changelog YYYY-MM-DD`.
 
 ## Common one-liners
 
