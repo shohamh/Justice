@@ -328,6 +328,8 @@
   "unit_calendar": {
     "title": "יומן יחידה",
     "today": "היום",
+    "view_month": "חודש",
+    "view_week": "שבוע",
     "soldier": "חייל",
     "duty_type": "סוג תורנות",
     "location": "מיקום",
