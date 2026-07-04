@@ -10,9 +10,11 @@ import {
   listModifiers,
   createModifier,
   deleteModifier,
+  getEffortGap,
   PotentialResult,
   PotentialModifierDTO,
   SoldierPotentialDetail,
+  NodeEffortPotential,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
@@ -49,6 +51,7 @@ export default function PotentialPage() {
   const [exemptionDutyMap, setExemptionDutyMap] = useState<Record<string, string[]>>({});
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
   const [viewingExemption, setViewingExemption] = useState<ExemptionType | null>(null);
+  const [effortGapByNode, setEffortGapByNode] = useState<Map<string, NodeEffortPotential>>(new Map());
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
@@ -128,6 +131,12 @@ export default function PotentialPage() {
     if (expandedNodeId && expandedNodeId !== WHOLE_ORG_ID) listModifiers(expandedNodeId).then(setModifiers);
   }, [expandedNodeId]);
 
+  useEffect(() => {
+    void getEffortGap(referenceDate).then((rows) => {
+      setEffortGapByNode(new Map(rows.map((r) => [r.node_id, r])));
+    }).catch(() => {});
+  }, [referenceDate]);
+
   async function handleAddModifier() {
     if (!expandedNodeId || expandedNodeId === WHOLE_ORG_ID || !newReason.trim()) return;
     await createModifier({ hierarchy_node_id: expandedNodeId, delta: newDelta, reason: newReason, start_date: referenceDate });
@@ -193,6 +202,17 @@ export default function PotentialPage() {
     if (et) setViewingExemption(et);
   }
 
+  function gapColor(gap: number | null): string {
+    if (gap === null) return "text-gray-400";
+    if (gap > 1.3) return "text-red-600 dark:text-red-400 font-semibold";
+    if (gap < 0.7) return "text-blue-600 dark:text-blue-400 font-semibold";
+    return "text-gray-700 dark:text-gray-300";
+  }
+
+  function formatGap(gap: number | null): string {
+    return gap === null ? "—" : gap.toFixed(2);
+  }
+
   const cols: ColDef<NodeDTO>[] = [
     {
       id: "name",
@@ -256,6 +276,18 @@ export default function PotentialPage() {
       headerTooltip: t("potential.final_potential_tooltip"),
       cell: (n) => displayResults[n.id]?.final_potential ?? "-",
       sortValue: (n) => displayResults[n.id]?.final_potential ?? -1,
+    },
+    {
+      id: "sibling_gap",
+      header: t("potential.sibling_gap"),
+      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.sibling_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null)}</span>,
+      sortValue: (n) => effortGapByNode.get(n.id)?.sibling_gap ?? -1,
+    },
+    {
+      id: "global_gap",
+      header: t("potential.global_gap"),
+      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.global_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.global_gap ?? null)}</span>,
+      sortValue: (n) => effortGapByNode.get(n.id)?.global_gap ?? -1,
     },
     {
       id: "pct_of_parent",

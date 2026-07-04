@@ -617,7 +617,9 @@
     "modifier_until": "עד",
     "modifier_delete": "מחק",
     "modifier_reason_placeholder": "סיבה (חובה)",
-    "modifier_add": "הוסף"
+    "modifier_add": "הוסף",
+    "sibling_gap": "פער מול אחים (יחס)",
+    "global_gap": "פער מול הארגון (יחס)"
   },
   "shift_templates": {
     "title": "תבניות משמרת",
