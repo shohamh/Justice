@@ -192,6 +192,15 @@ def test_commander_in_chain_can_see_private(admin_session):
     assert authz.can_see_private(admin_session, viewer=cmd, target=target)
 
 
+def test_admin_who_is_also_commander_can_see_private_in_scope(admin_session):
+    d = create_node(admin_session, level="department", name="csp-d7")
+    admin_cmd = create_soldier(admin_session, personal_number="csp-adm002", role="admin")
+    d.commander_id = admin_cmd.id
+    admin_session.flush()
+    target = create_soldier(admin_session, personal_number="csp008", hierarchy_node_id=d.id)
+    assert authz.can_see_private(admin_session, viewer=admin_cmd, target=target)
+
+
 def test_plain_soldier_cannot_see_peer_private(admin_session):
     d = create_node(admin_session, level="department", name="csp-d6")
     viewer = create_soldier(admin_session, personal_number="csp006", hierarchy_node_id=d.id)

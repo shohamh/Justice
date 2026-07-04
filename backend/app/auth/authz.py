@@ -159,17 +159,26 @@ def can(
     return allowed
 
 
+def can_see_private_node(session: Session, viewer: Soldier, node: HierarchyNode | None) -> bool:
+    """Return True iff viewer's commander/duty-manager scope covers `node`.
+
+    Deliberately does not grant admins a blanket bypass here: seeing another
+    soldier's private fields (exemption reasons, contact info) requires being
+    in-scope as a commander or duty manager, same as anyone else. An admin
+    who is *also* a commander still qualifies via that scope.
+    """
+    if is_commander(session, viewer.id) or is_duty_manager(session, viewer.id):
+        roots = scope_root_ids(session, viewer)
+        return _node_in_scope(node, roots)
+    return False
+
+
 def can_see_private(session: Session, viewer: Soldier, target: Soldier) -> bool:
     """Return True iff viewer may read private fields on target's record."""
     if viewer.id == target.id:
         return True
-    if viewer.role == "admin":
-        return False
-    if is_commander(session, viewer.id) or is_duty_manager(session, viewer.id):
-        roots = scope_root_ids(session, viewer)
-        node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
-        return _node_in_scope(node, roots)
-    return False
+    node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+    return can_see_private_node(session, viewer, node)
 
 
 def authorize(

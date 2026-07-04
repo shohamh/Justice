@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import Action, authorize, can_see_private_node
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
@@ -73,14 +73,7 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
 
 
 def _can_view_exemptions(session: Session, user: Soldier, node: HierarchyNode) -> bool:
-    return can(
-        user,
-        Action.EXEMPTION_READ,
-        target_node=node,
-        roots=scope_root_ids(session, user),
-        is_commander=is_commander(session, user.id),
-        is_duty_manager=is_duty_manager(session, user.id),
-    )
+    return can_see_private_node(session, user, node)
 
 
 @router.get("", response_model=PotentialOut)
