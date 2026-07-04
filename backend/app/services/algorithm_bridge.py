@@ -43,6 +43,8 @@ from app.db.models import (
 )
 from app.services import scoring as scoring_svc
 from app.services.effort_score import EFFORT_SCALE, EffortData, compute_effort_data, quarter_start
+from app.services.rest import effective_assignment_end, resolve_rest_hours
+from app.services.settings_loader import get_setting_int
 
 _cancel_events: dict[str, threading.Event] = {}
 
@@ -325,6 +327,8 @@ def load_duty_blocks_from_shifts(
     type_ids = {s.duty_type_id for s in shifts}
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
     score_map = {dt.id: dt.score_per_day for dt in types_q}
+    default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
+    rest_hours_map = {dt.id: resolve_rest_hours(dt, default_rest_hours) for dt in types_q}
 
     # Batch-load per-shift node quotas, then expand each shift's quota dict
     # ({node_id: count}) into a flat list of singleton {node_id: 1} dicts — one per
@@ -389,6 +393,7 @@ def load_duty_blocks_from_shifts(
                 is_reserve=False,
                 eligible_node_ids=shift.eligible_node_ids,
                 node_quotas=expanded_quotas[i] if i < len(expanded_quotas) else None,
+                rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
@@ -407,6 +412,7 @@ def load_duty_blocks_from_shifts(
                 score_per_day=r_score,
                 is_reserve=True,
                 eligible_node_ids=shift.eligible_node_ids,
+                rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
             ))
             block_to_shift[block_id] = shift.id
 
@@ -506,16 +512,30 @@ def load_existing_assignments(
         .scalars()
         .all()
     )
-    return [
-        ExistingAssignment(
-            soldier_id=a.soldier_id,
-            duty_type_id=a.duty_type_id,
-            start_date=a.start_date,
-            end_date=a.end_date,
-            is_reserve=a.is_reserve,
+    if not rows:
+        return []
+
+    type_ids = {a.duty_type_id for a in rows}
+    types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
+    default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
+    rest_hours_map = {dt.id: resolve_rest_hours(dt, default_rest_hours) for dt in types_q}
+
+    result: list[ExistingAssignment] = []
+    for a in rows:
+        end_dt = effective_assignment_end(session, a)
+        result.append(
+            ExistingAssignment(
+                soldier_id=a.soldier_id,
+                duty_type_id=a.duty_type_id,
+                start_date=a.start_date,
+                end_date=a.end_date,
+                is_reserve=a.is_reserve,
+                rest_hours=rest_hours_map.get(a.duty_type_id, default_rest_hours),
+                rest_effective_end_date=end_dt.date(),
+                rest_effective_end_time=end_dt.strftime("%H:%M"),
+            )
         )
-        for a in rows
-    ]
+    return result
 
 
 def build_hierarchy_maps(

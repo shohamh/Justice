@@ -197,3 +197,80 @@ def test_block_score_uses_score_days_not_calendar_days_touched():
     )
     # _block_score returns milli-units (x1000): 7 days * score_per_day(2) * 1000
     assert _block_score(block) == 7 * 2 * 1000
+
+
+def test_rest_allows_next_day_start_with_enough_gap():
+    """Matches the design spec's explicit scenario: a duty ending 17:00,
+    followed by another starting 08:00 the next day (15h gap), must NOT be
+    blocked by a 12h rest requirement — both go to the same soldier."""
+    solo = _soldier(0.0)
+    d1 = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2),
+        start_time="08:00", end_time="17:00",
+        score_per_day=Decimal("1.0"), rest_hours=12,
+    )
+    d2 = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=d1.duty_type_id, duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 9, 2), end_date=date(2026, 9, 3),
+        start_time="08:00", end_time="17:00",
+        score_per_day=Decimal("1.0"), rest_hours=12,
+    )
+    assigned = _solve([solo], [d1, d2], T=7, Wt=14, Wr=28, alpha=Decimal("0"))
+    assert assigned[d1.id] == solo.id
+    assert assigned[d2.id] == solo.id
+
+
+def test_rest_blocks_insufficient_gap_between_candidates():
+    """Two candidate duties with only an 11h gap cannot both go to the same
+    soldier when rest_hours=12 — but with 2 soldiers, they're split."""
+    s1, s2 = _soldier(0.0), _soldier(0.0)
+    d1 = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 9, 1), end_date=date(2026, 9, 2),
+        start_time="08:00", end_time="17:00",
+        score_per_day=Decimal("1.0"), rest_hours=12,
+    )
+    d2 = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=d1.duty_type_id, duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 9, 2), end_date=date(2026, 9, 3),
+        start_time="04:00", end_time="12:00",
+        score_per_day=Decimal("1.0"), rest_hours=12,
+    )
+    assigned = _solve([s1, s2], [d1, d2], T=7, Wt=14, Wr=28, alpha=Decimal("0"))
+    assert assigned[d1.id] != assigned[d2.id]
+
+
+def test_rest_blocks_candidate_against_existing_assignment():
+    """An existing (published) assignment ending at 17:00 blocks a candidate
+    starting at 04:00 the next day (11h gap) for that same soldier."""
+    solo = _soldier(0.0)
+    existing = [
+        ExistingAssignment(
+            soldier_id=solo.id,
+            duty_type_id=uuid.uuid4(),
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 2),
+            rest_hours=12,
+            rest_effective_end_date=date(2026, 9, 1),
+            rest_effective_end_time="17:00",
+        )
+    ]
+    candidate = DutyBlock(
+        id=uuid.uuid4(), duty_type_id=uuid.uuid4(), duty_location_id=uuid.uuid4(),
+        start_date=date(2026, 9, 2), end_date=date(2026, 9, 3),
+        start_time="04:00", end_time="12:00",
+        score_per_day=Decimal("1.0"),
+    )
+    settings = SolverSettings(T=7, Wt=14, Wr=28, alpha=Decimal("0"))
+    # coverage="soft": with only one (blocked) soldier eligible, hard coverage
+    # would force sum(vars)==1 against a blocked var, making the model
+    # genuinely INFEASIBLE rather than leaving the duty unassigned — soft
+    # coverage lets us observe the block itself (x forced to 0).
+    model, x = build_model([solo], [candidate], existing, settings, coverage="soft")
+    solver = CpSolver()
+    solver.parameters.max_time_in_seconds = 5
+    status = solver.Solve(model)
+    assert solver.StatusName(status) in ("OPTIMAL", "FEASIBLE")
+    assert (0, 0) in x, "candidate should be eligible (just blocked by rest, not excluded upstream)"
+    assert solver.Value(x[(0, 0)]) == 0

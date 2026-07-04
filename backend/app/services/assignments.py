@@ -6,6 +6,8 @@ from datetime import date
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import combine_date_time
+from app.algorithm.rest import last_duty_day, rest_violated
 from app.audit.writer import write_audit
 from app.db.models import (
     DutyAssignment,
@@ -19,6 +21,8 @@ from app.db.models import (
     SoldierExemption,
 )
 from app.services.notifications import create_notification
+from app.services.rest import effective_assignment_end, resolve_rest_hours
+from app.services.settings_loader import get_setting_int
 
 _OVERRIDE_REASONS = {"replacement", "no_show_covered", "cancelled", "manual_edit"}
 
@@ -44,6 +48,52 @@ def _has_overlap(
     if exclude_id is not None:
         q = q.where(DutyAssignment.id != exclude_id)
     return session.execute(q).first() is not None
+
+
+def _has_insufficient_rest(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    duty_type_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    start_time: str,
+    end_time: str,
+    exclude_id: uuid.UUID | None = None,
+) -> bool:
+    q = select(DutyAssignment).where(
+        DutyAssignment.soldier_id == soldier_id,
+        DutyAssignment.status != "cancelled",
+    )
+    if exclude_id is not None:
+        q = q.where(DutyAssignment.id != exclude_id)
+    others = session.execute(q).scalars().all()
+    if not others:
+        return False
+
+    default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
+    this_type = session.get(DutyType, duty_type_id)
+    this_rest_hours = resolve_rest_hours(this_type, default_rest_hours) if this_type else default_rest_hours
+    this_last_day = last_duty_day(start_date, end_date)
+    this_end_dt = combine_date_time(this_last_day, end_time)
+
+    for other in others:
+        if other.start_date >= end_date:
+            # other starts after this one ends: this one's rest_hours must be
+            # satisfied before other's start.
+            if rest_violated(this_end_dt, other.start_date, other.start_time, this_rest_hours):
+                return True
+        elif other.end_date <= start_date:
+            # other ends before this one starts: other's rest_hours must be
+            # satisfied before this one's start.
+            other_type = session.get(DutyType, other.duty_type_id)
+            other_rest_hours = (
+                resolve_rest_hours(other_type, default_rest_hours) if other_type else default_rest_hours
+            )
+            other_end_dt = effective_assignment_end(session, other)
+            if rest_violated(other_end_dt, start_date, start_time, other_rest_hours):
+                return True
+    return False
 
 
 def _has_blocking_exemption(
@@ -87,8 +137,23 @@ def create_assignment(
         raise AssignmentError("duty_type_not_found")
     if session.get(DutyLocation, duty_location_id) is None:
         raise AssignmentError("location_not_found")
+    start_time, end_time = "00:00", "23:59"
+    if duty_shift_id is not None:
+        shift = session.get(DutyShift, duty_shift_id)
+        if shift is not None:
+            start_time, end_time = shift.start_time, shift.end_time
     if _has_overlap(session, soldier_id=soldier_id, start_date=start_date, end_date=end_date):
         raise AssignmentError("overlap")
+    if _has_insufficient_rest(
+        session,
+        soldier_id=soldier_id,
+        duty_type_id=duty_type_id,
+        start_date=start_date,
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+    ):
+        raise AssignmentError("insufficient_rest")
     if _has_blocking_exemption(
         session,
         soldier_id=soldier_id,
@@ -97,11 +162,6 @@ def create_assignment(
         end_date=end_date,
     ):
         raise AssignmentError("exempted")
-    start_time, end_time = "00:00", "23:59"
-    if duty_shift_id is not None:
-        shift = session.get(DutyShift, duty_shift_id)
-        if shift is not None:
-            start_time, end_time = shift.start_time, shift.end_time
     a = DutyAssignment(
         soldier_id=soldier_id,
         duty_type_id=duty_type_id,

@@ -17,7 +17,7 @@ from app.services import scoring as scoring_svc
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
-_CONFLICT = {"overlap", "exempted"}
+_CONFLICT = {"overlap", "exempted", "insufficient_rest"}
 
 
 class AssignmentOut(BaseModel):

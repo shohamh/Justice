@@ -156,9 +156,16 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         defaultValue: true,
       },
       {
+        key: "duty.default_rest_hours",
+        label: "שעות מנוחה בסיסיות בין תורנויות",
+        description: "מספר שעות המנוחה המינימלי הנדרש לחייל בין סיום תורנות אחת לתחילת הבאה. ניתן לשנות פר-סוג תורנות.",
+        type: "number" as const,
+        defaultValue: 12,
+      },
+      {
         key: "gimalim.default_rest_days",
-        label: "ימי מנוחה ברירת מחדל",
-        description: "מספר ימים מינימלי מסוף התורנות הנוכחית לתחילת השיבוץ מחדש (ניתן לשינוי בכל פעולת גימלים)",
+        label: "ימי מנוחה נוספים לגימלים",
+        description: "מספר ימים נוספים, מעל שעות המנוחה הבסיסיות, לפני שיבוץ חוזר לחייל ששוחרר בגימלים (ניתן לשינוי בכל פעולת גימלים)",
         type: "number" as const,
         defaultValue: 7,
       },
