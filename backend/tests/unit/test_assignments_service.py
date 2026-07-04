@@ -98,6 +98,48 @@ def test_create_rejects_overlap(admin_session):
     assert "overlap" in str(exc.value)
 
 
+def test_create_rejects_insufficient_rest_after_prior_duty(admin_session):
+    s = create_soldier(admin_session, personal_number="8100010")
+    dt = _dt(admin_session, "שמירה-rest1")
+    loc = _loc(admin_session, "מוצב-rest1")
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2), notes=None, actor_id=None,
+    )
+    admin_session.flush()
+    # Prior assignment ends 23:59 on 06-01 (default end_time). New one starts
+    # 00:00 on 06-02 (default start_time) — 1 minute gap, violates any rest > 0.
+    from app.db.models import SystemSetting
+    admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
+    admin_session.flush()
+    with pytest.raises(AssignmentError) as exc:
+        create_assignment(
+            admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+            start_date=date(2026, 6, 2), end_date=date(2026, 6, 3), notes=None, actor_id=None,
+        )
+    assert str(exc.value) == "insufficient_rest"
+
+
+def test_create_allows_sufficient_rest_gap(admin_session):
+    s = create_soldier(admin_session, personal_number="8100011")
+    dt = _dt(admin_session, "שמירה-rest2")
+    loc = _loc(admin_session, "מוצב-rest2")
+    create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 5), end_date=date(2026, 6, 8), notes=None, actor_id=None,
+    )
+    admin_session.flush()
+    from app.db.models import SystemSetting
+    admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
+    admin_session.flush()
+    # Prior ends 23:59 on 06-07; new one starts 00:00 on 06-10 — plenty of gap.
+    a = create_assignment(
+        admin_session, soldier_id=s.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 12), notes=None, actor_id=None,
+    )
+    assert a.start_date == date(2026, 6, 10)
+
+
 def test_create_rejects_exempted_soldier(admin_session):
     s = create_soldier(admin_session, personal_number="8100004")
     dt = _dt(admin_session, "שמירה-a4")

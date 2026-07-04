@@ -58,6 +58,35 @@ def test_overlap_returns_409(client: TestClient, admin_session: Session):
     assert r.json()["detail"] == "overlap"
 
 
+def test_insufficient_rest_returns_409(client: TestClient, admin_session: Session):
+    from app.db.models import SystemSetting
+
+    admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number="5400010", role="admin")
+    target = create_soldier(admin_session, personal_number="5400011", role="soldier")
+    dt, loc = _dt_loc(admin_session, "api-rest1")
+    body = {
+        "soldier_id": str(target.id),
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2026-10-01",
+        "end_date": "2026-10-02",
+    }
+    assert (
+        client.post("/api/assignments", headers=auth_headers(admin), json=body).status_code == 201
+    )
+    # Prior assignment ends 23:59 on 10-01 (default end_time); this one starts
+    # 00:00 on 10-02 (default start_time) — 1 minute gap, violates 12h rest.
+    r = client.post(
+        "/api/assignments",
+        headers=auth_headers(admin),
+        json={**body, "start_date": "2026-10-02", "end_date": "2026-10-03"},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "insufficient_rest"
+
+
 def test_plain_soldier_forbidden_to_create(client: TestClient, admin_session: Session):
     s = create_soldier(admin_session, personal_number="5400005", role="soldier")
     dt, loc = _dt_loc(admin_session, "api3")
