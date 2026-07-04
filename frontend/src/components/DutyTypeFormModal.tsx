@@ -62,8 +62,9 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
     }
     setSaving(true);
     try {
+      const { rest_hours: _droppedRestHours, ...reqsWithoutRestHours } = reqs;
       const mergedReqs = {
-        ...reqs,
+        ...reqsWithoutRestHours,
         ...(restHours.trim() ? { rest_hours: parseInt(restHours, 10) } : {}),
       };
       const payload = {
