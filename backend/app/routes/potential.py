@@ -14,6 +14,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
 from app.services import potential as svc
+from app.services.node_effort_potential import compute_node_effort_potential
 
 router = APIRouter(prefix="/potential", tags=["potential"])
 
@@ -94,6 +95,51 @@ def get_potential(
     ref = date.fromisoformat(reference_date) if reference_date else date.today()
     result = svc.compute_potential(session, node_id=node_id, reference_date=ref)
     return _out(result, can_view_exemptions=_can_view_exemptions(session, user, node))
+
+
+class NodeEffortPotentialOut(BaseModel):
+    node_id: uuid.UUID
+    node_name: str
+    final_potential: int
+    total_effort: float
+    sibling_potential_share: float | None
+    sibling_effort_share: float | None
+    sibling_gap: float | None
+    global_potential_share: float | None
+    global_effort_share: float | None
+    global_gap: float | None
+
+
+class EffortGapOut(BaseModel):
+    nodes: list[NodeEffortPotentialOut]
+
+
+@router.get("/effort-gap", response_model=EffortGapOut)
+def get_effort_gap(
+    reference_date: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> EffortGapOut:
+    authorize(session, user, Action.POTENTIAL_READ, target_node=None)
+    ref = date.fromisoformat(reference_date) if reference_date else date.today()
+    results = compute_node_effort_potential(session, reference_date=ref)
+    return EffortGapOut(
+        nodes=[
+            NodeEffortPotentialOut(
+                node_id=r.node_id,
+                node_name=r.node_name,
+                final_potential=r.final_potential,
+                total_effort=r.total_effort,
+                sibling_potential_share=r.sibling_potential_share,
+                sibling_effort_share=r.sibling_effort_share,
+                sibling_gap=r.sibling_gap,
+                global_potential_share=r.global_potential_share,
+                global_effort_share=r.global_effort_share,
+                global_gap=r.global_gap,
+            )
+            for r in results.values()
+        ]
+    )
 
 
 class ModifierCreateIn(BaseModel):
