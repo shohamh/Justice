@@ -206,3 +206,45 @@ def test_plain_soldier_cannot_see_peer_private(admin_session):
     viewer = create_soldier(admin_session, personal_number="csp006", hierarchy_node_id=d.id)
     target = create_soldier(admin_session, personal_number="csp007", hierarchy_node_id=d.id)
     assert not authz.can_see_private(admin_session, viewer=viewer, target=target)
+
+
+def test_dm_can_decide_military_license_in_scope(admin_session):
+    d = create_node(admin_session, level="department", name="mdl-d1")
+    dm = create_soldier(admin_session, personal_number="7600001", role="duty_manager", hierarchy_node_id=d.id)
+    roots = _roots(admin_session, dm)
+    is_cmd, is_dm = _caps(admin_session, dm)
+    assert authz.can(dm, authz.Action.MILITARY_LICENSE_DECIDE, target_node=d, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
+
+
+def test_commander_below_rasan_cannot_decide_military_license(admin_session):
+    d = create_node(admin_session, level="department", name="mdl-d2")
+    cmd = create_soldier(admin_session, personal_number="7600002", role="commander")
+    cmd.rank = "סרן"
+    d.commander_id = cmd.id
+    admin_session.flush()
+    roots = _roots(admin_session, cmd)
+    is_cmd, is_dm = _caps(admin_session, cmd)
+    assert not authz.can(cmd, authz.Action.MILITARY_LICENSE_DECIDE, target_node=d, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
+
+
+def test_commander_rasan_and_above_can_decide_military_license_in_scope(admin_session):
+    d = create_node(admin_session, level="department", name="mdl-d3")
+    cmd = create_soldier(admin_session, personal_number="7600003", role="commander")
+    cmd.rank = "רסן"
+    d.commander_id = cmd.id
+    admin_session.flush()
+    roots = _roots(admin_session, cmd)
+    is_cmd, is_dm = _caps(admin_session, cmd)
+    assert authz.can(cmd, authz.Action.MILITARY_LICENSE_DECIDE, target_node=d, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
+
+
+def test_commander_rasan_out_of_scope_cannot_decide_military_license(admin_session):
+    d = create_node(admin_session, level="department", name="mdl-d4")
+    other = create_node(admin_session, level="department", name="mdl-d4-other")
+    cmd = create_soldier(admin_session, personal_number="7600004", role="commander")
+    cmd.rank = "רסן"
+    d.commander_id = cmd.id
+    admin_session.flush()
+    roots = _roots(admin_session, cmd)
+    is_cmd, is_dm = _caps(admin_session, cmd)
+    assert not authz.can(cmd, authz.Action.MILITARY_LICENSE_DECIDE, target_node=other, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
