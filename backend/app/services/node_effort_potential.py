@@ -69,6 +69,9 @@ def compute_node_effort_potential(
             e_share = (r.total_effort / total_effort) if total_effort > 0 else None
             setattr(r, potential_attr, p_share)
             setattr(r, effort_attr, e_share)
+            # Gap is intentionally left None (not infinity) when potential share is
+            # zero, even if effort share is nonzero (e.g. negative final_potential
+            # clamped to 0) — callers must distinguish "no data" from "zero potential".
             if p_share is not None and p_share > 0 and e_share is not None:
                 setattr(r, gap_attr, e_share / p_share)
 
@@ -92,6 +95,9 @@ def compute_node_effort_potential(
             e_share = (r.total_effort / org_total_effort) if org_total_effort > 0 else None
             r.global_potential_share = p_share
             r.global_effort_share = e_share
+            # Gap is intentionally left None (not infinity) when potential share is
+            # zero, even if effort share is nonzero (e.g. negative final_potential
+            # clamped to 0) — callers must distinguish "no data" from "zero potential".
             r.global_gap = (e_share / p_share) if (p_share is not None and p_share > 0 and e_share is not None) else None
 
     return results

@@ -7,6 +7,7 @@ from decimal import Decimal
 from app.db.models import DutyType, Soldier
 from app.services.hierarchy import create_node
 from app.services.node_effort_potential import compute_node_effort_potential
+from app.services.potential import create_modifier
 
 
 def _make_soldier(session, *, node_id, rank="טוראי", gender="m"):
@@ -78,3 +79,37 @@ def test_global_share_relative_to_top_level_roots(app_session):
     assert a.global_potential_share is not None
     assert abs(a.global_potential_share - 0.5) < 1e-6
     assert abs(b.global_potential_share - 0.5) < 1e-6
+
+
+def test_negative_final_potential_is_clamped_to_zero_in_shares(app_session):
+    parent = create_node(app_session, level="unit", name="Gap Parent Negative", parent_id=None)
+    app_session.flush()
+    child_neg = create_node(app_session, level="team", name="Gap Child Negative", parent_id=parent.id)
+    child_pos = create_node(app_session, level="team", name="Gap Child Positive", parent_id=parent.id)
+    app_session.flush()
+    # 1 eligible soldier in each child -> raw_eligible_count of 1 apiece before modifiers.
+    _make_soldier(app_session, node_id=child_neg.id)
+    _make_soldier(app_session, node_id=child_pos.id)
+    app_session.add(DutyType(name="שמירה שלילי", score_per_day=Decimal("1.0"), requirements={}))
+    # Drive child_neg's final_potential negative with a large negative admin modifier.
+    create_modifier(
+        app_session,
+        hierarchy_node_id=child_neg.id,
+        delta=-100,
+        reason="test: force negative potential",
+        start_date=date(2026, 1, 1),
+    )
+    app_session.commit()
+
+    results = compute_node_effort_potential(app_session, reference_date=date(2026, 7, 4))
+
+    neg = results[child_neg.id]
+    pos = results[child_pos.id]
+    assert neg.final_potential < 0  # raw value is stored unclamped
+    # clamped share must be exactly 0.0, never negative or None
+    assert neg.sibling_potential_share == 0.0
+    # the positive sibling should get the full 100% of the share, as if the
+    # negative-potential sibling contributed zero (not a negative amount) to
+    # the denominator.
+    assert pos.sibling_potential_share is not None
+    assert abs(pos.sibling_potential_share - 1.0) < 1e-9
