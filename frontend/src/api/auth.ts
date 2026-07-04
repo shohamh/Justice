@@ -22,6 +22,8 @@ export interface Me {
   is_officer?: boolean | null;
   rank?: string | null;
   bahad1_graduate?: boolean;
+  has_military_driving_license?: boolean | null;
+  military_driving_license_expiry?: string | null;
   enlistment_date?: string | null;
   mandatory_end_date?: string | null;
   discharge_date?: string | null;
