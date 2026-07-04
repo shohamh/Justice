@@ -132,3 +132,74 @@ def compute_potential_split(
         }
         for i, child in enumerate(children)
     ]
+
+
+def _largest_remainder_shares(required_count: int, weights: list[int]) -> list[int]:
+    n = len(weights)
+    total_weight = sum(weights)
+    if total_weight == 0:
+        base, extra = divmod(required_count, n)
+        return [base + (1 if i < extra else 0) for i in range(n)]
+    raw_shares = [required_count * w / total_weight for w in weights]
+    shares = [int(r) for r in raw_shares]
+    remainder = required_count - sum(shares)
+    order_by_fraction = sorted(range(n), key=lambda i: raw_shares[i] - shares[i], reverse=True)
+    for i in order_by_fraction[:remainder]:
+        shares[i] += 1
+    return shares
+
+
+def compute_potential_split_multi(
+    session: Session, *, node_ids: list[uuid.UUID], required_count: int, reference_date: date | None = None
+) -> list[dict]:
+    """Like compute_potential_split, but splits across an arbitrary list of
+    nodes (not necessarily siblings under one parent), weighted by each
+    node's own final_potential."""
+    if required_count < 1:
+        raise ShiftQuotaError("required_count must be >= 1")
+    if not node_ids:
+        raise ShiftQuotaError("node_ids must not be empty")
+
+    nodes = [session.get(HierarchyNode, nid) for nid in node_ids]
+    for nid, node in zip(node_ids, nodes):
+        if node is None:
+            raise ShiftQuotaError(f"hierarchy node {nid} not found")
+
+    ref = reference_date or date.today()
+    weights = [max(compute_potential(session, node_id=n.id, reference_date=ref).final_potential, 0) for n in nodes]
+    shares = _largest_remainder_shares(required_count, weights)
+
+    return [
+        {"hierarchy_node_id": n.id, "node_name": n.name, "count": shares[i], "weight": weights[i]}
+        for i, n in enumerate(nodes)
+    ]
+
+
+def compute_two_level_split(
+    session: Session, *, responsible_node_ids: list[uuid.UUID], required_count: int, reference_date: date | None = None
+) -> list[dict]:
+    """Step A: split required_count across responsible_node_ids themselves,
+    weighted by potential. Step B: split each responsible unit's share across
+    its own direct children, weighted by potential. Returns a flat list of
+    leaf-level entries (grandchildren, or the responsible unit itself if it
+    has no children), each tagged with which responsible unit it came from."""
+    ref = reference_date or date.today()
+    step_a = compute_potential_split_multi(
+        session, node_ids=responsible_node_ids, required_count=required_count, reference_date=ref
+    )
+
+    result: list[dict] = []
+    for entry in step_a:
+        if entry["count"] == 0:
+            continue
+        try:
+            step_b = compute_potential_split(
+                session, parent_node_id=entry["hierarchy_node_id"], required_count=entry["count"], reference_date=ref
+            )
+        except ShiftQuotaError:
+            # No children under this responsible unit -> its whole share stays on itself.
+            result.append({**entry, "parent_responsible_node_id": entry["hierarchy_node_id"]})
+            continue
+        for child_entry in step_b:
+            result.append({**child_entry, "parent_responsible_node_id": entry["hierarchy_node_id"]})
+    return result
