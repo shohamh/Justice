@@ -54,10 +54,11 @@ export default function PotentialPage() {
 
   const topLevelRoots = useMemo(() => nodes.filter((n) => n.parent_id === null), [nodes]);
 
-  // Synthetic aggregate row representing the whole organization, so the table
-  // always has a stable top row regardless of how many real root nodes exist.
+  // Synthetic aggregate row representing the whole organization. Skipped when
+  // there's exactly one real root node, since that node's own row already IS
+  // the whole-org total — only needed as a fallback for 0 or 2+ real roots.
   const wholeOrgResult = useMemo((): PotentialResult | null => {
-    if (topLevelRoots.length === 0) return null;
+    if (topLevelRoots.length <= 1) return null;
     const rootResults = topLevelRoots.map((n) => results[n.id]).filter((r): r is PotentialResult => !!r);
     if (rootResults.length !== topLevelRoots.length) return null; // not all roots loaded yet
     return {

@@ -455,13 +455,19 @@ export default function TransparencyPage() {
       if (!childrenMap.has(key)) childrenMap.set(key, []);
       childrenMap.get(key)!.push(node);
     }
+
+    // The synthetic whole-org row is only needed as a fallback for 0 or 2+
+    // real top-level roots — with exactly one, that root's own row already
+    // IS the whole-org total, so showing both would just duplicate it.
+    const showWholeOrgRow = (childrenMap.get(null) ?? []).length !== 1;
+    const depthOffset = showWholeOrgRow ? 0 : -1;
+
     function traverse(parentId: string | null) {
       for (const node of childrenMap.get(parentId) ?? []) {
         const nodeRows = rows.filter(
           (r) => r.node_id != null && nodePathsMap.get(r.node_id)?.includes(node.id),
         );
-        // +1 depth: real top-level roots nest visually under the whole-org row below.
-        if (nodeRows.length > 0) result.push(buildSubRow(node.id, node.name, node.path_ids.length, nodeRows));
+        if (nodeRows.length > 0) result.push(buildSubRow(node.id, node.name, node.path_ids.length + depthOffset, nodeRows));
         traverse(node.id);
       }
     }
@@ -469,7 +475,7 @@ export default function TransparencyPage() {
 
     // Stable first row: aggregates every soldier regardless of how many real
     // top-level roots currently exist.
-    if (rows.length > 0) result.unshift(buildSubRow(WHOLE_ORG_ID, t("common.whole_org"), 0, rows));
+    if (showWholeOrgRow && rows.length > 0) result.unshift(buildSubRow(WHOLE_ORG_ID, t("common.whole_org"), 0, rows));
     return result;
   }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t]);
 
