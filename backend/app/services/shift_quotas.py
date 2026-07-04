@@ -108,20 +108,7 @@ def compute_potential_split(
         for child in children
     ]
 
-    n = len(children)
-    total_weight = sum(weights)
-    if total_weight == 0:
-        base, extra = divmod(required_count, n)
-        shares = [base + (1 if i < extra else 0) for i in range(n)]
-    else:
-        raw_shares = [required_count * w / total_weight for w in weights]
-        shares = [int(r) for r in raw_shares]
-        remainder = required_count - sum(shares)
-        order_by_fraction = sorted(
-            range(n), key=lambda i: raw_shares[i] - shares[i], reverse=True
-        )
-        for i in order_by_fraction[:remainder]:
-            shares[i] += 1
+    shares = _largest_remainder_shares(required_count, weights)
 
     return [
         {
