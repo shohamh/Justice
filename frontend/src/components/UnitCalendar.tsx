@@ -9,6 +9,7 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import ShiftDetailPanel from "./ShiftDetailPanel";
+import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 
 
 interface UnitCalendarProps {
@@ -22,6 +23,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
+  const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
 
@@ -50,6 +52,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   }, [nodeId]);
 
   function handleDatesSet(arg: DatesSetArg) {
+    setActiveViewType(arg.view.type);
     const from = arg.start.toISOString().slice(0, 10);
     const to = arg.end.toISOString().slice(0, 10);
     const prev = dateRangeRef.current;
@@ -142,51 +145,63 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
       {error && <p className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
 
-      <div data-testid="fullcalendar" className="text-sm">
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          firstDay={0}
-          events={events}
-          dateClick={handleDateClick}
-          eventClick={handleEventClick}
-          datesSet={handleDatesSet}
-          locales={[heLocale]}
-          locale="he"
-          height="auto"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
-          buttonText={{ today: t("unit_calendar.today") || "היום", month: t("unit_calendar.view_month") || "חודש", week: t("unit_calendar.view_week") || "שבוע" }}
-          noEventsText={t("unit_calendar.none")}
-          slotMinTime="00:00:00"
-          slotMaxTime="24:00:00"
-          views={{
-            dayGridMonth: { displayEventTime: false },
-            timeGridWeek: { displayEventTime: true },
-          }}
-          eventContent={(arg) => {
-            const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
-            if (!shift) return <div />;
-            const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
-            return (
-              <div className="text-xs leading-tight px-1 overflow-hidden w-full">
-                <div className="flex items-center gap-1 w-full">
-                  <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
-                  {swapCount > 0 && (
-                    <span className="bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
-                      {swapCount}
-                    </span>
-                  )}
+      <div className="overflow-x-auto">
+        <div
+          data-testid="fullcalendar"
+          className="text-sm"
+          style={{ minWidth: calendarViewMinWidth(activeViewType) }}
+        >
+          <FullCalendar
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView="dayGridMonth"
+            firstDay={0}
+            events={events}
+            dateClick={handleDateClick}
+            eventClick={handleEventClick}
+            datesSet={handleDatesSet}
+            locales={[heLocale]}
+            locale="he"
+            height="auto"
+            headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridThreeDay" }}
+            buttonText={{
+              today: t("unit_calendar.today") || "היום",
+              month: t("unit_calendar.view_month") || "חודש",
+              week: t("unit_calendar.view_week") || "שבוע",
+              timeGridThreeDay: t("unit_calendar.view_3day") || "3 ימים",
+            }}
+            noEventsText={t("unit_calendar.none")}
+            slotMinTime="00:00:00"
+            slotMaxTime="24:00:00"
+            views={{
+              dayGridMonth: { displayEventTime: false },
+              timeGridWeek: { displayEventTime: true },
+              timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
+            }}
+            eventContent={(arg) => {
+              const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
+              if (!shift) return <div />;
+              const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
+              return (
+                <div className="text-xs leading-tight px-1 overflow-hidden w-full">
+                  <div className="flex items-center gap-1 w-full">
+                    <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
+                    {swapCount > 0 && (
+                      <span className="bg-orange-500 text-white rounded-full px-1 text-[10px] leading-4 flex-shrink-0 min-w-[1.25rem] text-center">
+                        {swapCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="truncate">
+                    {shift.assigned_count} {t("unit_calendar.soldiers_count")}
+                    {shift.reserve_count > 0 && (
+                      <span className="mr-1">| {shift.reserve_count} {t("reserve_label")}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="truncate">
-                  {shift.assigned_count} {t("unit_calendar.soldiers_count")}
-                  {shift.reserve_count > 0 && (
-                    <span className="mr-1">| {shift.reserve_count} {t("reserve_label")}</span>
-                  )}
-                </div>
-              </div>
-            );
-          }}
-        />
+              );
+            }}
+          />
+        </div>
       </div>
 
       {selectedShift && (
