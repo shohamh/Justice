@@ -77,3 +77,23 @@ test("saving edits calls updateExemptionType and setExemptionDutyTypes, then ret
   });
   expect(mockSetExemptionDutyTypes).toHaveBeenCalledWith("e1", ["d1", "d2"]);
 });
+
+test("shows an error and stays in edit mode when updateExemptionType fails", async () => {
+  mockUpdateExemptionType.mockRejectedValueOnce({ response: { data: { detail: "שגיאת שרת" } } });
+  const onSaved = vi.fn();
+  render(
+    <ExemptionTypeViewModal
+      exemptionType={exemptionType}
+      mappedDutyTypeIds={["d1"]}
+      dutyTypes={dutyTypes}
+      canEdit={true}
+      onClose={() => {}}
+      onSaved={onSaved}
+    />
+  );
+  fireEvent.click(screen.getByTestId("exemption-edit-pencil"));
+  fireEvent.click(screen.getByTestId("exemption-edit-save"));
+  await waitFor(() => expect(screen.getByText("שגיאת שרת")).toBeInTheDocument());
+  expect(onSaved).not.toHaveBeenCalled();
+  expect(screen.getByTestId("exemption-edit-save")).toBeInTheDocument();
+});

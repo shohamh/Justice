@@ -22,6 +22,7 @@ export default function ExemptionTypeViewModal({
   const [isCommander, setIsCommander] = useState(exemptionType.is_commander_exemption ?? false);
   const [selectedDutyTypeIds, setSelectedDutyTypeIds] = useState<string[]>(mappedDutyTypeIds);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const mappedNames = dutyTypes.filter((d) => mappedDutyTypeIds.includes(d.id)).map((d) => d.name);
 
@@ -31,6 +32,7 @@ export default function ExemptionTypeViewModal({
 
   async function handleSave() {
     setSaving(true);
+    setError(null);
     try {
       const updated = await updateExemptionType(exemptionType.id, {
         name, is_global: isGlobal, is_medical: isMedical, is_commander_exemption: isCommander,
@@ -38,6 +40,9 @@ export default function ExemptionTypeViewModal({
       const newMapping = isGlobal ? [] : await setExemptionDutyTypes(exemptionType.id, selectedDutyTypeIds);
       onSaved(updated, newMapping);
       setEditing(false);
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? "שגיאה");
     } finally {
       setSaving(false);
     }
@@ -147,6 +152,7 @@ export default function ExemptionTypeViewModal({
                 </div>
               </div>
             )}
+            {error && <p className="text-red-500 text-xs">{error}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
