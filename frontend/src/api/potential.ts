@@ -7,6 +7,7 @@ export interface SoldierPotentialDetail {
   reason: string | null;
   exemption_names: string[] | null;
   rank: string | null;
+  partial_exemption_names: string[] | null;
 }
 
 export interface PotentialModifierDTO {
@@ -26,6 +27,7 @@ export interface PotentialResult {
   modifiers: PotentialModifierDTO[];
   final_potential: number;
   soldiers: SoldierPotentialDetail[];
+  partial_exemption_count: number;
 }
 
 export async function getPotential(nodeId: string, referenceDate?: string): Promise<PotentialResult> {

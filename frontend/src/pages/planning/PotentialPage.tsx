@@ -53,6 +53,7 @@ export default function PotentialPage() {
       modifiers: rootResults.flatMap((r) => r.modifiers),
       final_potential: rootResults.reduce((s, r) => s + r.final_potential, 0),
       soldiers: rootResults.flatMap((r) => r.soldiers),
+      partial_exemption_count: rootResults.reduce((s, r) => s + r.partial_exemption_count, 0),
     };
   }, [topLevelRoots, results]);
 
@@ -188,6 +189,13 @@ export default function PotentialPage() {
       headerTooltip: t("potential.eligible_tooltip"),
       cell: (n) => displayResults[n.id]?.raw_eligible_count ?? "-",
       sortValue: (n) => displayResults[n.id]?.raw_eligible_count ?? -1,
+    },
+    {
+      id: "partial_exemptions",
+      header: t("potential.partial_exemptions"),
+      headerTooltip: t("potential.partial_exemptions_tooltip"),
+      cell: (n) => displayResults[n.id]?.partial_exemption_count ?? "-",
+      sortValue: (n) => displayResults[n.id]?.partial_exemption_count ?? -1,
     },
     {
       id: "pct_eligible",
