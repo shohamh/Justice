@@ -54,6 +54,8 @@ class SoldierOut(BaseModel):
     is_officer: bool | None = None
     rank: str | None = None
     bahad1_graduate: bool = False
+    has_military_driving_license: bool | None = None
+    military_driving_license_expiry: date_type | None = None
     enlistment_date: date_type | None = None
     mandatory_end_date: date_type | None = None
     discharge_date: date_type | None = None
@@ -182,6 +184,8 @@ def _out(
         is_officer=s.is_officer,
         rank=s.rank,
         bahad1_graduate=s.bahad1_graduate,
+        has_military_driving_license=s.has_military_driving_license,
+        military_driving_license_expiry=s.military_driving_license_expiry,
         enlistment_date=s.enlistment_date,
         mandatory_end_date=s.mandatory_end_date,
         discharge_date=s.discharge_date,
@@ -222,6 +226,11 @@ def _load(session: Session, soldier_id: uuid.UUID) -> Soldier:
 
 def _node_of(session: Session, s: Soldier) -> HierarchyNode | None:
     return session.get(HierarchyNode, s.hierarchy_node_id) if s.hierarchy_node_id else None
+
+
+def _authorize_field_update_decision(session: Session, user: Soldier, s: Soldier, field_name: str) -> None:
+    action = Action.MILITARY_LICENSE_DECIDE if field_name == "military_driving_license" else Action.SOLDIER_UPDATE
+    authorize(session, user, action, target_node=_node_of(session, s))
 
 
 @router.post("", response_model=OnboardResponse, status_code=status.HTTP_201_CREATED)
@@ -598,10 +607,10 @@ def approve_update(
     user: Soldier = Depends(require_password_changed),
 ) -> FieldUpdateOut:
     s = _load(session, soldier_id)
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
+    _authorize_field_update_decision(session, user, s, upd.field_name)
     try:
         approve_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
@@ -620,10 +629,10 @@ def reject_update(
     user: Soldier = Depends(require_password_changed),
 ) -> FieldUpdateOut:
     s = _load(session, soldier_id)
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
     upd = session.get(SoldierFieldUpdate, update_id)
     if upd is None or upd.soldier_id != soldier_id:
         raise HTTPException(status_code=404, detail="not_found")
+    _authorize_field_update_decision(session, user, s, upd.field_name)
     try:
         reject_field_update(session, update=upd, actor_id=user.id, decision_note=body.decision_note)
     except Exception as exc:
