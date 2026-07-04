@@ -10,12 +10,12 @@ describe("calendarViewMinWidth", () => {
     expect(calendarViewMinWidth("listWeek")).toBeUndefined();
   });
 
-  it("computes 7 columns * 130px + 60px gutter for the week view", () => {
-    expect(calendarViewMinWidth("timeGridWeek")).toBe(970);
+  it("computes 7 columns * 280px + 60px gutter for the week view", () => {
+    expect(calendarViewMinWidth("timeGridWeek")).toBe(2020);
   });
 
-  it("computes 3 columns * 130px + 60px gutter for the 3-day view", () => {
-    expect(calendarViewMinWidth("timeGridThreeDay")).toBe(450);
+  it("computes 3 columns * 280px + 60px gutter for the 3-day view", () => {
+    expect(calendarViewMinWidth("timeGridThreeDay")).toBe(900);
   });
 });
 
