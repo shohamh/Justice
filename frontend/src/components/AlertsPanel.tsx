@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { Alert } from "../api/commanderDashboard";
+import SoldierLink from "./SoldierLink";
 
 interface Props {
   data: Alert[] | null;
@@ -17,7 +18,7 @@ export default function AlertsPanel({ data }: Props) {
     <div className="space-y-2" data-testid="alerts-panel">
       {data.map((a, i) => (
         <div key={i} className={`border rounded p-2 text-sm ${severityColor[a.severity] || "text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700"}`}>
-          <span className="font-medium">{a.soldier_name}</span>: {a.message}
+          <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />: {a.message}
         </div>
       ))}
     </div>

@@ -14,6 +14,7 @@ import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../comp
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 import { WHOLE_ORG_ID } from "../utils/wholeOrg";
+import { getEffortGap, type NodeEffortPotential } from "../api/potential";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -25,6 +26,17 @@ function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
   }
   nodes.forEach(traverse);
   return result;
+}
+
+function gapColor(gap: number | null): string {
+  if (gap === null) return "text-gray-400";
+  if (gap > 1.3) return "text-red-600 dark:text-red-400 font-semibold";
+  if (gap < 0.7) return "text-blue-600 dark:text-blue-400 font-semibold";
+  return "text-gray-700 dark:text-gray-300";
+}
+
+function formatGap(gap: number | null): string {
+  return gap === null ? "—" : gap.toFixed(2);
 }
 
 function TreeNode({
@@ -150,6 +162,8 @@ interface SubRow {
   count_global_exemption: number | null;
   count_partial_exemption: number | null;
   count_temporary_exemption: number | null;
+  sibling_gap: number | null;
+  global_gap: number | null;
 }
 
 // ─── fairness card ────────────────────────────────────────────────────────────
@@ -310,6 +324,7 @@ export default function TransparencyPage() {
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
   const [canSeeExemptionAggregates, setCanSeeExemptionAggregates] = useState(false);
+  const [effortGapByNode, setEffortGapByNode] = useState<Map<string, NodeEffortPotential>>(new Map());
 
   useEffect(() => {
     void getTransparency().then((out) => {
@@ -319,6 +334,11 @@ export default function TransparencyPage() {
   }, []);
   useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
   useEffect(() => { void getFairnessComponents().then(setFairnessComponents).catch(() => {}); }, []);
+  useEffect(() => {
+    void getEffortGap().then((rows) => {
+      setEffortGapByNode(new Map(rows.map((r) => [r.node_id, r])));
+    }).catch(() => {});
+  }, []);
 
   async function openEffortBreakdown(soldierId: string, soldierName: string) {
     setEffortBreakdownSoldierName(soldierName);
@@ -446,6 +466,8 @@ export default function TransparencyPage() {
         count_temporary_exemption: canSeeExemptionAggregates
           ? nodeRows.filter((r) => r.has_temporary_exemption === true).length
           : null,
+        sibling_gap: effortGapByNode.get(nodeId)?.sibling_gap ?? null,
+        global_gap: effortGapByNode.get(nodeId)?.global_gap ?? null,
       };
     }
 
@@ -477,7 +499,7 @@ export default function TransparencyPage() {
     // top-level roots currently exist.
     if (showWholeOrgRow && rows.length > 0) result.unshift(buildSubRow(WHOLE_ORG_ID, t("common.whole_org"), 0, rows));
     return result;
-  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t]);
+  }, [flatNodes, nodePathsMap, rows, canSeeExemptionAggregates, t, effortGapByNode]);
 
   // ── summary stats (reflect current tab's visible data) ──
   const statsRows = tab === 0 ? visibleRows : null;
@@ -836,6 +858,20 @@ export default function TransparencyPage() {
         if (r.cv_effort === null) return "—";
         return (r.cv_effort * 100).toFixed(1) + "%";
       },
+    },
+    {
+      id: "sibling_gap",
+      header: t("transparency.subunit_sibling_gap"),
+      cell: (r) => <span className={gapColor(r.sibling_gap)}>{formatGap(r.sibling_gap)}</span>,
+      sortValue: (r) => r.sibling_gap ?? -1,
+      exportValue: (r) => formatGap(r.sibling_gap),
+    },
+    {
+      id: "global_gap",
+      header: t("transparency.subunit_global_gap"),
+      cell: (r) => <span className={gapColor(r.global_gap)}>{formatGap(r.global_gap)}</span>,
+      sortValue: (r) => r.global_gap ?? -1,
+      exportValue: (r) => formatGap(r.global_gap),
     },
   ];
 

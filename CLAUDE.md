@@ -57,6 +57,13 @@ frontend/src/
   updates the changelog in the same step (see below).
 - Do NOT commit directly to `master` or `dev`
 
+## Implementing written plans
+
+If a superpowers plan has been written for the task (e.g. via `writing-plans`),
+always execute it with subagents (`subagent-driven-development` or
+`executing-plans`) rather than implementing it directly in the main
+conversation.
+
 ## Changelog
 
 `frontend/CHANGELOG.md` is updated as part of every `dev` → `master` promotion

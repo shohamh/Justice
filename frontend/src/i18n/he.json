@@ -314,7 +314,9 @@
     "effort_stddev": "סטיית תקן",
     "effort_range": "טווח",
     "subunit_avg_effort": "ממוצע עומס",
-    "subunit_cv_effort": "פיזור (CV)"
+    "subunit_cv_effort": "פיזור (CV)",
+    "subunit_sibling_gap": "פער מול אחים (יחס)",
+    "subunit_global_gap": "פער מול הארגון (יחס)"
   },
   "my_duties": {
     "title": "היומן שלי",
