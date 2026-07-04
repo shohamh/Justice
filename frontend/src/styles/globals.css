@@ -53,6 +53,14 @@ body {
   min-width: var(--fc-grid-min-width, auto);
 }
 
+/* Toolbar buttons (prev/next, today, month/week/3-day) take up a lot of
+   horizontal room at their default size; shrink them uniformly. */
+.fc-header-toolbar .fc-button {
+  padding: 0.2em 0.5em !important;
+  font-size: 0.85em !important;
+  white-space: nowrap !important;
+}
+
 /* Details/summary disclosure marker in dark mode */
 @media (prefers-color-scheme: dark) {
   details > summary {
