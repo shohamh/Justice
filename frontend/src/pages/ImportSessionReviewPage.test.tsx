@@ -22,8 +22,16 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("../components/DutyTypeFormModal", () => ({
-  default: ({ onSaved, onClose }: { onSaved: (dt: unknown) => void; onClose: () => void }) => (
-    <div data-testid="duty-type-form-modal">
+  default: ({
+    onSaved,
+    onClose,
+    initialName,
+  }: {
+    onSaved: (dt: unknown) => void;
+    onClose: () => void;
+    initialName?: string;
+  }) => (
+    <div data-testid="duty-type-form-modal" data-initial-name={initialName ?? ""}>
       <button onClick={() => onSaved({ id: "new-dt" })}>save-duty-type</button>
       <button onClick={onClose}>close-duty-type</button>
     </div>
@@ -291,6 +299,36 @@ describe("ImportSessionReviewPage", () => {
 
     const dialog = await screen.findByTestId("add-root-node-dialog");
     expect(dialog.getAttribute("data-initial-name")).toBe("פלוגה א");
+  });
+
+  it("pre-fills the create-duty-type dialog with the unresolved duty-shift duty_type_name", async () => {
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("משמרות (1)"));
+    await screen.findByText("שמירה");
+
+    fireEvent.click(screen.getByText("צור סוג תורנות"));
+
+    const dialog = await screen.findByTestId("duty-type-form-modal");
+    expect(dialog.getAttribute("data-initial-name")).toBe("שמירה");
+  });
+
+  it("reparses after creating a duty type from the duty-shifts tab", async () => {
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("משמרות (1)"));
+    await screen.findByText("שמירה");
+
+    fireEvent.click(screen.getByText("צור סוג תורנות"));
+
+    const dialog = await screen.findByTestId("duty-type-form-modal");
+    fireEvent.click(within(dialog).getByText("save-duty-type"));
+
+    await waitFor(() => {
+      expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
+    });
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {

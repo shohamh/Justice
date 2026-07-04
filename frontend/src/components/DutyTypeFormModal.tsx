@@ -8,13 +8,14 @@ type Reqs = NonNullable<DutyType["requirements"]>;
 
 interface Props {
   initial?: DutyType;
+  initialName?: string;
   onSaved: (dt: DutyType) => void;
   onClose: () => void;
 }
 
-export default function DutyTypeFormModal({ initial, onSaved, onClose }: Props) {
+export default function DutyTypeFormModal({ initial, initialName, onSaved, onClose }: Props) {
   const { t } = useTranslation();
-  const [name, setName] = useState(initial?.name ?? "");
+  const [name, setName] = useState(initial?.name ?? initialName ?? "");
   const [score, setScore] = useState(initial?.score_per_day ?? "1.00");
   const [reserveRatio, setReserveRatio] = useState(initial?.reserve_ratio ?? "0.000");
   const [reserveMin, setReserveMin] = useState(String(initial?.reserve_minimum ?? "0"));

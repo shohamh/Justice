@@ -62,7 +62,9 @@ export default function ImportSessionReviewPage() {
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
   // dialog state
-  const [dutyTypeModalOpen, setDutyTypeModalOpen] = useState(false);
+  const [dutyTypeContext, setDutyTypeContext] = useState<{
+    unresolvedName: string;
+  } | null>(null);
   const [nodeCreateContext, setNodeCreateContext] = useState<{
     unresolvedName: string;
   } | null>(null);
@@ -324,7 +326,9 @@ export default function ImportSessionReviewPage() {
                             {!readOnly && (
                               <button
                                 className="text-indigo-600 hover:underline text-xs"
-                                onClick={() => setDutyTypeModalOpen(true)}
+                                onClick={() =>
+                                  setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                                }
                               >
                                 צור סוג תורנות
                               </button>
@@ -439,7 +443,9 @@ export default function ImportSessionReviewPage() {
                             {!readOnly && (
                               <button
                                 className="text-indigo-600 hover:underline text-xs"
-                                onClick={() => setDutyTypeModalOpen(true)}
+                                onClick={() =>
+                                  setDutyTypeContext({ unresolvedName: row.duty_type_name })
+                                }
                               >
                                 צור סוג תורנות
                               </button>
@@ -525,13 +531,14 @@ export default function ImportSessionReviewPage() {
         )}
       </div>
 
-      {dutyTypeModalOpen && (
+      {dutyTypeContext && (
         <DutyTypeFormModal
+          initialName={dutyTypeContext.unresolvedName}
           onSaved={() => {
-            setDutyTypeModalOpen(false);
+            setDutyTypeContext(null);
             void handleReparse();
           }}
-          onClose={() => setDutyTypeModalOpen(false)}
+          onClose={() => setDutyTypeContext(null)}
         />
       )}
 
