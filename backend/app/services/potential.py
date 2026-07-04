@@ -30,6 +30,7 @@ class SoldierPotentialDetail:
     reason: str | None = None  # populated when counted is False
     exemption_names: list[str] = field(default_factory=list)  # populated when reason == "exempted"
     rank: str | None = None
+    partial_exemption_names: list[str] = field(default_factory=list)  # populated when counted is True but partially exempt
 
 
 @dataclass
@@ -51,6 +52,7 @@ class PotentialResult:
     modifiers: list[ModifierDetail] = field(default_factory=list)
     final_potential: int = 0
     soldiers: list[SoldierPotentialDetail] = field(default_factory=list)
+    partial_exemption_count: int = 0
 
 
 def _rank_as_of(soldier: Soldier, reference_date: date) -> str | None:
@@ -160,7 +162,16 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             excluded |= etid_to_dtids.get(ex.exemption_type_id, set())
         remaining = base_eligible - excluded
         if remaining:
-            details.append(SoldierPotentialDetail(s.id, s.full_name, True, rank=rank))
+            partial_names: list[str] = []
+            if excluded & base_eligible:
+                partial_names = sorted({
+                    regular_types[ex.exemption_type_id].name
+                    for ex in active_exemptions
+                    if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
+                })
+            details.append(SoldierPotentialDetail(
+                s.id, s.full_name, True, rank=rank, partial_exemption_names=partial_names,
+            ))
             raw_count += 1
         elif base_eligible:
             # would have been eligible, but active exemptions excluded every remaining duty type
@@ -203,6 +214,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         modifiers=modifier_details,
         final_potential=raw_count + modifier_sum,
         soldiers=details,
+        partial_exemption_count=sum(1 for d in details if d.partial_exemption_names),
     )
 
 

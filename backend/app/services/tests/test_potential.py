@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from app.db.models import DutyType, ExemptionType, Soldier, SoldierExemption, PotentialModifier
+from app.db.models import DutyType, ExemptionDutyTypeMap, ExemptionType, Soldier, SoldierExemption, PotentialModifier
 from app.services.hierarchy import create_node
 from app.services.potential import PotentialModifierError, compute_potential, create_modifier, delete_modifier, list_modifiers
 
@@ -294,3 +294,53 @@ def test_discharged_soldier_reason(app_session):
     detail = result.soldiers[0]
     assert detail.counted is False
     assert detail.reason == "discharged"
+
+
+def test_partial_exemption_flags_soldier_still_counted(app_session):
+    node = create_node(app_session, level="team", name="Test Co Partial", parent_id=None)
+    app_session.flush()
+    dt1 = DutyType(name="שמירה", score_per_day=Decimal("1.0"), requirements={})
+    dt2 = DutyType(name="מטבח", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add_all([dt1, dt2])
+    app_session.flush()
+    et = ExemptionType(name="פטור שמירות", is_global=False, is_commander_exemption=False)
+    app_session.add(et)
+    app_session.flush()
+    app_session.add(ExemptionDutyTypeMap(exemption_type_id=et.id, duty_type_id=dt1.id))
+
+    s = _make_soldier(app_session, node_id=node.id)
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 1, 1), end_date=None,
+    ))
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    detail = result.soldiers[0]
+    assert detail.counted is True
+    assert detail.partial_exemption_names == ["פטור שמירות"]
+    assert result.raw_eligible_count == 1
+    assert result.partial_exemption_count == 1
+
+
+def test_fully_exempt_soldier_not_counted_as_partial(app_session):
+    node = create_node(app_session, level="team", name="Test Co Partial 2", parent_id=None)
+    app_session.flush()
+    dt = DutyType(name="שמירה", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add(dt)
+    et = ExemptionType(name="פטור רפואי מלא 2", is_global=True, is_commander_exemption=False)
+    app_session.add(et)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id)
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 1, 1), end_date=None,
+    ))
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    detail = result.soldiers[0]
+    assert detail.counted is False
+    assert detail.partial_exemption_names == []
+    assert result.partial_exemption_count == 0
