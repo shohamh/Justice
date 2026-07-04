@@ -346,6 +346,66 @@ def test_preview_rejects_from_date_on_or_after_shift_end(admin_session):
         )
 
 
+def test_preview_earliest_date_counts_from_dismissal_not_scheduled_end(admin_session):
+    dt, loc = _seed_base(admin_session)
+    a = _make_soldier(admin_session, "8200001", "חייל א")
+    b = _make_soldier(admin_session, "8200002", "חייל ב")
+    # Shift runs 2026-07-01..2026-07-11 (10 days) — A is dismissed on day 3
+    # (2026-07-03), far earlier than the scheduled end (2026-07-10).
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc, date(2026, 7, 1), date(2026, 7, 11), a, b,
+    )
+    admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
+    admin_session.flush()
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=7,
+        reason="פציעה",
+        actor_id=a.id,
+        from_date=date(2026, 7, 3),
+    )
+    from app.services.gimelim import _PREVIEW_STORE
+    _, payload = _PREVIEW_STORE[preview.preview_token]
+    # effective_end = 2026-07-03 08:00 (assignment's default start_time) +
+    # 12h base rest = 2026-07-03 20:00, + 7 extra days = 2026-07-10 20:00,
+    # which is mid-day so it rounds up to 2026-07-11.
+    assert payload["rest_days"] == 7
+    assert payload["earliest_date"] == "2026-07-11"
+
+
+def test_preview_earliest_date_without_dismissal_still_uses_scheduled_end(admin_session):
+    """Sanity check: with no early dismissal (from_date == scheduled start of
+    the rest window), the calculation still lines up with the assignment's
+    own end when from_date is set to end_date - 1 (the normal 'dismiss on the
+    last day' case used by commit_gimelim)."""
+    dt, loc = _seed_base(admin_session)
+    a = _make_soldier(admin_session, "8200003", "חייל ג")
+    b = _make_soldier(admin_session, "8200004", "חייל ד")
+    shift, primary, reserve = _make_shift_with_primary_and_reserve(
+        admin_session, dt, loc, date(2026, 8, 1), date(2026, 8, 5), a, b,
+    )
+    admin_session.merge(SystemSetting(key="duty.default_rest_hours", value=12))
+    admin_session.flush()
+
+    preview = preview_gimelim(
+        admin_session,
+        shift_id=shift.id,
+        primary_assignment_id=primary.id,
+        rest_days=0,
+        reason="פציעה",
+        actor_id=a.id,
+        from_date=date(2026, 8, 4),  # end_date - 1, the last scheduled day
+    )
+    from app.services.gimelim import _PREVIEW_STORE
+    _, payload = _PREVIEW_STORE[preview.preview_token]
+    # effective_end = 2026-08-04 08:00 (default start_time) + 12h = 08-04 20:00
+    # -> rounds up to 08-05.
+    assert payload["earliest_date"] == "2026-08-05"
+
+
 # ── Commit tests ──────────────────────────────────────────────────────────────
 
 def test_commit_raises_on_expired_token(admin_session):

@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import combine_date_time
 from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
 from app.db.models import (
@@ -25,8 +26,9 @@ from app.services.algorithm_bridge import build_hierarchy_maps
 from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.notifications import create_notification
 from app.services.reserves import ReserveError, call_up_reserve, check_reserve_cap, dismiss_primary
+from app.services.rest import earliest_eligible_date, resolve_rest_hours
 from app.services.scoring import duty_score_by_soldier
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 
 
 # ── In-process preview token store ──────────────────────────────────────────
@@ -89,13 +91,6 @@ class GimelimCommitResult:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _get_setting_int(session: Session, key: str, default: int) -> int:
-    try:
-        return int(get_setting(session, key))
-    except SettingNotFound:
-        return default
-
 
 def _get_setting_str(session: Session, key: str, default: str) -> str:
     try:
@@ -177,8 +172,8 @@ def _passes_eligibility(
     except Exception:
         return True
     try:
-        mitvahim_months = _get_setting_int(session, "eligibility.mitvahim_months", 6)
-        alal_months = _get_setting_int(session, "eligibility.alal_months", 3)
+        mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
+        alal_months = get_setting_int(session, "eligibility.alal_months", 3)
     except Exception:
         mitvahim_months, alal_months = 6, 3
     return _is_eligible(
@@ -338,9 +333,12 @@ def preview_gimelim(
     if soldier_a is None:
         raise GimelimError("soldier_not_found")
 
-    T = _get_setting_int(session, "algorithm.T", 7)
-    W = _get_setting_int(session, "algorithm.W", 14)
-    earliest_date = primary_a.end_date + timedelta(days=rest_days)
+    T = get_setting_int(session, "algorithm.T", 7)
+    W = get_setting_int(session, "algorithm.W", 14)
+    default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
+    base_rest_hours = resolve_rest_hours(duty_type, default_rest_hours)
+    effective_end_dt = combine_date_time(from_date, primary_a.start_time)
+    earliest_date = earliest_eligible_date(effective_end_dt, base_rest_hours, extra_days=rest_days)
 
     warnings: list[str] = []
 
@@ -394,6 +392,7 @@ def preview_gimelim(
         "primary_status_snapshot": primary_a.status,
         "reserve_status_snapshot": reserve_b.status,
         "rest_days": rest_days,
+        "earliest_date": earliest_date.isoformat(),
         "from_date": from_date.isoformat(),
         "reason": reason,
         "duty_type_id": str(primary_a.duty_type_id),
