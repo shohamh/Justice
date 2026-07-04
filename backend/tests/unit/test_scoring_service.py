@@ -382,14 +382,14 @@ def test_effective_spans_split_on_override(admin_session):
     )
     # s keeps days 1-2 and day 4 (day 3 reassigned, day 5 cancelled)
     assert s_ranges == [
-        (date(2026, 12, 1), date(2026, 12, 2)),
-        (date(2026, 12, 4), date(2026, 12, 4)),
+        (date(2026, 12, 1), date(2026, 12, 3)),
+        (date(2026, 12, 4), date(2026, 12, 5)),
     ]
     repl_spans = effective_duty_spans(admin_session, soldier_ids={repl.id})
     repl_ranges = [
         (sp["start_date"], sp["end_date"]) for sp in repl_spans if sp["soldier_id"] == repl.id
     ]
-    assert repl_ranges == [(date(2026, 12, 3), date(2026, 12, 3))]
+    assert repl_ranges == [(date(2026, 12, 3), date(2026, 12, 4))]
 
 
 def test_effective_spans_no_override_is_single_block(admin_session):
@@ -414,5 +414,5 @@ def test_effective_spans_no_override_is_single_block(admin_session):
     ]
     assert len(spans) == 1
     assert spans[0]["start_date"] == date(2026, 12, 10)
-    assert spans[0]["end_date"] == date(2026, 12, 12)
+    assert spans[0]["end_date"] == date(2026, 12, 13)
     assert spans[0]["duty_location_id"] == loc.id

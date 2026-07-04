@@ -122,7 +122,7 @@ def test_effective_endpoint_reflects_override(client: TestClient, admin_session:
     assert len(rs.json()) == 2
     # repl sees day 2
     rr = client.get(f"/api/assignments/effective?soldier_id={repl.id}", headers=auth_headers(repl))
-    assert [[x["start_date"], x["end_date"]] for x in rr.json()] == [["2026-12-02", "2026-12-02"]]
+    assert [[x["start_date"], x["end_date"]] for x in rr.json()] == [["2026-12-02", "2026-12-03"]]
 
 
 def test_effective_endpoint_forbidden_cross_soldier(client: TestClient, admin_session: Session):

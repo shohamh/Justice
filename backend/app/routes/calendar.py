@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -67,6 +67,10 @@ class CalendarShiftOut(BaseModel):
     duty_location_name: str
     start_date: date
     end_date: date
+    start_time: str
+    end_time: str
+    start_at: datetime
+    end_at: datetime
     required_count: int
     assigned_count: int
     fill_status: str

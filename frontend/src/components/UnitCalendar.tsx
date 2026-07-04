@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
@@ -74,13 +75,14 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       extendedProps: { shiftId: string; dutyTypeId: string; swapCount: number };
     }[] = [];
     for (const s of filteredShifts) {
-      // s.end_date is already exclusive (the day after the last day), matching
-      // FullCalendar's own exclusive `end` convention -- no +1 day needed here.
+      // start_at/end_at carry the shift's real wall-clock times, so the week
+      // view can position events within hour slots; the month view still
+      // renders them as day-spanning blocks regardless of time-of-day.
       out.push({
         id: s.id,
         title: `${s.duty_type_name} — ${s.duty_location_name}`,
-        start: s.start_date,
-        end: s.end_date,
+        start: s.start_at,
+        end: s.end_at,
         backgroundColor: s.duty_type_color,
         borderColor: s.duty_type_color,
         classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
@@ -137,8 +139,9 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
 
       <div data-testid="fullcalendar" className="text-sm">
         <FullCalendar
-          plugins={[dayGridPlugin, interactionPlugin]}
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
+          firstDay={0}
           events={events}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
@@ -146,10 +149,15 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           locales={[heLocale]}
           locale="he"
           height="auto"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth" }}
-          buttonText={{ today: t("unit_calendar.today") || "היום" }}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
+          buttonText={{ today: t("unit_calendar.today") || "היום", month: t("unit_calendar.view_month") || "חודש", week: t("unit_calendar.view_week") || "שבוע" }}
           noEventsText={t("unit_calendar.none")}
-          displayEventTime={false}
+          slotMinTime="00:00:00"
+          slotMaxTime="24:00:00"
+          views={{
+            dayGridMonth: { displayEventTime: false },
+            timeGridWeek: { displayEventTime: true },
+          }}
           eventContent={(arg) => {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;

@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, datetime
+
+
+def combine_date_time(d: date, hhmm: str) -> datetime:
+    """Combine a calendar date with an "HH:MM" wall-clock time into a datetime."""
+    h, m = hhmm.split(":")
+    return datetime(d.year, d.month, d.day, int(h), int(m))
 
 
 def calendar_days_touched(start_date: date, end_date: date) -> int:

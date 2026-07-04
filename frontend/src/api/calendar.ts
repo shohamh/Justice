@@ -64,6 +64,10 @@ export interface CalendarShift {
   duty_location_name: string;
   start_date: string;
   end_date: string;
+  start_time: string;
+  end_time: string;
+  start_at: string;
+  end_at: string;
   required_count: number;
   assigned_count: number;
   fill_status: string;

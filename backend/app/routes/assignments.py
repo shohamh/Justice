@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -58,6 +58,10 @@ class EffectiveDutyOut(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
+    start_time: str
+    end_time: str
+    start_at: datetime
+    end_at: datetime
     shift_id: uuid.UUID | None = None
     is_reserve: bool = False
 

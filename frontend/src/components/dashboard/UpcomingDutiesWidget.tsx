@@ -11,7 +11,8 @@ interface Props {
 export default function UpcomingDutiesWidget({ duties, typeNames, locationNames, onOpenDuty }: Props) {
   const today = new Date().toISOString().split("T")[0];
   const upcoming = duties
-    .filter((d) => d.end_date >= today)
+    // end_date is exclusive, so "not yet over" means end_date is after today.
+    .filter((d) => d.end_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   return (

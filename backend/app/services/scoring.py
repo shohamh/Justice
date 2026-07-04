@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import combine_date_time
 from app.db.models import (
     DutyAssignment,
     DutyDayOverride,
@@ -125,6 +126,32 @@ def effective_duty_spans(
     }
     spans: list[dict[str, Any]] = []
     for a in assignments:
+        last_assignment_day = a.end_date - timedelta(days=1)
+
+        def _make_span(cur: Any, run_start: date, run_end: date) -> dict[str, Any]:
+            # A run only carries the assignment's real clock time on the edge
+            # day(s) that match the assignment's own boundaries; a run that
+            # was split off mid-assignment by an override has no wall-clock
+            # time of its own, so it degrades to a full calendar day there.
+            start_time = a.start_time if run_start == a.start_date else "00:00"
+            end_time = a.end_time if run_end == last_assignment_day else "23:59"
+            return {
+                "assignment_id": a.id,
+                "soldier_id": cur,
+                "duty_type_id": a.duty_type_id,
+                "duty_location_id": a.duty_location_id,
+                "start_date": run_start,
+                # Exclusive, matching DutyAssignment/DutyShift's own convention
+                # (run_end above is the run's last INCLUSIVE day).
+                "end_date": run_end + timedelta(days=1),
+                "start_time": start_time,
+                "end_time": end_time,
+                "start_at": combine_date_time(run_start, start_time),
+                "end_at": combine_date_time(run_end, end_time),
+                "shift_id": a.duty_shift_id,
+                "is_reserve": a.is_reserve,
+            }
+
         cur: object = _UNSET
         run_start: date | None = None
         run_end: date | None = None
@@ -136,40 +163,18 @@ def effective_duty_spans(
                 run_end = day
             else:
                 if cur not in (None, _UNSET) and run_start is not None and run_end is not None:
-                    spans.append(
-                        {
-                            "assignment_id": a.id,
-                            "soldier_id": cur,
-                            "duty_type_id": a.duty_type_id,
-                            "duty_location_id": a.duty_location_id,
-                            "start_date": run_start,
-                            "end_date": run_end,
-                            "shift_id": a.duty_shift_id,
-                            "is_reserve": a.is_reserve,
-                        }
-                    )
+                    spans.append(_make_span(cur, run_start, run_end))
                 cur = eff
                 run_start = day if eff is not None else None
                 run_end = day if eff is not None else None
             day += timedelta(days=1)
         if cur not in (None, _UNSET) and run_start is not None and run_end is not None:
-            spans.append(
-                {
-                    "assignment_id": a.id,
-                    "soldier_id": cur,
-                    "duty_type_id": a.duty_type_id,
-                    "duty_location_id": a.duty_location_id,
-                    "start_date": run_start,
-                    "end_date": run_end,
-                    "shift_id": a.duty_shift_id,
-                    "is_reserve": a.is_reserve,
-                }
-            )
+            spans.append(_make_span(cur, run_start, run_end))
     result: list[dict[str, Any]] = []
     for sp in spans:
         if soldier_ids is not None and sp["soldier_id"] not in soldier_ids:
             continue
-        if date_from is not None and sp["end_date"] < date_from:
+        if date_from is not None and sp["end_date"] <= date_from:
             continue
         if date_to is not None and sp["start_date"] > date_to:
             continue

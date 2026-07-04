@@ -18,6 +18,10 @@ export interface EffectiveDuty {
   duty_location_id: string;
   start_date: string;
   end_date: string;
+  start_time: string;
+  end_time: string;
+  start_at: string;
+  end_at: string;
   shift_id?: string | null;
   is_reserve: boolean;
 }

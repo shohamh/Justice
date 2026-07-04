@@ -136,7 +136,9 @@ export default function HomePage() {
   const today = new Date().toISOString().split("T")[0];
 
   const pastDuties = useMemo(
-    () => duties.filter((d) => d.end_date < today),
+    // end_date is exclusive, so a duty whose last day is today has end_date === today+1;
+    // "over" means end_date is today or earlier.
+    () => duties.filter((d) => d.end_date <= today),
     [duties, today],
   );
   const pastCount = pastDuties.length;
@@ -186,7 +188,7 @@ export default function HomePage() {
         (d) =>
           d.is_reserve &&
           d.start_date <= currentMonthEnd &&
-          d.end_date >= currentMonthStart
+          d.end_date > currentMonthStart
       )
       .reduce((sum, d) => {
         const dutyLastDay = lastDutyDay(d.end_date);
@@ -207,7 +209,7 @@ export default function HomePage() {
         (d) =>
           d.is_reserve &&
           d.start_date <= yearEnd &&
-          d.end_date >= yearStart
+          d.end_date > yearStart
       )
       .reduce((sum, d) => {
         const dutyLastDay = lastDutyDay(d.end_date);

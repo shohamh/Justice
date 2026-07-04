@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.algorithm.duration import combine_date_time
 from app.db.models import (
     DutyAssignment,
     DutyDismissal,
@@ -17,6 +18,17 @@ from app.db.models import (
     HierarchyNode,
     Soldier,
 )
+
+
+def _shift_instants(shift: DutyShift) -> tuple[Any, Any]:
+    """Wall-clock start/end of a shift, for hour-aware calendar views.
+
+    `shift.end_date` is exclusive (the first day NOT touched), so the shift's
+    actual last calendar day is `end_date - 1 day`, which is where `end_time`
+    applies.
+    """
+    last_day = shift.end_date - timedelta(days=1)
+    return combine_date_time(shift.start_date, shift.start_time), combine_date_time(last_day, shift.end_time)
 
 
 def get_calendar_shifts(
@@ -240,6 +252,7 @@ def get_calendar_shifts(
         reserve_count = sum(
             1 for a_ in assignees if a_["is_reserve"] and not a_.get("called_up_from")
         )
+        start_at, end_at = _shift_instants(shift)
         result.append(
             {
                 "id": shift.id,
@@ -249,6 +262,10 @@ def get_calendar_shifts(
                 "duty_location_name": loc_map.get(shift.duty_location_id, ""),
                 "start_date": shift.start_date,
                 "end_date": shift.end_date,
+                "start_time": shift.start_time,
+                "end_time": shift.end_time,
+                "start_at": start_at,
+                "end_at": end_at,
                 "required_count": shift.required_count,
                 "assigned_count": primary_count,
                 "fill_status": "full"
@@ -306,6 +323,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
     )
 
     dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
+    start_at, end_at = _shift_instants(shift)
     base = {
         "id": shift.id,
         "duty_type_id": shift.duty_type_id,
@@ -314,6 +332,10 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
         "duty_location_name": loc_map.get(shift.duty_location_id, ""),
         "start_date": shift.start_date,
         "end_date": shift.end_date,
+        "start_time": shift.start_time,
+        "end_time": shift.end_time,
+        "start_at": start_at,
+        "end_at": end_at,
         "required_count": shift.required_count,
     }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
 import heLocale from "@fullcalendar/core/locales/he";
 import { EffectiveDuty } from "../../api/assignments";
 import { Holiday, listHolidays } from "../../api/calendarHolidays";
@@ -27,14 +28,14 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
 
   const dutyEvents = useMemo(() =>
     duties.map((d) => {
-      // d.end_date is already exclusive (the day after the last day), matching
-      // FullCalendar's own exclusive `end` convention -- no +1 day needed here.
+      // start_at/end_at carry the duty's real wall-clock times so the week
+      // view can position it within hour slots.
       const color = dutyTypeColor(d.duty_type_id);
       return {
         id: d.assignment_id,
         title: typeNames[d.duty_type_id] ?? "תורנות",
-        start: d.start_date,
-        end: d.end_date,
+        start: d.start_at,
+        end: d.end_at,
         backgroundColor: color,
         borderColor: color,
         extendedProps: { duty: d },
@@ -66,11 +67,18 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-4" dir="rtl">
       <h2 className="text-lg font-semibold mb-3">היומן שלי</h2>
       <FullCalendar
-        plugins={[dayGridPlugin]}
+        plugins={[dayGridPlugin, timeGridPlugin]}
         initialView="dayGridMonth"
+        firstDay={0}
         locale={heLocale}
         events={[...dutyEvents, ...holidayEvents]}
-        headerToolbar={{ start: "prev,next", center: "title", end: "" }}
+        headerToolbar={{ start: "prev,next", center: "title", end: "dayGridMonth,timeGridWeek" }}
+        slotMinTime="00:00:00"
+        slotMaxTime="24:00:00"
+        views={{
+          dayGridMonth: { displayEventTime: false },
+          timeGridWeek: { displayEventTime: true },
+        }}
         height="auto"
         editable={false}
         selectable={false}

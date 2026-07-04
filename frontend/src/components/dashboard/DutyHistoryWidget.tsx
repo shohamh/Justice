@@ -22,7 +22,8 @@ export default function DutyHistoryWidget({ duties, typeNames, locationNames, my
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const today = new Date().toISOString().split("T")[0];
   const past = duties
-    .filter((d) => d.end_date < today)
+    // end_date is exclusive, so "over" means end_date is today or earlier.
+    .filter((d) => d.end_date <= today)
     .sort((a, b) => b.start_date.localeCompare(a.start_date));
 
   const avgActiveDays = Math.round(avg(allRows, "active_days"));

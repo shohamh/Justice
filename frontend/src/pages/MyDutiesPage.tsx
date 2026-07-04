@@ -64,7 +64,8 @@ export default function MyDutiesPage() {
     ]).then(([rows, bd, duties, stats]) => {
       setAllRows(rows as TransparencyRow[]);
       setBreakdown(bd as Breakdown);
-      const past = (duties as EffectiveDuty[]).filter((d) => d.end_date < today);
+      // end_date is exclusive, so "over" means end_date is today or earlier.
+      const past = (duties as EffectiveDuty[]).filter((d) => d.end_date <= today);
       setPastCount(past.length);
       setPastDays(past.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0));
       setReserveStats(stats as ReserveStats | null);
