@@ -449,6 +449,40 @@ def _exemption_label(exemption: SoldierExemption, ex_type: ExemptionType) -> str
     return f"{ex_type.name} ({category})"
 
 
+def effort_scores_by_soldier(
+    session: Session, soldiers: list[Soldier]
+) -> dict[uuid.UUID, float]:
+    """Effort score (scale-invariant A_i/W_i ratio) per soldier id, using the
+    same reset-date/planning-horizon rules as the transparency page."""
+    from app.services.effort_score import compute_effort_data, quarter_start
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    today = date.today()
+    try:
+        reset_raw = get_setting(session, "fairness.reset_date")
+        reset_date = date.fromisoformat(str(reset_raw))
+    except (SettingNotFound, ValueError, Exception):
+        reset_date = quarter_start(date(today.year - 2, today.month, 1))
+
+    from sqlalchemy import func as sql_func
+    latest_published_end = session.execute(
+        select(sql_func.max(DutyAssignment.end_date)).where(DutyAssignment.status == "published")
+    ).scalar()
+    if latest_published_end is not None and latest_published_end >= today:
+        planning_start = latest_published_end + timedelta(days=1)
+    else:
+        planning_start = today
+
+    effort_map = compute_effort_data(
+        session,
+        soldiers=soldiers,
+        planning_start=planning_start,
+        planning_end=planning_start,
+        reset_date=reset_date,
+    )
+    return {sid: float(data.effort_score) for sid, data in effort_map.items()}
+
+
 def transparency_rows(
     session: Session, *, viewer: Soldier | None = None
 ) -> dict[str, Any]:

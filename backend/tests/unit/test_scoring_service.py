@@ -392,6 +392,25 @@ def test_effective_spans_split_on_override(admin_session):
     assert repl_ranges == [(date(2026, 12, 3), date(2026, 12, 4))]
 
 
+def test_effort_scores_by_soldier_matches_transparency_rows(admin_session):
+    from tests.helpers import create_node
+
+    from app.services.scoring import effort_scores_by_soldier
+
+    node = create_node(admin_session, level="division", name="div-effort-extraction")
+    s1 = create_soldier(admin_session, personal_number="8700001", hierarchy_node_id=node.id)
+    s2 = create_soldier(admin_session, personal_number="8700002", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    soldiers = [s1, s2]
+    direct = effort_scores_by_soldier(admin_session, soldiers)
+    via_transparency = {
+        r["soldier_id"]: r["effort_score"] for r in transparency_rows(admin_session)["rows"]
+    }
+    assert direct.get(s1.id) == via_transparency.get(s1.id)
+    assert direct.get(s2.id) == via_transparency.get(s2.id)
+
+
 def test_effective_spans_no_override_is_single_block(admin_session):
     s = create_soldier(admin_session, personal_number="8600003")
     dt = _dt(admin_session, "שמירה-sp2", "1.00")
