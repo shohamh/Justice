@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import text
 
-from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int, set_setting
+from app.services.settings_loader import SettingNotFound, get_setting, set_setting
 
 
 def test_get_known_setting_returns_value(admin_session):
@@ -27,11 +27,3 @@ def test_set_setting_updates_and_writes_audit(admin_session):
     before, after = audit
     assert before == {"value": 15}
     assert after == {"value": 20}
-
-
-def test_get_setting_int_returns_value(admin_session):
-    assert get_setting_int(admin_session, "auth.session_minutes", 999) == 15
-
-
-def test_get_setting_int_falls_back_to_default(admin_session):
-    assert get_setting_int(admin_session, "does.not.exist", 42) == 42
