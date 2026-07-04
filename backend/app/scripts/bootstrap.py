@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import uuid
 
 from sqlalchemy import select
 
@@ -59,16 +60,18 @@ def _ensure_holding_node(session) -> None:
     if session.get(SystemSetting, "system.holding_node_id") is not None:
         print("bootstrap: holding node already exists; skipping.")
         return
+    root_setting = session.get(SystemSetting, "system.root_node_id")
+    root = session.get(HierarchyNode, uuid.UUID(root_setting.value)) if root_setting else None
     node = HierarchyNode(
         level="division",
         name="מסגרת ממתינים לקליטה",
-        parent_id=None,
+        parent_id=root.id if root else None,
         commander_id=None,
         path_ids=[],
     )
     session.add(node)
     session.flush()
-    node.path_ids = [node.id]
+    node.path_ids = [*(root.path_ids if root else []), node.id]
     session.flush()
     session.add(SystemSetting(key="system.holding_node_id", value=str(node.id), updated_by=None))
     print(f"bootstrap: created holding node id={node.id}")

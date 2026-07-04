@@ -30,7 +30,9 @@ def test_reseeding_twice_keeps_root_and_holding_nodes_alive(db_admin_url: str):
 
         holding_setting = s.get(SystemSetting, "system.holding_node_id")
         assert holding_setting is not None
-        assert s.get(HierarchyNode, uuid.UUID(holding_setting.value)) is not None
+        holding = s.get(HierarchyNode, uuid.UUID(holding_setting.value))
+        assert holding is not None
+        assert holding.parent_id == root.id, "holding node must nest under the root, not be a second root"
 
         psips = s.query(HierarchyNode).filter(HierarchyNode.name == "פסיפס").one()
         assert psips.parent_id == root.id
@@ -49,9 +51,9 @@ def test_reseeding_twice_keeps_root_and_holding_nodes_alive(db_admin_url: str):
 
         holding_setting = s.get(SystemSetting, "system.holding_node_id")
         assert holding_setting is not None
-        assert s.get(HierarchyNode, uuid.UUID(holding_setting.value)) is not None, (
-            "holding node must survive a second reseed"
-        )
+        holding = s.get(HierarchyNode, uuid.UUID(holding_setting.value))
+        assert holding is not None, "holding node must survive a second reseed"
+        assert holding.parent_id == root.id, "holding node must nest under the root, not be a second root"
 
         psips = s.query(HierarchyNode).filter(HierarchyNode.name == "פסיפס").one()
         assert psips.parent_id == root.id
