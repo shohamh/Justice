@@ -55,6 +55,12 @@ class Soldier(Base):
     bahad1_graduate: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
+    has_military_driving_license: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    military_driving_license_expiry: Mapped[date | None] = mapped_column(
+        Date, nullable=True, default=None
+    )
     enlistment_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     mandatory_end_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     discharge_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
