@@ -273,7 +273,8 @@ def test_rest_blocks_candidate_against_existing_assignment():
     solver.parameters.max_time_in_seconds = 5
     status = solver.Solve(model)
     assert solver.StatusName(status) in ("OPTIMAL", "FEASIBLE")
-    assert (0, 0) not in x or solver.Value(x[(0, 0)]) == 0
+    assert (0, 0) in x, "candidate should be eligible (just blocked by rest, not excluded upstream)"
+    assert solver.Value(x[(0, 0)]) == 0
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -906,29 +907,45 @@ def _has_insufficient_rest(
     return False
 ```
 
-In `create_assignment` (around line 90-91), add the rest check right after the overlap check:
+In `create_assignment` (around line 82-104), move the existing shift-time lookup (currently at line 100-104, right before `DutyAssignment(...)` is constructed) up to run before the overlap check, then reuse the same `start_time`/`end_time` locals for both the new rest check and the assignment construction — no duplicate lookup:
 
 ```python
+    if end_date <= start_date:
+        raise AssignmentError("bad_date_range")
+    if session.get(Soldier, soldier_id) is None:
+        raise AssignmentError("soldier_not_found")
+    if session.get(DutyType, duty_type_id) is None:
+        raise AssignmentError("duty_type_not_found")
+    if session.get(DutyLocation, duty_location_id) is None:
+        raise AssignmentError("location_not_found")
+    start_time, end_time = "00:00", "23:59"
+    if duty_shift_id is not None:
+        shift = session.get(DutyShift, duty_shift_id)
+        if shift is not None:
+            start_time, end_time = shift.start_time, shift.end_time
     if _has_overlap(session, soldier_id=soldier_id, start_date=start_date, end_date=end_date):
         raise AssignmentError("overlap")
-    start_time_probe, end_time_probe = "00:00", "23:59"
-    if duty_shift_id is not None:
-        probe_shift = session.get(DutyShift, duty_shift_id)
-        if probe_shift is not None:
-            start_time_probe, end_time_probe = probe_shift.start_time, probe_shift.end_time
     if _has_insufficient_rest(
         session,
         soldier_id=soldier_id,
         duty_type_id=duty_type_id,
         start_date=start_date,
         end_date=end_date,
-        start_time=start_time_probe,
-        end_time=end_time_probe,
+        start_time=start_time,
+        end_time=end_time,
     ):
         raise AssignmentError("insufficient_rest")
+    if _has_blocking_exemption(
+        session,
+        soldier_id=soldier_id,
+        duty_type_id=duty_type_id,
+        start_date=start_date,
+        end_date=end_date,
+    ):
+        raise AssignmentError("exempted")
 ```
 
-(Note: this duplicates the shift-time lookup already done later in the function for `start_time, end_time` — that's intentional here since the rest check runs before the assignment's own `start_time`/`end_time` locals are computed; both use the same `duty_shift_id` shift lookup.)
+Then delete the now-duplicate `start_time, end_time = "00:00", "23:59"` / shift-lookup block that used to sit right before `DutyAssignment(...)` (original lines 100-104) — the assignment construction below now reuses the `start_time`/`end_time` computed above.
 
 In `backend/app/routes/assignments.py:20`, update the conflict set:
 
@@ -1086,7 +1103,7 @@ from app.services.rest import earliest_eligible_date, resolve_rest_hours
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 ```
 
-Remove the private `_get_setting_int` (lines 93-97) and replace its remaining call site (`_get_setting_str` at line 100 stays — it's a different helper, still needed). Update the two call sites that used `_get_setting_int` to use `get_setting_int` instead (they already pass `session, key, default` positionally, so this is a drop-in rename).
+Remove the private `_get_setting_int` (lines 93-97; `_get_setting_str` at line 100 stays — it's a different helper, still needed). `_get_setting_int` has FOUR call sites in this file — lines 180, 181, 341, and 342 — update all four to call the shared `get_setting_int` instead (they already pass `session, key, default` positionally, so this is a drop-in rename; search the whole file for `_get_setting_int(` to make sure none are missed).
 
 Replace lines 341-343:
 
