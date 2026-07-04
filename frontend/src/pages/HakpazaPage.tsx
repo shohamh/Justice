@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { SoldierDTO, listSoldiers, getSoldier } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
@@ -15,6 +16,7 @@ const DISTANCE_LABEL: Record<number, string> = {
 };
 
 export default function HakpazaPage() {
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<Step>(1);
   const [pulledSoldier, setPulledSoldier] = useState<SoldierDTO | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -76,6 +78,40 @@ export default function HakpazaPage() {
     }).catch(() => { if (!cancelled) setShiftsLoading(false); });
     return () => { cancelled = true; };
   }, [scopedSoldiers]);
+
+  useEffect(() => {
+    const soldierId = searchParams.get("soldierId");
+    const assignmentId = searchParams.get("assignmentId");
+    if (!soldierId || !assignmentId) return;
+    let cancelled = false;
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    (async () => {
+      try {
+        const [soldier, asgns] = await Promise.all([
+          getSoldier(soldierId),
+          listAssignments(soldierId, { date_from: todayStr }),
+        ]);
+        if (cancelled) return;
+        const published = asgns.filter((a) => a.status === "published");
+        const match = published.find((a) => a.id === assignmentId);
+        setPulledSoldier(soldier);
+        setAssignments(published);
+        if (match) {
+          setSelectedAssignment(match);
+          setPullDate(match.start_date >= todayStr ? match.start_date : todayStr);
+          setStep(2);
+        } else {
+          setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
+        }
+      } catch {
+        if (!cancelled) setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSoldierSelect(soldier: SoldierDTO | null) {
     if (!soldier) {
