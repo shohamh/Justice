@@ -118,7 +118,6 @@ def create_shift(
     # Hours are a feature of the duty type: a caller that doesn't specify
     # start_time/end_time inherits the duty type's own configured hours
     # (falling back to the full-day default if the type has none set).
-    from_duty_type_defaults = start_time is None and end_time is None
     if start_time is None or end_time is None:
         duty_type = session.get(DutyType, duty_type_id)
         if duty_type is None:
@@ -130,15 +129,13 @@ def create_shift(
 
     for t in (start_time, end_time):
         parts = t.split(":")
-        if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
             raise ShiftError("invalid_time")
     if (end_date - start_date).days == 1 and end_time <= start_time:
-        if from_duty_type_defaults:
-            # The duty type's own hours cross midnight (e.g. an overnight
-            # shift); stretch the single selected day to cover the night.
-            end_date = end_date + timedelta(days=1)
-        else:
-            raise ShiftError("invalid_time_order")
+        # end_time on/before start_time for a single selected day means the
+        # shift crosses midnight (e.g. an overnight duty); stretch the span
+        # to cover the following morning.
+        end_date = end_date + timedelta(days=1)
     shift = DutyShift(
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id,

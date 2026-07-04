@@ -225,14 +225,17 @@ def test_create_shift_accepts_explicit_times(admin_session):
     assert shift.end_time == "17:00"
 
 
-def test_create_shift_rejects_end_time_before_start_time_when_single_day(admin_session):
+def test_create_shift_extends_end_date_when_end_time_before_start_time_on_single_day(admin_session):
+    # end_time on/before start_time for a single selected day means the duty
+    # crosses midnight (e.g. an overnight shift); the shift should stretch
+    # to cover the following morning rather than being rejected.
     dt, loc = _seed_type_and_location(admin_session)
-    with pytest.raises(shifts_svc.ShiftError):
-        shifts_svc.create_shift(
-            admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
-            start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
-            start_time="17:00", end_time="08:00",
-        )
+    shift = shifts_svc.create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_time="17:00", end_time="08:00",
+    )
+    assert shift.end_date == date(2026, 6, 3)
 
 
 def test_create_shift_rejects_malformed_time_format(admin_session):
