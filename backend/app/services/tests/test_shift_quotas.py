@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.db.models import AuditLog, DutyLocation, Soldier
+from app.db.models import AuditLog, DutyLocation, DutyType, Soldier
 from app.services.duty_config import create_duty_type
 from app.services.shift_quotas import (
     ShiftQuotaError,
@@ -98,7 +98,15 @@ def test_set_quotas_writes_audit_log(admin_session):
     assert audit_entry.after == [{"node_id": str(node_a.id), "count": 2}]
 
 
+def _make_permissive_duty_type(session, name: str):
+    dt = DutyType(name=name, score_per_day=Decimal("1.00"), requirements={})
+    session.add(dt)
+    session.flush()
+    return dt
+
+
 def test_compute_potential_split_even_weights(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_even")
     parent = create_node(admin_session, level="unit", name="pot_even_parent")
     child_a = create_node(admin_session, level="branch", name="pot_even_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_even_b", parent=parent)
@@ -118,6 +126,7 @@ def test_compute_potential_split_even_weights(admin_session):
 
 
 def test_compute_potential_split_uneven_weights_sums_exactly(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_uneven")
     parent = create_node(admin_session, level="unit", name="pot_uneven_parent")
     child_a = create_node(admin_session, level="branch", name="pot_uneven_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_uneven_b", parent=parent)
@@ -139,6 +148,7 @@ def test_compute_potential_split_uneven_weights_sums_exactly(admin_session):
 
 
 def test_compute_potential_split_zero_weight_child_gets_zero_count(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_zero")
     parent = create_node(admin_session, level="unit", name="pot_zero_parent")
     child_a = create_node(admin_session, level="branch", name="pot_zero_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_zero_b", parent=parent)
@@ -153,6 +163,7 @@ def test_compute_potential_split_zero_weight_child_gets_zero_count(admin_session
 
 
 def test_compute_potential_split_all_zero_weight_falls_back_to_even_split(admin_session):
+    # No DutyType created at all -> every child has final_potential == 0.
     parent = create_node(admin_session, level="unit", name="pot_allzero_parent")
     create_node(admin_session, level="branch", name="pot_allzero_a", parent=parent)
     create_node(admin_session, level="branch", name="pot_allzero_b", parent=parent)

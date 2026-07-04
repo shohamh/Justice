@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import DutyShift, DutyShiftNodeQuota, HierarchyNode, Soldier
+from app.db.models import DutyShift, DutyShiftNodeQuota, HierarchyNode
+from app.services.potential import compute_potential
 
 
 class ShiftQuotaError(Exception):
@@ -79,13 +81,14 @@ def set_shift_quotas(
 
 
 def compute_potential_split(
-    session: Session, *, parent_node_id: uuid.UUID, required_count: int
+    session: Session, *, parent_node_id: uuid.UUID, required_count: int, reference_date: date | None = None
 ) -> list[dict]:
     """Proportionally split `required_count` across `parent_node_id`'s direct
-    children, weighted by each child's total active-soldier subtree count.
-    Uses the largest-remainder method so counts always sum to exactly
-    `required_count`. Falls back to an even split if every child has zero
-    weight (otherwise the split would be all-zero and useless)."""
+    children, weighted by each child's final_potential (eligible-soldier count
+    adjusted for exemptions/modifiers). Uses the largest-remainder method so
+    counts always sum to exactly `required_count`. Falls back to an even split
+    if every child has zero weight (otherwise the split would be all-zero and
+    useless)."""
     if required_count < 1:
         raise ShiftQuotaError("required_count must be >= 1")
 
@@ -99,13 +102,9 @@ def compute_potential_split(
     if not children:
         raise ShiftQuotaError("parent node has no direct children")
 
+    ref = reference_date or date.today()
     weights = [
-        session.execute(
-            select(func.count())
-            .select_from(Soldier)
-            .join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id)
-            .where(HierarchyNode.path_ids.any(child.id), Soldier.left_at.is_(None))
-        ).scalar_one()
+        max(compute_potential(session, node_id=child.id, reference_date=ref).final_potential, 0)
         for child in children
     ]
 
