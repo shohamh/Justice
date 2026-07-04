@@ -44,6 +44,11 @@ def compute_node_effort_potential(
         node.id: {n2.id for n2 in nodes if node.id in n2.path_ids} for node in nodes
     }
 
+    # NOTE: O(N) DB round-trips — compute_potential is called once per hierarchy
+    # node, and several of its internal queries (active duty types, exemption-type
+    # maps) re-fetch identical global data every iteration. Acceptable at current
+    # org sizes; revisit (e.g. hoist duty-type/exemption-type lookups out of
+    # compute_potential's per-call scope) if hierarchy size grows into the hundreds.
     results: dict[uuid.UUID, NodeEffortPotential] = {}
     for node in nodes:
         potential = compute_potential(

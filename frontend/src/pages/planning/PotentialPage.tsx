@@ -282,12 +282,14 @@ export default function PotentialPage() {
       header: t("potential.sibling_gap"),
       cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.sibling_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null)}</span>,
       sortValue: (n) => effortGapByNode.get(n.id)?.sibling_gap ?? -1,
+      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null),
     },
     {
       id: "global_gap",
       header: t("potential.global_gap"),
       cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.global_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.global_gap ?? null)}</span>,
       sortValue: (n) => effortGapByNode.get(n.id)?.global_gap ?? -1,
+      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.global_gap ?? null),
     },
     {
       id: "pct_of_parent",

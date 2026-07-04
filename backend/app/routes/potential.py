@@ -7,9 +7,17 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can_see_private_node
+from app.auth.authz import (
+    Action,
+    authorize,
+    can_see_private_node,
+    is_commander,
+    is_duty_manager,
+    scope_root_ids,
+)
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PotentialModifier, Soldier
 from app.db.session import get_session
@@ -120,9 +128,24 @@ def get_effort_gap(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> EffortGapOut:
-    authorize(session, user, Action.POTENTIAL_READ, target_node=None)
+    is_admin = user.role == "admin"
+    if not is_admin and not is_commander(session, user.id) and not is_duty_manager(session, user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
     ref = date.fromisoformat(reference_date) if reference_date else date.today()
     results = compute_node_effort_potential(session, reference_date=ref)
+
+    if is_admin:
+        allowed_node_ids = None
+    else:
+        roots = scope_root_ids(session, user)
+        nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
+        allowed_node_ids = {
+            node_id
+            for node_id, node in nodes_by_id.items()
+            if any(root in node.path_ids for root in roots)
+        }
+
     return EffortGapOut(
         nodes=[
             NodeEffortPotentialOut(
@@ -138,6 +161,7 @@ def get_effort_gap(
                 global_gap=r.global_gap,
             )
             for r in results.values()
+            if allowed_node_ids is None or r.node_id in allowed_node_ids
         ]
     )
 
