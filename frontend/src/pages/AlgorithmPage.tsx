@@ -17,6 +17,13 @@ function formatDuration(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
+function formatRunTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" });
+  const time = d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+  return `${date} ${time}`;
+}
+
 export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -173,7 +180,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                 )}
                 className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
-                סמן הכל כנראה
+                סמן הכל כנקרא
               </button>
             )}
             <Link
@@ -217,6 +224,12 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                   </span>
                 )}
               </div>
+              {job.started_at && (
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {formatRunTimestamp(job.started_at)}
+                  {job.finished_at && ` – ${formatRunTimestamp(job.finished_at)}`}
+                </div>
+              )}
             </button>
           ))}
         </div>
@@ -253,6 +266,12 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                   }
                   return null;
                 })()}
+                {selectedJob.started_at && (
+                  <span className="text-xs text-gray-400">
+                    {formatRunTimestamp(selectedJob.started_at)}
+                    {selectedJob.finished_at && ` – ${formatRunTimestamp(selectedJob.finished_at)}`}
+                  </span>
+                )}
               </div>
               {(selectedJob.status === "pending" || selectedJob.status === "running") && (() => {
                 // The backend stores real progress as JSON {pct, label} on the job
