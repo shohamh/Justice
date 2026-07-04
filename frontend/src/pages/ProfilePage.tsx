@@ -20,6 +20,25 @@ import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
 
+function formatFieldUpdateValue(
+  fieldName: string,
+  value: string | null,
+  t: (key: string) => string
+): string {
+  if (!value) return "—";
+  if (fieldName === "gender") return t(`soldier_profile.gender_${value}`);
+  if (fieldName === "military_driving_license") {
+    try {
+      const parsed = JSON.parse(value) as { has_license: boolean; expiry_date: string | null };
+      if (!parsed.has_license) return "—";
+      return parsed.expiry_date ? `✓ (${formatDate(parsed.expiry_date)})` : "✓";
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -30,6 +49,8 @@ export default function ProfilePage() {
   const [rankReq, setRankReq] = useState("");
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
   const [phoneReq, setPhoneReq] = useState("");
+  const [licenseHasReq, setLicenseHasReq] = useState(false);
+  const [licenseExpiryReq, setLicenseExpiryReq] = useState("");
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
@@ -85,6 +106,10 @@ export default function ProfilePage() {
     return () => clearInterval(interval);
   }, [tgPolling]);
 
+  function militaryLicensePayload(hasLicense: boolean, expiry: string): string {
+    return JSON.stringify({ has_license: hasLicense, expiry_date: expiry || null });
+  }
+
   async function requestUpdate(field: string, value: string) {
     if (!user || !value) return;
     try {
@@ -96,6 +121,7 @@ export default function ProfilePage() {
       if (field === "gender") setGenderReq("");
       if (field === "rank") setRankReq("");
       if (field === "phone") setPhoneReq("");
+      if (field === "military_driving_license") { setLicenseHasReq(false); setLicenseExpiryReq(""); }
     } catch {
       // submission failed silently — backend returns error detail
     }
@@ -208,6 +234,16 @@ export default function ProfilePage() {
           {user?.bahad1_graduate !== undefined && (
             <div><span className="font-medium">{t("soldier_profile.bahad1_graduate")}:</span> {user.bahad1_graduate ? "✓" : "—"}</div>
           )}
+          {user?.has_military_driving_license !== undefined && user?.has_military_driving_license !== null && (
+            <div>
+              <span className="font-medium">{t("soldier_profile.military_driving_license")}:</span>{" "}
+              {user.has_military_driving_license
+                ? (user.military_driving_license_expiry
+                    ? `✓ (${t("soldier_profile.military_driving_license_expiry")}: ${formatDate(user.military_driving_license_expiry)})`
+                    : "✓")
+                : "—"}
+            </div>
+          )}
           {user?.enlistment_date && <div><span className="font-medium">{t("soldier_profile.enlistment_date")}:</span> {formatDate(user.enlistment_date)}</div>}
           {user?.mandatory_end_date && <div><span className="font-medium">{t("soldier_profile.mandatory_end_date")}:</span> {formatDate(user.mandatory_end_date)}</div>}
           {user?.discharge_date && <div><span className="font-medium">{t("soldier_profile.discharge_date")}:</span> {formatDate(user.discharge_date)}</div>}
@@ -273,6 +309,28 @@ export default function ProfilePage() {
               {t("soldier_profile.submit_update")}
             </button>
           </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.military_driving_license")}</label>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={licenseHasReq} onChange={e => setLicenseHasReq(e.target.checked)} />
+              {t("soldier_profile.military_driving_license_has")}
+            </label>
+            <input
+              type="date"
+              lang="he"
+              value={licenseExpiryReq}
+              onChange={e => setLicenseExpiryReq(e.target.value)}
+              disabled={!licenseHasReq}
+              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => requestUpdate("military_driving_license", militaryLicensePayload(licenseHasReq, licenseExpiryReq))}
+              className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
+            >
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
           <div className="space-y-1">
             <div className="flex gap-2 items-center">
               <label className="w-40">{t("profile.email")}</label>
@@ -316,10 +374,10 @@ export default function ProfilePage() {
                   </span>
                 </div>
                 <div className="text-gray-500">
-                  {t("soldier_profile.previous_value")}: <span className="font-mono">{u.previous_value ? (u.field_name === "gender" ? t(`soldier_profile.gender_${u.previous_value}`) : u.previous_value) : "—"}</span>
+                  {t("soldier_profile.previous_value")}: <span className="font-mono">{formatFieldUpdateValue(u.field_name, u.previous_value, t)}</span>
                 </div>
                 <div className="text-gray-500">
-                  {t("soldier_profile.new_value")}: <span className="font-mono">{u.new_value ? (u.field_name === "gender" ? t(`soldier_profile.gender_${u.new_value}`) : u.new_value) : "—"}</span>
+                  {t("soldier_profile.new_value")}: <span className="font-mono">{formatFieldUpdateValue(u.field_name, u.new_value, t)}</span>
                 </div>
               </div>
             ))}
