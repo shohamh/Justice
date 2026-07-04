@@ -12,7 +12,8 @@ from typing import Literal, overload
 
 from ortools.sat.python.cp_model import CpModel, IntVar, LinearExpr
 
-from app.algorithm.duration import score_days
+from app.algorithm.duration import combine_date_time, score_days
+from app.algorithm.rest import last_duty_day, rest_violated
 from app.algorithm.types import (
     EFFORT_SCALE,
     DutyBlock,
@@ -401,6 +402,43 @@ def build_model(
                 model.Add(sum(day_vars) == 0)
             else:
                 model.Add(sum(day_vars) <= 1)
+
+    # Hard constraint 2b: Rest time — a soldier needs each duty's `rest_hours`
+    # of rest between that duty's effective end and the start of their next
+    # duty (existing or newly assigned in this same run).
+    for si, s in enumerate(soldier_list):
+        si_duties = soldier_duties.get(si, [])
+        if not si_duties:
+            continue
+
+        # Existing (published) assignments block candidates outright — they
+        # are fixed, not decision variables.
+        for ea in existing:
+            if ea.soldier_id != s.id or ea.rest_effective_end_date is None:
+                continue
+            prior_end_dt = combine_date_time(ea.rest_effective_end_date, ea.rest_effective_end_time)
+            for di in si_duties:
+                d = duty_list[di]
+                if rest_violated(prior_end_dt, d.start_date, d.start_time, ea.rest_hours):
+                    model.Add(x[(di, si)] == 0)
+
+        # Candidate-vs-candidate: at most one of a pair too close together can
+        # be chosen for this soldier. Bounded lookahead (based on rest_hours)
+        # keeps this from becoming an O(n^2) scan over unrelated duties.
+        sorted_duties = sorted(si_duties, key=lambda di: duty_list[di].start_date)
+        for a_pos, di_a in enumerate(sorted_duties):
+            d_a = duty_list[di_a]
+            if d_a.rest_hours <= 0:
+                continue
+            end_day_a = last_duty_day(d_a.start_date, d_a.end_date)
+            prior_end_dt = combine_date_time(end_day_a, d_a.end_time)
+            lookahead_days = -(-d_a.rest_hours // 24) + 1  # ceil(rest_hours/24) + 1 buffer day
+            for di_b in sorted_duties[a_pos + 1:]:
+                d_b = duty_list[di_b]
+                if d_b.start_date > end_day_a + timedelta(days=lookahead_days):
+                    break
+                if rest_violated(prior_end_dt, d_b.start_date, d_b.start_time, d_a.rest_hours):
+                    model.Add(x[(di_a, si)] + x[(di_b, si)] <= 1)
 
     # ── Count-space effort ────────────────────────────────────────────────────
     #

@@ -61,6 +61,9 @@ class DutyBlock:
     # constraint matches any soldier whose path_ids contains that node (i.e.
     # the node itself or any descendant), same semantics as eligible_node_ids.
     node_quotas: dict[uuid.UUID, int] | None = None
+    # Hours of rest required after this duty ends before the same soldier can
+    # start another. 0 = no rest requirement (default, safe for existing callers).
+    rest_hours: int = 0
 
 
 @dataclass
@@ -71,6 +74,12 @@ class ExistingAssignment:
     start_date: date
     end_date: date
     is_reserve: bool = False
+    # Rest-window fields (all default to "no constraint" for existing callers).
+    # rest_effective_end_date/time already account for an early dismissal —
+    # see backend/app/services/rest.py:effective_assignment_end.
+    rest_hours: int = 0
+    rest_effective_end_date: date | None = None
+    rest_effective_end_time: str = "23:59"
 
 
 @dataclass
