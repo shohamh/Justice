@@ -22,6 +22,7 @@ def _soldier(**kwargs) -> Soldier:
         role="soldier",
         enrolled_at=date(2024, 1, 1),
         bahad1_graduate=False,
+        has_military_driving_license=False,
     )
     defaults.update(kwargs)
     return Soldier(**defaults)
@@ -133,4 +134,34 @@ def test_service_type_restriction_blocks():
     s = _soldier(mandatory_end_date=date(2025, 1, 1), discharge_date=None)
     # soldier is קבע, but restriction only allows חובה
     reqs = DutyTypeRequirements(allowed_service_types=["חובה"])
+    assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_military_driving_license_required_passes_no_expiry():
+    s = _soldier(has_military_driving_license=True, military_driving_license_expiry=None)
+    reqs = DutyTypeRequirements(requires_military_driving_license=True)
+    assert _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_military_driving_license_required_blocks_when_absent():
+    s = _soldier(has_military_driving_license=False)
+    reqs = DutyTypeRequirements(requires_military_driving_license=True)
+    assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_military_driving_license_required_blocks_when_null():
+    s = _soldier(has_military_driving_license=None)
+    reqs = DutyTypeRequirements(requires_military_driving_license=True)
+    assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_military_driving_license_future_expiry_passes():
+    s = _soldier(has_military_driving_license=True, military_driving_license_expiry=TODAY + timedelta(days=30))
+    reqs = DutyTypeRequirements(requires_military_driving_license=True)
+    assert _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_military_driving_license_past_expiry_blocks():
+    s = _soldier(has_military_driving_license=True, military_driving_license_expiry=TODAY - timedelta(days=1))
+    reqs = DutyTypeRequirements(requires_military_driving_license=True)
     assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
