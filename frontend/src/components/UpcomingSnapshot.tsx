@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import type { UpcomingDay, UpcomingAssignment } from "../api/commanderDashboard";
 import SoldierLink from "./SoldierLink";
 
@@ -30,7 +31,16 @@ function Badge({ a, onSelect }: { a: UpcomingAssignment; onSelect: (a: UpcomingA
 
 export default function UpcomingSnapshot({ data }: Props) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<UpcomingAssignment | null>(null);
+
+  function handleForcedRelease(a: UpcomingAssignment) {
+    const confirmed = window.confirm(
+      `פעולה זו תפעיל מנגנון הקפצה פיקודית עבור ${a.soldier_name || "החייל"} — מיועד למקרים קיצוניים בלבד (מחלה, צורך מבצעי דחוף). להמשיך?`
+    );
+    if (!confirmed) return;
+    navigate(`/commander/hakpaza?soldierId=${a.soldier_id}&assignmentId=${a.assignment_id}`);
+  }
   if (!data || data.length === 0) return <p className="text-gray-500">{t("command_dashboard.no_upcoming")}</p>;
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -56,19 +66,29 @@ export default function UpcomingSnapshot({ data }: Props) {
       {selected && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 w-72" onClick={(e) => e.stopPropagation()}>
-            <div className="font-bold text-lg mb-3">
-              {selected.soldier_id ? (
-                <SoldierLink id={selected.soldier_id} name={selected.soldier_name || "?"} />
-              ) : (
-                selected.soldier_name || "?"
-              )}
+            <div className="flex justify-between items-start mb-3">
+              <div className="font-bold text-lg">
+                {selected.soldier_id ? (
+                  <SoldierLink id={selected.soldier_id} name={selected.soldier_name || "?"} />
+                ) : (
+                  selected.soldier_name || "?"
+                )}
+              </div>
+              <button onClick={() => setSelected(null)} aria-label="סגור" className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
             </div>
             <div className="space-y-1 text-sm">
               <div><span className="text-gray-500 dark:text-gray-400">תורנות:</span> {selected.duty_type_name || selected.duty_type_id?.slice(0, 6) || "?"}</div>
               <div><span className="text-gray-500 dark:text-gray-400">יחידה:</span> {selected.node_name || "?"}</div>
               {selected.is_reserve && <div className="text-amber-700 dark:text-amber-400 font-medium">רזרבה</div>}
             </div>
-            <button onClick={() => setSelected(null)} className="mt-4 px-3 py-1 border dark:border-gray-600 dark:text-gray-300 rounded text-sm">{t("command_dashboard.cancel")}</button>
+            {selected.soldier_id && (
+              <button
+                onClick={() => handleForcedRelease(selected)}
+                className="mt-4 w-full px-3 py-1.5 rounded text-sm font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800"
+              >
+                שחרור פיקודי
+              </button>
+            )}
           </div>
         </div>
       )}
