@@ -65,8 +65,8 @@ class CreateShiftRequest(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
-    start_time: str = "00:00"
-    end_time: str = "23:59"
+    start_time: str | None = None
+    end_time: str | None = None
     required_count: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     reserve_count_override: int | None = Field(default=None, ge=0)

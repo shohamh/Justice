@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -102,8 +102,8 @@ def create_shift(
     duty_location_id: uuid.UUID,
     start_date: date,
     end_date: date,
-    start_time: str = "00:00",
-    end_time: str = "23:59",
+    start_time: str | None = None,
+    end_time: str | None = None,
     required_count: int = 1,
     notes: str | None = None,
     reserve_count_override: int | None = None,
@@ -114,12 +114,31 @@ def create_shift(
         raise ShiftError("end_before_start")
     if required_count < 1:
         raise ShiftError("invalid_required_count")
+
+    # Hours are a feature of the duty type: a caller that doesn't specify
+    # start_time/end_time inherits the duty type's own configured hours
+    # (falling back to the full-day default if the type has none set).
+    from_duty_type_defaults = start_time is None and end_time is None
+    if start_time is None or end_time is None:
+        duty_type = session.get(DutyType, duty_type_id)
+        if duty_type is None:
+            raise ShiftError("duty_type_not_found")
+        if start_time is None:
+            start_time = duty_type.start_time.strftime("%H:%M") if duty_type.start_time else "00:00"
+        if end_time is None:
+            end_time = duty_type.end_time.strftime("%H:%M") if duty_type.end_time else "23:59"
+
     for t in (start_time, end_time):
         parts = t.split(":")
         if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
             raise ShiftError("invalid_time")
     if (end_date - start_date).days == 1 and end_time <= start_time:
-        raise ShiftError("invalid_time_order")
+        if from_duty_type_defaults:
+            # The duty type's own hours cross midnight (e.g. an overnight
+            # shift); stretch the single selected day to cover the night.
+            end_date = end_date + timedelta(days=1)
+        else:
+            raise ShiftError("invalid_time_order")
     shift = DutyShift(
         duty_type_id=duty_type_id,
         duty_location_id=duty_location_id,
