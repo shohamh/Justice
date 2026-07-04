@@ -573,7 +573,9 @@
     "filter_duty_type": "סוג תורנות",
     "algorithm_running_badge": "ריצות פעילות",
     "algorithm_done_badge": "הושלמו, ממתינות לפרסום",
-    "eligible_units": "תת יחידה אחראית"
+    "eligible_units": "תת יחידה אחראית",
+    "validation_required": "שדה חובה",
+    "validation_missing_fields": "יש למלא את כל השדות המסומנים"
   },
   "table": {
     "filter_placeholder": "סנן..."
