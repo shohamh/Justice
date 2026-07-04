@@ -28,6 +28,9 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
     initial == null ? "" : initial.is_external ? "true" : "false"
   );
   const [reqs, setReqs] = useState<Reqs>(initial?.requirements ?? {});
+  const [restHours, setRestHours] = useState<string>(
+    initial?.requirements?.rest_hours != null ? String(initial.requirements.rest_hours) : ""
+  );
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
   const [eligOpen, setEligOpen] = useState(false);
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(initial?.eligible_node_ids ?? []);
@@ -59,6 +62,10 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
     }
     setSaving(true);
     try {
+      const mergedReqs = {
+        ...reqs,
+        ...(restHours.trim() ? { rest_hours: parseInt(restHours, 10) } : {}),
+      };
       const payload = {
         name,
         score_per_day: score,
@@ -74,11 +81,11 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
       };
       let dt: DutyType;
       if (initial) {
-        dt = await updateDutyType(initial.id, { ...payload, requirements: reqs });
+        dt = await updateDutyType(initial.id, { ...payload, requirements: mergedReqs });
       } else {
         dt = await createDutyType(payload);
-        if (Object.keys(reqs).length > 0) {
-          dt = await updateDutyTypeRequirements(dt.id, reqs);
+        if (Object.keys(mergedReqs).length > 0) {
+          dt = await updateDutyTypeRequirements(dt.id, mergedReqs);
         }
       }
       onSaved(dt);
@@ -121,6 +128,10 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
               <div className="w-16">
                 <label htmlFor="duty-type-reserve-minimum" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t("reserve_minimum")}</label>
                 <input id="duty-type-reserve-minimum" type="number" min="0" step="1" value={reserveMin} onChange={e => setReserveMin(e.target.value)} className={inputCls} />
+              </div>
+              <div className="w-24">
+                <label htmlFor="duty-type-rest-hours" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">שעות מנוחה</label>
+                <input id="duty-type-rest-hours" type="number" min="0" step="1" placeholder="ברירת מחדל" value={restHours} onChange={e => setRestHours(e.target.value)} className={inputCls} />
               </div>
             </div>
           </div>

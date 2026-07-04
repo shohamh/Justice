@@ -18,6 +18,7 @@ export interface DutyType {
     enlisted_allowed?: boolean;
     requires_bahad1?: boolean;
     requires_military_driving_license?: boolean;
+    rest_hours?: number;
   };
   contact_name: string | null;
   contact_phone: string | null;
