@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from app.db.models import DutyLocation, DutyType
+from app.services.shifts import create_shift
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -127,3 +129,46 @@ def test_quota_split_preview_forbidden_for_plain_soldier(client, admin_session):
         headers=auth_headers(plain),
     )
     assert resp.status_code == 403
+
+
+def test_two_level_split_preview_endpoint(client, admin_session):
+    dm, dt, loc, unit = _setup(admin_session, "tl_001")
+    child = create_node(admin_session, level="branch", name="tl_001_child", parent=unit)
+    create_soldier(admin_session, personal_number="tl_001_s1", hierarchy_node_id=child.id)
+    admin_session.commit()
+
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 2),
+        required_count=3,
+        eligible_node_ids=[unit.id],
+    )
+    admin_session.commit()
+
+    resp = client.get(f"/api/shifts/{shift.id}/quota-split-preview-two-level", headers=auth_headers(dm))
+    assert resp.status_code == 200, resp.text
+    entries = resp.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["node_name"] == "tl_001_child"
+    assert entries[0]["count"] == 3
+    assert entries[0]["parent_responsible_node_id"] == str(unit.id)
+
+
+def test_two_level_split_preview_requires_eligible_node_ids(client, admin_session):
+    dm, dt, loc, _unit = _setup(admin_session, "tl_002")
+
+    shift = create_shift(
+        admin_session,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 2),
+        required_count=3,
+    )
+    admin_session.commit()
+
+    resp = client.get(f"/api/shifts/{shift.id}/quota-split-preview-two-level", headers=auth_headers(dm))
+    assert resp.status_code == 400

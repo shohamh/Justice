@@ -15,7 +15,7 @@ from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutySh
 from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
-from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, get_shift_quotas, set_shift_quotas
+from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
 from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -191,6 +191,36 @@ def quota_split_preview(
     except ShiftQuotaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return QuotaSplitPreviewOut(entries=[QuotaSplitEntry(**e) for e in entries])
+
+
+class TwoLevelSplitEntry(BaseModel):
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+    count: int
+    weight: int
+    parent_responsible_node_id: uuid.UUID
+
+
+class TwoLevelSplitPreviewOut(BaseModel):
+    entries: list[TwoLevelSplitEntry]
+
+
+@router.get("/{shift_id}/quota-split-preview-two-level", response_model=TwoLevelSplitPreviewOut)
+def quota_split_preview_two_level(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> TwoLevelSplitPreviewOut:
+    shift = _load(session, shift_id)
+    if not shift.eligible_node_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_has_no_responsible_units")
+    try:
+        entries = compute_two_level_split(
+            session, responsible_node_ids=list(shift.eligible_node_ids), required_count=shift.required_count
+        )
+    except ShiftQuotaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return TwoLevelSplitPreviewOut(entries=[TwoLevelSplitEntry(**e) for e in entries])
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)
