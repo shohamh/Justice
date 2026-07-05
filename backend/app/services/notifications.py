@@ -12,6 +12,7 @@ from app.audit.writer import write_audit
 from app.db.models import (
     CommanderNotificationDepth,
     CommanderNotificationScope,
+    DutyManagerScope,
     EmailOutbox,
     HierarchyNode,
     Notification,
@@ -319,6 +320,54 @@ def notify_commanders_of_request(
         reference_type=reference_type, reference_id=reference_id,
         actor_id=actor_id, original_soldier_id=soldier_id,
     )
+
+
+def notify_duty_managers_of_request(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    type: NotificationType,
+    title: str,
+    body: str | None = None,
+    reference_type: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    """Send notification only to duty managers whose scope covers the soldier's
+    node at or above the regular-exemption approval level — not to commanders.
+
+    Used for commander-escalated exemption requests, which start at
+    pending_duty_manager and so skip the commander notification cascade."""
+    from app.services.authority import REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY, dm_scope_covers_target
+
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None or soldier.hierarchy_node_id is None:
+        return
+    target_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+    if target_node is None:
+        return
+    dm_ids = set(
+        session.execute(select(DutyManagerScope.duty_manager_id)).scalars().all()
+    )
+    for dm_id in dm_ids:
+        roots = set(
+            session.execute(
+                select(DutyManagerScope.hierarchy_node_id).where(
+                    DutyManagerScope.duty_manager_id == dm_id
+                )
+            ).scalars().all()
+        )
+        if not dm_scope_covers_target(
+            session, scope_root_ids=roots, target_node=target_node,
+            required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+        ):
+            continue
+        _create_notif(
+            session, soldier_id=dm_id, type=type,
+            title=f"{soldier.full_name}: {title}", body=body,
+            reference_type=reference_type, reference_id=reference_id,
+            actor_id=actor_id,
+        )
 
 
 def cascade_to_commanders(
