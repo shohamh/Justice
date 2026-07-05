@@ -42,12 +42,12 @@ def auto_assign_responsibility(
     for shift in ordered_shifts:
         if not shift.eligible_node_ids:
             continue
-        candidate_ids: set[uuid.UUID] = set()
-        for parent_id in shift.eligible_node_ids:
-            children = session.execute(
-                select(HierarchyNode).where(HierarchyNode.parent_id == parent_id)
-            ).scalars().all()
-            candidate_ids.update(c.id for c in children)
+        # Nonexistent ids in eligible_node_ids (e.g. a deleted parent node) simply
+        # contribute zero children below; they are silently ignored, by design.
+        children = session.execute(
+            select(HierarchyNode).where(HierarchyNode.parent_id.in_(shift.eligible_node_ids))
+        ).scalars().all()
+        candidate_ids: set[uuid.UUID] = {c.id for c in children}
         if not candidate_ids:
             continue
 

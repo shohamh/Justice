@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -61,6 +62,27 @@ def test_spreads_load_across_batch_when_candidates_tied(admin_session):
     # unit deterministically; the second shift must pick the OTHER unit, since the
     # first unit's running_batch_load now makes it less attractive.
     assert by_shift[shift_1.id] != by_shift[shift_2.id]
+
+
+def test_ignores_nonexistent_eligible_node_id(admin_session):
+    # eligible_node_ids may contain an id for a node that no longer exists
+    # (e.g. a deleted parent); that id should contribute zero children and be
+    # silently ignored, leaving only the real parent's children as candidates.
+    parent = create_node(admin_session, level="unit", name="resp_parent_stale")
+    strong = create_node(admin_session, level="branch", name="resp_stale_strong", parent=parent)
+    create_soldier(admin_session, personal_number="resp_stale_0", hierarchy_node_id=strong.id)
+    nonexistent_id = uuid.uuid4()
+    shift = _make_shift(
+        admin_session, "4", required_count=1,
+        eligible_node_ids=[parent.id, nonexistent_id], start_date=date(2026, 7, 1),
+    )
+    admin_session.commit()
+
+    result = auto_assign_responsibility(admin_session, shift_ids=[shift.id], reference_date=date(2026, 7, 1))
+
+    assert len(result) == 1
+    assert result[0].shift_id == shift.id
+    assert result[0].node_name == "resp_stale_strong"
 
 
 def test_skips_shifts_with_no_eligible_node_ids(admin_session):
