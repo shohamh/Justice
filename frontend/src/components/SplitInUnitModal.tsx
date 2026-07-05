@@ -5,6 +5,8 @@ interface Props {
   selectedShifts: DutyShift[];
   onApplied: () => void;
   onClose: () => void;
+  dtName: (id: string) => string;
+  locName: (id: string) => string;
 }
 
 interface ShiftPreview {
@@ -13,7 +15,7 @@ interface ShiftPreview {
   error: string | null;
 }
 
-export default function SplitInUnitModal({ selectedShifts, onApplied, onClose }: Props) {
+export default function SplitInUnitModal({ selectedShifts, onApplied, onClose, dtName, locName }: Props) {
   const [previews, setPreviews] = useState<ShiftPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -40,7 +42,7 @@ export default function SplitInUnitModal({ selectedShifts, onApplied, onClose }:
     setApplyError(null);
     try {
       const applicable = previews.filter((p): p is ShiftPreview & { entries: TwoLevelSplitEntry[] } => !!p.entries);
-      await Promise.all(
+      const results = await Promise.allSettled(
         applicable.map((p) =>
           setShiftQuotas(
             p.shift.id,
@@ -48,7 +50,16 @@ export default function SplitInUnitModal({ selectedShifts, onApplied, onClose }:
           )
         )
       );
-      onApplied();
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+      if (failed > 0 && succeeded > 0) {
+        setApplyError(`${succeeded} מתוך ${results.length} הצליחו`);
+      } else if (failed > 0) {
+        setApplyError("שגיאה בהחלת הפיצול");
+      }
+      if (succeeded > 0) {
+        onApplied();
+      }
     } catch {
       setApplyError("שגיאה בהחלת הפיצול");
     } finally {
@@ -76,7 +87,9 @@ export default function SplitInUnitModal({ selectedShifts, onApplied, onClose }:
           <div className="space-y-4">
             {previews.map((p) => (
               <div key={p.shift.id} className="border dark:border-gray-600 rounded p-2">
-                <p className="text-sm font-medium mb-1">{p.shift.start_date} — {p.shift.required_count} נדרשים</p>
+                <p className="text-sm font-medium mb-1">
+                  {p.shift.start_date} — {dtName(p.shift.duty_type_id)}, {locName(p.shift.duty_location_id)} — {p.shift.required_count} נדרשים
+                </p>
                 {p.error && <p className="text-xs text-red-500">{p.error}</p>}
                 {p.entries && (
                   <table className="w-full text-xs">

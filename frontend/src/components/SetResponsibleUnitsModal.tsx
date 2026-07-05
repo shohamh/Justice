@@ -18,10 +18,19 @@ export default function SetResponsibleUnitsModal({ selectedShifts, onApplied, on
     setApplying(true);
     setError(null);
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedShifts.map((s) => updateShift(s.id, { eligible_node_ids: nodeIds }))
       );
-      onApplied();
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+      if (failed > 0 && succeeded > 0) {
+        setError(`${succeeded} מתוך ${results.length} הצליחו`);
+      } else if (failed > 0) {
+        setError("שגיאה בעדכון המשמרות");
+      }
+      if (succeeded > 0) {
+        onApplied();
+      }
     } catch {
       setError("שגיאה בעדכון המשמרות");
     } finally {

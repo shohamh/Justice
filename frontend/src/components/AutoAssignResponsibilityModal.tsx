@@ -5,9 +5,11 @@ interface Props {
   selectedShifts: DutyShift[];
   onApplied: () => void;
   onClose: () => void;
+  dtName: (id: string) => string;
+  locName: (id: string) => string;
 }
 
-export default function AutoAssignResponsibilityModal({ selectedShifts, onApplied, onClose }: Props) {
+export default function AutoAssignResponsibilityModal({ selectedShifts, onApplied, onClose, dtName, locName }: Props) {
   const [assignments, setAssignments] = useState<ResponsibilityAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -28,10 +30,19 @@ export default function AutoAssignResponsibilityModal({ selectedShifts, onApplie
     setApplying(true);
     setError(null);
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         assignments.map((a) => updateShift(a.shift_id, { eligible_node_ids: [a.hierarchy_node_id] }))
       );
-      onApplied();
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+      if (failed > 0 && succeeded > 0) {
+        setError(`${succeeded} מתוך ${results.length} הצליחו`);
+      } else if (failed > 0) {
+        setError("שגיאה בהחלת השיבוץ");
+      }
+      if (succeeded > 0) {
+        onApplied();
+      }
     } catch {
       setError("שגיאה בהחלת השיבוץ");
     } finally {
@@ -62,12 +73,19 @@ export default function AutoAssignResponsibilityModal({ selectedShifts, onApplie
               </tr>
             </thead>
             <tbody>
-              {assignments.map((a) => (
-                <tr key={a.shift_id} className="border-t dark:border-gray-600">
-                  <td className="p-1">{shiftById.get(a.shift_id)?.start_date ?? a.shift_id.slice(0, 8)}</td>
-                  <td className="p-1">{a.node_name}</td>
-                </tr>
-              ))}
+              {assignments.map((a) => {
+                const shift = shiftById.get(a.shift_id);
+                return (
+                  <tr key={a.shift_id} className="border-t dark:border-gray-600">
+                    <td className="p-1">
+                      {shift
+                        ? `${shift.start_date} — ${dtName(shift.duty_type_id)}, ${locName(shift.duty_location_id)}`
+                        : a.shift_id.slice(0, 8)}
+                    </td>
+                    <td className="p-1">{a.node_name}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

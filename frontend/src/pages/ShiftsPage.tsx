@@ -254,7 +254,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
 
 type BulkOp = "clear" | "cancel" | "delete" | null;
 
-function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean }) {
+function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel, dtName, locName }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean; dtName: (id: string) => string; locName: (id: string) => string }) {
   const [busy, setBusy] = useState<BulkOp>(null);
   const [openModal, setOpenModal] = useState<"setResponsible" | "splitInUnit" | "autoAssignResponsibility" | null>(null);
 
@@ -384,6 +384,8 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
           selectedShifts={selectedShifts}
           onApplied={() => { setOpenModal(null); onDone(); }}
           onClose={() => setOpenModal(null)}
+          dtName={dtName}
+          locName={locName}
         />
       )}
       {openModal === "autoAssignResponsibility" && (
@@ -391,6 +393,8 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
           selectedShifts={selectedShifts}
           onApplied={() => { setOpenModal(null); onDone(); }}
           onClose={() => setOpenModal(null)}
+          dtName={dtName}
+          locName={locName}
         />
       )}
     </div>
@@ -765,6 +769,8 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             onDone={() => { setSelectedShiftIds([]); void refresh(); }}
             onAutoAssign={() => setShowAlgorithmPanel(p => !p)}
             showAlgorithmPanel={showAlgorithmPanel}
+            dtName={dtName}
+            locName={locName}
           />
         )}
 
