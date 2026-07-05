@@ -8,6 +8,7 @@ import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdow
 import { DataTable, type ColDef } from "../components/DataTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
+import ExemptionsCell from "../components/ExemptionsCell";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import TabBar from "../components/TabBar";
 import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../components/FairnessComponentsCard";
@@ -540,7 +541,14 @@ export default function TransparencyPage() {
     },
     {
       id: "exemptions", header: t("transparency.exemptions"),
-      cell: (r) => r.exemptions_display || "—",
+      cell: (r) => (
+        <ExemptionsCell
+          exemptions={r.exemptions}
+          visible={r.exemptions_visible}
+          placeholder="חסוי"
+          soldierId={r.soldier_id}
+        />
+      ),
       sortValue: (r) => r.exemptions_display,
       filterValue: (r) => r.exemptions_display,
       exportValue: (r) => r.exemptions_display || "—",
