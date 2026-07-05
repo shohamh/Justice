@@ -169,7 +169,11 @@
     "none": "אין פטורים",
     "forever": "ללא הגבלה",
     "exempts_from": "פוטר מ",
-    "past": "פטורים שפגו"
+    "past": "פטורים שפגו",
+    "category_global": "גלובלי",
+    "category_partial": "חלקי",
+    "granted_by": "הוענק על ידי",
+    "no_permission_details": "אין הרשאה לצפות בפרטים"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",
