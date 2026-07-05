@@ -7,6 +7,7 @@ import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
 import ShiftTemplateFormModal from "../components/ShiftTemplateFormModal";
 import SetResponsibleUnitsModal from "../components/SetResponsibleUnitsModal";
 import SplitInUnitModal from "../components/SplitInUnitModal";
+import AutoAssignResponsibilityModal from "../components/AutoAssignResponsibilityModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -255,7 +256,7 @@ type BulkOp = "clear" | "cancel" | "delete" | null;
 
 function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean }) {
   const [busy, setBusy] = useState<BulkOp>(null);
-  const [openModal, setOpenModal] = useState<"setResponsible" | "splitInUnit" | null>(null);
+  const [openModal, setOpenModal] = useState<"setResponsible" | "splitInUnit" | "autoAssignResponsibility" | null>(null);
 
   async function handleClear() {
     const assignmentCount = selectedShifts.reduce((acc, s) => acc + (s.assigned_count ?? 0), 0);
@@ -361,6 +362,13 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
         >
           פיצול בתוך היחידה
         </button>
+        <button
+          type="button"
+          onClick={() => setOpenModal("autoAssignResponsibility")}
+          className="px-3 py-1 rounded text-sm font-medium bg-teal-700 text-white hover:bg-teal-800"
+        >
+          שיבוץ אוטומטי של אחריות יחידה
+        </button>
       </div>
       {openModal === "setResponsible" && (
         <SetResponsibleUnitsModal
@@ -371,6 +379,13 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
       )}
       {openModal === "splitInUnit" && (
         <SplitInUnitModal
+          selectedShifts={selectedShifts}
+          onApplied={() => { setOpenModal(null); onDone(); }}
+          onClose={() => setOpenModal(null)}
+        />
+      )}
+      {openModal === "autoAssignResponsibility" && (
+        <AutoAssignResponsibilityModal
           selectedShifts={selectedShifts}
           onApplied={() => { setOpenModal(null); onDone(); }}
           onClose={() => setOpenModal(null)}
