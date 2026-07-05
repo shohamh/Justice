@@ -16,6 +16,7 @@ from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
 from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
+from app.services.shift_responsibility import auto_assign_responsibility
 from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -221,6 +222,35 @@ def quota_split_preview_two_level(
     except ShiftQuotaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return TwoLevelSplitPreviewOut(entries=[TwoLevelSplitEntry(**e) for e in entries])
+
+
+class AutoAssignResponsibilityRequest(BaseModel):
+    shift_ids: list[uuid.UUID]
+
+
+class ResponsibilityAssignmentOut(BaseModel):
+    shift_id: uuid.UUID
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+
+
+class AutoAssignResponsibilityPreviewOut(BaseModel):
+    assignments: list[ResponsibilityAssignmentOut]
+
+
+@router.post("/auto-assign-responsibility/preview", response_model=AutoAssignResponsibilityPreviewOut)
+def auto_assign_responsibility_preview(
+    body: AutoAssignResponsibilityRequest,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> AutoAssignResponsibilityPreviewOut:
+    results = auto_assign_responsibility(session, shift_ids=body.shift_ids)
+    return AutoAssignResponsibilityPreviewOut(
+        assignments=[
+            ResponsibilityAssignmentOut(shift_id=r.shift_id, hierarchy_node_id=r.hierarchy_node_id, node_name=r.node_name)
+            for r in results
+        ]
+    )
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)
