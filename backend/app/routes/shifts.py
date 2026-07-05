@@ -15,7 +15,8 @@ from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutySh
 from app.db.session import get_session
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
-from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, get_shift_quotas, set_shift_quotas
+from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
+from app.services.shift_responsibility import auto_assign_responsibility
 from app.algorithm.reserve import link_reserves
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -65,8 +66,8 @@ class CreateShiftRequest(BaseModel):
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
-    start_time: str = "00:00"
-    end_time: str = "23:59"
+    start_time: str | None = None
+    end_time: str | None = None
     required_count: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     reserve_count_override: int | None = Field(default=None, ge=0)
@@ -191,6 +192,65 @@ def quota_split_preview(
     except ShiftQuotaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return QuotaSplitPreviewOut(entries=[QuotaSplitEntry(**e) for e in entries])
+
+
+class TwoLevelSplitEntry(BaseModel):
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+    count: int
+    weight: int
+    parent_responsible_node_id: uuid.UUID
+
+
+class TwoLevelSplitPreviewOut(BaseModel):
+    entries: list[TwoLevelSplitEntry]
+
+
+@router.get("/{shift_id}/quota-split-preview-two-level", response_model=TwoLevelSplitPreviewOut)
+def quota_split_preview_two_level(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> TwoLevelSplitPreviewOut:
+    shift = _load(session, shift_id)
+    if not shift.eligible_node_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="shift_has_no_responsible_units")
+    try:
+        entries = compute_two_level_split(
+            session, responsible_node_ids=list(shift.eligible_node_ids), required_count=shift.required_count
+        )
+    except ShiftQuotaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return TwoLevelSplitPreviewOut(entries=[TwoLevelSplitEntry(**e) for e in entries])
+
+
+class AutoAssignResponsibilityRequest(BaseModel):
+    shift_ids: list[uuid.UUID]
+
+
+class ResponsibilityAssignmentOut(BaseModel):
+    shift_id: uuid.UUID
+    hierarchy_node_id: uuid.UUID
+    node_name: str
+
+
+class AutoAssignResponsibilityPreviewOut(BaseModel):
+    assignments: list[ResponsibilityAssignmentOut]
+
+
+@router.post("/auto-assign-responsibility/preview", response_model=AutoAssignResponsibilityPreviewOut)
+def auto_assign_responsibility_preview(
+    body: AutoAssignResponsibilityRequest,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+) -> AutoAssignResponsibilityPreviewOut:
+    results = auto_assign_responsibility(session, shift_ids=body.shift_ids)
+    return AutoAssignResponsibilityPreviewOut(
+        assignments=[
+            ResponsibilityAssignmentOut(shift_id=r.shift_id, hierarchy_node_id=r.hierarchy_node_id, node_name=r.node_name)
+            for r in results
+        ]
+    )
 
 
 @router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)

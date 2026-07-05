@@ -42,6 +42,25 @@ body {
   box-shadow: 0 0 0 2px #d8b4fe;
 }
 
+/* Calendar day columns keep a minimum width so shift content stays readable
+   in the week/3-day views. Only the grid body (.fc-view-harness) scrolls
+   horizontally when it doesn't fit — the toolbar (nav/view buttons), a
+   sibling of .fc-view-harness, is untouched and never scrolls. */
+.fc-view-harness {
+  overflow-x: auto;
+}
+.fc-view-harness > .fc-view {
+  min-width: var(--fc-grid-min-width, auto);
+}
+
+/* Toolbar buttons (prev/next, today, month/week/3-day) take up a lot of
+   horizontal room at their default size; shrink them uniformly. */
+.fc-header-toolbar .fc-button {
+  padding: 0.2em 0.5em !important;
+  font-size: 0.85em !important;
+  white-space: nowrap !important;
+}
+
 /* Details/summary disclosure marker in dark mode */
 @media (prefers-color-scheme: dark) {
   details > summary {

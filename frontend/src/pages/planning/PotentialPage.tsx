@@ -10,9 +10,11 @@ import {
   listModifiers,
   createModifier,
   deleteModifier,
+  getEffortGap,
   PotentialResult,
   PotentialModifierDTO,
   SoldierPotentialDetail,
+  NodeEffortPotential,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
@@ -49,15 +51,17 @@ export default function PotentialPage() {
   const [exemptionDutyMap, setExemptionDutyMap] = useState<Record<string, string[]>>({});
   const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
   const [viewingExemption, setViewingExemption] = useState<ExemptionType | null>(null);
+  const [effortGapByNode, setEffortGapByNode] = useState<Map<string, NodeEffortPotential>>(new Map());
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
   const topLevelRoots = useMemo(() => nodes.filter((n) => n.parent_id === null), [nodes]);
 
-  // Synthetic aggregate row representing the whole organization, so the table
-  // always has a stable top row regardless of how many real root nodes exist.
+  // Synthetic aggregate row representing the whole organization. Skipped when
+  // there's exactly one real root node, since that node's own row already IS
+  // the whole-org total — only needed as a fallback for 0 or 2+ real roots.
   const wholeOrgResult = useMemo((): PotentialResult | null => {
-    if (topLevelRoots.length === 0) return null;
+    if (topLevelRoots.length <= 1) return null;
     const rootResults = topLevelRoots.map((n) => results[n.id]).filter((r): r is PotentialResult => !!r);
     if (rootResults.length !== topLevelRoots.length) return null; // not all roots loaded yet
     return {
@@ -127,6 +131,12 @@ export default function PotentialPage() {
     if (expandedNodeId && expandedNodeId !== WHOLE_ORG_ID) listModifiers(expandedNodeId).then(setModifiers);
   }, [expandedNodeId]);
 
+  useEffect(() => {
+    void getEffortGap(referenceDate).then((rows) => {
+      setEffortGapByNode(new Map(rows.map((r) => [r.node_id, r])));
+    }).catch(() => {});
+  }, [referenceDate]);
+
   async function handleAddModifier() {
     if (!expandedNodeId || expandedNodeId === WHOLE_ORG_ID || !newReason.trim()) return;
     await createModifier({ hierarchy_node_id: expandedNodeId, delta: newDelta, reason: newReason, start_date: referenceDate });
@@ -192,6 +202,17 @@ export default function PotentialPage() {
     if (et) setViewingExemption(et);
   }
 
+  function gapColor(gap: number | null): string {
+    if (gap === null) return "text-gray-400";
+    if (gap > 1.3) return "text-red-600 dark:text-red-400 font-semibold";
+    if (gap < 0.7) return "text-blue-600 dark:text-blue-400 font-semibold";
+    return "text-gray-700 dark:text-gray-300";
+  }
+
+  function formatGap(gap: number | null): string {
+    return gap === null ? "—" : gap.toFixed(2);
+  }
+
   const cols: ColDef<NodeDTO>[] = [
     {
       id: "name",
@@ -255,6 +276,20 @@ export default function PotentialPage() {
       headerTooltip: t("potential.final_potential_tooltip"),
       cell: (n) => displayResults[n.id]?.final_potential ?? "-",
       sortValue: (n) => displayResults[n.id]?.final_potential ?? -1,
+    },
+    {
+      id: "sibling_gap",
+      header: t("potential.sibling_gap"),
+      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.sibling_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null)}</span>,
+      sortValue: (n) => effortGapByNode.get(n.id)?.sibling_gap ?? -1,
+      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.sibling_gap ?? null),
+    },
+    {
+      id: "global_gap",
+      header: t("potential.global_gap"),
+      cell: (n) => <span className={gapColor(effortGapByNode.get(n.id)?.global_gap ?? null)}>{formatGap(effortGapByNode.get(n.id)?.global_gap ?? null)}</span>,
+      sortValue: (n) => effortGapByNode.get(n.id)?.global_gap ?? -1,
+      exportValue: (n) => formatGap(effortGapByNode.get(n.id)?.global_gap ?? null),
     },
     {
       id: "pct_of_parent",

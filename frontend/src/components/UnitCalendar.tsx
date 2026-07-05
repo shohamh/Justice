@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -9,6 +10,7 @@ import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import ShiftDetailPanel from "./ShiftDetailPanel";
+import { calendarViewMinWidth } from "../utils/calendarViewWidth";
 
 
 interface UnitCalendarProps {
@@ -22,6 +24,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
+  const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
 
@@ -50,6 +53,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   }, [nodeId]);
 
   function handleDatesSet(arg: DatesSetArg) {
+    setActiveViewType(arg.view.type);
     const from = arg.start.toISOString().slice(0, 10);
     const to = arg.end.toISOString().slice(0, 10);
     const prev = dateRangeRef.current;
@@ -69,6 +73,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       title: string;
       start: string;
       end: string;
+      allDay: boolean;
       backgroundColor: string;
       borderColor: string;
       classNames: string[];
@@ -76,13 +81,17 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     }[] = [];
     for (const s of filteredShifts) {
       // start_at/end_at carry the shift's real wall-clock times, so the week
-      // view can position events within hour slots; the month view still
-      // renders them as day-spanning blocks regardless of time-of-day.
+      // view can position events within hour slots. Shifts that just use the
+      // full-day default (00:00-23:59) have no real hour data, so treat them
+      // as all-day: otherwise the week view crams them into narrow near-24h
+      // slivers instead of a compact banner.
+      const isFullDayDefault = s.start_time === "00:00" && s.end_time === "23:59";
       out.push({
         id: s.id,
         title: `${s.duty_type_name} — ${s.duty_location_name}`,
-        start: s.start_at,
-        end: s.end_at,
+        start: isFullDayDefault ? s.start_date : s.start_at,
+        end: isFullDayDefault ? s.end_date : s.end_at,
+        allDay: isFullDayDefault,
         backgroundColor: s.duty_type_color,
         borderColor: s.duty_type_color,
         classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
@@ -114,6 +123,8 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
   }, [shifts]);
 
+  const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
+
   return (
     <div className="space-y-4">
       {dutyTypesInView.length > 1 && (
@@ -137,7 +148,11 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
       {loading && <p className="text-gray-500 text-sm">{t("unit_calendar.loading")}</p>}
       {error && <p className="text-red-500 text-sm" data-testid="unit-calendar-error">{error}</p>}
 
-      <div data-testid="fullcalendar" className="text-sm">
+      <div
+        data-testid="fullcalendar"
+        className="text-sm"
+        style={{ "--fc-grid-min-width": calendarMinWidthPx ? `${calendarMinWidthPx}px` : undefined } as CSSProperties}
+      >
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -149,14 +164,20 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           locales={[heLocale]}
           locale="he"
           height="auto"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
-          buttonText={{ today: t("unit_calendar.today") || "היום", month: t("unit_calendar.view_month") || "חודש", week: t("unit_calendar.view_week") || "שבוע" }}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridThreeDay" }}
+          buttonText={{
+            today: t("unit_calendar.today") || "היום",
+            month: t("unit_calendar.view_month") || "חודש",
+            week: t("unit_calendar.view_week") || "שבוע",
+            timeGridThreeDay: t("unit_calendar.view_3day") || "3 ימים",
+          }}
           noEventsText={t("unit_calendar.none")}
           slotMinTime="00:00:00"
           slotMaxTime="24:00:00"
           views={{
             dayGridMonth: { displayEventTime: false },
             timeGridWeek: { displayEventTime: true },
+            timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
           }}
           eventContent={(arg) => {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);

@@ -199,6 +199,21 @@ test("does not auto-split when the system setting is disabled", async () => {
   expect(mockGetQuotaSplitPreview).not.toHaveBeenCalled();
 });
 
+test("shows validation errors near empty required fields and near the save button, without submitting", async () => {
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+
+  // start_date and end_date are blank by default; duty type/location/count all
+  // have valid defaults, so only those two fields should be flagged.
+  fireEvent.click(screen.getByText("shifts.save"));
+
+  expect(await screen.findAllByText("shifts.validation_required")).toHaveLength(2);
+  expect(screen.getByText("shifts.validation_missing_fields")).toBeInTheDocument();
+  expect(mockCreateShift).not.toHaveBeenCalled();
+});
+
 test("rerun-algorithm button is hidden for a new (unsaved) shift", async () => {
   render(
     <ShiftFormModal dutyTypes={dutyTypes} locations={locations} onSaved={() => {}} onClose={() => {}} />

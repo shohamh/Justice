@@ -55,3 +55,20 @@ def test_list_shifts_exposes_eligible_node_ids(admin_session):
     results = list_shifts(admin_session, date_from=date(2026, 6, 1), date_to=date(2026, 6, 1))
     by_id = {s.id: s for s in results}
     assert by_id[shift.id].eligible_node_ids == [node.id]
+
+
+def test_create_shift_with_explicit_overnight_hours_extends_end_date(admin_session):
+    # The frontend always sends explicit start_time/end_time (inherited from
+    # the duty type, but editable); when they cross midnight for a single
+    # selected day, the shift should still be stretched to cover the night
+    # rather than rejected as an invalid time order.
+    dt, loc = _make_duty_type_and_location(admin_session, "4")
+    shift = create_shift(
+        admin_session, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+        start_time="22:00", end_time="06:00",
+    )
+    admin_session.commit()
+    assert shift.end_date == date(2026, 6, 3)
+    assert shift.start_time == "22:00"
+    assert shift.end_time == "06:00"

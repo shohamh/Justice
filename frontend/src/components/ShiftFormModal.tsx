@@ -14,6 +14,13 @@ interface QuotaRow {
   count: number;
 }
 
+function dutyTypeHours(dt: DutyType | undefined): { startTime: string; endTime: string } {
+  return {
+    startTime: dt?.start_time?.slice(0, 5) ?? "00:00",
+    endTime: dt?.end_time?.slice(0, 5) ?? "23:59",
+  };
+}
+
 function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: string[] }[] {
   const result: { id: string; name: string; path_ids: string[] }[] = [];
   for (const n of nodes) {
@@ -21,6 +28,18 @@ function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: s
     if (n.children?.length) result.push(...flattenNodes(n.children));
   }
   return result;
+}
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (typeof d === "string" ? d : (d as { msg?: string })?.msg))
+      .filter(Boolean)
+      .join(", ") || fallback;
+  }
+  return fallback;
 }
 
 function commonAncestorName(
@@ -74,7 +93,11 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   const [scopeNodeIds, setScopeNodeIds] = useState<string[]>(
     existing?.eligible_node_ids ?? dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []
   );
+  const initialHours = dutyTypeHours(dutyTypes.find((d) => d.id === dtId));
+  const [startTime, setStartTime] = useState(initialHours.startTime);
+  const [endTime, setEndTime] = useState(initialHours.endTime);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [quotaRows, setQuotaRows] = useState<QuotaRow[]>(
     (existing?.node_quotas ?? []).map((q) => ({ hierarchy_node_id: q.hierarchy_node_id, count: q.count }))
   );
@@ -122,8 +145,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       const resp = await submitJob({ shift_ids: [existing.id], mode: "shadow", settings });
       setRerunResult(t("shifts.rerun_algorithm_success", { id: resp.id }));
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(extractErrorMessage(err, "שגיאה"));
     } finally {
       setRerunning(false);
     }
@@ -148,8 +170,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       );
       return true;
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(extractErrorMessage(err, "שגיאה"));
       return false;
     } finally {
       setSplitting(false);
@@ -173,6 +194,9 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
   useEffect(() => {
     if (!existing) {
       setScopeNodeIds(dutyTypes.find((d) => d.id === dtId)?.eligible_node_ids ?? []);
+      const hours = dutyTypeHours(dutyTypes.find((d) => d.id === dtId));
+      setStartTime(hours.startTime);
+      setEndTime(hours.endTime);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dtId]);
@@ -202,9 +226,25 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     }
   }
 
+  function validate(): Record<string, string> {
+    const errors: Record<string, string> = {};
+    if (!dtId) errors.dtId = t("shifts.validation_required");
+    if (!locId) errors.locId = t("shifts.validation_required");
+    if (!startDate) errors.startDate = t("shifts.validation_required");
+    if (!endDate) errors.endDate = t("shifts.validation_required");
+    if (!count || count < 1) errors.count = t("shifts.validation_required");
+    return errors;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError(t("shifts.validation_missing_fields"));
+      return;
+    }
     if (quotaOverAllocated) {
       setError(t("shifts.quotas_over_allocated", { total: quotaTotal, required: count }));
       return;
@@ -228,6 +268,8 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           duty_location_id: locId,
           start_date: startDate,
           end_date: exclusiveEndDate,
+          start_time: startTime,
+          end_time: endTime,
           required_count: count,
           notes: notes || null,
           reserve_count_override: reserveOverride === "" ? null : parseInt(reserveOverride),
@@ -242,8 +284,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       }
       await onSaved();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(extractErrorMessage(err, "שגיאה"));
     }
   }
 
@@ -254,12 +295,13 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           <h3 className="text-lg font-semibold">{existing ? t("shifts.edit") : t("shifts.create")}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} noValidate className="space-y-3">
           {!existing && (
             <>
               <div>
                 <span className="text-sm block mb-0.5">{t("shifts.duty_type")}</span>
-                <Combobox items={dutyTypes} value={dtId} onChange={setDtId} />
+                <Combobox items={dutyTypes} value={dtId} onChange={(v) => { setDtId(v); setFieldErrors((prev) => ({ ...prev, dtId: "" })); }} />
+                {fieldErrors.dtId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.dtId}</p>}
               </div>
               <div className="block text-sm">
                 <div className="flex items-center justify-between mb-1">
@@ -288,22 +330,36 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
                     </button>
                   </form>
                 ) : (
-                  <Combobox items={locations} value={locId} onChange={setLocId} />
+                  <Combobox items={locations} value={locId} onChange={(v) => { setLocId(v); setFieldErrors((prev) => ({ ...prev, locId: "" })); }} />
                 )}
+                {fieldErrors.locId && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.locId}</p>}
+              </div>
+              <div className="flex gap-2">
+                <label className="block text-sm flex-1">
+                  {t("shifts.start_time")}
+                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                </label>
+                <label className="block text-sm flex-1">
+                  {t("shifts.end_time")}
+                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+                </label>
               </div>
             </>
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <input type="date" lang="he" value={startDate} onChange={e => setStartDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
+            <input type="date" lang="he" value={startDate} onChange={e => { setStartDate(e.target.value); setFieldErrors((prev) => ({ ...prev, startDate: "" })); }} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            {fieldErrors.startDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.startDate}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <input type="date" lang="he" value={endDate} onChange={e => setEndDate(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
+            <input type="date" lang="he" value={endDate} onChange={e => { setEndDate(e.target.value); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            {fieldErrors.endDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.endDate}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.required_count")}
-            <input type="number" min={1} value={count} onChange={e => setCount(parseInt(e.target.value))} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" required />
+            <input type="number" min={1} value={count} onChange={e => { setCount(parseInt(e.target.value)); setFieldErrors((prev) => ({ ...prev, count: "" })); }} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            {fieldErrors.count && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.count}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.notes")}

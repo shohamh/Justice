@@ -5,11 +5,13 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from app.db.models import AuditLog, DutyLocation, Soldier
+from app.db.models import AuditLog, DutyLocation, DutyType, Soldier
 from app.services.duty_config import create_duty_type
 from app.services.shift_quotas import (
     ShiftQuotaError,
     compute_potential_split,
+    compute_potential_split_multi,
+    compute_two_level_split,
     get_shift_quotas,
     set_shift_quotas,
 )
@@ -98,7 +100,15 @@ def test_set_quotas_writes_audit_log(admin_session):
     assert audit_entry.after == [{"node_id": str(node_a.id), "count": 2}]
 
 
+def _make_permissive_duty_type(session, name: str):
+    dt = DutyType(name=name, score_per_day=Decimal("1.00"), requirements={})
+    session.add(dt)
+    session.flush()
+    return dt
+
+
 def test_compute_potential_split_even_weights(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_even")
     parent = create_node(admin_session, level="unit", name="pot_even_parent")
     child_a = create_node(admin_session, level="branch", name="pot_even_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_even_b", parent=parent)
@@ -118,6 +128,7 @@ def test_compute_potential_split_even_weights(admin_session):
 
 
 def test_compute_potential_split_uneven_weights_sums_exactly(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_uneven")
     parent = create_node(admin_session, level="unit", name="pot_uneven_parent")
     child_a = create_node(admin_session, level="branch", name="pot_uneven_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_uneven_b", parent=parent)
@@ -139,6 +150,7 @@ def test_compute_potential_split_uneven_weights_sums_exactly(admin_session):
 
 
 def test_compute_potential_split_zero_weight_child_gets_zero_count(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_pot_zero")
     parent = create_node(admin_session, level="unit", name="pot_zero_parent")
     child_a = create_node(admin_session, level="branch", name="pot_zero_a", parent=parent)
     child_b = create_node(admin_session, level="branch", name="pot_zero_b", parent=parent)
@@ -153,6 +165,7 @@ def test_compute_potential_split_zero_weight_child_gets_zero_count(admin_session
 
 
 def test_compute_potential_split_all_zero_weight_falls_back_to_even_split(admin_session):
+    # No DutyType created at all -> every child has final_potential == 0.
     parent = create_node(admin_session, level="unit", name="pot_allzero_parent")
     create_node(admin_session, level="branch", name="pot_allzero_a", parent=parent)
     create_node(admin_session, level="branch", name="pot_allzero_b", parent=parent)
@@ -178,3 +191,69 @@ def test_compute_potential_split_invalid_required_count_raises(admin_session):
 
     with pytest.raises(ShiftQuotaError, match="required_count must be"):
         compute_potential_split(admin_session, parent_node_id=parent.id, required_count=0)
+
+
+def test_compute_potential_split_multi_arbitrary_nodes(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_multi")
+    unrelated_parent_a = create_node(admin_session, level="unit", name="multi_parent_a")
+    unrelated_parent_b = create_node(admin_session, level="unit", name="multi_parent_b")
+    node_a = create_node(admin_session, level="branch", name="multi_a", parent=unrelated_parent_a)
+    node_b = create_node(admin_session, level="branch", name="multi_b", parent=unrelated_parent_b)
+    for i in range(3):
+        create_soldier(admin_session, personal_number=f"multi_a{i}", hierarchy_node_id=node_a.id)
+    create_soldier(admin_session, personal_number="multi_b0", hierarchy_node_id=node_b.id)
+
+    result = compute_potential_split_multi(
+        admin_session, node_ids=[node_a.id, node_b.id], required_count=8
+    )
+
+    by_name = {r["node_name"]: r["count"] for r in result}
+    assert by_name["multi_a"] == 6
+    assert by_name["multi_b"] == 2
+    assert sum(r["count"] for r in result) == 8
+
+
+def test_compute_two_level_split_splits_across_units_then_children(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_two_level")
+    unit_a = create_node(admin_session, level="unit", name="two_level_unit_a")
+    unit_b = create_node(admin_session, level="unit", name="two_level_unit_b")
+    child_a1 = create_node(admin_session, level="branch", name="two_level_a1", parent=unit_a)
+    child_a2 = create_node(admin_session, level="branch", name="two_level_a2", parent=unit_a)
+    child_b1 = create_node(admin_session, level="branch", name="two_level_b1", parent=unit_b)
+    # unit_a: 2 soldiers each under a1/a2 (potential 4 total); unit_b: 4 soldiers under b1 (potential 4 total)
+    for i in range(2):
+        create_soldier(admin_session, personal_number=f"tl_a1_{i}", hierarchy_node_id=child_a1.id)
+        create_soldier(admin_session, personal_number=f"tl_a2_{i}", hierarchy_node_id=child_a2.id)
+    for i in range(4):
+        create_soldier(admin_session, personal_number=f"tl_b1_{i}", hierarchy_node_id=child_b1.id)
+
+    result = compute_two_level_split(
+        admin_session, responsible_node_ids=[unit_a.id, unit_b.id], required_count=8
+    )
+
+    # Step A: unit_a and unit_b each get 4 (equal potential 4:4).
+    # Step B: unit_a's 4 split evenly 2:2 across a1/a2; unit_b's 4 all go to its only child b1.
+    by_name = {r["node_name"]: r["count"] for r in result}
+    assert by_name["two_level_a1"] == 2
+    assert by_name["two_level_a2"] == 2
+    assert by_name["two_level_b1"] == 4
+    assert sum(r["count"] for r in result) == 8
+    parent_map = {r["node_name"]: r["parent_responsible_node_id"] for r in result}
+    assert parent_map["two_level_a1"] == unit_a.id
+    assert parent_map["two_level_b1"] == unit_b.id
+
+
+def test_compute_two_level_split_leaf_responsible_unit_with_no_children(admin_session):
+    _make_permissive_duty_type(admin_session, "dt_two_level_leaf")
+    leaf_unit = create_node(admin_session, level="branch", name="two_level_leaf")
+    create_soldier(admin_session, personal_number="tl_leaf_0", hierarchy_node_id=leaf_unit.id)
+
+    result = compute_two_level_split(
+        admin_session, responsible_node_ids=[leaf_unit.id], required_count=3
+    )
+
+    # No children under leaf_unit -> its whole step-A share stays on itself.
+    assert len(result) == 1
+    assert result[0]["node_name"] == "two_level_leaf"
+    assert result[0]["count"] == 3
+    assert result[0]["parent_responsible_node_id"] == leaf_unit.id

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import TransparencyPage from "./TransparencyPage";
 import * as scoringApi from "../api/scoring";
 import * as hierarchyApi from "../api/hierarchy";
+import * as potentialApi from "../api/potential";
 import type { TransparencyOut, TransparencyRow } from "../api/scoring";
 import type { NodeDTO } from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
@@ -26,6 +27,7 @@ function makeTree(nodeId: string, nodeName: string): NodeDTO[] {
 
 vi.mock("../api/scoring");
 vi.mock("../api/hierarchy");
+vi.mock("../api/potential");
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -66,6 +68,7 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
 beforeEach(() => {
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(scoringApi.getFairnessComponents).mockRejectedValue(new Error("not needed"));
+  vi.mocked(potentialApi.getEffortGap).mockResolvedValue([]);
 });
 
 describe("TransparencyPage exemptions column", () => {

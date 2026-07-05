@@ -469,9 +469,23 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 False,
                 "מפקד הליווי",
                 "050-2345678",
-                time(6, 0),
-                time(18, 0),
-                "להגיע לנקודת הריכוז ב-06:00 עם ציוד אישי מלא ונשק. לדווח למפקד הליווי עם ההגעה. שהייה מחוץ לבסיס לכל אורך המשמרת.",
+                time(7, 0),
+                time(17, 0),
+                "להגיע לנקודת הריכוז ב-07:00 עם ציוד אישי מלא ונשק. לדווח למפקד הליווי עם ההגעה. שהייה מחוץ לבסיס לכל אורך המשמרת.",
+            ),
+            (
+                "משמרת לילה",
+                Decimal("1.25"),
+                "שמירה לילית בבסיס — כיסוי שער ותצפיות בשעות החשכה",
+                {"officers_allowed": False, "allowed_service_types": ["חובה"]},
+                Decimal("0.300"),
+                2,
+                False,
+                "קצין שמירות",
+                "050-2456789",
+                time(20, 0),
+                time(8, 0),
+                "להתייצב בנקודת ריכוז השמירות ב-20:00 עם ציוד שלם. לקבל תדריך מקצין השמירה. לדווח על כל חריגה מיידית עד ההחלפה בבוקר.",
             ),
             (
                 'עבודות רס"ר',
@@ -916,6 +930,23 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             days = (target - from_date.weekday()) % 7
             return from_date + timedelta(days=7 if days == 0 else days)
 
+        def _duty_hours(dt: DutyType) -> tuple[str, str]:
+            """Hours are a feature of the duty type: read its own configured
+            start_time/end_time (set in dt_defs above) rather than defaulting
+            to a full calendar day."""
+            start_time = dt.start_time.strftime("%H:%M") if dt.start_time else "00:00"
+            end_time = dt.end_time.strftime("%H:%M") if dt.end_time else "23:59"
+            return start_time, end_time
+
+        def _single_day_shift_span(day: date, dt: DutyType) -> tuple[date, date, str, str]:
+            """A single-day duty slot for `dt`. When the duty type's own
+            hours cross midnight (e.g. an overnight ליווים shift), the span
+            covers two calendar days so the night is fully represented."""
+            start_time, end_time = _duty_hours(dt)
+            crosses_midnight = end_time <= start_time
+            end_date = day + timedelta(days=2 if crosses_midnight else 1)
+            return day, end_date, start_time, end_time
+
         next_mon = _next_weekday(today, 0)
         next_thu = _next_weekday(today, 3)
         next_sun = _next_weekday(today, 6)
@@ -929,11 +960,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name["שמירות"]
         for w in range(8):
             start = next_mon + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=10,
                 notes="שמירות שבועית",
                 created_by=s_admin.id,
@@ -946,11 +980,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name['אבט"ש']
         for w in range(8):
             start = next_mon + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=2,
                 notes='אבט"ש שבועית',
                 created_by=s_admin.id,
@@ -963,11 +1000,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name['הגנ"ש']
         for w in range(8):
             start = next_thu + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=2,
                 notes='הגנ"ש שבועית',
                 created_by=s_admin.id,
@@ -981,11 +1021,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
                 s = DutyShift(
                     duty_type_id=dt.id,
                     duty_location_id=next(loc_cycle).id,
-                    start_date=day,
-                    end_date=day + timedelta(days=1),
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
                     required_count=2,
                     notes="ליווי יומי",
                     created_by=s_admin.id,
@@ -999,11 +1042,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
                 s = DutyShift(
                     duty_type_id=dt.id,
                     duty_location_id=next(loc_cycle).id,
-                    start_date=day,
-                    end_date=day + timedelta(days=1),
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
                     required_count=2,
                     notes='עבודות רס"ר יומיות',
                     created_by=s_admin.id,
@@ -1016,11 +1062,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name["קצין תורן"]
         for w in range(8):
             start = next_mon + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=1,
                 notes="קצין תורן שבועי",
                 created_by=s_admin.id,
@@ -1033,11 +1082,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name["מפקד תורן"]
         for w in range(8):
             start = next_mon + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=1,
                 notes="מפקד תורן שבועי",
                 created_by=s_admin.id,
@@ -1050,11 +1102,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         dt = dt_by_name['קצין מלווה אבט"ש']
         for w in range(8):
             start = next_mon + timedelta(weeks=w)
+            start_time, end_time = _duty_hours(dt)
             s = DutyShift(
                 duty_type_id=dt.id,
                 duty_location_id=next(loc_cycle).id,
                 start_date=start,
                 end_date=start + timedelta(days=7),
+                start_time=start_time,
+                end_time=end_time,
                 required_count=1,
                 notes='קצין מלווה אבט"ש שבועי',
                 created_by=s_admin.id,
@@ -1068,11 +1123,14 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
                 s = DutyShift(
                     duty_type_id=dt.id,
                     duty_location_id=next(loc_cycle).id,
-                    start_date=day,
-                    end_date=day + timedelta(days=1),
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
                     required_count=2,
                     notes="אבות בית יומי",
                     created_by=s_admin.id,
@@ -1086,13 +1144,37 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         for w in range(8):
             for d in range(5):
                 day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
                 s = DutyShift(
                     duty_type_id=dt.id,
                     duty_location_id=next(loc_cycle).id,
-                    start_date=day,
-                    end_date=day + timedelta(days=1),
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
                     required_count=2,
                     notes='עבודות רס"ר בינוי יומיות',
+                    created_by=s_admin.id,
+                )
+                session.add(s)
+                session.flush()
+                shifts_created.append(s)
+
+        # 11. משמרת לילה — Sun-Thu single nights, 8 weeks
+        dt = dt_by_name["משמרת לילה"]
+        for w in range(8):
+            for d in range(5):
+                day = next_sun + timedelta(weeks=w, days=d)
+                start_date, end_date, start_time, end_time = _single_day_shift_span(day, dt)
+                s = DutyShift(
+                    duty_type_id=dt.id,
+                    duty_location_id=next(loc_cycle).id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    required_count=2,
+                    notes="משמרת לילה יומית",
                     created_by=s_admin.id,
                 )
                 session.add(s)
@@ -1396,7 +1478,8 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         _safe_print(
             f'  {len(shifts_created)} duty shifts '
             f'(8 \u05e9\u05de\u05d9\u05e8\u05d5\u05ea, 8 \u05d0\u05d1\u05d8"\u05e9, 8 \u05d4\u05d2\u05e0"\u05e9, 40 \u05dc\u05d9\u05d5\u05d5\u05d9\u05dd, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8, '
-            f'8 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 8 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 8 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8"\u05e9, 40 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9)'
+            f'8 \u05e7\u05e6\u05d9\u05df \u05ea\u05d5\u05e8\u05df, 8 \u05de\u05e4\u05e7\u05d3 \u05ea\u05d5\u05e8\u05df, 8 \u05e7\u05e6\u05d9\u05df \u05de\u05dc\u05d5\u05d5\u05d4 \u05d0\u05d1\u05d8"\u05e9, 40 \u05d0\u05d1\u05d5\u05ea \u05d1\u05d9\u05ea, 40 \u05e2\u05d1\u05d5\u05d3\u05d5\u05ea \u05e8\u05e1"\u05e8 \u05d1\u05d9\u05e0\u05d5\u05d9, '
+            f'40 \u05de\u05e9\u05de\u05e8\u05ea \u05dc\u05d9\u05dc\u05d4)'
         )
         if with_assignments:
             _safe_print(f"  {shift_assignments} primary duty assignments")

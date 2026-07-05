@@ -38,6 +38,8 @@ export interface CreateShiftInput {
   duty_location_id: string;
   start_date: string;
   end_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   required_count: number;
   notes?: string | null;
   reserve_count_override?: number | null;
@@ -88,6 +90,33 @@ export async function getQuotaSplitPreview(
     params: { parent_node_id: parentNodeId, required_count: requiredCount },
   });
   return r.data.entries;
+}
+
+export interface TwoLevelSplitEntry {
+  hierarchy_node_id: string;
+  node_name: string;
+  count: number;
+  weight: number;
+  parent_responsible_node_id: string;
+}
+
+export async function getTwoLevelSplitPreview(shiftId: string): Promise<TwoLevelSplitEntry[]> {
+  const r = await api.get<{ entries: TwoLevelSplitEntry[] }>(`/shifts/${shiftId}/quota-split-preview-two-level`);
+  return r.data.entries;
+}
+
+export interface ResponsibilityAssignment {
+  shift_id: string;
+  hierarchy_node_id: string;
+  node_name: string;
+}
+
+export async function getAutoAssignResponsibilityPreview(shiftIds: string[]): Promise<ResponsibilityAssignment[]> {
+  const r = await api.post<{ assignments: ResponsibilityAssignment[] }>(
+    "/shifts/auto-assign-responsibility/preview",
+    { shift_ids: shiftIds }
+  );
+  return r.data.assignments;
 }
 
 export async function assignBatch(

@@ -314,7 +314,9 @@
     "effort_stddev": "סטיית תקן",
     "effort_range": "טווח",
     "subunit_avg_effort": "ממוצע עומס",
-    "subunit_cv_effort": "פיזור (CV)"
+    "subunit_cv_effort": "פיזור (CV)",
+    "subunit_sibling_gap": "פער מול אחים (יחס)",
+    "subunit_global_gap": "פער מול הארגון (יחס)"
   },
   "my_duties": {
     "title": "היומן שלי",
@@ -333,6 +335,7 @@
     "today": "היום",
     "view_month": "חודש",
     "view_week": "שבוע",
+    "view_3day": "3 ימים",
     "soldier": "חייל",
     "duty_type": "סוג תורנות",
     "location": "מיקום",
@@ -528,6 +531,8 @@
     "location": "מיקום",
     "start_date": "תאריך התחלה",
     "end_date": "תאריך סיום",
+    "start_time": "שעת התחלה",
+    "end_time": "שעת סיום",
     "required_count": "מספר נדרש",
     "quotas_title": "הקצאת מכסות ליחידות",
     "quotas_add": "הוסף מכסת יחידה",
@@ -577,7 +582,9 @@
     "filter_duty_type": "סוג תורנות",
     "algorithm_running_badge": "ריצות פעילות",
     "algorithm_done_badge": "הושלמו, ממתינות לפרסום",
-    "eligible_units": "תת יחידה אחראית"
+    "eligible_units": "תת יחידה אחראית",
+    "validation_required": "שדה חובה",
+    "validation_missing_fields": "יש למלא את כל השדות המסומנים"
   },
   "table": {
     "filter_placeholder": "סנן..."
@@ -614,7 +621,9 @@
     "modifier_until": "עד",
     "modifier_delete": "מחק",
     "modifier_reason_placeholder": "סיבה (חובה)",
-    "modifier_add": "הוסף"
+    "modifier_add": "הוסף",
+    "sibling_gap": "פער מול אחים (יחס)",
+    "global_gap": "פער מול הארגון (יחס)"
   },
   "shift_templates": {
     "title": "תבניות משמרת",
