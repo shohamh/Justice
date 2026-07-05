@@ -5,6 +5,7 @@ import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
 import ShiftTemplateFormModal from "../components/ShiftTemplateFormModal";
+import SetResponsibleUnitsModal from "../components/SetResponsibleUnitsModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
 import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
@@ -253,6 +254,7 @@ type BulkOp = "clear" | "cancel" | "delete" | null;
 
 function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPanel }: { selectedShifts: DutyShift[]; onDone: () => void; onAutoAssign?: () => void; showAlgorithmPanel?: boolean }) {
   const [busy, setBusy] = useState<BulkOp>(null);
+  const [openModal, setOpenModal] = useState<"setResponsible" | null>(null);
 
   async function handleClear() {
     const assignmentCount = selectedShifts.reduce((acc, s) => acc + (s.assigned_count ?? 0), 0);
@@ -343,6 +345,22 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
           {busy === "delete" ? "מוחק..." : "מחק משמרות"}
         </button>
       </div>
+      <div className="flex flex-wrap gap-2 basis-full">
+        <button
+          type="button"
+          onClick={() => setOpenModal("setResponsible")}
+          className="px-3 py-1 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
+        >
+          קביעת יחידה אחראית
+        </button>
+      </div>
+      {openModal === "setResponsible" && (
+        <SetResponsibleUnitsModal
+          selectedShifts={selectedShifts}
+          onApplied={() => { setOpenModal(null); onDone(); }}
+          onClose={() => setOpenModal(null)}
+        />
+      )}
     </div>
   );
 }
