@@ -76,3 +76,60 @@ def test_soldier_cannot_read_other_breakdown(client: TestClient, admin_session: 
     b = create_soldier(admin_session, personal_number="5600006", role="soldier")
     r = client.get(f"/api/scoring/soldiers/{b.id}", headers=auth_headers(a))
     assert r.status_code == 403
+
+
+def test_transparency_exemptions_array_populated_in_scope(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-api-exarr")
+    cmd = create_soldier(admin_session, personal_number="5600020", role="commander")
+    node.commander_id = cmd.id
+    admin_session.commit()
+    target = create_soldier(admin_session, personal_number="5600021", hierarchy_node_id=node.id)
+    et = ExemptionType(name="פטור-מערך1", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    ex = SoldierExemption(
+        soldier_id=target.id, exemption_type_id=et.id,
+        start_date=date(2026, 1, 1), end_date=date(2026, 12, 31),
+    )
+    admin_session.add(ex)
+    admin_session.commit()
+    admin_session.refresh(ex)
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(cmd))
+    row = next(x for x in r.json()["rows"] if x["soldier_id"] == str(target.id))
+    assert row["exemptions_visible"] is True
+    assert len(row["exemptions"]) == 1
+    item = row["exemptions"][0]
+    assert item["id"] == str(ex.id)
+    assert item["exemption_type_name"] == "פטור-מערך1"
+    assert item["is_global"] is True
+    assert item["start_date"] == "2026-01-01"
+    assert item["end_date"] == "2026-12-31"
+
+
+def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, admin_session: Session):
+    from datetime import date
+
+    from app.db.models import ExemptionType, SoldierExemption
+    from tests.helpers import create_node
+
+    node = create_node(admin_session, level="division", name="div-api-exarr2")
+    viewer = create_soldier(admin_session, personal_number="5600022", role="soldier")
+    target = create_soldier(admin_session, personal_number="5600023", hierarchy_node_id=node.id)
+    et = ExemptionType(name="פטור-מערך2", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(
+        SoldierExemption(soldier_id=target.id, exemption_type_id=et.id, start_date=date.today())
+    )
+    admin_session.commit()
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(viewer))
+    row = next(x for x in r.json()["rows"] if x["soldier_id"] == str(target.id))
+    assert row["exemptions_visible"] is False
+    assert row["exemptions"] == []

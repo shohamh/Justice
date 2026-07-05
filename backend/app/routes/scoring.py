@@ -18,6 +18,14 @@ from app.services import scoring as svc
 router = APIRouter(prefix="/scoring", tags=["scoring"])
 
 
+class ExemptionSummaryItem(BaseModel):
+    id: uuid.UUID
+    exemption_type_name: str
+    is_global: bool
+    start_date: date
+    end_date: date | None
+
+
 class TransparencyRow(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
@@ -38,6 +46,7 @@ class TransparencyRow(BaseModel):
     effort_offset_raw: int = 0
     exemptions_display: str = ""
     exemptions_visible: bool = False
+    exemptions: list[ExemptionSummaryItem] = []
     has_global_exemption: bool | None = None
     has_partial_exemption: bool | None = None
     has_temporary_exemption: bool | None = None
