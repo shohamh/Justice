@@ -143,3 +143,69 @@ def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClien
     )
     assert r.status_code == 400
     assert r.json()["detail"] == "commander_exemption_not_requestable"
+
+
+def test_detail_endpoint_shows_reason_when_authorized(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d-detail1")
+    b = create_node(admin_session, level="branch", name="b-detail1", parent=d)
+    cmd = create_soldier(admin_session, personal_number="5200020", role="commander")
+    b.commander_id = cmd.id
+    admin_session.commit()
+    target = create_soldier(admin_session, personal_number="5200021", hierarchy_node_id=b.id)
+    et = _et(admin_session, "פטור-דטייל1")
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(cmd),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "end_date": "2026-06-01", "reason": "בעיה רפואית"},
+    )
+    exemption_id = r.json()["id"]
+
+    r2 = client.get(f"/api/soldiers/{target.id}/exemptions/{exemption_id}", headers=auth_headers(cmd))
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+    assert body["exemption_type_name"] == "פטור-דטייל1"
+    assert body["is_global"] is False
+    assert body["start_date"] == "2026-01-01"
+    assert body["end_date"] == "2026-06-01"
+    assert body["reason"] == "בעיה רפואית"
+    assert body["granted_by_name"] == cmd.full_name
+
+
+def test_detail_endpoint_hides_reason_when_not_private(client: TestClient, admin_session: Session):
+    """A plain admin (not also a commander/duty-manager) passes EXEMPTION_READ
+    unconditionally (authz.can(): `if user.role == "admin": return True`), but
+    can_see_private_node() deliberately does NOT grant admins a bypass — it
+    requires is_commander or is_duty_manager. So a plain admin is exactly the
+    "can read, cannot see private fields" case: reason must come back None."""
+    node = create_node(admin_session, level="department", name="d-detail2")
+    admin_grantor = create_soldier(admin_session, personal_number="5200022", role="admin")
+    target = create_soldier(admin_session, personal_number="5200023", hierarchy_node_id=node.id)
+    et = _et(admin_session, "פטור-דטייל2")
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin_grantor),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "סודי"},
+    )
+    exemption_id = r.json()["id"]
+
+    viewer_admin = create_soldier(admin_session, personal_number="5200024", role="admin")
+    r2 = client.get(f"/api/soldiers/{target.id}/exemptions/{exemption_id}", headers=auth_headers(viewer_admin))
+    assert r2.status_code == 200, r2.text
+    body = r2.json()
+    assert body["reason"] is None
+    assert body["exemption_type_name"] == "פטור-דטייל2"  # non-private fields still shown
+
+
+def test_detail_endpoint_404_for_mismatched_soldier(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200027", role="admin")
+    s1 = create_soldier(admin_session, personal_number="5200028", role="soldier")
+    s2 = create_soldier(admin_session, personal_number="5200029", role="soldier")
+    et = _et(admin_session, "פטור-דטייל4")
+    r = client.post(
+        f"/api/soldiers/{s1.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
+    exemption_id = r.json()["id"]
+    r2 = client.get(f"/api/soldiers/{s2.id}/exemptions/{exemption_id}", headers=auth_headers(admin))
+    assert r2.status_code == 404
