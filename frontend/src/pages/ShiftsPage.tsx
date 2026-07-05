@@ -303,14 +303,14 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
   const activeCount = selectedShifts.filter(s => s.status === "active").length;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg border border-indigo-200 dark:border-indigo-800" dir="rtl">
-      <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedShifts.length} נבחרו</span>
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-950 rounded-lg border border-indigo-200 dark:border-indigo-800" dir="rtl">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedShifts.length} נבחרו</span>
         {onAutoAssign && (
           <button
             type="button"
             onClick={onAutoAssign}
-            className={`flex items-center gap-1 px-3 py-1 rounded text-sm font-medium transition-colors ${
+            className={`px-5 py-2 rounded text-base font-semibold transition-colors ${
               showAlgorithmPanel
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
                 : "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800"
@@ -319,6 +319,31 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
             שיבוץ אוטומטי
           </button>
         )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setOpenModal("setResponsible")}
+          className="px-3 py-1 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
+        >
+          קביעת יחידה אחראית
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpenModal("splitInUnit")}
+          className="px-3 py-1 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
+        >
+          פיצול בתוך היחידה
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpenModal("autoAssignResponsibility")}
+          className="px-3 py-1 rounded text-sm font-medium bg-teal-700 text-white hover:bg-teal-800"
+        >
+          שיבוץ אוטומטי של אחריות יחידה
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => { void handleClear(); }}
@@ -345,29 +370,6 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
         >
           {busy === "delete" && <Spinner />}
           {busy === "delete" ? "מוחק..." : "מחק משמרות"}
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-2 basis-full">
-        <button
-          type="button"
-          onClick={() => setOpenModal("setResponsible")}
-          className="px-3 py-1 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
-        >
-          קביעת יחידה אחראית
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpenModal("splitInUnit")}
-          className="px-3 py-1 rounded text-sm font-medium bg-teal-600 text-white hover:bg-teal-700"
-        >
-          פיצול בתוך היחידה
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpenModal("autoAssignResponsibility")}
-          className="px-3 py-1 rounded text-sm font-medium bg-teal-700 text-white hover:bg-teal-800"
-        >
-          שיבוץ אוטומטי של אחריות יחידה
         </button>
       </div>
       {openModal === "setResponsible" && (
