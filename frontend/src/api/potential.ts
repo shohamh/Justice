@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { ExemptionSummaryItem } from "./exemptions";
 
 export interface SoldierPotentialDetail {
   soldier_id: string;
@@ -8,6 +9,7 @@ export interface SoldierPotentialDetail {
   exemption_names: string[] | null;
   rank: string | null;
   partial_exemption_names: string[] | null;
+  exemptions: ExemptionSummaryItem[] | null;
 }
 
 export interface PotentialModifierDTO {
