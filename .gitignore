@@ -46,3 +46,4 @@ logs/
 frontend/tests/e2e/storageState.json
 nul
 backend/vendor/
+.superpowers/
