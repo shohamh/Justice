@@ -78,6 +78,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_scoring_service": "scoring",
     "test_scoring_reserve": "scoring",
     "test_transparency_export": "scoring",
+    # potential: potential endpoint and potential modifiers (marks as "scoring" subsystem)
+    "test_potential_api": "scoring",
     # notifications: notifications, email, Telegram, bot actions
     "test_notifications_api": "notifications",
     "test_email_notifications": "notifications",
