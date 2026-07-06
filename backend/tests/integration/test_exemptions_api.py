@@ -209,3 +209,25 @@ def test_detail_endpoint_404_for_mismatched_soldier(client: TestClient, admin_se
     exemption_id = r.json()["id"]
     r2 = client.get(f"/api/soldiers/{s2.id}/exemptions/{exemption_id}", headers=auth_headers(admin))
     assert r2.status_code == 404
+
+
+def test_detail_endpoint_403_when_not_authorized(client: TestClient, admin_session: Session):
+    """A plain soldier (no admin/commander/duty-manager role) has no
+    EXEMPTION_READ path to another soldier's exemption — authorize() must
+    reject before any data is returned. This pins the detail endpoint's core
+    defense-in-depth guarantee: it re-authorizes independently, rather than
+    trusting whatever gated the bulk list endpoints (Transparency/Potential)."""
+    node = create_node(admin_session, level="department", name="d-detail5")
+    admin = create_soldier(admin_session, personal_number="5200030", role="admin")
+    target = create_soldier(admin_session, personal_number="5200031", hierarchy_node_id=node.id)
+    et = _et(admin_session, "פטור-דטייל5")
+    r = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    )
+    exemption_id = r.json()["id"]
+
+    viewer = create_soldier(admin_session, personal_number="5200032", role="soldier")
+    r2 = client.get(f"/api/soldiers/{target.id}/exemptions/{exemption_id}", headers=auth_headers(viewer))
+    assert r2.status_code == 403
