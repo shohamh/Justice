@@ -20,6 +20,7 @@ export interface RowBase {
   row: number;
   action: "new" | "update" | "error" | "out_of_scope" | "skip";
   errors: string[];
+  warnings?: string[];
 }
 
 export interface NodeQuotaRow {
@@ -67,10 +68,27 @@ export interface ShiftTemplateRow extends RowBase {
   required_reserve: number;
 }
 
+export interface AssignmentRow extends RowBase {
+  personal_number: string;
+  full_name: string;
+  duty_type_name: string;
+  duty_location_name: string;
+  start_date: string;
+  end_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  is_reserve: boolean;
+  notes: string | null;
+  resolved_soldier_id: string | null;
+  resolved_duty_shift_id: string | null;
+  matched_session_row: number | null;
+}
+
 export interface ParsedState {
   soldiers: SoldierRow[];
   duty_shifts: DutyShiftRow[];
   shift_templates: ShiftTemplateRow[];
+  assignments: AssignmentRow[];
   parser_id: string;
   parser_warnings: string[];
 }
@@ -83,6 +101,7 @@ export interface SessionSummary {
   row_summary: {
     soldiers: number;
     duty_shifts: number;
+    assignments: number;
   };
 }
 
