@@ -35,6 +35,14 @@ import {
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 
+function describeError(err: unknown): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const resp = (err as { response?: { data?: { detail?: string } } }).response;
+    if (resp?.data?.detail) return resp.data.detail;
+  }
+  return "שגיאה בביצוע הפעולה";
+}
+
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
   const a = new Date(start);
@@ -79,6 +87,7 @@ export default function ApprovalsPage() {
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
   const [nodes, setNodes] = useState<{ id: string; name: string }[]>([]);
   const [exemptionTypes, setExemptionTypes] = useState<{ id: string; name: string }[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -126,58 +135,94 @@ export default function ApprovalsPage() {
   }, []);
 
   async function onApprove(id: string) {
-    await approveConstraint(id);
-    await refresh();
+    try {
+      await approveConstraint(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onReject(id: string) {
     const note = rejectNotes[id];
     if (!note) return;
-    await rejectConstraint(id, note);
-    const next = { ...rejectNotes };
-    delete next[id];
-    setRejectNotes(next);
-    await refresh();
+    try {
+      await rejectConstraint(id, note);
+      const next = { ...rejectNotes };
+      delete next[id];
+      setRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onErApproveCommander(id: string) {
-    await approveExemptionRequestCommanderStep(id);
-    await refresh();
+    try {
+      await approveExemptionRequestCommanderStep(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onErApproveDutyManager(id: string) {
-    await approveExemptionRequestDutyManagerStep(id);
-    await refresh();
+    try {
+      await approveExemptionRequestDutyManagerStep(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onErReject(id: string) {
     const note = rejectNotes[`er-${id}`];
     if (!note) return;
-    await rejectExemptionRequest(id, note);
-    const next = { ...rejectNotes };
-    delete next[`er-${id}`];
-    setRejectNotes(next);
-    await refresh();
+    try {
+      await rejectExemptionRequest(id, note);
+      const next = { ...rejectNotes };
+      delete next[`er-${id}`];
+      setRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onFuApprove(item: FieldUpdateDTO) {
-    await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
-    await refresh();
+    try {
+      await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onFuReject(item: FieldUpdateDTO) {
     const note = fuNotes[item.id];
     if (!note) return;
-    await rejectFieldUpdate(item.soldier_id, item.id, note);
-    await refresh();
+    try {
+      await rejectFieldUpdate(item.soldier_id, item.id, note);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onSwapApproveSide(id: string, side: "requester" | "covering") {
-    await approveSwapSide(id, side);
-    await refresh();
+    try {
+      await approveSwapSide(id, side);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onSwapReject(id: string) {
-    await rejectSwap(id, swapRejectNotes[id]);
-    const next = { ...swapRejectNotes };
-    delete next[id];
-    setSwapRejectNotes(next);
-    await refresh();
+    try {
+      await rejectSwap(id, swapRejectNotes[id]);
+      const next = { ...swapRejectNotes };
+      delete next[id];
+      setSwapRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onEnrollApprove(id: string, soldierName: string, nodeName: string) {
@@ -201,6 +246,13 @@ export default function ApprovalsPage() {
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+
+        {actionError && (
+          <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 text-sm rounded p-2 flex items-center justify-between" dir="rtl">
+            <span>{actionError}</span>
+            <button className="text-red-500 hover:text-red-700" onClick={() => setActionError(null)}>✕</button>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-x-4 border-b dark:border-gray-600">
           <button
