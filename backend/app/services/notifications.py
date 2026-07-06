@@ -466,6 +466,44 @@ def notify_enrollment_received(
         )
 
 
+def notify_duty_managers_in_scope(
+    session: Session,
+    *,
+    soldier_id: uuid.UUID,
+    type: NotificationType,
+    title: str,
+    body: str | None = None,
+    reference_type: str | None = None,
+    reference_id: uuid.UUID | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    """Notify every duty manager whose scope covers soldier_id's hierarchy node."""
+    from app.db.models import DutyManagerScope
+
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None or soldier.hierarchy_node_id is None:
+        return
+    soldier_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+    if soldier_node is None or not soldier_node.path_ids:
+        return
+    dm_scopes = session.execute(
+        select(DutyManagerScope).where(
+            DutyManagerScope.hierarchy_node_id.in_(soldier_node.path_ids)
+        )
+    ).scalars().all()
+    seen: set[uuid.UUID] = set()
+    for dm_scope in dm_scopes:
+        if dm_scope.duty_manager_id in seen or dm_scope.duty_manager_id == soldier.id:
+            continue
+        seen.add(dm_scope.duty_manager_id)
+        _create_notif(
+            session, soldier_id=dm_scope.duty_manager_id,
+            type=type, title=f"{soldier.full_name}: {title}",
+            body=body, reference_type=reference_type,
+            reference_id=reference_id, actor_id=actor_id,
+        )
+
+
 def ensure_default_prefs(session: Session, *, soldier_id: uuid.UUID) -> None:
     existing = set(
         session.execute(
