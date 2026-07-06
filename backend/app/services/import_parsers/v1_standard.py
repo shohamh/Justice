@@ -10,6 +10,7 @@ from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportDutyLocationRow,
     ImportDutyShiftRow,
+    ImportDutyTypeRow,
     ImportExemptionTypeRow,
     ImportHierarchyNodeRow,
     ImportNodeQuota,
@@ -223,11 +224,34 @@ class V1StandardParser:
                 )
             )
 
+
+        duty_types = [
+            ImportDutyTypeRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                score_per_day=str(r.get("score_per_day") or "").strip(),
+                description=str(r.get("description") or "").strip() or None,
+                active=_parse_bool(r.get("active")),
+                reserve_ratio=str(r.get("reserve_ratio") or "").strip() or None,
+                reserve_minimum=int(r.get("reserve_minimum")) if r.get("reserve_minimum") else None,
+                is_external=_parse_bool(r.get("is_external")),
+                contact_name=str(r.get("contact_name") or "").strip() or None,
+                contact_phone=str(r.get("contact_phone") or "").strip() or None,
+                start_time=str(r.get("start_time") or "").strip() or None,
+                end_time=str(r.get("end_time") or "").strip() or None,
+                instructions=str(r.get("instructions") or "").strip() or None,
+                eligible_unit_names=_parse_name_list(r.get("eligible_unit_names")),
+                requirements_json=str(r.get("requirements_json") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "duty_types")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
             duty_locations=duty_locations,
             hierarchy=hierarchy,
+            duty_types=duty_types,
             exemption_types=exemption_types,
             parser_id=self.id,
             parser_warnings=warnings,
