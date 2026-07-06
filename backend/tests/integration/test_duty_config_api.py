@@ -156,3 +156,44 @@ def test_update_duty_type_operational_fields(client: TestClient, admin_session: 
     data = r.json()
     assert data["contact_name"] == "דני לוי"
     assert data["is_external"] is True
+
+
+def test_update_exemption_type_active_toggle(client: TestClient, admin_session: Session):
+    from app.db.models import ExemptionType
+
+    et = ExemptionType(name="route-active-toggle-test")
+    admin_session.add(et)
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number="route_active_admin", role="admin")
+    admin_session.commit()
+
+    resp = client.patch(
+        f"/api/duty-config/exemption-types/{et.id}",
+        headers=auth_headers(admin), json={"active": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active"] is False
+
+
+def test_disable_exemption_type_endpoint_bulk_revokes(client: TestClient, admin_session: Session):
+    from datetime import date, timedelta
+    from app.db.models import ExemptionType, SoldierExemption
+
+    et = ExemptionType(name="route-disable-bulk-test")
+    admin_session.add(et)
+    admin_session.flush()
+    s = create_soldier(admin_session, personal_number="route_disable_bulk_1")
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today() - timedelta(days=1), end_date=None,
+    ))
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number="route_disable_bulk_admin", role="admin")
+    admin_session.commit()
+
+    resp = client.post(
+        f"/api/duty-config/exemption-types/{et.id}/disable",
+        headers=auth_headers(admin), json={"reason": "לא בשימוש עוד"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["revoked_count"] == 1
