@@ -16,7 +16,7 @@ from app.services.import_parsers.schema import (
     ParsedImportData,
 )
 
-KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments", "duty_locations", "exemption_types"}
+KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments", "duty_locations", "hierarchy", "duty_types", "exemption_types"}
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
