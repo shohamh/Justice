@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<ErrKey>(null);
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -31,8 +32,10 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof AxiosError) {
         if (err.response?.status === 401) setErrorKey("invalid_credentials");
-        else if (err.response?.status === 429) setErrorKey("rate_limited");
-        else setErrorKey("network");
+        else if (err.response?.status === 429) {
+          setErrorKey("rate_limited");
+          setRetryAfterSeconds(err.response.headers["retry-after"] ?? null);
+        } else setErrorKey("network");
       } else {
         setErrorKey("network");
       }
@@ -94,7 +97,9 @@ export default function LoginPage() {
 
         {errorKey && (
           <div className="text-rejected text-sm" data-testid="login-error">
-            {t(`login.errors.${errorKey}`)}
+            {errorKey === "rate_limited" && retryAfterSeconds
+              ? t("login.errors.rate_limited", { seconds: retryAfterSeconds })
+              : t(`login.errors.${errorKey}`)}
           </div>
         )}
 
