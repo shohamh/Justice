@@ -217,7 +217,7 @@ export default function ProfilePage() {
         </Link>
         {user?.id && (
           <div className="pt-4 border-t">
-            <ExemptionsPanel soldierId={user.id} canManage={false} />
+            <ExemptionsPanel soldierId={user.id} canManage={false} canApproveDutyManagerStep={false} />
           </div>
         )}
       </section>

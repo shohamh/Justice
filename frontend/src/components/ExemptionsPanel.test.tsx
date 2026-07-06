@@ -41,7 +41,7 @@ vi.mock("../api/exemptions", () => ({
 }));
 
 test("indefinite checkbox disables end-date picker", () => {
-  render(<ExemptionsPanel soldierId="abc" canManage={true} />);
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
   const checkbox = screen.getByTestId("grant-indefinite");
   const endInput = screen.getByTestId("grant-end");
   expect(endInput).not.toBeDisabled();
@@ -49,9 +49,15 @@ test("indefinite checkbox disables end-date picker", () => {
   expect(endInput).toBeDisabled();
 });
 
-test("shows exemption request history with a pending duty-manager approve button", async () => {
-  render(<ExemptionsPanel soldierId="abc" canManage={true} />);
+test("shows exemption request history with a pending duty-manager approve button for a duty manager viewer", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
   const row = await screen.findByTestId("exemption-request-row-req-1");
   expect(row).toBeTruthy();
   expect(screen.getByTestId("exemption-request-approve-req-1")).toBeTruthy();
+});
+
+test("hides the duty-manager-step approve button for a commander-only viewer", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
+  await screen.findByTestId("exemption-request-row-req-1");
+  expect(screen.queryByTestId("exemption-request-approve-req-1")).toBeNull();
 });

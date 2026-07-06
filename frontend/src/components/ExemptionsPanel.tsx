@@ -30,7 +30,7 @@ function DaysBadge({ start, end }: { start: string; end: string | null | undefin
   return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
 }
 
-export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: string; canManage: boolean }) {
+export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<Exemption[]>([]);
   const [types, setTypes] = useState<ExemptionType[]>([]);
@@ -268,7 +268,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
                         {t("exemptions.approve_commander_step")}
                       </button>
                     )}
-                    {req.status === "pending_duty_manager" && (
+                    {req.status === "pending_duty_manager" && canApproveDutyManagerStep && (
                       <button
                         className="bg-green-600 text-white px-3 py-1 rounded text-sm"
                         onClick={() => void onApproveDutyManagerStep(req.id)}

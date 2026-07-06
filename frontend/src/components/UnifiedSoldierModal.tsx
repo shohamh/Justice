@@ -435,7 +435,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         )}
 
         {tab === "exemptions" && (
-          <ExemptionsPanel soldierId={soldier.id} canManage={canManageExemptions} />
+          <ExemptionsPanel soldierId={soldier.id} canManage={canManageExemptions} canApproveDutyManagerStep={canManage} />
         )}
 
         {tab === "constraints" && (
