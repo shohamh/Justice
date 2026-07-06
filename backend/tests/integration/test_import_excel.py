@@ -89,3 +89,11 @@ def test_template_download(client, admin_session):
     resp = client.get("/api/import/template", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert "spreadsheetml" in resp.headers["content-type"]
+
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert set(wb.sheetnames) == {"soldiers", "duty_shifts", "assignments"}
+    headers = [c.value for c in next(wb["assignments"].iter_rows(min_row=1, max_row=1))]
+    assert headers == [
+        "personal_number", "full_name", "duty_type_name", "duty_location_name",
+        "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes",
+    ]

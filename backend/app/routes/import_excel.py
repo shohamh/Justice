@@ -327,9 +327,10 @@ def download_template():
     """Download an example workbook for the active import pipeline.
 
     Matches the `v1_standard` parser's expected sheets (`soldiers`,
-    `duty_shifts`) — see app/services/import_parsers/v1_standard.py. Shift
-    templates are intentionally not included: they're created only through
-    the system UI (app/routes/shift_templates.py), not via Excel import.
+    `duty_shifts`, `assignments`) — see
+    app/services/import_parsers/v1_standard.py. Shift templates are
+    intentionally not included: they're created only through the system UI
+    (app/routes/shift_templates.py), not via Excel import.
     """
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -355,6 +356,12 @@ def download_template():
     ws_d.append(["סיור", "היקף מחנה", "17.06.2024", "18.06.2024", "22:00", "04:00", 3, "מדור א:1;מדור ב:2", "נדרש רכב"])
     ws_d.append(["משמר לילה", "מגדל שמירה צפוני", "18.06.2024", "19.06.2024", "23:00", "05:00", 2, "", "תורנות רגישה — לוודא תדריך"])
     ws_d.append(["תורנות סוף שבוע", "שער ראשי", "21.06.2024", "23.06.2024", "", "", 6, "מדור א:3;מדור ב:3", ""])
+
+    ws_a = wb.create_sheet("assignments")
+    ws_a.append(["personal_number", "full_name", "duty_type_name", "duty_location_name",
+                  "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes"])
+    ws_a.append(["12345", "ישראל ישראלי", "שמירה", "שער ראשי", "15.06.2024", "16.06.2024", "20:00", "06:00", "false", ""])
+    ws_a.append(["23456", "משה כהן", "שמירה", "שער ראשי", "15.06.2024", "16.06.2024", "20:00", "06:00", "true", "מחליף תורן"])
 
     buf = io.BytesIO()
     wb.save(buf)
