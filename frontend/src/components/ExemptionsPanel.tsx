@@ -6,6 +6,7 @@ import { Exemption, grantExemption, listExemptions, revokeExemption } from "../a
 import { formatDate } from "../utils/formatDate";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
+import ReasonPromptModal from "./ReasonPromptModal";
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -37,6 +38,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   const [end, setEnd] = useState("");
   const [indefinite, setIndefinite] = useState(false);
   const [reason, setReason] = useState("");
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setItems(await listExemptions(soldierId));
@@ -83,18 +85,18 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
     await refresh();
   }
 
-  async function onRevoke(id: string) {
-    if (!confirm(t("exemptions.revoke") + "?")) return;
-    await revokeExemption(soldierId, id);
+  async function onRevoke(id: string, reason: string) {
+    await revokeExemption(soldierId, id, reason);
+    setRevokingId(null);
     await refresh();
   }
 
   const today = new Date().toISOString().slice(0, 10);
   const activeItems = items.filter(
-    (ex) => ex.end_date == null || ex.end_date >= today
+    (ex) => !ex.revoked_by_name && (ex.end_date == null || ex.end_date >= today)
   );
   const expiredItems = items.filter(
-    (ex) => ex.end_date != null && ex.end_date < today
+    (ex) => ex.revoked_by_name || (ex.end_date != null && ex.end_date < today)
   );
 
   return (
@@ -133,7 +135,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
                     {canManage && (
                       <button
                         className="text-red-500 text-xs shrink-0"
-                        onClick={(e) => { e.stopPropagation(); void onRevoke(ex.id); }}
+                        onClick={(e) => { e.stopPropagation(); setRevokingId(ex.id); }}
                         data-testid={`revoke-${ex.id}`}
                       >
                         {t("exemptions.revoke")}
@@ -178,15 +180,6 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
                     <span className="text-gray-500 dark:text-gray-400 text-xs">
                       {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}
                     </span>
-                    {canManage && (
-                      <button
-                        className="text-red-500 text-xs mr-auto"
-                        onClick={(e) => { e.stopPropagation(); void onRevoke(ex.id); }}
-                        data-testid={`revoke-${ex.id}`}
-                      >
-                        {t("exemptions.revoke")}
-                      </button>
-                    )}
                   </div>
                   {isExpanded && (
                     <div className="mt-1.5 space-y-0.5">
@@ -250,6 +243,14 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
           soldierId={soldierId}
           commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
           onGranted={() => void refresh()}
+        />
+      )}
+
+      {revokingId && (
+        <ReasonPromptModal
+          title={t("exemptions.revoke")}
+          onConfirm={(reason) => onRevoke(revokingId, reason)}
+          onClose={() => setRevokingId(null)}
         />
       )}
     </div>
