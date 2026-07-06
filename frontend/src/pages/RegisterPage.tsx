@@ -188,7 +188,7 @@ export default function RegisterPage() {
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
               </select>
             </label>
-            <label className="block text-sm">דרגה
+            <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
                   ...ENLISTED_RANKS.map(r => ({ id: r, name: r, group: "חיילים" })),
