@@ -72,6 +72,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
   const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true);
+  const officialExemptionTypes = types.filter((tp) => tp.is_commander_exemption !== true);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -342,7 +343,8 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         <CommanderExemptionGrantForm
           soldierId={soldierId}
           commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
-          onGranted={() => void refresh()}
+          officialExemptionTypes={officialExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
+          onGranted={() => { void refresh(); void refreshRequests(); }}
         />
       )}
     </div>
