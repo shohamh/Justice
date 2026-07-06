@@ -35,6 +35,51 @@ class ImportDutyShiftRow(BaseModel):
     notes: str | None = None
 
 
+class ImportDutyLocationRow(BaseModel):
+    source_row: int
+    name: str
+    base: str | None = None
+    active: bool | None = None
+
+
+class ImportHierarchyNodeRow(BaseModel):
+    source_row: int
+    name: str
+    level: str
+    parent_name: str | None = None
+    commander_personal_number: str | None = None
+    commander_name: str | None = None
+    duty_manager_refs: list[str] = []
+
+
+class ImportDutyTypeRow(BaseModel):
+    source_row: int
+    name: str
+    score_per_day: str
+    description: str | None = None
+    active: bool | None = None
+    reserve_ratio: str | None = None
+    reserve_minimum: int | None = None
+    is_external: bool | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    instructions: str | None = None
+    eligible_unit_names: list[str] = []
+    requirements_json: str | None = None
+
+
+class ImportExemptionTypeRow(BaseModel):
+    source_row: int
+    name: str
+    description: str | None = None
+    is_global: bool | None = None
+    is_medical: bool | None = None
+    is_commander_exemption: bool | None = None
+    applies_to_duty_type_names: list[str] = []
+
+
 class ParsedImportData(BaseModel):
     """Canonical output every import parser implementation must produce.
 
@@ -50,5 +95,9 @@ class ParsedImportData(BaseModel):
 
     soldiers: list[ImportSoldierRow] = []
     duty_shifts: list[ImportDutyShiftRow] = []
+    duty_locations: list[ImportDutyLocationRow] = []
+    hierarchy: list[ImportHierarchyNodeRow] = []
+    duty_types: list[ImportDutyTypeRow] = []
+    exemption_types: list[ImportExemptionTypeRow] = []
     parser_id: str
     parser_warnings: list[str] = []
