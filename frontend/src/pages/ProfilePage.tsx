@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
 import { formatDate } from "../utils/formatDate";
+import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
@@ -19,25 +20,6 @@ import { getPreferences, updatePreferences, listCommanderScopes, addCommanderSco
 import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
-
-function formatFieldUpdateValue(
-  fieldName: string,
-  value: string | null,
-  t: (key: string) => string
-): string {
-  if (!value) return "—";
-  if (fieldName === "gender") return t(`soldier_profile.gender_${value}`);
-  if (fieldName === "military_driving_license") {
-    try {
-      const parsed = JSON.parse(value) as { has_license: boolean; expiry_date: string | null };
-      if (!parsed.has_license) return "—";
-      return parsed.expiry_date ? `✓ (${formatDate(parsed.expiry_date)})` : "✓";
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
 
 export default function ProfilePage() {
   const { t } = useTranslation();
