@@ -858,3 +858,110 @@ def test_assignment_over_capacity_warns_but_allows(admin_session):
     row = sess.parsed_state["assignments"][0]
     assert row["action"] == "new"
     assert any("1/1" in w for w in row["warnings"])
+
+
+def test_confirm_session_creates_assignment_against_existing_shift(admin_session):
+    from app.db.models import DutyAssignment, DutyShift
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        required_count=2,
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "00:00", "23:59", "true", "note"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    assert result["errors"] == []
+    assert len(sess.created_links["assignments"]) == 1
+
+    created = admin_session.get(DutyAssignment, uuid.UUID(sess.created_links["assignments"][0]))
+    assert created is not None
+    assert created.soldier_id == soldier.id
+    assert created.duty_shift_id == shift.id
+    assert created.is_reserve is True
+    assert created.notes == "note"
+
+
+def test_confirm_session_creates_assignment_against_session_created_shift(admin_session):
+    from app.db.models import DutyAssignment
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts_and_assignments(
+        [[dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 2, "", ""]],
+        [[soldier.personal_number, soldier.full_name, dt.name, loc.name,
+          "15.06.2024", "16.06.2024", "", "", "false", ""]],
+    )
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 2  # 1 duty_shift + 1 assignment
+    assert result["errors"] == []
+    created_shift_id = uuid.UUID(sess.created_links["duty_shifts"][0])
+    created_assignment = admin_session.get(
+        DutyAssignment, uuid.UUID(sess.created_links["assignments"][0])
+    )
+    assert created_assignment.duty_shift_id == created_shift_id
+
+
+def test_confirm_session_assignment_matched_shift_skipped_errors_gracefully(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts_and_assignments(
+        [[dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 2, "", ""]],
+        [[soldier.personal_number, soldier.full_name, dt.name, loc.name,
+          "15.06.2024", "16.06.2024", "", "", "false", ""]],
+    )
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    shift_row_num = sess.parsed_state["duty_shifts"][0]["row"]
+    set_selections(admin_session, session_id=sess.id, selections={
+        "duty_shifts": {str(shift_row_num): "skip"},
+    })
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 0
+    assert len(result["errors"]) == 1
+    assert result["errors"][0]["type"] == "assignments"
+    assert sess.created_links["assignments"] == []

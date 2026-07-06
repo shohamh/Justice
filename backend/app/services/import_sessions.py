@@ -521,6 +521,8 @@ def confirm_session(
     errors: list[dict] = []
     created_soldiers: list[str] = []
     created_duty_shifts: list[str] = []
+    created_assignments: list[str] = []
+    shift_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
     for row in state.get("soldiers", []):
@@ -631,12 +633,63 @@ def confirm_session(
 
             created += 1
             created_duty_shifts.append(str(shift.id))
+            shift_row_to_id[row["row"]] = shift.id
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
+
+    # ── Assignments ─────────────────────────────────────────────────────
+    for row in state.get("assignments", []):
+        effective = _effective_action(selections, "assignments", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            if row.get("resolved_duty_shift_id"):
+                duty_shift_id = uuid.UUID(row["resolved_duty_shift_id"])
+            elif row.get("matched_session_row") is not None:
+                mapped = shift_row_to_id.get(row["matched_session_row"])
+                if mapped is None:
+                    errors.append({
+                        "row": row["row"], "type": "assignments",
+                        "error": "המשמרת המתאימה לא נוצרה (דולגה או נכשלה)",
+                    })
+                    continue
+                duty_shift_id = mapped
+            else:
+                errors.append({
+                    "row": row["row"], "type": "assignments", "error": "לא נמצאה משמרת תואמת",
+                })
+                continue
+
+            shift = session.get(DutyShift, duty_shift_id)
+            assignment = DutyAssignment(
+                soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                duty_type_id=shift.duty_type_id,
+                duty_location_id=shift.duty_location_id,
+                duty_shift_id=duty_shift_id,
+                start_date=shift.start_date,
+                end_date=shift.end_date,
+                is_reserve=row.get("is_reserve") or False,
+                notes=row.get("notes"),
+            )
+            if shift.start_time:
+                assignment.start_time = shift.start_time
+            if shift.end_time:
+                assignment.end_time = shift.end_time
+            session.add(assignment)
+            session.flush()
+            created += 1
+            created_assignments.append(str(assignment.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "assignments", "error": str(exc)})
 
     import_session.created_links = {
         "soldiers": created_soldiers,
         "duty_shifts": created_duty_shifts,
+        "assignments": created_assignments,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)
