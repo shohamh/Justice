@@ -542,6 +542,12 @@ class ExemptionRequest(Base):
         nullable=True,
         default=None,
     )
+    linked_commander_exemption_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldier_exemptions.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
     status: Mapped[str] = mapped_column(Text, server_default="pending", default="pending")
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None

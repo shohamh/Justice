@@ -2,7 +2,11 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
-import { Exemption, grantExemption, listExemptions, revokeExemption } from "../api/exemptions";
+import {
+  Exemption, ExemptionRequest, grantExemption, listExemptions, revokeExemption,
+  listExemptionRequestsForSoldier, approveExemptionRequestCommanderStep,
+  approveExemptionRequestDutyManagerStep, rejectExemptionRequest,
+} from "../api/exemptions";
 import { formatDate } from "../utils/formatDate";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
@@ -26,7 +30,7 @@ function DaysBadge({ start, end }: { start: string; end: string | null | undefin
   return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
 }
 
-export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: string; canManage: boolean }) {
+export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
   const [items, setItems] = useState<Exemption[]>([]);
   const [types, setTypes] = useState<ExemptionType[]>([]);
@@ -37,10 +41,16 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   const [end, setEnd] = useState("");
   const [indefinite, setIndefinite] = useState(false);
   const [reason, setReason] = useState("");
+  const [requests, setRequests] = useState<ExemptionRequest[]>([]);
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
 
   const refresh = useCallback(async () => {
     setItems(await listExemptions(soldierId));
   }, [soldierId]);
+  const refreshRequests = useCallback(async () => {
+    setRequests(await listExemptionRequestsForSoldier(soldierId));
+  }, [soldierId]);
+  useEffect(() => { void refreshRequests(); }, [refreshRequests]);
   useEffect(() => {
     void refresh();
     void (async () => {
@@ -62,6 +72,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
   const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true);
+  const officialExemptionTypes = types.filter((tp) => tp.is_commander_exemption !== true);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -87,6 +98,22 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
     if (!confirm(t("exemptions.revoke") + "?")) return;
     await revokeExemption(soldierId, id);
     await refresh();
+  }
+
+  async function onApproveCommanderStep(id: string) {
+    await approveExemptionRequestCommanderStep(id);
+    await refreshRequests();
+  }
+  async function onApproveDutyManagerStep(id: string) {
+    await approveExemptionRequestDutyManagerStep(id);
+    await refreshRequests();
+  }
+  async function onRejectRequest(id: string) {
+    const note = rejectNotes[id];
+    if (!note) return;
+    await rejectExemptionRequest(id, note);
+    setRejectNotes((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    await refreshRequests();
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -206,6 +233,73 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         </div>
       )}
 
+      {/* Exemption request history */}
+      <div>
+        <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">
+          {t("exemptions.requests_title")} ({requests.length})
+        </h3>
+        {requests.length === 0 ? (
+          <p className="text-sm text-gray-500" data-testid="exemption-requests-empty">
+            {t("exemptions.requests_none")}
+          </p>
+        ) : (
+          <ul className="space-y-2" data-testid="exemption-requests-list">
+            {requests.map((req) => (
+              <li
+                key={req.id}
+                className="border dark:border-gray-600 rounded p-3"
+                data-testid={`exemption-request-row-${req.id}`}
+              >
+                <p className="text-xs text-gray-500 mb-1" data-testid={`exemption-request-status-${req.id}`}>
+                  {t(`exemptions.request_status_${req.status}`)}
+                </p>
+                <p className="text-sm flex items-center gap-2" dir="ltr">
+                  <span>{formatDate(req.start_date)} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}</span>
+                </p>
+                {req.reason && <p className="text-xs text-gray-500 mb-2">{req.reason}</p>}
+                {canManage && (req.status === "pending_commander" || req.status === "pending_duty_manager") && (
+                  <div className="flex items-center gap-2">
+                    {req.status === "pending_commander" && (
+                      <button
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm"
+                        onClick={() => void onApproveCommanderStep(req.id)}
+                        data-testid={`exemption-request-approve-${req.id}`}
+                      >
+                        {t("exemptions.approve_commander_step")}
+                      </button>
+                    )}
+                    {req.status === "pending_duty_manager" && canApproveDutyManagerStep && (
+                      <button
+                        className="bg-green-600 text-white px-3 py-1 rounded text-sm"
+                        onClick={() => void onApproveDutyManagerStep(req.id)}
+                        data-testid={`exemption-request-approve-${req.id}`}
+                      >
+                        {t("exemptions.approve_duty_manager_step")}
+                      </button>
+                    )}
+                    <input
+                      className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                      value={rejectNotes[req.id] ?? ""}
+                      onChange={(e) => setRejectNotes((prev) => ({ ...prev, [req.id]: e.target.value }))}
+                      placeholder={t("approvals.decision_note")}
+                      data-testid={`exemption-request-reject-note-${req.id}`}
+                    />
+                    <button
+                      className="bg-red-600 text-white px-3 py-1 rounded text-sm disabled:opacity-50"
+                      disabled={!rejectNotes[req.id]}
+                      onClick={() => void onRejectRequest(req.id)}
+                      data-testid={`exemption-request-reject-${req.id}`}
+                    >
+                      {t("exemptions.reject")}
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Grant form */}
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2 pt-2 border-t dark:border-gray-600" data-testid="grant-form">
@@ -249,7 +343,8 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
         <CommanderExemptionGrantForm
           soldierId={soldierId}
           commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
-          onGranted={() => void refresh()}
+          officialExemptionTypes={officialExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
+          onGranted={() => { void refresh(); void refreshRequests(); }}
         />
       )}
     </div>

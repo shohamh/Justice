@@ -60,6 +60,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_eligibility": "duty",
     "test_exemptions_api": "duty",
     "test_exemptions_service": "duty",
+    "test_commander_exemption_escalation_api": "duty",
     "test_gimelim_api": "duty",
     "test_gimelim_service": "duty",
     "test_hakpaza": "duty",

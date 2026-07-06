@@ -50,6 +50,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const isDutyManager = user?.is_duty_manager ?? false;
   const isCommander = user?.is_commander ?? false;
   const canManage = isAdmin || isDutyManager;
+  // Backend authorizes commanders to grant exemptions too (Action.EXEMPTION_GRANT
+  // is in _COMMANDER_ACTIONS) — this is scoped to ExemptionsPanel only, not the
+  // broader `canManage` used for soldier-detail editing and constraint approval.
+  const canManageExemptions = isAdmin || isDutyManager || isCommander;
   const canViewAll = isAdmin || isDutyManager || isCommander;
   const TABS: TabKey[] = canViewAll
     ? ["details", "profile", "exemptions", "constraints", "duty_history"]
@@ -431,7 +435,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
         )}
 
         {tab === "exemptions" && (
-          <ExemptionsPanel soldierId={soldier.id} canManage={canManage} />
+          <ExemptionsPanel soldierId={soldier.id} canManage={canManageExemptions} canApproveDutyManagerStep={canManage} />
         )}
 
         {tab === "constraints" && (

@@ -9,12 +9,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can_see_private, scope_root_ids
+from app.auth.authz import (
+    Action, authorize, can_see_private, is_commander, is_duty_manager, scope_root_ids,
+)
 from app.rate_limit import limiter
 from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
-from app.services.authority import dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY
+from app.services.authority import (
+    commander_can_grant_commander_exemption, dm_scope_covers_target, REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+)
 from app.services.exemption_requests import (
     ExemptionRequestError,
     approve_commander_step,
@@ -23,8 +27,10 @@ from app.services.exemption_requests import (
     list_own_requests,
     list_pending_requests,
     reject_request,
+    submit_commander_escalation,
     submit_request,
 )
+from app.services.exemptions import ExemptionError
 
 router = APIRouter(tags=["exemption-requests"])
 
@@ -51,6 +57,15 @@ class CreateExemptionRequest(BaseModel):
     start_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     end_date: str | None = None
     reason: str | None = None
+
+
+class CommanderEscalateRequest(BaseModel):
+    official_exemption_type_id: uuid.UUID
+    commander_exemption_type_id: uuid.UUID | None = None
+    start_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: str | None = None
+    reason: str = Field(min_length=1, max_length=1000)
+    apply_immediately: bool
 
 
 class ApproveRejectRequest(BaseModel):
@@ -474,3 +489,95 @@ def download_exemption_file(
         media_type=ef.content_type,
         headers={"Content-Disposition": f'attachment; filename="{ef.file_name}"'},
     )
+
+
+@router.post(
+    "/soldiers/{soldier_id}/exemptions/commander-escalate",
+    response_model=ExemptionRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def escalate_commander_exemption_route(
+    soldier_id: uuid.UUID,
+    body: CommanderEscalateRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionRequestOut:
+    target_soldier = session.get(Soldier, soldier_id)
+    if target_soldier is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    target_node = (
+        session.get(HierarchyNode, target_soldier.hierarchy_node_id)
+        if target_soldier.hierarchy_node_id
+        else None
+    )
+
+    allowed = user.role == "admin"
+    if not allowed and is_duty_manager(session, user.id):
+        from app.auth.authz import _node_in_scope
+        allowed = _node_in_scope(target_node, scope_root_ids(session, user))
+    if not allowed and is_commander(session, user.id):
+        from app.auth.authz import _node_in_scope
+        in_scope = _node_in_scope(target_node, scope_root_ids(session, user))
+        allowed = in_scope and commander_can_grant_commander_exemption(
+            session, commander_id=user.id, commander_rank=user.rank,
+        )
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    try:
+        req = submit_commander_escalation(
+            session,
+            soldier_id=soldier_id,
+            official_exemption_type_id=body.official_exemption_type_id,
+            commander_exemption_type_id=body.commander_exemption_type_id,
+            start_date=date.fromisoformat(body.start_date),
+            end_date=date.fromisoformat(body.end_date) if body.end_date else None,
+            reason=body.reason,
+            apply_immediately=body.apply_immediately,
+            actor_id=user.id,
+        )
+    except (ExemptionRequestError, ExemptionError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return _out(req, include_sensitive=True)
+
+
+@router.get("/soldiers/{soldier_id}/exemption-requests", response_model=list[ExemptionRequestOut])
+def get_soldier_exemption_request_history(
+    soldier_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ExemptionRequestOut]:
+    target_soldier = session.get(Soldier, soldier_id)
+    if target_soldier is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if target_soldier.id != user.id:
+        target_node = (
+            session.get(HierarchyNode, target_soldier.hierarchy_node_id)
+            if target_soldier.hierarchy_node_id
+            else None
+        )
+        authorize(session, user, Action.EXEMPTION_READ, target_node=target_node)
+    include_sensitive = can_see_private(session, user, target_soldier)
+    reqs = session.execute(
+        select(ExemptionRequest)
+        .where(ExemptionRequest.soldier_id == soldier_id)
+        .order_by(ExemptionRequest.created_at.desc())
+    ).scalars().all()
+    req_ids = [r.id for r in reqs]
+    all_files = (
+        session.execute(
+            select(ExemptionRequestFile).where(ExemptionRequestFile.exemption_request_id.in_(req_ids))
+        ).scalars().all()
+        if req_ids
+        else []
+    )
+    files_by_req: dict[uuid.UUID, list[ExemptionFileOut]] = {}
+    for f in all_files:
+        files_by_req.setdefault(f.exemption_request_id, []).append(
+            ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
+        )
+    return [
+        _out(r, soldier_name=target_soldier.full_name, files=files_by_req.get(r.id, []), include_sensitive=include_sensitive)
+        for r in reqs
+    ]

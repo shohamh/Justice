@@ -119,3 +119,18 @@ export async function grantCommanderExemption(soldierId: string, input: {
 }): Promise<void> {
   await api.post(`/soldiers/${soldierId}/exemptions/commander-exemption`, input);
 }
+
+export async function escalateCommanderExemption(soldierId: string, input: {
+  official_exemption_type_id: string;
+  commander_exemption_type_id?: string;
+  start_date: string;
+  end_date?: string | null;
+  reason: string;
+  apply_immediately: boolean;
+}): Promise<ExemptionRequest> {
+  return (await api.post<ExemptionRequest>(`/soldiers/${soldierId}/exemptions/commander-escalate`, input)).data;
+}
+
+export async function listExemptionRequestsForSoldier(soldierId: string): Promise<ExemptionRequest[]> {
+  return (await api.get<ExemptionRequest[]>(`/soldiers/${soldierId}/exemption-requests`)).data;
+}
