@@ -175,15 +175,15 @@ export default function RegisterPage() {
               <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.full_name} onChange={e => set("full_name", e.target.value)} />
             </label>
-            <label className="block text-sm">טלפון
+            <label className="block text-sm">טלפון <span className="text-red-500">*</span>
               <input type="tel" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.phone} onChange={e => set("phone", e.target.value)} />
             </label>
-            <label className="block text-sm">אימייל
+            <label className="block text-sm">אימייל <span className="text-red-500">*</span>
               <input type="email" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.email} onChange={e => set("email", e.target.value)} />
             </label>
-            <label className="block text-sm">מגדר
+            <label className="block text-sm">מגדר <span className="text-red-500">*</span>
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
               </select>
@@ -215,7 +215,7 @@ export default function RegisterPage() {
               </label>
             )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
-              <label key={key as string} className="block text-sm">{label}
+              <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={e => set(key, e.target.value)} />
               </label>
@@ -239,7 +239,12 @@ export default function RegisterPage() {
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={!form.personal_number || !form.full_name || !passwordValid(form.password) || form.password !== form.confirm_password}
+                disabled={
+                  !form.personal_number || !form.full_name || !form.phone || !form.email ||
+                  !form.gender || !form.rank || !form.enlistment_date || !form.mandatory_end_date ||
+                  !form.discharge_date || !form.last_mitvahim_date ||
+                  !passwordValid(form.password) || form.password !== form.confirm_password
+                }
                 onClick={() => setStep(3)}>{t("register.next")}</button>
             </div>
           </div>

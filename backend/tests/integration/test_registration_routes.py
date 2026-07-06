@@ -29,6 +29,7 @@ def _payload(invite_code, node_id, **overrides):
         "full_name": "Test Soldier",
         "password": "secure-password-1",
         "phone": "050-1234567",
+        "email": "soldier@example.com",
         "gender": "male",
         "is_officer": False,
         "rank": "טוראי",
@@ -36,13 +37,25 @@ def _payload(invite_code, node_id, **overrides):
         "enlistment_date": "2023-01-01",
         "mandatory_end_date": "2025-01-01",
         "discharge_date": "2026-01-01",
-        "last_mitvahim_date": None,
+        "last_mitvahim_date": "2024-01-01",
         "last_alal_date": None,
         "requested_node_id": str(node_id),
         "exemption_requests": [],
         "personal_constraints": [],
         **overrides,
     }
+
+
+def test_register_rejects_missing_phone(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id)
+    del payload["phone"]
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 422
 
 
 def test_register_returns_access_token(client, admin_session):

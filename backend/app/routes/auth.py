@@ -50,17 +50,17 @@ class RegisterRequest(BaseModel):
     personal_number: str = Field(min_length=1, max_length=20)
     full_name: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=10, max_length=200)
-    phone: str | None = Field(default=None, max_length=40)
-    email: str | None = Field(default=None, max_length=200)
-    gender: str | None = None
+    phone: str = Field(max_length=40)
+    email: str = Field(max_length=200)
+    gender: str
     is_officer: bool | None = None
     is_career: bool = False
-    rank: str | None = None
+    rank: str
     bahad1_graduate: bool = False
-    enlistment_date: date | None = None
-    mandatory_end_date: date | None = None
-    discharge_date: date | None = None
-    last_mitvahim_date: date | None = None
+    enlistment_date: date
+    mandatory_end_date: date
+    discharge_date: date
+    last_mitvahim_date: date
     last_alal_date: date | None = None
     requested_node_id: uuid.UUID
     exemption_requests: list[dict] = []
