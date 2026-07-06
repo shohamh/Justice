@@ -88,7 +88,7 @@ test("escalate on without apply-immediately defaults apply_immediately to false"
   await waitFor(() =>
     expect(escalateCommanderExemption).toHaveBeenCalledWith(
       "s1",
-      expect.objectContaining({ apply_immediately: false })
+      expect.objectContaining({ apply_immediately: false, commander_exemption_type_id: undefined })
     )
   );
 });
