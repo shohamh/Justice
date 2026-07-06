@@ -17,6 +17,8 @@ from app.auth.deps import require_duty_manager_or_admin, require_password_change
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
+    DutyShift,
+    DutyShiftNodeQuota,
     DutyType,
     HierarchyNode,
     Soldier,
@@ -370,4 +372,92 @@ def download_template():
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="import_template.xlsx"'},
+    )
+
+
+# ── Export current data ─────────────────────────────────────────────────────────
+
+@router.get("/export")
+def export_current_data(
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+):
+    """Dump current soldiers/duty_shifts/assignments into the same 3-sheet
+    layout as the import template, for a full export -> edit -> re-import
+    round trip. Assignments with no linked `duty_shift_id` (not tied to a
+    shift instance) are omitted — they have no composite key to export."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
+    duty_types_by_id = {dt.id: dt for dt in session.execute(select(DutyType)).scalars()}
+    locations_by_id = {loc.id: loc for loc in session.execute(select(DutyLocation)).scalars()}
+
+    ws_s = wb.create_sheet("soldiers")
+    ws_s.append(["personal_number", "full_name", "rank", "gender", "is_officer",
+                  "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email"])
+    for s in session.execute(select(Soldier)).scalars():
+        node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
+        ws_s.append([
+            s.personal_number, s.full_name, s.rank, s.gender,
+            "" if s.is_officer is None else ("true" if s.is_officer else "false"),
+            node.name if node else "",
+            s.enrolled_at.strftime("%d.%m.%Y") if s.enrolled_at else "",
+            s.enlistment_date.strftime("%d.%m.%Y") if s.enlistment_date else "",
+            s.phone or "", s.email or "",
+        ])
+
+    quotas_by_shift: dict[uuid.UUID, list[str]] = {}
+    for quota, node_name in session.execute(
+        select(DutyShiftNodeQuota, HierarchyNode.name).join(
+            HierarchyNode, DutyShiftNodeQuota.hierarchy_node_id == HierarchyNode.id
+        )
+    ):
+        quotas_by_shift.setdefault(quota.duty_shift_id, []).append(f"{node_name}:{quota.count}")
+
+    shifts = session.execute(select(DutyShift)).scalars().all()
+    ws_d = wb.create_sheet("duty_shifts")
+    ws_d.append(["duty_type_name", "duty_location_name", "start_date", "end_date",
+                  "start_time", "end_time", "required_count", "node_quotas", "notes"])
+    for shift in shifts:
+        dt = duty_types_by_id.get(shift.duty_type_id)
+        loc = locations_by_id.get(shift.duty_location_id)
+        ws_d.append([
+            dt.name if dt else "", loc.name if loc else "",
+            shift.start_date.strftime("%d.%m.%Y"), shift.end_date.strftime("%d.%m.%Y"),
+            shift.start_time, shift.end_time, shift.required_count,
+            ";".join(quotas_by_shift.get(shift.id, [])), shift.notes or "",
+        ])
+
+    shifts_by_id = {shift.id: shift for shift in shifts}
+    soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    ws_a = wb.create_sheet("assignments")
+    ws_a.append(["personal_number", "full_name", "duty_type_name", "duty_location_name",
+                  "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes"])
+    for a in session.execute(select(DutyAssignment)).scalars():
+        if a.duty_shift_id is None:
+            continue
+        shift = shifts_by_id.get(a.duty_shift_id)
+        if shift is None:
+            continue
+        soldier = soldiers_by_id.get(a.soldier_id)
+        dt = duty_types_by_id.get(shift.duty_type_id)
+        loc = locations_by_id.get(shift.duty_location_id)
+        ws_a.append([
+            soldier.personal_number if soldier else "",
+            soldier.full_name if soldier else "",
+            dt.name if dt else "", loc.name if loc else "",
+            shift.start_date.strftime("%d.%m.%Y"), shift.end_date.strftime("%d.%m.%Y"),
+            shift.start_time, shift.end_time,
+            "true" if a.is_reserve else "false",
+            a.notes or "",
+        ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="export.xlsx"'},
     )

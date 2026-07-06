@@ -49,6 +49,12 @@ export default function ImportUploadPage() {
           >
             הורד תבנית לדוגמה ›
           </a>
+          <a
+            href="/api/import/export"
+            className="text-indigo-600 hover:underline text-sm"
+          >
+            ייצוא המצב הנוכחי ›
+          </a>
           <div>
             <input
               ref={fileRef}
