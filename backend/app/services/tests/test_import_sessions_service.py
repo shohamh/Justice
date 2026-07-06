@@ -574,3 +574,66 @@ def test_reparse_bad_mapped_uuid_falls_back_to_name_lookup(admin_session):
     # Bad UUID → not found in DB → fallback to name lookup → still resolves correctly
     assert sess.parsed_state["duty_shifts"][0]["action"] == "new"
     assert sess.parsed_state["duty_shifts"][0]["resolved_duty_type_id"] == str(dt.id)
+
+
+def test_soldier_fallback_matches_by_full_name_when_personal_number_unknown(admin_session):
+    existing = create_soldier(admin_session, personal_number=f"old_pn_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_soldiers([
+        [f"new_pn_{_uid()}", existing.full_name, "", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["soldiers"][0]
+    assert row["action"] == "update"
+    assert row["existing_id"] == str(existing.id)
+    assert any("שם" in w for w in row["warnings"])
+
+
+def test_soldier_fallback_ambiguous_full_name_errors(admin_session):
+    from app.auth.password import hash_password
+    from app.db.models import Soldier
+
+    dup_name = f"Dup Name {_uid()}"
+    s1 = Soldier(personal_number=f"pn1_{_uid()}", full_name=dup_name, password_hash=hash_password("x"))
+    s2 = Soldier(personal_number=f"pn2_{_uid()}", full_name=dup_name, password_hash=hash_password("x"))
+    admin_session.add_all([s1, s2])
+    admin_session.commit()
+
+    wb = _wb_with_soldiers([
+        [f"unknown_pn_{_uid()}", dup_name, "", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["soldiers"][0]
+    assert row["action"] == "error"
+    assert any("חד משמעי" in e for e in row["errors"])
+
+
+def test_soldier_fallback_updates_personal_number_on_confirm(admin_session):
+    existing = create_soldier(admin_session, personal_number=f"old_pn_{_uid()}")
+    admin_session.commit()
+    new_pn = f"new_pn_{_uid()}"
+
+    wb = _wb_with_soldiers([
+        [new_pn, existing.full_name, "", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    assert result["updated"] == 1
+
+    admin_session.refresh(existing)
+    assert existing.personal_number == new_pn

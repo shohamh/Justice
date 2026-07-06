@@ -40,11 +40,15 @@ def _resolve_soldiers(
     existing_by_pn = {
         s.personal_number: s for s in session.execute(select(Soldier)).scalars()
     }
+    existing_by_full_name: dict[str, list[Soldier]] = {}
+    for s in existing_by_pn.values():
+        existing_by_full_name.setdefault(s.full_name, []).append(s)
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
 
     out = []
     for row in data.soldiers:
         errors: list[str] = []
+        warnings: list[str] = []
         if not row.personal_number:
             errors.append("חסר מספר אישי")
         if not row.full_name:
@@ -65,6 +69,17 @@ def _resolve_soldiers(
                 errors.append(f"יחידה לא מזוהה '{row.hierarchy_node_name}'")
 
         existing = existing_by_pn.get(row.personal_number) if row.personal_number else None
+        if existing is None and row.personal_number and row.full_name:
+            candidates = existing_by_full_name.get(row.full_name, [])
+            if len(candidates) == 1:
+                existing = candidates[0]
+                warnings.append(
+                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{row.personal_number}'"
+                )
+            elif len(candidates) > 1:
+                errors.append(
+                    f"שם '{row.full_name}' אינו חד משמעי (מספר אישי '{row.personal_number}' לא נמצא)"
+                )
 
         if errors:
             action = "error"
@@ -88,6 +103,7 @@ def _resolve_soldiers(
             "row": row.source_row,
             "action": action,
             "errors": errors,
+            "warnings": warnings,
             "personal_number": row.personal_number,
             "full_name": row.full_name,
             "rank": row.rank,
@@ -385,6 +401,7 @@ def confirm_session(
             elif effective == "update" and row.get("existing_id"):
                 s = session.get(Soldier, uuid.UUID(row["existing_id"]))
                 if s is not None:
+                    s.personal_number = row["personal_number"]
                     s.full_name = row["full_name"]
                     if row.get("rank") is not None:
                         s.rank = row["rank"]
