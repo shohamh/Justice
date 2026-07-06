@@ -103,3 +103,18 @@ def test_register_nodes_rejects_missing_code(client):
 def test_register_nodes_rejects_invalid_code(client):
     resp = client.get("/api/auth/register/nodes?invite_code=INVALID-CODE-XYZ")
     assert resp.status_code == 403
+
+
+def test_register_rejects_partial_exemption_request(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(
+        invite.code, node.id,
+        exemption_requests=[{"exemption_type_id": "", "start_date": "", "end_date": "", "reason": ""}],
+    )
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "exemption_missing_fields"

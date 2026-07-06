@@ -115,7 +115,7 @@ export default function RegisterPage() {
         last_mitvahim_date: form.last_mitvahim_date || null,
         last_alal_date: form.last_alal_date || null,
         requested_node_id: form.requested_node_id,
-        exemption_requests: form.exemption_requests,
+        exemption_requests: form.exemption_requests.filter(er => er.exemption_type_id && er.start_date),
         personal_constraints: form.personal_constraints,
       });
       await loginWithToken(resp.access_token);
@@ -128,6 +128,8 @@ export default function RegisterPage() {
         "personal_number already exists": t("register.errors.personal_number_exists"),
         "holding node not bootstrapped": t("register.errors.node_not_bootstrapped"),
         "requested node not found": t("register.errors.node_not_found"),
+        "exemption_missing_fields": t("register.errors.exemption_missing_fields"),
+        "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
       };
       setError(detail ? (knownErrors[detail] ?? detail) : t("register.errors.network"));
     } finally {
@@ -280,7 +282,13 @@ export default function RegisterPage() {
             </button>
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(2)}>{t("register.back")}</button>
-              <button className="flex-1 bg-indigo-600 text-white py-2 rounded" onClick={() => setStep(4)}>{t("register.next")}</button>
+              <button
+                className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
+                disabled={form.exemption_requests.some(er => !er.exemption_type_id || !er.start_date)}
+                onClick={() => setStep(4)}
+              >
+                {t("register.next")}
+              </button>
             </div>
           </div>
         )}
