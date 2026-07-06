@@ -140,6 +140,42 @@ def test_legacy_assignments_sheet_falls_back_to_duty_shifts():
     assert any("assignments" in w for w in data.parser_warnings)
 
 
+def _wb_with_hierarchy_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("hierarchy")
+    ws.append([
+        "name", "level", "parent_name", "commander_personal_number", "commander_name", "duty_managers",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_hierarchy_sheet_with_duty_managers():
+    wb = _wb_with_hierarchy_sheet([
+        ["מדור א", "group", "יחידה ראשית", "12345", "ישראל ישראלי", "12345:ישראל ישראלי;23456:משה כהן"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.hierarchy) == 1
+    row = data.hierarchy[0]
+    assert row.name == "מדור א"
+    assert row.level == "group"
+    assert row.parent_name == "יחידה ראשית"
+    assert row.commander_personal_number == "12345"
+    assert row.commander_name == "ישראל ישראלי"
+    assert row.duty_manager_refs == ["12345:ישראל ישראלי", "23456:משה כהן"]
+
+
+def test_hierarchy_malformed_duty_manager_entry_produces_warning_not_error():
+    wb = _wb_with_hierarchy_sheet([
+        ["מדור ב", "group", "", "", "", "not-a-valid-entry"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.hierarchy[0].duty_manager_refs == []
+    assert any("מדור ב" in w or "שורה 2" in w for w in data.parser_warnings)
+
+
 def _wb_with_duty_locations_sheet(rows):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)

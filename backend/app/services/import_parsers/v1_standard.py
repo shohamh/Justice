@@ -11,6 +11,7 @@ from app.services.import_parsers.schema import (
     ImportDutyLocationRow,
     ImportDutyShiftRow,
     ImportExemptionTypeRow,
+    ImportHierarchyNodeRow,
     ImportNodeQuota,
     ImportSoldierRow,
     ParsedImportData,
@@ -80,6 +81,29 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
             continue
         quotas.append(ImportNodeQuota(node_name=name.strip(), count=count))
     return quotas, warnings
+
+
+def _parse_duty_manager_refs(raw: Any, source_row: int) -> tuple[list[str], list[str]]:
+    """Parse `personal_number:full_name;personal_number:full_name` into a list
+    of raw `"pn:name"` strings (resolved later against real soldiers) — same
+    `;`-then-`:` convention as `_parse_node_quotas`. Malformed entries (missing
+    colon) produce a row-tagged warning and are skipped individually."""
+    s = str(raw or "").strip()
+    if not s:
+        return [], []
+    refs: list[str] = []
+    warnings: list[str] = []
+    for part in s.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" not in part:
+            warnings.append(
+                f"שורה {source_row}: ערך אחראי תורנות שגוי '{part}' — הפורמט הנדרש הוא 'מספר_אישי:שם_מלא'"
+            )
+            continue
+        refs.append(part)
+    return refs, warnings
 
 
 class V1StandardParser:
@@ -183,10 +207,27 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "exemption_types")
         ]
 
+        hierarchy = []
+        for r in _sheet_rows(wb, "hierarchy"):
+            dm_refs, dm_warnings = _parse_duty_manager_refs(r.get("duty_managers"), r["_row"])
+            warnings.extend(dm_warnings)
+            hierarchy.append(
+                ImportHierarchyNodeRow(
+                    source_row=r["_row"],
+                    name=str(r.get("name") or "").strip(),
+                    level=str(r.get("level") or "").strip(),
+                    parent_name=str(r.get("parent_name") or "").strip() or None,
+                    commander_personal_number=str(r.get("commander_personal_number") or "").strip() or None,
+                    commander_name=str(r.get("commander_name") or "").strip() or None,
+                    duty_manager_refs=dm_refs,
+                )
+            )
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
             duty_locations=duty_locations,
+            hierarchy=hierarchy,
             exemption_types=exemption_types,
             parser_id=self.id,
             parser_warnings=warnings,
