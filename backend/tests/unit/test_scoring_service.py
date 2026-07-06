@@ -8,10 +8,12 @@ from app.services.adjustments import create_adjustment
 from app.services.assignments import cancel_assignment, create_assignment, set_day_override
 from app.services.duty_config import map_exemption_to_duty_type
 from app.services.scoring import (
+    _active_exemptions_by_soldier,
     active_days,
     cumulative_score,
     effective_duty_days,
     effective_duty_spans,
+    globally_exempted_soldier_ids,
     normalised_score,
     soldier_score_breakdown,
     transparency_rows,
@@ -435,3 +437,38 @@ def test_effective_spans_no_override_is_single_block(admin_session):
     assert spans[0]["start_date"] == date(2026, 12, 10)
     assert spans[0]["end_date"] == date(2026, 12, 13)
     assert spans[0]["duty_location_id"] == loc.id
+
+
+def test_globally_exempted_soldier_ids_ignores_revoked(admin_session):
+    from datetime import datetime, timezone
+
+    s = create_soldier(admin_session, personal_number="scoring_revoke_1")
+    et = ExemptionType(name="global-revoke-test", is_global=True)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today(), end_date=None,
+        revoked_at=datetime.now(timezone.utc),
+    ))
+    admin_session.commit()
+
+    assert s.id not in globally_exempted_soldier_ids(admin_session)
+
+
+def test_active_exemptions_by_soldier_ignores_revoked(admin_session):
+    from datetime import datetime, timezone
+
+    s = create_soldier(admin_session, personal_number="scoring_revoke_2")
+    et = ExemptionType(name="active-revoke-test")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today(), end_date=None,
+        revoked_at=datetime.now(timezone.utc),
+    ))
+    admin_session.commit()
+
+    by_soldier = _active_exemptions_by_soldier(admin_session)
+    assert s.id not in by_soldier

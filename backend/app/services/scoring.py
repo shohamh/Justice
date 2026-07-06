@@ -408,6 +408,7 @@ def globally_exempted_soldier_ids(session: Session) -> set[uuid.UUID]:
             .join(ExemptionType, SoldierExemption.exemption_type_id == ExemptionType.id)
             .where(
                 ExemptionType.is_global.is_(True),
+                SoldierExemption.revoked_at.is_(None),
                 SoldierExemption.start_date <= today,
                 or_(
                     SoldierExemption.end_date.is_(None),
@@ -429,6 +430,7 @@ def _active_exemptions_by_soldier(
         select(SoldierExemption, ExemptionType)
         .join(ExemptionType, SoldierExemption.exemption_type_id == ExemptionType.id)
         .where(
+            SoldierExemption.revoked_at.is_(None),
             SoldierExemption.start_date <= today,
             or_(
                 SoldierExemption.end_date.is_(None),
