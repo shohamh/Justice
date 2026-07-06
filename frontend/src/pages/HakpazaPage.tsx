@@ -371,8 +371,8 @@ export default function HakpazaPage() {
                         <td className="py-1 font-medium">{c.full_name}</td>
                         <td className="py-1">{c.hierarchy_node_name}</td>
                         <td className="py-1">{DISTANCE_LABEL[c.hierarchy_distance] ?? `${c.hierarchy_distance} רמות`}</td>
-                        <td className="py-1">{c.current_score.toFixed(1)}</td>
-                        <td className="py-1">{c.recent_forced_callups_decayed.toFixed(2)}</td>
+                        <td className="py-1">{c.current_score.toFixed(3)}</td>
+                        <td className="py-1">{c.recent_forced_callups_decayed.toFixed(3)}</td>
                       </tr>
                     ))}
                   </tbody>

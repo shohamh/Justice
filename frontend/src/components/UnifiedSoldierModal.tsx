@@ -273,7 +273,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">{t("transparency.normalised")}</span>
-                    <span>{Number(score.normalised_score).toFixed(2)}</span>
+                    <span>{Number(score.normalised_score).toFixed(3)}</span>
                   </div>
                 </div>
               )}

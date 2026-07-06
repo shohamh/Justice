@@ -293,15 +293,15 @@ function FairnessTab() {
                           {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 font-normal not-italic">(חלקי)</span>}
                         </td>
                         <td className="py-1.5 text-right px-2 text-gray-700 dark:text-gray-300 tabular-nums">
-                          <span>{parseFloat(q.soldier_score).toFixed(1)}</span>
+                          <span>{parseFloat(q.soldier_score).toFixed(3)}</span>
                           {parseFloat(q.adjustment_delta ?? "0") !== 0 && (
                             <span className={`block text-xs ${parseFloat(q.adjustment_delta) > 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-                              {parseFloat(q.adjustment_delta) > 0 ? "+" : ""}{parseFloat(q.adjustment_delta).toFixed(1)} התאמה
+                              {parseFloat(q.adjustment_delta) > 0 ? "+" : ""}{parseFloat(q.adjustment_delta).toFixed(3)} התאמה
                             </span>
                           )}
                         </td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">
-                          {unitScore > 0 ? unitScore.toFixed(1) : "—"}
+                          {unitScore > 0 ? unitScore.toFixed(3) : "—"}
                         </td>
                         <td className="py-1.5 text-right px-2 text-gray-500 dark:text-gray-400 tabular-nums">{(parseFloat(q.active_frac) * 100).toFixed(0)}%</td>
                         <td className="py-1.5 text-right font-semibold text-green-700 dark:text-green-300 tabular-nums">{(parseFloat(q.share) * 100).toFixed(2)}%</td>
@@ -330,7 +330,7 @@ function FairnessTab() {
                 <div className="mt-1 pt-2 border-t border-green-200 dark:border-green-800 space-y-1 text-xs">
                   {[
                     { label: "עומס שנצבר (A)", sub: "סכום (חלק×נוכחות) לכל רבעון", value: `${(A * 100).toFixed(2)}%`, cls: "text-indigo-700 dark:text-indigo-300" },
-                    { label: "היסטוריה כוללת (W)", sub: "סכום % נוכחות לרבעונות עם תורנויות", value: W.toFixed(2), cls: "text-amber-700 dark:text-amber-300" },
+                    { label: "היסטוריה כוללת (W)", sub: "סכום % נוכחות לרבעונות עם תורנויות", value: W.toFixed(3), cls: "text-amber-700 dark:text-amber-300" },
                   ].map(({ label, sub, value, cls }) => (
                     <div key={label} className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -343,7 +343,7 @@ function FairnessTab() {
                   <div className="border-t border-green-200 dark:border-green-800 pt-1">
                     <p className="text-gray-600 dark:text-gray-400 font-medium"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
                     <p className="font-bold text-green-700 dark:text-green-300 tabular-nums">
-                      <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(2)}} = ${(effort * 100).toFixed(2)}\\%`} />
+                      <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
                     </p>
                   </div>
                 </div>

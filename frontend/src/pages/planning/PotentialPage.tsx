@@ -210,7 +210,7 @@ export default function PotentialPage() {
   }
 
   function formatGap(gap: number | null): string {
-    return gap === null ? "—" : gap.toFixed(2);
+    return gap === null ? "—" : gap.toFixed(3);
   }
 
   const cols: ColDef<NodeDTO>[] = [

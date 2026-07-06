@@ -36,7 +36,7 @@ function gapColor(gap: number | null): string {
 }
 
 function formatGap(gap: number | null): string {
-  return gap === null ? "—" : gap.toFixed(2);
+  return gap === null ? "—" : gap.toFixed(3);
 }
 
 function TreeNode({
@@ -802,24 +802,24 @@ export default function TransparencyPage() {
       exportValue: (r) => `${r.active_count} (${Math.round(r.active_count / r.count * 100)}%)`,
     },
     { id: "avg_active_days", header: t("transparency.avg_active_days"), cell: (r) => r.avg_active_days, sortValue: (r) => r.avg_active_days },
-    { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(2), sortValue: (r) => r.avg_cumulative },
+    { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(3), sortValue: (r) => r.avg_cumulative },
     {
       id: "avg_cumulative_active",
       header: "ממוצע ניקוד לחייל פעיל",
-      cell: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—",
+      cell: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(3) : "—",
       sortValue: (r) => r.avg_cumulative_active,
-      exportValue: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(2) : "—",
+      exportValue: (r) => r.avg_cumulative_active > 0 ? r.avg_cumulative_active.toFixed(3) : "—",
     },
     {
       id: "total_score_per_day", header: "ניקוד ליום (מסגרת)",
       headerTooltip: "סך ניקוד ליום של כל חיילי המסגרת — מייצג את עומס התורנויות הכולל של היחידה.",
       cell: (r) => (
         <span className={r.total_score_per_day > 0.3 * r.count ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-          {r.total_score_per_day.toFixed(2)}
+          {r.total_score_per_day.toFixed(3)}
         </span>
       ),
       sortValue: (r) => r.total_score_per_day,
-      exportValue: (r) => r.total_score_per_day.toFixed(2),
+      exportValue: (r) => r.total_score_per_day.toFixed(3),
     },
     {
       id: "avg_normalised", header: t("transparency.normalised"),
@@ -938,7 +938,7 @@ export default function TransparencyPage() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" dir="rtl">
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_cumulative")}</p>
-            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(2)}</p>
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">{avgCumulative.toFixed(3)}</p>
           </div>
           <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t("transparency.avg_active_days")}</p>
@@ -1135,15 +1135,15 @@ export default function TransparencyPage() {
                                 {q.is_partial && <span className="mr-1 text-indigo-500 dark:text-indigo-300 text-xs font-normal not-italic">(חלקי)</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-700 dark:text-gray-300 tabular-nums">
-                                <span>{parseFloat(q.soldier_score).toFixed(2)}</span>
+                                <span>{parseFloat(q.soldier_score).toFixed(3)}</span>
                                 {adjDelta !== 0 && (
                                   <span className={`block text-xs font-normal ${adjDelta > 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-                                    {adjDelta > 0 ? "+" : ""}{adjDelta.toFixed(2)} התאמה
+                                    {adjDelta > 0 ? "+" : ""}{adjDelta.toFixed(3)} התאמה
                                   </span>
                                 )}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">
-                                {unitScore > 0 ? unitScore.toFixed(2) : <span className="italic text-xs">ללא</span>}
+                                {unitScore > 0 ? unitScore.toFixed(3) : <span className="italic text-xs">ללא</span>}
                               </td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{activePct}%</td>
                               <td className="py-2 text-right px-3 text-gray-500 dark:text-gray-400 tabular-nums">{sharePct}%</td>
@@ -1198,7 +1198,7 @@ export default function TransparencyPage() {
                               <span className="font-medium text-gray-600 dark:text-gray-400 shrink-0 w-14">{q.quarter_label}</span>
                               {hasScore ? (
                                 <span className="tabular-nums text-gray-600 dark:text-gray-400">
-                                  <InlineMath math={`${ap}\\% \\times \\dfrac{${ss.toFixed(2)}}{${us.toFixed(2)}} = `} />
+                                  <InlineMath math={`${ap}\\% \\times \\dfrac{${ss.toFixed(3)}}{${us.toFixed(3)}} = `} />
                                   <strong className="text-indigo-600 dark:text-indigo-300">{ws}%</strong>
                                 </span>
                               ) : (
@@ -1238,13 +1238,13 @@ export default function TransparencyPage() {
                         )}
                         <div className="border-t border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-1.5 flex justify-between font-semibold text-amber-700 dark:text-amber-300">
                           <span>סכום = W</span>
-                          <span className="tabular-nums">{W.toFixed(2)}</span>
+                          <span className="tabular-nums">{W.toFixed(3)}</span>
                         </div>
                       </div>
                       <div className="mt-2 bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5"><InlineMath math="\text{עומס} = \dfrac{A}{W}" /></p>
                         <p className="font-bold text-base text-indigo-700 dark:text-indigo-300 tabular-nums">
-                          <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(2)}} = ${(effort * 100).toFixed(2)}\\%`} />
+                          <InlineMath math={`\\dfrac{${(A * 100).toFixed(2)}\\%}{${W.toFixed(3)}} = ${(effort * 100).toFixed(2)}\\%`} />
                         </p>
                       </div>
                     </div>

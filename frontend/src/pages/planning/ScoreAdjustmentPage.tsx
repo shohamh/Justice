@@ -200,13 +200,13 @@ export default function ScoreAdjustmentPage() {
                 },
                 {
                   label: "ניקוד מנורמל",
-                  before: preview ? preview.normalised_score_before : Number(soldierScore.normalised_score).toFixed(4),
+                  before: preview ? preview.normalised_score_before : Number(soldierScore.normalised_score).toFixed(3),
                   after: preview ? preview.normalised_score_after : null,
                   note: "לחץ תצוגה מקדימה",
                 },
                 {
                   label: "עומס",
-                  before: preview ? preview.effort_score_before : (effortData ? Number(effortData.effort_score).toFixed(4) : "—"),
+                  before: preview ? preview.effort_score_before : (effortData ? Number(effortData.effort_score).toFixed(3) : "—"),
                   after: preview ? preview.effort_score_after : null,
                   note: "לחץ תצוגה מקדימה",
                 },
@@ -328,7 +328,7 @@ export default function ScoreAdjustmentPage() {
                     <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
                       <td className="py-2 text-xs">{a.created_at.slice(0, 10)}</td>
                       <td className={`py-2 font-medium ${Number(a.delta) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                        {Number(a.delta) >= 0 ? "+" : ""}{Number(a.delta).toFixed(2)}
+                        {Number(a.delta) >= 0 ? "+" : ""}{Number(a.delta).toFixed(3)}
                       </td>
                       <td className="py-2 text-xs text-gray-600 dark:text-gray-400 max-w-xs" title={a.reason}>{a.reason}</td>
                     </tr>

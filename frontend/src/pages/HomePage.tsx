@@ -230,7 +230,7 @@ export default function HomePage() {
       .map((p) => ({
         name: p.duty_type_name ?? p.duty_type_id.slice(0, 8),
         days: p.days,
-        score: Number(p.score).toFixed(2),
+        score: Number(p.score).toFixed(3),
       }));
   }, [breakdown]);
 
@@ -393,7 +393,7 @@ export default function HomePage() {
                       }`}
                     >
                       {Number(a.delta) >= 0 ? "+" : ""}
-                      {Number(a.delta).toFixed(2)}
+                      {Number(a.delta).toFixed(3)}
                     </td>
                     <td className="py-2">{a.reason}</td>
                   </tr>

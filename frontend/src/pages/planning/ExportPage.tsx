@@ -132,9 +132,9 @@ export default function ExportPage() {
     { id: "count", header: "כמות חיילים", cell: (r) => r.count, sortValue: (r) => r.count },
     { id: "active_pct", header: "חיילים פעילים (%)", cell: (r) => r.active_pct, sortValue: (r) => r.active_pct },
     { id: "avg_active_days", header: "ממוצע ימים פעילים", cell: (r) => r.avg_active_days, sortValue: (r) => r.avg_active_days },
-    { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(2), exportValue: (r) => r.avg_cumulative, sortValue: (r) => r.avg_cumulative },
-    { id: "avg_cumulative_active", header: "ממוצע ניקוד לחייל פעיל", cell: (r) => r.avg_cumulative_active.toFixed(2), exportValue: (r) => r.avg_cumulative_active, sortValue: (r) => r.avg_cumulative_active },
-    { id: "total_score_per_day", header: "ניקוד ליום (מסגרת)", cell: (r) => r.total_score_per_day.toFixed(2), exportValue: (r) => r.total_score_per_day, sortValue: (r) => r.total_score_per_day },
+    { id: "avg_cumulative", header: "ממוצע ניקוד לחייל", cell: (r) => r.avg_cumulative.toFixed(3), exportValue: (r) => r.avg_cumulative, sortValue: (r) => r.avg_cumulative },
+    { id: "avg_cumulative_active", header: "ממוצע ניקוד לחייל פעיל", cell: (r) => r.avg_cumulative_active.toFixed(3), exportValue: (r) => r.avg_cumulative_active, sortValue: (r) => r.avg_cumulative_active },
+    { id: "total_score_per_day", header: "ניקוד ליום (מסגרת)", cell: (r) => r.total_score_per_day.toFixed(3), exportValue: (r) => r.total_score_per_day, sortValue: (r) => r.total_score_per_day },
     { id: "avg_normalised", header: "ניקוד מנורמל ממוצע", cell: (r) => r.avg_normalised.toFixed(3), exportValue: (r) => r.avg_normalised, sortValue: (r) => r.avg_normalised },
   ];
 
