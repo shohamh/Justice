@@ -45,6 +45,8 @@ export default function ProfilePage() {
   const [fieldUpdates, setFieldUpdates] = useState<FieldUpdateDTO[]>([]);
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
+  const [mandatoryEndReq, setMandatoryEndReq] = useState("");
+  const [dischargeReq, setDischargeReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
   const [rankReq, setRankReq] = useState("");
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
@@ -118,6 +120,8 @@ export default function ProfilePage() {
       setFieldUpdates(updated);
       if (field === "last_mitvahim_date") setMitvahimReq("");
       if (field === "last_alal_date") setAlalReq("");
+      if (field === "mandatory_end_date") setMandatoryEndReq("");
+      if (field === "discharge_date") setDischargeReq("");
       if (field === "gender") setGenderReq("");
       if (field === "rank") setRankReq("");
       if (field === "phone") setPhoneReq("");
@@ -306,6 +310,20 @@ export default function ProfilePage() {
             <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
             <input type="date" lang="he" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.mandatory_end_date")}</label>
+            <input type="date" lang="he" value={mandatoryEndReq} onChange={e => setMandatoryEndReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <button type="button" onClick={() => requestUpdate("mandatory_end_date", mandatoryEndReq)} disabled={!mandatoryEndReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+              {t("soldier_profile.submit_update")}
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <label className="w-40">{t("soldier_profile.discharge_date")}</label>
+            <input type="date" lang="he" value={dischargeReq} onChange={e => setDischargeReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <button type="button" onClick={() => requestUpdate("discharge_date", dischargeReq)} disabled={!dischargeReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>

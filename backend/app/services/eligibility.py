@@ -26,7 +26,10 @@ ALL_RANKS = ENLISTED_RANKS + OFFICER_RANKS
 RANKS_RASAN_AND_ABOVE = OFFICER_RANKS[OFFICER_RANKS.index("רסן"):]
 # ["רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
 
-SOLDIER_EDITABLE_FIELDS = {"last_mitvahim_date", "last_alal_date", "gender", "rank", "phone", "military_driving_license"}
+SOLDIER_EDITABLE_FIELDS = {
+    "last_mitvahim_date", "last_alal_date", "gender", "rank", "phone",
+    "military_driving_license", "mandatory_end_date", "discharge_date",
+}
 
 
 class DutyTypeRequirements(BaseModel):
