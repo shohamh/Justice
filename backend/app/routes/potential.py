@@ -27,6 +27,14 @@ from app.services.node_effort_potential import compute_node_effort_potential
 router = APIRouter(prefix="/potential", tags=["potential"])
 
 
+class ExemptionSummaryItemOut(BaseModel):
+    id: uuid.UUID
+    exemption_type_name: str
+    is_global: bool
+    start_date: date
+    end_date: date | None
+
+
 class SoldierDetailOut(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
@@ -35,6 +43,7 @@ class SoldierDetailOut(BaseModel):
     exemption_names: list[str] | None = None
     rank: str | None = None
     partial_exemption_names: list[str] | None = None
+    exemptions: list[ExemptionSummaryItemOut] | None = None
 
 
 class ModifierOut(BaseModel):
@@ -78,6 +87,16 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
                 exemption_names=(s.exemption_names or None) if can_view_exemptions else None,
                 rank=s.rank,
                 partial_exemption_names=(s.partial_exemption_names or None) if can_view_exemptions else None,
+                exemptions=(
+                    [
+                        ExemptionSummaryItemOut(
+                            id=e.id, exemption_type_name=e.exemption_type_name,
+                            is_global=e.is_global, start_date=e.start_date, end_date=e.end_date,
+                        )
+                        for e in s.exemptions
+                    ]
+                    if can_view_exemptions else None
+                ),
             )
             for s in r.soldiers
         ],

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can_see_private, is_commander, is_duty_manager
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, Soldier, SoldierExemption
+from app.db.models import ExemptionType, HierarchyNode, Soldier, SoldierExemption
 from app.db.session import get_session
 from app.services import exemptions as svc
 from app.services.authority import commander_can_grant_commander_exemption
@@ -25,6 +25,16 @@ class ExemptionOut(BaseModel):
     end_date: date | None
     reason: str | None
     granted_by: uuid.UUID | None
+
+
+class ExemptionDetailOut(BaseModel):
+    id: uuid.UUID
+    exemption_type_name: str
+    is_global: bool
+    start_date: date
+    end_date: date | None
+    reason: str | None
+    granted_by_name: str | None
 
 
 class GrantRequest(BaseModel):
@@ -68,6 +78,36 @@ def list_(
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
     include_sensitive = can_see_private(session, user, s)
     return [_out(ex, include_sensitive=include_sensitive) for ex in svc.list_exemptions(session, soldier_id=soldier_id)]
+
+
+@router.get("/{exemption_id}", response_model=ExemptionDetailOut)
+def get_detail(
+    soldier_id: uuid.UUID,
+    exemption_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ExemptionDetailOut:
+    s = _load_soldier(session, soldier_id)
+    ex = session.get(SoldierExemption, exemption_id)
+    if ex is None or ex.soldier_id != soldier_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if s.id != user.id:
+        authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
+    ex_type = session.get(ExemptionType, ex.exemption_type_id) if ex.exemption_type_id else None
+    include_sensitive = can_see_private(session, user, s)
+    granted_by_name = None
+    if ex.granted_by is not None:
+        granter = session.get(Soldier, ex.granted_by)
+        granted_by_name = granter.full_name if granter else None
+    return ExemptionDetailOut(
+        id=ex.id,
+        exemption_type_name=ex_type.name if ex_type else "—",
+        is_global=ex_type.is_global if ex_type else False,
+        start_date=ex.start_date,
+        end_date=ex.end_date,
+        reason=ex.reason if include_sensitive else None,
+        granted_by_name=granted_by_name,
+    )
 
 
 @router.post("", response_model=ExemptionOut, status_code=status.HTTP_201_CREATED)

@@ -540,8 +540,19 @@ def transparency_rows(
             exemptions_display = ", ".join(
                 _exemption_label(exemption, ex_type) for exemption, ex_type in soldier_exemptions
             )
+            exemptions_summary = [
+                {
+                    "id": exemption.id,
+                    "exemption_type_name": ex_type.name,
+                    "is_global": ex_type.is_global,
+                    "start_date": exemption.start_date,
+                    "end_date": exemption.end_date,
+                }
+                for exemption, ex_type in soldier_exemptions
+            ]
         else:
             exemptions_display = "חסוי"
+            exemptions_summary = []
         has_global = any(ex_type.is_global for _, ex_type in soldier_exemptions)
         has_partial = any(not ex_type.is_global for _, ex_type in soldier_exemptions)
         has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
@@ -566,6 +577,7 @@ def transparency_rows(
                 "is_globally_exempted": s.id in exempted_ids,
                 "exemptions_display": exemptions_display,
                 "exemptions_visible": in_scope,
+                "exemptions": exemptions_summary,
                 "has_global_exemption": has_global if can_see_exemption_aggregates else None,
                 "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
                 "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,

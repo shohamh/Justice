@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { ExemptionSummaryItem } from "./exemptions";
 
 export interface TransparencyRow {
   soldier_id: string;
@@ -20,6 +21,7 @@ export interface TransparencyRow {
   effort_offset_raw: number;
   exemptions_display: string;
   exemptions_visible: boolean;
+  exemptions: ExemptionSummaryItem[];
   has_global_exemption: boolean | null;
   has_partial_exemption: boolean | null;
   has_temporary_exemption: boolean | null;

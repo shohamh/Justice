@@ -10,6 +10,28 @@ export interface Exemption {
   granted_by: string | null;
 }
 
+export interface ExemptionSummaryItem {
+  id: string;
+  exemption_type_name: string;
+  is_global: boolean;
+  start_date: string;
+  end_date: string | null;
+}
+
+export interface ExemptionDetail {
+  id: string;
+  exemption_type_name: string;
+  is_global: boolean;
+  start_date: string;
+  end_date: string | null;
+  reason: string | null;
+  granted_by_name: string | null;
+}
+
+export async function getExemptionDetail(soldierId: string, exemptionId: string): Promise<ExemptionDetail> {
+  return (await api.get<ExemptionDetail>(`/soldiers/${soldierId}/exemptions/${exemptionId}`)).data;
+}
+
 export async function listExemptions(soldierId: string): Promise<Exemption[]> {
   return (await api.get<Exemption[]>(`/soldiers/${soldierId}/exemptions`)).data;
 }

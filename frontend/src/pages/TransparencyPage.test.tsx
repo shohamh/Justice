@@ -58,6 +58,7 @@ function makeRow(overrides: Partial<TransparencyRow> = {}): TransparencyRow {
     effort_offset_raw: 0,
     exemptions_display: "",
     exemptions_visible: true,
+    exemptions: [],
     has_global_exemption: false,
     has_partial_exemption: false,
     has_temporary_exemption: false,

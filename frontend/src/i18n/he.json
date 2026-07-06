@@ -178,7 +178,11 @@
     "request_status_rejected": "נדחה",
     "approve_commander_step": "אשר (שלב מפקד)",
     "approve_duty_manager_step": "אשר (שלב סופי)",
-    "reject": "דחה"
+    "reject": "דחה",
+    "category_global": "גלובלי",
+    "category_partial": "חלקי",
+    "granted_by": "הוענק על ידי",
+    "no_permission_details": "אין הרשאה לצפות בפרטים"
   },
   "team": {
     "title": "אנשי צוות והיררכיה",

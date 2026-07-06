@@ -23,6 +23,15 @@ from app.services.eligibility import DutyTypeRequirements, inferred_service_type
 
 
 @dataclass
+class ExemptionSummary:
+    id: uuid.UUID
+    exemption_type_name: str
+    is_global: bool
+    start_date: date
+    end_date: date | None
+
+
+@dataclass
 class SoldierPotentialDetail:
     soldier_id: uuid.UUID
     full_name: str
@@ -31,6 +40,7 @@ class SoldierPotentialDetail:
     exemption_names: list[str] = field(default_factory=list)  # populated when reason == "exempted"
     rank: str | None = None
     partial_exemption_names: list[str] = field(default_factory=list)  # populated when counted is True but partially exempt
+    exemptions: list[ExemptionSummary] = field(default_factory=list)
 
 
 @dataclass
@@ -163,24 +173,48 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         remaining = base_eligible - excluded
         if remaining:
             partial_names: list[str] = []
+            partial_items: list[ExemptionSummary] = []
             if excluded & base_eligible:
-                partial_names = sorted({
-                    regular_types[ex.exemption_type_id].name
-                    for ex in active_exemptions
+                relevant = [
+                    ex for ex in active_exemptions
                     if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
-                })
+                ]
+                partial_names = sorted({regular_types[ex.exemption_type_id].name for ex in relevant})
+                partial_items = [
+                    ExemptionSummary(
+                        id=ex.id,
+                        exemption_type_name=regular_types[ex.exemption_type_id].name,
+                        is_global=regular_types[ex.exemption_type_id].is_global,
+                        start_date=ex.start_date,
+                        end_date=ex.end_date,
+                    )
+                    for ex in relevant
+                ]
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, True, rank=rank, partial_exemption_names=partial_names,
+                exemptions=partial_items,
             ))
             raw_count += 1
         elif base_eligible:
             # would have been eligible, but active exemptions excluded every remaining duty type
-            names = sorted({
-                regular_types[ex.exemption_type_id].name
-                for ex in active_exemptions
+            relevant = [
+                ex for ex in active_exemptions
                 if etid_to_dtids.get(ex.exemption_type_id, set()) & base_eligible
-            })
-            details.append(SoldierPotentialDetail(s.id, s.full_name, False, "exempted", names, rank=rank))
+            ]
+            names = sorted({regular_types[ex.exemption_type_id].name for ex in relevant})
+            items = [
+                ExemptionSummary(
+                    id=ex.id,
+                    exemption_type_name=regular_types[ex.exemption_type_id].name,
+                    is_global=regular_types[ex.exemption_type_id].is_global,
+                    start_date=ex.start_date,
+                    end_date=ex.end_date,
+                )
+                for ex in relevant
+            ]
+            details.append(SoldierPotentialDetail(
+                s.id, s.full_name, False, "exempted", names, rank=rank, exemptions=items,
+            ))
         else:
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, False, "no_eligible_duty_types", rank=rank,
