@@ -211,6 +211,7 @@ class ExemptionType(Base):
     is_commander_exemption: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
