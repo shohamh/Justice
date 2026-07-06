@@ -254,6 +254,16 @@ class SoldierExemption(Base):
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soldiers.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class DutyAssignment(Base):
@@ -833,6 +843,7 @@ class NotificationType(str, _enum.Enum):
     gimelim_reserve_called_up = "gimelim_reserve_called_up"
     gimelim_demoted_to_reserve = "gimelim_demoted_to_reserve"
     gimelim_reassigned = "gimelim_reassigned"
+    exemption_revoked = "exemption_revoked"
 
 
 class Notification(Base):
