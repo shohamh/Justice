@@ -35,6 +35,20 @@ class ImportDutyShiftRow(BaseModel):
     notes: str | None = None
 
 
+class ImportAssignmentRow(BaseModel):
+    source_row: int
+    personal_number: str
+    full_name: str
+    duty_type_name: str
+    duty_location_name: str
+    start_date: str
+    end_date: str
+    start_time: str | None = None
+    end_time: str | None = None
+    is_reserve: bool = False
+    notes: str | None = None
+
+
 class ParsedImportData(BaseModel):
     """Canonical output every import parser implementation must produce.
 
@@ -50,5 +64,6 @@ class ParsedImportData(BaseModel):
 
     soldiers: list[ImportSoldierRow] = []
     duty_shifts: list[ImportDutyShiftRow] = []
+    assignments: list[ImportAssignmentRow] = []
     parser_id: str
     parser_warnings: list[str] = []
