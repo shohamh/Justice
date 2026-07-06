@@ -226,7 +226,7 @@ def create_modifier_route(
     )
 
 
-@router.delete("/modifiers/{modifier_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/modifiers/{modifier_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_modifier_route(
     modifier_id: uuid.UUID,
     session: Session = Depends(get_session),

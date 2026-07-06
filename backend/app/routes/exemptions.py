@@ -25,6 +25,8 @@ class ExemptionOut(BaseModel):
     end_date: date | None
     reason: str | None
     granted_by: uuid.UUID | None
+    revoke_reason: str | None
+    revoked_by_name: str | None
 
 
 class GrantRequest(BaseModel):
@@ -34,7 +36,11 @@ class GrantRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
 
-def _out(ex: SoldierExemption, include_sensitive: bool = True) -> ExemptionOut:
+def _out(session: Session, ex: SoldierExemption, include_sensitive: bool = True) -> ExemptionOut:
+    revoked_by_name = None
+    if include_sensitive and ex.revoked_by is not None:
+        revoker = session.get(Soldier, ex.revoked_by)
+        revoked_by_name = revoker.full_name if revoker else None
     return ExemptionOut(
         id=ex.id,
         soldier_id=ex.soldier_id,
@@ -43,6 +49,8 @@ def _out(ex: SoldierExemption, include_sensitive: bool = True) -> ExemptionOut:
         end_date=ex.end_date,
         reason=ex.reason if include_sensitive else None,
         granted_by=ex.granted_by,
+        revoke_reason=ex.revoke_reason if include_sensitive else None,
+        revoked_by_name=revoked_by_name,
     )
 
 
@@ -67,7 +75,10 @@ def list_(
     if s.id != user.id:
         authorize(session, user, Action.EXEMPTION_READ, target_node=_node_of(session, s))
     include_sensitive = can_see_private(session, user, s)
-    return [_out(ex, include_sensitive=include_sensitive) for ex in svc.list_exemptions(session, soldier_id=soldier_id)]
+    return [
+        _out(session, ex, include_sensitive=include_sensitive)
+        for ex in svc.list_exemptions(session, soldier_id=soldier_id)
+    ]
 
 
 @router.post("", response_model=ExemptionOut, status_code=status.HTTP_201_CREATED)
@@ -93,7 +104,7 @@ def grant(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(ex)
-    return _out(ex, include_sensitive=True)
+    return _out(session, ex, include_sensitive=True)
 
 
 class GrantCommanderExemptionRequest(BaseModel):
@@ -140,13 +151,18 @@ def grant_commander_exemption_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(ex)
-    return _out(ex, include_sensitive=True)
+    return _out(session, ex, include_sensitive=True)
+
+
+class RevokeRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
 
 
 @router.delete("/{exemption_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def revoke(
     soldier_id: uuid.UUID,
     exemption_id: uuid.UUID,
+    body: RevokeRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
@@ -155,5 +171,5 @@ def revoke(
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None or ex.soldier_id != soldier_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    svc.revoke_exemption(session, exemption_id=exemption_id, actor_id=user.id)
+    svc.revoke_exemption(session, exemption_id=exemption_id, reason=body.reason, actor_id=user.id)
     session.commit()

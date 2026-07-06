@@ -1,9 +1,9 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import ExemptionType
+from app.db.models import ExemptionType, SoldierExemption
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -76,8 +76,11 @@ def test_revoke_active_soft(client: TestClient, admin_session: Session):
             "start_date": (date.today() - timedelta(days=2)).isoformat(),
         },
     ).json()
-    r = client.delete(
-        f"/api/soldiers/{target.id}/exemptions/{ex['id']}", headers=auth_headers(admin)
+    r = client.request(
+        "DELETE",
+        f"/api/soldiers/{target.id}/exemptions/{ex['id']}",
+        headers=auth_headers(admin),
+        json={"reason": "לא נחוץ יותר"},
     )
     assert r.status_code == 204
     rows = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(admin)).json()
@@ -94,7 +97,12 @@ def test_revoke_rejects_cross_soldier_id(client: TestClient, admin_session: Sess
         headers=auth_headers(admin),
         json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
     ).json()
-    r = client.delete(f"/api/soldiers/{b.id}/exemptions/{ex['id']}", headers=auth_headers(admin))
+    r = client.request(
+        "DELETE",
+        f"/api/soldiers/{b.id}/exemptions/{ex['id']}",
+        headers=auth_headers(admin),
+        json={"reason": "לא רלוונטי"},
+    )
     assert r.status_code == 404
 
 
@@ -143,3 +151,65 @@ def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClien
     )
     assert r.status_code == 400
     assert r.json()["detail"] == "commander_exemption_not_requestable"
+
+
+def test_revoke_requires_reason_body(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200015", role="admin")
+    target = create_soldier(admin_session, personal_number="5200016")
+    et = _et(admin_session, "פטור-ר8")
+    ex = client.post(
+        f"/api/soldiers/{target.id}/exemptions",
+        headers=auth_headers(admin),
+        json={
+            "exemption_type_id": str(et.id),
+            "start_date": (date.today() - timedelta(days=1)).isoformat(),
+        },
+    ).json()
+
+    resp = client.request(
+        "DELETE",
+        f"/api/soldiers/{target.id}/exemptions/{ex['id']}",
+        headers=auth_headers(admin),
+        json={},
+    )
+    assert resp.status_code == 422  # missing required "reason"
+
+    resp2 = client.request(
+        "DELETE",
+        f"/api/soldiers/{target.id}/exemptions/{ex['id']}",
+        headers=auth_headers(admin),
+        json={"reason": "בדיקת מסלול"},
+    )
+    assert resp2.status_code == 204
+
+
+def test_exemption_out_hides_revoke_reason_from_out_of_scope_viewer(
+    client: TestClient, admin_session: Session
+):
+    # An admin who is *not* a commander/duty-manager over the target's node
+    # passes the EXEMPTION_READ authorization check (admins always can), but
+    # must not see private fields like revoke_reason/revoked_by_name per
+    # can_see_private's explicit no-blanket-bypass-for-admins rule.
+    d = create_node(admin_session, level="department", name="d-revoke")
+    b = create_node(admin_session, level="branch", name="b-revoke", parent=d)
+    target = create_soldier(admin_session, personal_number="5200017", hierarchy_node_id=b.id)
+    et = _et(admin_session, "פטור-ר9")
+    admin_session.add(
+        SoldierExemption(
+            soldier_id=target.id,
+            exemption_type_id=et.id,
+            start_date=date.today(),
+            end_date=date.today(),
+            revoked_at=datetime.now(timezone.utc),
+            revoke_reason="פרטי",
+        )
+    )
+    admin_session.commit()
+
+    other_admin = create_soldier(admin_session, personal_number="5200018", role="admin")
+
+    resp = client.get(f"/api/soldiers/{target.id}/exemptions", headers=auth_headers(other_admin))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body[0]["revoke_reason"] is None
+    assert body[0]["revoked_by_name"] is None
