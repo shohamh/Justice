@@ -57,12 +57,14 @@ This requires `_resolve_soldiers()` to build a `by_full_name` lookup (in additio
 
 ### Shift lookup (new `_resolve_assignments()`)
 
-Each assignment row resolves its target shift via the composite key `(duty_type_name, duty_location_name, start_date, end_date, start_time, end_time)`, matched (in this order) against:
+Each assignment row resolves its target shift via the composite key `(duty_type_id, duty_location_id, start_date, end_date, start_time, end_time)`, matched (in this order) against:
 
-1. `DutyShift` rows resolved from this session's own `duty_shifts` sheet (including ones not yet persisted — matched by their resolved field values, not DB id, since they don't have one yet).
-2. Existing `DutyShift` rows already in the DB.
+1. **Existing `DutyShift` rows already in the DB.** Checked first so that re-importing a previous export (which already exists in the DB) lets assignments bind to the real, already-persisted shift — which is what makes the duplicate-skip check in §3 "Duplicate handling" actually fire on round-trip re-import.
+2. **Shifts resolved from this session's own `duty_shifts` sheet** (not yet persisted — matched by their resolved field values, since they don't have a DB id yet), used only when no existing DB shift matches. This covers a brand-new file where the shift doesn't exist yet.
 
 No match in either → `action="error"`.
+
+Note: `duty_shifts` sheet resolution has no dedup against existing shifts with the same composite key (pre-existing behavior, unrelated to this feature) — re-importing a `duty_shifts` sheet always creates another shift row. Checking existing shifts first for assignment matching means a re-imported assignment still correctly binds to (and skips against) the original shift rather than the newly-duplicated one; the newly-duplicated shift just ends up with no assignments pointing at it, which is an existing quirk, not something this feature needs to fix.
 
 ### Duplicate handling
 
