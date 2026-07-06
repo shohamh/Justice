@@ -20,6 +20,7 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    Soldier,
     SoldierExemption,
 )
 
@@ -380,6 +381,15 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
         et = _exemption_type(se.exemption_type_id)
         et_name = et.name if et else str(se.exemption_type_id)
         duty_type_names = _exempted_duty_type_names(se.exemption_type_id)
+        metadata = {
+            "exemption_type_name": et_name,
+            "exempted_duty_types": json.dumps(duty_type_names, ensure_ascii=False) if duty_type_names else None,
+        }
+        if se.revoked_at is not None:
+            revoker = session.get(Soldier, se.revoked_by) if se.revoked_by else None
+            metadata["revoked_at"] = se.revoked_at.isoformat()
+            metadata["revoked_by_name"] = revoker.full_name if revoker else None
+            metadata["revoke_reason"] = se.revoke_reason
         events.append(
             TimelineEvent(
                 id=se.id,
@@ -389,10 +399,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
                 title=f"פטור: {et_name}",
                 description=se.reason,
                 status=None,
-                metadata={
-                    "exemption_type_name": et_name,
-                    "exempted_duty_types": json.dumps(duty_type_names, ensure_ascii=False) if duty_type_names else None,
-                },
+                metadata=metadata,
                 created_at=se.granted_at.isoformat(),
             )
         )
