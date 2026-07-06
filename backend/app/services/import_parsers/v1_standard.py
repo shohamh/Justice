@@ -8,13 +8,15 @@ from app.services.import_parsers._shared_parsing import parse_bool as _parse_boo
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
+    ImportDutyLocationRow,
     ImportDutyShiftRow,
+    ImportExemptionTypeRow,
     ImportNodeQuota,
     ImportSoldierRow,
     ParsedImportData,
 )
 
-KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments"}
+KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments", "duty_locations", "exemption_types"}
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
@@ -33,6 +35,18 @@ def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
             continue
         out.append({"_row": i, **dict(zip(headers, row))})
     return out
+
+
+def _parse_name_list(raw: Any) -> list[str]:
+    """Parse a comma-separated list of names, stripping whitespace.
+
+    Used for applies_to_duty_type_names, eligible_unit_names, etc.
+    Empty cell or whitespace-only cell returns empty list.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return []
+    return [name.strip() for name in s.split(",") if name.strip()]
 
 
 def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota], list[str]]:
@@ -146,9 +160,34 @@ class V1StandardParser:
                 )
             )
 
+        duty_locations = [
+            ImportDutyLocationRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                base=str(r.get("base") or "").strip() or None,
+                active=_parse_bool(r.get("active")),
+            )
+            for r in _sheet_rows(wb, "duty_locations")
+        ]
+
+        exemption_types = [
+            ImportExemptionTypeRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                description=str(r.get("description") or "").strip() or None,
+                is_global=_parse_bool(r.get("is_global")),
+                is_medical=_parse_bool(r.get("is_medical")),
+                is_commander_exemption=_parse_bool(r.get("is_commander_exemption")),
+                applies_to_duty_type_names=_parse_name_list(r.get("applies_to_duty_types")),
+            )
+            for r in _sheet_rows(wb, "exemption_types")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
+            duty_locations=duty_locations,
+            exemption_types=exemption_types,
             parser_id=self.id,
             parser_warnings=warnings,
         )

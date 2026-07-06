@@ -138,3 +138,90 @@ def test_legacy_assignments_sheet_falls_back_to_duty_shifts():
     assert row.end_date == "2024-06-16"
     assert row.required_count == 1
     assert any("assignments" in w for w in data.parser_warnings)
+
+
+def _wb_with_duty_locations_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_locations")
+    ws.append(["name", "base", "active"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_duty_locations_sheet():
+    wb = _wb_with_duty_locations_sheet([
+        ["בסיס א", "base_a", True],
+        ["בסיס ב", "base_b", False],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.duty_locations) == 2
+    assert data.duty_locations[0].name == "בסיס א"
+    assert data.duty_locations[0].base == "base_a"
+    assert data.duty_locations[0].active is True
+    assert data.duty_locations[1].name == "בסיס ב"
+    assert data.duty_locations[1].active is False
+
+
+def test_duty_locations_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_locations == []
+
+
+def test_parses_duty_locations_with_optional_fields():
+    wb = _wb_with_duty_locations_sheet([
+        ["בסיס א", None, None],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.duty_locations) == 1
+    row = data.duty_locations[0]
+    assert row.name == "בסיס א"
+    assert row.base is None
+    assert row.active is None
+
+
+def _wb_with_exemption_types_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("exemption_types")
+    ws.append(["name", "description", "is_global", "is_medical", "is_commander_exemption", "applies_to_duty_types"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_exemption_types_sheet():
+    wb = _wb_with_exemption_types_sheet([
+        ["פטור בריאות", "health reason", True, True, False, ""],
+        ["פטור שמירות", "security reason", False, False, False, "שמירה,טיול"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.exemption_types) == 2
+    assert data.exemption_types[0].name == "פטור בריאות"
+    assert data.exemption_types[0].is_global is True
+    assert data.exemption_types[0].is_medical is True
+    assert data.exemption_types[0].applies_to_duty_type_names == []
+    assert data.exemption_types[1].name == "פטור שמירות"
+    assert data.exemption_types[1].applies_to_duty_type_names == ["שמירה", "טיול"]
+
+
+def test_exemption_types_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.exemption_types == []
+
+
+def test_parses_exemption_types_with_whitespace_in_applies_to_list():
+    wb = _wb_with_exemption_types_sheet([
+        ["פטור שמירות", "", False, False, False, "שמירה , טיול , ביקור"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.exemption_types) == 1
+    row = data.exemption_types[0]
+    assert row.applies_to_duty_type_names == ["שמירה", "טיול", "ביקור"]
