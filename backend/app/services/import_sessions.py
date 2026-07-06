@@ -664,23 +664,28 @@ def confirm_session(
                 })
                 continue
 
-            shift = session.get(DutyShift, duty_shift_id)
-            assignment = DutyAssignment(
-                soldier_id=uuid.UUID(row["resolved_soldier_id"]),
-                duty_type_id=shift.duty_type_id,
-                duty_location_id=shift.duty_location_id,
-                duty_shift_id=duty_shift_id,
-                start_date=shift.start_date,
-                end_date=shift.end_date,
-                is_reserve=row.get("is_reserve") or False,
-                notes=row.get("notes"),
-            )
-            if shift.start_time:
-                assignment.start_time = shift.start_time
-            if shift.end_time:
-                assignment.end_time = shift.end_time
-            session.add(assignment)
-            session.flush()
+            # Nested transaction (SAVEPOINT), same rationale as the duty_shifts
+            # loop above: isolates this row's write so a flush-time failure
+            # can't poison the outer session/transaction for subsequent rows.
+            with session.begin_nested():
+                shift = session.get(DutyShift, duty_shift_id)
+                assignment = DutyAssignment(
+                    soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                    duty_type_id=shift.duty_type_id,
+                    duty_location_id=shift.duty_location_id,
+                    duty_shift_id=duty_shift_id,
+                    start_date=shift.start_date,
+                    end_date=shift.end_date,
+                    is_reserve=row.get("is_reserve") or False,
+                    notes=row.get("notes"),
+                )
+                if shift.start_time:
+                    assignment.start_time = shift.start_time
+                if shift.end_time:
+                    assignment.end_time = shift.end_time
+                session.add(assignment)
+                session.flush()
+
             created += 1
             created_assignments.append(str(assignment.id))
         except Exception as exc:
