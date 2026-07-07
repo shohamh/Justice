@@ -13,6 +13,8 @@ import {
   type ShiftTemplateRow,
   type DutyLocationRow,
   type HierarchyImportRow,
+  type DutyTypeImportRow,
+  type ExemptionTypeImportRow,
   getSession,
   reparseSession,
   saveSelections,
@@ -872,6 +874,90 @@ export default function ImportSessionReviewPage() {
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("hierarchy", row)}
                               onChange={(e) => setRowAction("hierarchy", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "duty_types" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">ניקוד ליום</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {duty_types.map((row: DutyTypeImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">{row.score_per_day}</td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("duty_types", row)}
+                              onChange={(e) => setRowAction("duty_types", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "exemption_types" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {exemption_types.map((row: ExemptionTypeImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("exemption_types", row)}
+                              onChange={(e) => setRowAction("exemption_types", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
                               {row.action !== "skip" && <option value="skip">דלג</option>}

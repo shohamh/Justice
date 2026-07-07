@@ -407,6 +407,42 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("ישראל ישראלי")).toBeInTheDocument();
   });
 
+  it("renders the duty_types tab and exemption_types tab", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "שמירה",
+        score_per_day: "1.50",
+        resolved_eligible_node_ids: [],
+        requirements: null,
+        existing_id: null,
+      },
+    ];
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "פטור",
+        resolved_duty_type_ids: [],
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+    expect(await screen.findByText("שמירה")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("פטורים (1)"));
+    expect(await screen.findByText("פטור")).toBeInTheDocument();
+  });
+
   it("hides selects and confirm button when session is not in draft status", async () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(
       makeDraftDetail({ status: "confirmed" }),
