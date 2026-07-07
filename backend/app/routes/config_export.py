@@ -81,7 +81,8 @@ def _write_duty_types(wb: openpyxl.Workbook, session: Session) -> None:
             dt.contact_name, dt.contact_phone,
             dt.start_time.strftime("%H:%M") if dt.start_time else "",
             dt.end_time.strftime("%H:%M") if dt.end_time else "",
-            dt.instructions, eligible, json.dumps(dt.requirements, ensure_ascii=False),
+            dt.instructions, eligible,
+            json.dumps(dt.requirements, ensure_ascii=False) if dt.requirements else "",
         ])
 
 
