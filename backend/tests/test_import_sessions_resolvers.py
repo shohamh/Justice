@@ -239,3 +239,26 @@ def test_resolve_duty_types_non_numeric_score_is_error(app_session):
     )
     result = _resolve_duty_types(app_session, data)
     assert result[0]["action"] == "error"
+
+
+def test_resolve_duty_types_zero_valued_fields_are_not_silently_lost(app_session):
+    # Regression guard: score_per_day="0.00" and reserve_ratio="0.000" are
+    # legitimate zero values, not "missing" — must not be dropped to None by
+    # a truthiness check on the parsed value (only the raw string's
+    # emptiness should gate parsing). reserve_minimum=0 must also survive
+    # untouched, since this resolver passes it straight through.
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[
+            ImportDutyTypeRow(
+                source_row=2, name="שמירה", score_per_day="0.00",
+                reserve_ratio="0.000", reserve_minimum=0,
+            ),
+        ],
+    )
+    result = _resolve_duty_types(app_session, data)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["score_per_day"] == "0.00"
+    assert row["reserve_ratio"] == "0.000"
+    assert row["reserve_minimum"] == 0
