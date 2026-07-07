@@ -154,3 +154,24 @@ def test_resolve_hierarchy_out_of_scope_for_non_admin(app_session):
     )
     result = _resolve_hierarchy(app_session, data, dm)
     assert result[0]["action"] == "out_of_scope"
+
+
+def test_resolve_hierarchy_forward_referenced_parent_is_out_of_scope_for_non_admin(app_session):
+    # A non-admin's row whose parent only resolves to another *new* row later
+    # in the same sheet has no real parent id yet (resolved_parent_id stays
+    # None). Scope can't be verified against a parent that doesn't exist yet,
+    # so this must be treated as out_of_scope for non-admins rather than
+    # silently falling through to "new" with no scope check at all.
+    root = create_node(app_session, level="corps", name="שורש אחר")
+    dm = create_soldier(app_session, personal_number="dm-1", role="duty_manager", hierarchy_node_id=root.id)
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(source_row=2, name="ילד", level="group", parent_name="הורה חדש"),
+            ImportHierarchyNodeRow(source_row=3, name="הורה חדש", level="unit"),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, dm)
+    child = next(r for r in result if r["name"] == "ילד")
+    assert child["resolved_parent_id"] is None
+    assert child["action"] == "out_of_scope"

@@ -231,8 +231,13 @@ def _resolve_hierarchy(
                     action = "out_of_scope"
             except ValueError:
                 pass
-        elif action == "new" and actor.role != "admin" and not resolved_parent_id and not row.parent_name:
-            # A brand-new root node: only admins may create root nodes via import.
+        elif action == "new" and actor.role != "admin" and not resolved_parent_id:
+            # Either a brand-new root node, or a parent that only resolves to
+            # another *new* row later in this same sheet (forward reference,
+            # not yet a real node id) — in both cases scope cannot be verified
+            # against a real parent node at this point, so treat as out of
+            # scope for non-admins. Matches is_node_in_actor_scope's contract
+            # that a None node_id is never in scope for a non-admin actor.
             action = "out_of_scope"
 
         out.append({
