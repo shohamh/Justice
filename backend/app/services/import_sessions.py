@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth.password import hash_password
 from app.db.models import (
     DutyLocation,
+    DutyManagerScope,
     DutyShift,
     DutyType,
     ExemptionType,
@@ -22,12 +23,17 @@ from app.db.models import (
     ImportSession,
     Soldier,
 )
+from app.services.dm_scope import assign_dm_scope, remove_dm_scope
 from app.services.duty_config import (
     create_duty_type,
+    create_exemption_type,
     create_location,
+    set_exemption_duty_types,
     update_duty_type,
+    update_exemption_type,
     update_location,
 )
+from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
@@ -855,6 +861,139 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_types", "error": str(exc)})
+
+    # ── Hierarchy ───────────────────────────────────────────────────────
+    name_to_new_node_id: dict[str, uuid.UUID] = {}
+    for row in state.get("hierarchy", []):
+        effective = _effective_action(selections, "hierarchy", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    parent_id = (
+                        uuid.UUID(row["resolved_parent_id"]) if row.get("resolved_parent_id") else None
+                    )
+                    node = create_node(
+                        session,
+                        level=row["level"],
+                        name=row["name"],
+                        parent_id=parent_id,
+                        commander_id=(
+                            uuid.UUID(row["resolved_commander_id"])
+                            if row.get("resolved_commander_id") else None
+                        ),
+                        actor_id=actor.id,
+                    )
+                    name_to_new_node_id[row["name"]] = node.id
+                    for dm in row.get("duty_manager_refs", []):
+                        if dm.get("resolved_soldier_id"):
+                            assign_dm_scope(
+                                session, soldier_id=uuid.UUID(dm["resolved_soldier_id"]),
+                                node_id=node.id, actor_id=actor.id,
+                            )
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    node = session.get(HierarchyNode, uuid.UUID(row["existing_id"]))
+                    if node is not None:
+                        if row.get("level") and row["level"] != node.level:
+                            change_node_level(session, node_id=node.id, level=row["level"], actor_id=actor.id)
+                        if row.get("resolved_parent_id") and uuid.UUID(row["resolved_parent_id"]) != node.parent_id:
+                            move_node(session, node_id=node.id, new_parent_id=uuid.UUID(row["resolved_parent_id"]), actor_id=actor.id)
+                        if row.get("resolved_commander_id") is not None:
+                            set_commander(
+                                session, node_id=node.id,
+                                commander_id=uuid.UUID(row["resolved_commander_id"]), actor_id=actor.id,
+                            )
+                        existing_scopes = {
+                            s.duty_manager_id: s.id
+                            for s in session.execute(
+                                select(DutyManagerScope).where(DutyManagerScope.hierarchy_node_id == node.id)
+                            ).scalars()
+                        }
+                        desired_ids = {
+                            uuid.UUID(dm["resolved_soldier_id"])
+                            for dm in row.get("duty_manager_refs", [])
+                            if dm.get("resolved_soldier_id")
+                        }
+                        for soldier_id in desired_ids - set(existing_scopes.keys()):
+                            assign_dm_scope(session, soldier_id=soldier_id, node_id=node.id, actor_id=actor.id)
+                        for soldier_id, scope_id in existing_scopes.items():
+                            if soldier_id not in desired_ids:
+                                remove_dm_scope(session, entry_id=scope_id, actor_id=actor.id)
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "hierarchy", "error": str(exc)})
+
+    # Second sub-pass: link any node whose parent_name pointed at another
+    # *new* row in this same sheet (unresolvable during the resolve phase,
+    # since that row had no id yet).
+    for row in state.get("hierarchy", []):
+        effective = _effective_action(selections, "hierarchy", row)
+        if row["action"] in ("error", "out_of_scope") or effective != "new":
+            continue
+        if row.get("parent_name") and not row.get("resolved_parent_id") and row["parent_name"] in name_to_new_node_id:
+            node_id = name_to_new_node_id.get(row["name"])
+            parent_id = name_to_new_node_id[row["parent_name"]]
+            if node_id is not None:
+                try:
+                    with session.begin_nested():
+                        move_node(session, node_id=node_id, new_parent_id=parent_id, actor_id=actor.id)
+                except Exception as exc:
+                    errors.append({"row": row["row"], "type": "hierarchy", "error": str(exc)})
+
+    # ── Exemption types ─────────────────────────────────────────────────
+    for row in state.get("exemption_types", []):
+        effective = _effective_action(selections, "exemption_types", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                duty_type_ids = [uuid.UUID(i) for i in row.get("resolved_duty_type_ids", [])]
+                if effective == "new":
+                    et = create_exemption_type(
+                        session,
+                        name=row["name"],
+                        description=row.get("description"),
+                        is_global=bool(row.get("is_global")),
+                        is_medical=bool(row.get("is_medical")),
+                        is_commander_exemption=bool(row.get("is_commander_exemption")),
+                        actor_id=actor.id,
+                    )
+                    if duty_type_ids:
+                        set_exemption_duty_types(
+                            session, exemption_type_id=et.id, duty_type_ids=duty_type_ids, actor_id=actor.id,
+                        )
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    et = session.get(ExemptionType, uuid.UUID(row["existing_id"]))
+                    if et is not None:
+                        update_exemption_type(
+                            session,
+                            exemption_type=et,
+                            name=None,
+                            description=row.get("description"),
+                            is_global=row.get("is_global"),
+                            is_medical=row.get("is_medical"),
+                            is_commander_exemption=row.get("is_commander_exemption"),
+                            actor_id=actor.id,
+                        )
+                        set_exemption_duty_types(
+                            session, exemption_type_id=et.id, duty_type_ids=duty_type_ids, actor_id=actor.id,
+                        )
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "exemption_types", "error": str(exc)})
 
     import_session.created_links = {
         "soldiers": created_soldiers,
