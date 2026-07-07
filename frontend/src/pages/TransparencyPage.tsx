@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
 import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -16,6 +17,7 @@ import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 import { WHOLE_ORG_ID } from "../utils/wholeOrg";
 import { getEffortGap, type NodeEffortPotential } from "../api/potential";
+import { sortNodesByTree } from "../utils/sortNodesByTree";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
 
@@ -38,41 +40,6 @@ function gapColor(gap: number | null): string {
 
 function formatGap(gap: number | null): string {
   return gap === null ? "—" : gap.toFixed(3);
-}
-
-function TreeNode({
-  node, selectedId, onSelect, depth,
-}: {
-  node: NodeDTO; selectedId: string | null; onSelect: (id: string) => void; depth: number;
-}) {
-  const [open, setOpen] = useState(depth < 2);
-  const hasChildren = (node.children?.length ?? 0) > 0;
-  const isSelected = node.id === selectedId;
-  return (
-    <div>
-      <div className="flex items-center gap-1 py-0.5 rounded" style={{ paddingRight: `${depth * 14 + 4}px` }}>
-        <button
-          className={`w-4 text-gray-400 text-[10px] ${hasChildren ? "visible" : "invisible"}`}
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? "▼" : "▶"}
-        </button>
-        <button
-          className={`text-sm px-1.5 py-0.5 rounded text-right w-full ${
-            isSelected
-              ? "bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-medium"
-              : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
-          }`}
-          onClick={() => onSelect(node.id)}
-        >
-          {node.name}
-        </button>
-      </div>
-      {open && hasChildren && node.children?.map((child) => (
-        <TreeNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
-      ))}
-    </div>
-  );
 }
 
 // ─── rank ordering ───────────────────────────────────────────────────────────
@@ -912,7 +879,7 @@ export default function TransparencyPage() {
 
             {treeOpen && (
               <div
-                className="absolute left-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-52 max-h-72 overflow-y-auto"
+                className="absolute left-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-64"
                 dir="rtl"
               >
                 <div className="flex items-center justify-between mb-1 px-1">
@@ -921,9 +888,13 @@ export default function TransparencyPage() {
                     <button className="text-xs text-red-500 hover:underline" onClick={clearFilter}>הצג הכל</button>
                   )}
                 </div>
-                {treeNodes.map((node) => (
-                  <TreeNode key={node.id} node={node} selectedId={selectedNodeId} onSelect={handleSelectNode} depth={0} />
-                ))}
+                <Combobox
+                  items={sortNodesByTree(flatNodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
+                  value={selectedNodeId ?? ""}
+                  onChange={handleSelectNode}
+                  placeholder="— כל הארגון —"
+                  testId="transparency-unit-filter"
+                />
               </div>
             )}
           </div>

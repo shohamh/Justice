@@ -270,6 +270,10 @@ def approve_field_update(
         soldier.last_mitvahim_date = date.fromisoformat(raw)
     elif field == "last_alal_date":
         soldier.last_alal_date = date.fromisoformat(raw)
+    elif field == "mandatory_end_date":
+        soldier.mandatory_end_date = date.fromisoformat(raw)
+    elif field == "discharge_date":
+        soldier.discharge_date = date.fromisoformat(raw)
     elif field == "gender":
         soldier.gender = raw
     elif field == "rank":

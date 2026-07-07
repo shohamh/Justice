@@ -115,8 +115,8 @@ export default function RegisterPage() {
         last_mitvahim_date: form.last_mitvahim_date || null,
         last_alal_date: form.last_alal_date || null,
         requested_node_id: form.requested_node_id,
-        exemption_requests: form.exemption_requests,
-        personal_constraints: form.personal_constraints,
+        exemption_requests: form.exemption_requests.filter(er => er.exemption_type_id && er.start_date),
+        personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
       });
       await loginWithToken(resp.access_token);
       navigate("/setup/telegram", { replace: true });
@@ -128,6 +128,8 @@ export default function RegisterPage() {
         "personal_number already exists": t("register.errors.personal_number_exists"),
         "holding node not bootstrapped": t("register.errors.node_not_bootstrapped"),
         "requested node not found": t("register.errors.node_not_found"),
+        "exemption_missing_fields": t("register.errors.exemption_missing_fields"),
+        "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
       };
       setError(detail ? (knownErrors[detail] ?? detail) : t("register.errors.network"));
     } finally {
@@ -175,20 +177,20 @@ export default function RegisterPage() {
               <input type="text" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.full_name} onChange={e => set("full_name", e.target.value)} />
             </label>
-            <label className="block text-sm">טלפון
+            <label className="block text-sm">טלפון <span className="text-red-500">*</span>
               <input type="tel" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.phone} onChange={e => set("phone", e.target.value)} />
             </label>
-            <label className="block text-sm">אימייל
+            <label className="block text-sm">אימייל <span className="text-red-500">*</span>
               <input type="email" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.email} onChange={e => set("email", e.target.value)} />
             </label>
-            <label className="block text-sm">מגדר
+            <label className="block text-sm">מגדר <span className="text-red-500">*</span>
               <select className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.gender} onChange={e => set("gender", e.target.value)}>
                 <option value="">בחר</option><option value="male">זכר</option><option value="female">נקבה</option><option value="other">אחר</option>
               </select>
             </label>
-            <label className="block text-sm">דרגה
+            <label className="block text-sm">דרגה <span className="text-red-500">*</span>
               <Combobox
                 items={[
                   ...ENLISTED_RANKS.map(r => ({ id: r, name: r, group: "חיילים" })),
@@ -215,7 +217,7 @@ export default function RegisterPage() {
               </label>
             )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
-              <label key={key as string} className="block text-sm">{label}
+              <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={e => set(key, e.target.value)} />
               </label>
@@ -239,7 +241,12 @@ export default function RegisterPage() {
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={!form.personal_number || !form.full_name || !passwordValid(form.password) || form.password !== form.confirm_password}
+                disabled={
+                  !form.personal_number || !form.full_name || !form.phone || !form.email ||
+                  !form.gender || !form.rank || !form.enlistment_date || !form.mandatory_end_date ||
+                  !form.discharge_date || !form.last_mitvahim_date ||
+                  !passwordValid(form.password) || form.password !== form.confirm_password
+                }
                 onClick={() => setStep(3)}>{t("register.next")}</button>
             </div>
           </div>
@@ -275,7 +282,13 @@ export default function RegisterPage() {
             </button>
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(2)}>{t("register.back")}</button>
-              <button className="flex-1 bg-indigo-600 text-white py-2 rounded" onClick={() => setStep(4)}>{t("register.next")}</button>
+              <button
+                className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
+                disabled={form.exemption_requests.some(er => !er.exemption_type_id || !er.start_date)}
+                onClick={() => setStep(4)}
+              >
+                {t("register.next")}
+              </button>
             </div>
           </div>
         )}
@@ -300,7 +313,13 @@ export default function RegisterPage() {
             </button>
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(3)}>{t("register.back")}</button>
-              <button className="flex-1 bg-indigo-600 text-white py-2 rounded" onClick={() => setStep(5)}>{t("register.next")}</button>
+              <button
+                className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
+                disabled={form.personal_constraints.some(pc => !pc.start_date || !pc.end_date)}
+                onClick={() => setStep(5)}
+              >
+                {t("register.next")}
+              </button>
             </div>
           </div>
         )}

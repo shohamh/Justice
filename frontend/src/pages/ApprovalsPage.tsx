@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import Layout from "../components/Layout";
+import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
 import { listPublicExemptionTypes } from "../api/auth";
@@ -34,6 +35,14 @@ import {
   rejectSwap,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
+
+function describeError(err: unknown): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const resp = (err as { response?: { data?: { detail?: string } } }).response;
+    if (resp?.data?.detail) return resp.data.detail;
+  }
+  return "שגיאה בביצוע הפעולה";
+}
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -79,6 +88,7 @@ export default function ApprovalsPage() {
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
   const [nodes, setNodes] = useState<{ id: string; name: string }[]>([]);
   const [exemptionTypes, setExemptionTypes] = useState<{ id: string; name: string }[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -126,73 +136,117 @@ export default function ApprovalsPage() {
   }, []);
 
   async function onApprove(id: string) {
-    await approveConstraint(id);
-    await refresh();
+    try {
+      await approveConstraint(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onReject(id: string) {
     const note = rejectNotes[id];
     if (!note) return;
-    await rejectConstraint(id, note);
-    const next = { ...rejectNotes };
-    delete next[id];
-    setRejectNotes(next);
-    await refresh();
+    try {
+      await rejectConstraint(id, note);
+      const next = { ...rejectNotes };
+      delete next[id];
+      setRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onErApproveCommander(id: string) {
-    await approveExemptionRequestCommanderStep(id);
-    await refresh();
+    try {
+      await approveExemptionRequestCommanderStep(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onErApproveDutyManager(id: string) {
-    await approveExemptionRequestDutyManagerStep(id);
-    await refresh();
+    try {
+      await approveExemptionRequestDutyManagerStep(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onErReject(id: string) {
     const note = rejectNotes[`er-${id}`];
     if (!note) return;
-    await rejectExemptionRequest(id, note);
-    const next = { ...rejectNotes };
-    delete next[`er-${id}`];
-    setRejectNotes(next);
-    await refresh();
+    try {
+      await rejectExemptionRequest(id, note);
+      const next = { ...rejectNotes };
+      delete next[`er-${id}`];
+      setRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onFuApprove(item: FieldUpdateDTO) {
-    await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
-    await refresh();
+    try {
+      await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onFuReject(item: FieldUpdateDTO) {
     const note = fuNotes[item.id];
     if (!note) return;
-    await rejectFieldUpdate(item.soldier_id, item.id, note);
-    await refresh();
+    try {
+      await rejectFieldUpdate(item.soldier_id, item.id, note);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onSwapApproveSide(id: string, side: "requester" | "covering") {
-    await approveSwapSide(id, side);
-    await refresh();
+    try {
+      await approveSwapSide(id, side);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onSwapReject(id: string) {
-    await rejectSwap(id, swapRejectNotes[id]);
-    const next = { ...swapRejectNotes };
-    delete next[id];
-    setSwapRejectNotes(next);
-    await refresh();
+    try {
+      await rejectSwap(id, swapRejectNotes[id]);
+      const next = { ...swapRejectNotes };
+      delete next[id];
+      setSwapRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   async function onEnrollApprove(id: string, soldierName: string, nodeName: string) {
     if (!window.confirm(t("enrollment.confirm_approve", { soldier: soldierName, node: nodeName }))) return;
-    await approveEnrollment(id);
-    await refresh();
+    try {
+      await approveEnrollment(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onEnrollReject(id: string) {
     const note = enrollRejectNotes[id];
     if (!note) return;
-    await rejectEnrollment(id, note);
-    const next = { ...enrollRejectNotes };
-    delete next[id];
-    setEnrollRejectNotes(next);
-    await refresh();
+    try {
+      await rejectEnrollment(id, note);
+      const next = { ...enrollRejectNotes };
+      delete next[id];
+      setEnrollRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length;
@@ -201,6 +255,13 @@ export default function ApprovalsPage() {
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+
+        {actionError && (
+          <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 text-sm rounded p-2 flex items-center justify-between" dir="rtl">
+            <span>{actionError}</span>
+            <button className="text-red-500 hover:text-red-700" onClick={() => setActionError(null)}>✕</button>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-x-4 border-b dark:border-gray-600">
           <button
@@ -367,8 +428,8 @@ export default function ApprovalsPage() {
                   <span className="text-gray-400">—</span>
                   <span>{t(`soldier_profile.${item.field_name}`)}</span>
                 </div>
-                <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : item.previous_value ? (item.field_name === "gender" ? t(`soldier_profile.gender_${item.previous_value}`) : item.previous_value) : "—"}</span></div>
-                <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : item.field_name === "gender" ? t(`soldier_profile.gender_${item.new_value}`) : item.new_value}</strong></div>
+                <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.previous_value, t)}</span></div>
+                <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.new_value, t)}</strong></div>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input

@@ -96,29 +96,37 @@ def register(
     session.flush()
 
     for er in exemption_requests:
-        et = session.get(ExemptionType, er["exemption_type_id"])
+        if not er.get("exemption_type_id") or not er.get("start_date"):
+            raise RegistrationError("exemption_missing_fields")
+        try:
+            exemption_type_id = uuid.UUID(str(er["exemption_type_id"]))
+        except ValueError as exc:
+            raise RegistrationError("exemption_missing_fields") from exc
+        et = session.get(ExemptionType, exemption_type_id)
         if et is None:
             raise RegistrationError("exemption_type_not_found")
         if et.is_commander_exemption:
             raise RegistrationError("commander_exemption_not_requestable")
-        if er.get("end_date") is not None and er["end_date"] < er["start_date"]:
+        if er.get("end_date") and er["end_date"] < er["start_date"]:
             raise RegistrationError("bad_date_range")
         session.add(ExemptionRequest(
             soldier_id=soldier.id,
-            exemption_type_id=er["exemption_type_id"],
+            exemption_type_id=exemption_type_id,
             start_date=er["start_date"],
-            end_date=er.get("end_date"),
+            end_date=er.get("end_date") or None,
             reason=er.get("reason"),
             status="pending_commander",
             enrollment_request_id=enrollment_req.id,
         ))
 
     for pc in personal_constraints:
+        if not pc.get("start_date") or not pc.get("end_date"):
+            raise RegistrationError("constraint_missing_fields")
         session.add(PersonalConstraint(
             soldier_id=soldier.id,
             start_date=pc["start_date"],
             end_date=pc["end_date"],
-            reason=pc["reason"],
+            reason=pc.get("reason"),
             status="pending",
         ))
 

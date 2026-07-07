@@ -125,3 +125,18 @@ def test_magic_bytes_xlsx():
 def test_magic_bytes_rejects_html():
     fake_html = b"<htm"
     assert fake_html[:4] != b"PK\x03\x04"
+
+
+def test_login_rate_limit_default_is_10_per_5_minutes():
+    import os
+    with patch.dict(os.environ, {}, clear=False):
+        # Remove the test-boosted rate limit from conftest so we test the default
+        os.environ.pop("LOGIN_RATE_LIMIT", None)
+        from app.settings import Settings
+        s = Settings(
+            DATABASE_URL="postgresql+psycopg://x:y@localhost/z",
+            DB_ADMIN_URL="postgresql+psycopg://x:y@localhost/z",
+            JWT_SECRET="a" * 32,
+            _env_file=None,
+        )
+        assert s.login_rate_limit == "10/5minutes"
