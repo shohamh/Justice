@@ -63,7 +63,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
   }, [refresh]);
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
-  const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true);
+  const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true && tp.active);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -203,7 +203,7 @@ export default function ExemptionsPanel({ soldierId, canManage }: { soldierId: s
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2 pt-2 border-t dark:border-gray-600" data-testid="grant-form">
           <Combobox
-            items={types.map(tp => ({ id: tp.id, name: tp.name }))}
+            items={types.filter((tp) => tp.active).map(tp => ({ id: tp.id, name: tp.name }))}
             value={typeId}
             onChange={setTypeId}
             placeholder={t("exemptions.type")}

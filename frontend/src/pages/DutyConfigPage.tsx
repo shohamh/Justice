@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import Layout from "../components/Layout";
 import DutyTypeRequirementsEditor from "../components/DutyTypeRequirementsEditor";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
+import ReasonPromptModal from "../components/ReasonPromptModal";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { type DutyType as DutyTypeT } from "../api/dutyConfig";
 
@@ -57,6 +58,8 @@ import {
   createLocation,
   DutyTypeUsage,
   deleteDutyType,
+  deleteExemptionType,
+  disableExemptionType,
   getAllExemptionDutyTypeMaps,
   getDutyTypeUsage,
   listDutyTypes,
@@ -82,6 +85,8 @@ export function DutyConfigContent() {
   const [dtModal, setDtModal] = useState<{ initial?: DutyType } | null>(null);
   const [eligModal, setEligModal] = useState<DutyType | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ dt: DutyType; usage: DutyTypeUsage | null; loading: boolean; error: string | null } | null>(null);
+  const [etDisableModal, setEtDisableModal] = useState<{ et: ExemptionType } | null>(null);
+  const [etDeleteError, setEtDeleteError] = useState<string | null>(null);
   const [rankLists, setRankLists] = useState<RankLists>({ enlisted: [], officers: [] });
 
   useEffect(() => { void getRanks().then(setRankLists).catch(() => {}); }, []);
@@ -141,6 +146,27 @@ export function DutyConfigContent() {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setDeleteModal(prev => prev ? { ...prev, loading: false, error: detail ?? "שגיאה בהשבתה" } : null);
     }
+  }
+  async function handleDeleteExemptionType(et: ExemptionType) {
+    setEtDeleteError(null);
+    try {
+      await deleteExemptionType(et.id);
+      await refresh();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
+      if (detail?.status === 409) {
+        setEtDisableModal({ et });
+      } else {
+        setEtDeleteError(detail?.data?.detail ?? "שגיאה במחיקה");
+      }
+    }
+  }
+
+  async function handleDisableExemptionType(reason: string) {
+    if (!etDisableModal) return;
+    await disableExemptionType(etDisableModal.et.id, reason);
+    setEtDisableModal(null);
+    await refresh();
   }
   async function addLocation(e: FormEvent) {
     e.preventDefault();
@@ -387,6 +413,15 @@ export function DutyConfigContent() {
                 {et.is_global && <span className="text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">{t("duty_config.global")}</span>}
                 {et.is_medical && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">🏥 {t("duty_config.medical")}</span>}
                 {et.is_commander_exemption && <span className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 px-2 py-0.5 rounded">🎖️ פטור פיקודי</span>}
+                <button
+                  type="button"
+                  onClick={() => { void handleDeleteExemptionType(et); }}
+                  className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                  data-testid={`et-delete-${et.name}`}
+                >
+                  מחק
+                </button>
+                {!et.active && <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">מושבת</span>}
                 <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400 mr-auto">
                   <input
                     type="checkbox"
@@ -432,8 +467,18 @@ export function DutyConfigContent() {
             </li>
           ))}
         </ul>
+        {etDeleteError && <p className="text-red-500 text-xs mt-2">{etDeleteError}</p>}
       </div>
     </section>
+    {etDisableModal && (
+      <ReasonPromptModal
+        title={`השבתת "${etDisableModal.et.name}"`}
+        description="סוג פטור זה נמצא בשימוש. השבתה תבטל את הפטור אצל כל החיילים המחזיקים בו כעת, עם הסיבה שתוזן כאן."
+        confirmLabel="השבת ובטל"
+        onConfirm={handleDisableExemptionType}
+        onClose={() => setEtDisableModal(null)}
+      />
+    )}
     </>
   );
 }
