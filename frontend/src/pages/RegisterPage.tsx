@@ -116,7 +116,7 @@ export default function RegisterPage() {
         last_alal_date: form.last_alal_date || null,
         requested_node_id: form.requested_node_id,
         exemption_requests: form.exemption_requests.filter(er => er.exemption_type_id && er.start_date),
-        personal_constraints: form.personal_constraints,
+        personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
       });
       await loginWithToken(resp.access_token);
       navigate("/setup/telegram", { replace: true });
@@ -313,7 +313,13 @@ export default function RegisterPage() {
             </button>
             <div className="flex gap-2">
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(3)}>{t("register.back")}</button>
-              <button className="flex-1 bg-indigo-600 text-white py-2 rounded" onClick={() => setStep(5)}>{t("register.next")}</button>
+              <button
+                className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
+                disabled={form.personal_constraints.some(pc => !pc.start_date || !pc.end_date)}
+                onClick={() => setStep(5)}
+              >
+                {t("register.next")}
+              </button>
             </div>
           </div>
         )}

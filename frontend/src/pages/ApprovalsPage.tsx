@@ -228,17 +228,25 @@ export default function ApprovalsPage() {
 
   async function onEnrollApprove(id: string, soldierName: string, nodeName: string) {
     if (!window.confirm(t("enrollment.confirm_approve", { soldier: soldierName, node: nodeName }))) return;
-    await approveEnrollment(id);
-    await refresh();
+    try {
+      await approveEnrollment(id);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
   async function onEnrollReject(id: string) {
     const note = enrollRejectNotes[id];
     if (!note) return;
-    await rejectEnrollment(id, note);
-    const next = { ...enrollRejectNotes };
-    delete next[id];
-    setEnrollRejectNotes(next);
-    await refresh();
+    try {
+      await rejectEnrollment(id, note);
+      const next = { ...enrollRejectNotes };
+      delete next[id];
+      setEnrollRejectNotes(next);
+      await refresh();
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length;
