@@ -778,9 +778,11 @@ def confirm_session(
         try:
             with session.begin_nested():
                 if effective == "new":
-                    create_location(
+                    new_loc = create_location(
                         session, name=row["name"], base=row.get("base"), actor_id=actor.id,
                     )
+                    if row.get("active") is not None:
+                        new_loc.active = row["active"]
                     created += 1
                 elif effective == "update" and row.get("existing_id"):
                     loc = session.get(DutyLocation, uuid.UUID(row["existing_id"]))
@@ -808,7 +810,7 @@ def confirm_session(
             with session.begin_nested():
                 eligible_ids = [uuid.UUID(nid) for nid in row.get("resolved_eligible_node_ids", [])] or None
                 if effective == "new":
-                    create_duty_type(
+                    new_dt = create_duty_type(
                         session,
                         name=row["name"],
                         score_per_day=Decimal(row["score_per_day"]),
@@ -822,6 +824,8 @@ def confirm_session(
                         eligible_node_ids=eligible_ids,
                         actor_id=actor.id,
                     )
+                    if row.get("active") is not None:
+                        new_dt.active = row["active"]
                     created += 1
                 elif effective == "update" and row.get("existing_id"):
                     dt = session.get(DutyType, uuid.UUID(row["existing_id"]))
