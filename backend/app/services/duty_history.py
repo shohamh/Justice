@@ -124,7 +124,12 @@ def _isodate(d: date | None) -> str | None:
     return d.isoformat() if d else None
 
 
-def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bool = False) -> list[TimelineEvent]:
+def get_duty_history(
+    session: Session,
+    soldier_id: uuid.UUID,
+    include_drafts: bool = False,
+    include_sensitive: bool = True,
+) -> list[TimelineEvent]:
     from app.services.scoring import _get_multiplier_setting
 
     standby_mult = _get_multiplier_setting(
@@ -385,7 +390,7 @@ def get_duty_history(session: Session, soldier_id: uuid.UUID, include_drafts: bo
             "exemption_type_name": et_name,
             "exempted_duty_types": json.dumps(duty_type_names, ensure_ascii=False) if duty_type_names else None,
         }
-        if se.revoked_at is not None:
+        if se.revoked_at is not None and include_sensitive:
             revoker = session.get(Soldier, se.revoked_by) if se.revoked_by else None
             metadata["revoked_at"] = se.revoked_at.isoformat()
             metadata["revoked_by_name"] = revoker.full_name if revoker else None

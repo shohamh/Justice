@@ -421,7 +421,22 @@ export function DutyConfigContent() {
                 >
                   מחק
                 </button>
-                {!et.active && <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">מושבת</span>}
+                {!et.active && (
+                  <>
+                    <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">מושבת</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await updateExemptionType(et.id, { active: true });
+                        await refresh();
+                      }}
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                      data-testid={`et-enable-${et.name}`}
+                    >
+                      הפעל מחדש
+                    </button>
+                  </>
+                )}
                 <label className="flex items-center gap-1 text-xs cursor-pointer text-gray-500 dark:text-gray-400 mr-auto">
                   <input
                     type="checkbox"

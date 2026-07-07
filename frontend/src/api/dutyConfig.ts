@@ -119,7 +119,7 @@ export async function listExemptionTypes(): Promise<ExemptionType[]> {
 export async function createExemptionType(input: { name: string; description?: string | null; is_global?: boolean; is_medical?: boolean; is_commander_exemption?: boolean }): Promise<ExemptionType> {
   return (await api.post<ExemptionType>("/duty-config/exemption-types", input)).data;
 }
-export async function updateExemptionType(id: string, input: { is_medical?: boolean; is_global?: boolean; is_commander_exemption?: boolean; name?: string }): Promise<ExemptionType> {
+export async function updateExemptionType(id: string, input: { is_medical?: boolean; is_global?: boolean; is_commander_exemption?: boolean; name?: string; active?: boolean }): Promise<ExemptionType> {
   return (await api.patch<ExemptionType>(`/duty-config/exemption-types/${id}`, input)).data;
 }
 export async function deleteExemptionType(id: string): Promise<void> {
