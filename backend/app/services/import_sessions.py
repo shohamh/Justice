@@ -16,6 +16,7 @@ from app.db.models import (
     DutyLocation,
     DutyShift,
     DutyType,
+    ExemptionType,
     HierarchyLevelType,
     HierarchyNode,
     ImportSession,
@@ -339,6 +340,68 @@ def _resolve_duty_types(
     return out
 
 
+def _resolve_exemption_types(
+    session: Session,
+    data: ParsedImportData,
+    dt_by_name: dict[str, str] | None = None,
+    dt_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    """Resolve exemption types from import data.
+
+    Matches by name (unique constraint on exemption_types.name).
+    Resolves applies_to_duty_type_names to duty type IDs from both DB and import sheet.
+    """
+    dt_by_name = dt_by_name or {}
+    dt_by_row = dt_by_row or {}
+    existing_by_name = {et.name: et for et in session.execute(select(ExemptionType)).scalars()}
+    duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
+
+    out = []
+    for row in data.exemption_types:
+        errors: list[str] = []
+
+        # Resolve applies_to_duty_type_names to duty type IDs
+        resolved_duty_type_ids: list[str] = []
+        for duty_type_name in row.applies_to_duty_type_names:
+            # Try name mappings first (from import sheet), then DB
+            row_key = f"exemption_types:{row.source_row}:{duty_type_name}"
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
+            duty_type = None
+            if mapped_id:
+                try:
+                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if duty_type is None:
+                duty_type = duty_types_by_name.get(duty_type_name)
+            if duty_type is None:
+                errors.append(f"סוג חובה לא מזוהה '{duty_type_name}' (applies_to)")
+            else:
+                resolved_duty_type_ids.append(str(duty_type.id))
+
+        # Handle boolean fields - must check explicitly for None, not use truthiness
+        is_global = row.is_global if row.is_global is not None else False
+        is_medical = row.is_medical if row.is_medical is not None else False
+        is_commander_exemption = row.is_commander_exemption if row.is_commander_exemption is not None else False
+
+        existing = existing_by_name.get(row.name) if row.name else None
+        action = "error" if errors else ("update" if existing else "new")
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": row.name,
+            "description": row.description,
+            "is_global": is_global,
+            "is_medical": is_medical,
+            "is_commander_exemption": is_commander_exemption,
+            "resolved_duty_type_ids": resolved_duty_type_ids,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
 def _resolve_duty_shifts(
     session: Session,
     data: ParsedImportData,
@@ -501,6 +564,10 @@ def _resolve_and_score(
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
         "duty_shifts": _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row),
         "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
+        "duty_locations": _resolve_duty_locations(session, data),
+        "hierarchy": _resolve_hierarchy(session, data, actor),
+        "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row),
+        "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }

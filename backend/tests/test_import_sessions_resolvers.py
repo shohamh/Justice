@@ -179,8 +179,9 @@ def test_resolve_hierarchy_forward_referenced_parent_is_out_of_scope_for_non_adm
 
 from decimal import Decimal
 
-from app.services.import_parsers.schema import ImportDutyTypeRow
-from app.services.import_sessions import _resolve_duty_types
+from app.db.models import DutyType, ExemptionType
+from app.services.import_parsers.schema import ImportDutyTypeRow, ImportExemptionTypeRow
+from app.services.import_sessions import _resolve_duty_types, _resolve_exemption_types, _resolve_and_score
 
 
 def test_resolve_duty_types_eligible_units_resolved(app_session):
@@ -262,3 +263,81 @@ def test_resolve_duty_types_zero_valued_fields_are_not_silently_lost(app_session
     assert row["score_per_day"] == "0.00"
     assert row["reserve_ratio"] == "0.000"
     assert row["reserve_minimum"] == 0
+
+
+def test_resolve_exemption_types_applies_to_resolved(app_session):
+    """Exemption types should resolve applies_to_duty_type_names to duty type IDs."""
+    duty_type = DutyType(name="שמירה", score_per_day=Decimal("1.50"))
+    app_session.add(duty_type)
+    app_session.flush()
+
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        exemption_types=[
+            ImportExemptionTypeRow(
+                source_row=2, name="פטור רפואי", description="פטור רפואי זמני",
+                is_global=False, is_medical=True, is_commander_exemption=False,
+                applies_to_duty_type_names=["שמירה"],
+            ),
+        ],
+    )
+    result = _resolve_exemption_types(app_session, data)
+    assert result[0]["action"] == "new"
+    assert result[0]["resolved_duty_type_ids"] == [str(duty_type.id)]
+    assert result[0]["errors"] == []
+
+
+def test_resolve_exemption_types_unresolved_applies_to_is_error(app_session):
+    """Unresolved applies_to duty type names should result in an error."""
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        exemption_types=[
+            ImportExemptionTypeRow(
+                source_row=2, name="פטור לא קיים", applies_to_duty_type_names=["שמירה ירוקה"],
+            ),
+        ],
+    )
+    result = _resolve_exemption_types(app_session, data)
+    assert result[0]["action"] == "error"
+    assert any("שמירה ירוקה" in err for err in result[0]["errors"])
+
+
+def test_resolve_exemption_types_boolean_fields_not_lost(app_session):
+    """Regression guard: is_global, is_medical, is_commander_exemption False values must survive."""
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        exemption_types=[
+            ImportExemptionTypeRow(
+                source_row=2, name="פטור כללי", description="פטור",
+                is_global=False, is_medical=False, is_commander_exemption=False,
+            ),
+        ],
+    )
+    result = _resolve_exemption_types(app_session, data)
+    row = result[0]
+    assert row["action"] == "new"
+    assert row["is_global"] is False
+    assert row["is_medical"] is False
+    assert row["is_commander_exemption"] is False
+
+
+def test_resolve_and_score_includes_all_nine_keys(app_session):
+    """_resolve_and_score should include all 9 expected keys in returned dict."""
+    admin = _admin(app_session)
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        soldiers=[],
+        duty_shifts=[],
+        shift_templates=[],
+        duty_locations=[],
+        hierarchy=[],
+        duty_types=[],
+        exemption_types=[],
+    )
+    result = _resolve_and_score(app_session, data, admin)
+
+    expected_keys = {
+        "soldiers", "duty_shifts", "shift_templates", "duty_locations",
+        "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings"
+    }
+    assert set(result.keys()) == expected_keys
