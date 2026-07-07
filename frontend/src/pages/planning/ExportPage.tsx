@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import * as XLSX from "xlsx";
 import Layout from "../../components/Layout";
 import { TransparencyRow, getTransparency } from "../../api/scoring";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
-import { ExcelExportButton } from "../../components/ExcelExportButton";
+import { getAccessToken } from "../../api/client";
+import { exportValueOf } from "../../components/ExcelExportButton";
 import type { ColDef } from "../../components/DataTable";
 
 export function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
@@ -61,10 +63,18 @@ interface SubRow {
   avg_normalised: number;
 }
 
+const CONFIG_SHEET_OPTIONS = [
+  { key: "duty_types", label: "סוגי תורנות" },
+  { key: "duty_locations", label: "מיקומי תורנות" },
+  { key: "hierarchy", label: "היררכיה" },
+  { key: "exemption_types", label: "פטורים" },
+] as const;
+
 export default function ExportPage() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<TransparencyRow[]>([]);
   const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
 
   useEffect(() => { void getTransparency().then((out) => setRows(out.rows)); }, []);
   useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
@@ -138,22 +148,68 @@ export default function ExportPage() {
     { id: "avg_normalised", header: "ניקוד מנורמל ממוצע", cell: (r) => r.avg_normalised.toFixed(3), exportValue: (r) => r.avg_normalised, sortValue: (r) => r.avg_normalised },
   ];
 
+  function toggle(key: string) {
+    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  async function handleExport() {
+    const wb = XLSX.utils.book_new();
+
+    if (checked.transparency) {
+      const header = soldierCols.map((c) => c.header);
+      const body = soldierRows.map((row) => soldierCols.map((c) => exportValueOf(c, row)));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), "transparency");
+    }
+    if (checked.sub_units) {
+      const header = subCols.map((c) => c.header);
+      const body = subRows.map((row) => subCols.map((c) => exportValueOf(c, row)));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), "sub_units");
+    }
+
+    const configSheets = CONFIG_SHEET_OPTIONS.filter((o) => checked[o.key]).map((o) => o.key);
+    if (configSheets.length > 0) {
+      const resp = await fetch(`/api/config/export?sheets=${configSheets.join(",")}`, {
+        headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+      });
+      const buf = await resp.arrayBuffer();
+      const configWb = XLSX.read(buf, { type: "array" });
+      for (const name of configWb.SheetNames) {
+        XLSX.utils.book_append_sheet(wb, configWb.Sheets[name], name);
+      }
+    }
+
+    if (wb.SheetNames.length > 0) {
+      XLSX.writeFile(wb, "export.xlsx");
+    }
+  }
+
   return (
     <Layout>
-      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("nav.planning_export")}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="border dark:border-gray-700 rounded-lg p-5 space-y-3">
-            <h3 className="font-medium">{t("export.transparency_title")}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{t("export.transparency_desc")}</p>
-            <ExcelExportButton columns={soldierCols} rows={soldierRows} filename="transparency.xlsx" />
-          </div>
-          <div className="border dark:border-gray-700 rounded-lg p-5 space-y-3">
-            <h3 className="font-medium">{t("export.sub_units_title")}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{t("export.sub_units_desc")}</p>
-            <ExcelExportButton columns={subCols} rows={subRows} filename="sub-units.xlsx" />
-          </div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={!!checked.transparency} onChange={() => toggle("transparency")} />
+            {t("export.transparency_title")}
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={!!checked.sub_units} onChange={() => toggle("sub_units")} />
+            {t("export.sub_units_title")}
+          </label>
+          {CONFIG_SHEET_OPTIONS.map((o) => (
+            <label key={o.key} className="flex items-center gap-2">
+              <input type="checkbox" checked={!!checked[o.key]} onChange={() => toggle(o.key)} />
+              {o.label}
+            </label>
+          ))}
         </div>
+        <button
+          type="button"
+          className="bg-indigo-600 text-white px-6 py-2 rounded font-medium hover:bg-indigo-700"
+          onClick={() => void handleExport()}
+        >
+          ייצוא
+        </button>
       </section>
     </Layout>
   );

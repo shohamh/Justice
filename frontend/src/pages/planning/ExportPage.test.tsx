@@ -1,5 +1,8 @@
-import { test, expect } from "vitest";
+import { describe, test, it, expect, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import "../../i18n";
 import { dfsOrder } from "./ExportPage";
+import ExportPage from "./ExportPage";
 import type { NodeDTO } from "../../api/hierarchy";
 
 function mockNode(id: string, name: string, parent_id: string | null): NodeDTO {
@@ -31,4 +34,42 @@ test("dfsOrder groups children under their parent, not globally alphabetically",
   // If the old buggy implementation were still in place, this would instead
   // produce a flat alphabetical-by-name order across ALL nodes regardless of
   // parent, e.g. interleaving "b-child-1" (Delta) between root-a's children.
+});
+
+vi.mock("../../api/scoring", () => ({ getTransparency: vi.fn().mockResolvedValue({ rows: [] }) }));
+vi.mock("../../api/hierarchy", () => ({ fetchFullTree: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../api/client", () => ({ getAccessToken: vi.fn().mockReturnValue("test-token") }));
+vi.mock("../../components/Layout", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+global.fetch = vi.fn().mockResolvedValue({
+  ok: true,
+  arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+});
+
+describe("ExportPage", () => {
+  it("renders one checkbox per exportable data type and a single export button", async () => {
+    render(<ExportPage />);
+    await waitFor(() => screen.getByText("ייצוא"));
+    expect(screen.getByLabelText(/שקיפות/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/תתי-יחידות/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/סוגי תורנות/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/מיקומי תורנות/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/היררכיה/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/פטורים/)).toBeInTheDocument();
+  });
+
+  it("calls /config/export with only the checked config sheets when export is clicked", async () => {
+    render(<ExportPage />);
+    await waitFor(() => screen.getByText("ייצוא"));
+    fireEvent.click(screen.getByLabelText(/סוגי תורנות/));
+    fireEvent.click(screen.getByText("ייצוא"));
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/config/export?sheets=duty_types"),
+        expect.anything(),
+      );
+    });
+  });
 });

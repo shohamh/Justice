@@ -8,7 +8,7 @@ interface ExcelExportButtonProps<T> {
   filename: string;
 }
 
-function exportValueOf<T>(col: ColDef<T>, row: T): string | number | boolean {
+export function exportValueOf<T>(col: ColDef<T>, row: T): string | number | boolean {
   const value = col.exportValue
     ? col.exportValue(row)
     : col.filterValue
