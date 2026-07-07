@@ -460,6 +460,85 @@ def test_draft_shown_with_include_drafts(admin_session, soldier, duty_type, loca
     assert ev.status == "algorithm_draft"
 
 
+def test_duty_history_annotates_revoked_exemption(admin_session):
+    """A revoked SoldierExemption's event metadata includes revocation details."""
+    from datetime import datetime, timezone
+
+    from app.db.models import SoldierExemption
+
+    s = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    revoker = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    revoker.full_name = "מבטל בדיקה"
+    et = ExemptionType(name=f"dh-revoke-test_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today(), end_date=date.today(),
+        revoked_at=datetime.now(timezone.utc), revoked_by=revoker.id,
+        revoke_reason="כבר לא נדרש",
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, s.id)
+    exemption_events = [e for e in events if e.event_type == "exemption"]
+    assert len(exemption_events) == 1
+    meta = exemption_events[0].metadata
+    assert meta["revoke_reason"] == "כבר לא נדרש"
+    assert meta["revoked_by_name"] == "מבטל בדיקה"
+    assert meta["revoked_at"] is not None
+
+
+def test_duty_history_no_revocation_metadata_when_not_revoked(admin_session):
+    """A non-revoked SoldierExemption's event metadata has no revocation keys."""
+    from app.db.models import SoldierExemption
+
+    s = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    et = ExemptionType(name=f"dh-norevoke-test_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today(), end_date=None,
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, s.id)
+    exemption_events = [e for e in events if e.event_type == "exemption"]
+    assert len(exemption_events) == 1
+    assert exemption_events[0].metadata.get("revoke_reason") is None
+
+
+def test_duty_history_hides_revocation_metadata_when_include_sensitive_false(admin_session):
+    """Out-of-scope viewers (include_sensitive=False) must not see revoke_reason/
+    revoked_by_name/revoked_at — mirroring exemptions.py's can_see_private gate."""
+    from datetime import datetime, timezone
+
+    from app.db.models import SoldierExemption
+
+    s = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    revoker = create_soldier(admin_session, personal_number=f"99{_uid()}")
+    revoker.full_name = "מבטל בדיקה"
+    et = ExemptionType(name=f"dh-revoke-hidden-test_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date.today(), end_date=date.today(),
+        revoked_at=datetime.now(timezone.utc), revoked_by=revoker.id,
+        revoke_reason="כבר לא נדרש",
+    ))
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, s.id, include_sensitive=False)
+    exemption_events = [e for e in events if e.event_type == "exemption"]
+    assert len(exemption_events) == 1
+    meta = exemption_events[0].metadata
+    assert "revoke_reason" not in meta
+    assert "revoked_by_name" not in meta
+    assert "revoked_at" not in meta
+
+
 def test_draft_metadata_includes_job_id(admin_session, soldier, duty_type, location):
     """Draft assignment metadata includes job_id when an audit log entry exists."""
     import uuid as _uuid

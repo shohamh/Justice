@@ -1,16 +1,17 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
-from app.db.models import ExemptionDutyTypeMap, SoldierExemption
+from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
 from app.services.duty_config import (
     DutyConfigError,
     create_duty_type,
     create_exemption_type,
     create_location,
     delete_exemption_type,
+    disable_exemption_type_and_revoke_all,
     map_exemption_to_duty_type,
     set_duty_type_active,
     set_exemption_duty_types,
@@ -135,3 +136,36 @@ def test_delete_exemption_type_rejected_when_granted(admin_session):
     admin_session.flush()
     with pytest.raises(DutyConfigError):
         delete_exemption_type(admin_session, exemption_type=et, actor_id=None)
+
+
+def test_disable_exemption_type_and_revoke_all(admin_session):
+    et = ExemptionType(name="disable-bulk-test")
+    admin_session.add(et)
+    admin_session.flush()
+
+    s1 = create_soldier(admin_session, personal_number="disable_bulk_1")
+    s2 = create_soldier(admin_session, personal_number="disable_bulk_2")
+    admin_session.add(SoldierExemption(
+        soldier_id=s1.id, exemption_type_id=et.id,
+        start_date=date.today() - timedelta(days=1), end_date=None,
+    ))
+    admin_session.add(SoldierExemption(
+        soldier_id=s2.id, exemption_type_id=et.id,
+        start_date=date.today() - timedelta(days=30), end_date=date.today() - timedelta(days=1),
+    ))  # already expired — should NOT be revoked (no-op, shouldn't count)
+    admin_session.flush()
+
+    actor = create_soldier(admin_session, personal_number="disable_bulk_admin")
+    count = disable_exemption_type_and_revoke_all(
+        admin_session, exemption_type=et, reason="הסוג בוטל", actor_id=actor.id,
+    )
+    admin_session.commit()
+
+    assert count == 1
+    admin_session.refresh(et)
+    assert et.active is False
+    s1_ex = admin_session.execute(
+        select(SoldierExemption).where(SoldierExemption.soldier_id == s1.id)
+    ).scalar_one()
+    assert s1_ex.revoked_at is not None
+    assert s1_ex.revoke_reason == "הסוג בוטל"

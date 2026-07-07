@@ -8,6 +8,8 @@ export interface Exemption {
   end_date: string | null;
   reason: string | null;
   granted_by: string | null;
+  revoke_reason: string | null;
+  revoked_by_name: string | null;
 }
 
 export interface ExemptionSummaryItem {
@@ -38,8 +40,8 @@ export async function listExemptions(soldierId: string): Promise<Exemption[]> {
 export async function grantExemption(soldierId: string, input: { exemption_type_id: string; start_date: string; end_date?: string | null; reason?: string | null }): Promise<Exemption> {
   return (await api.post<Exemption>(`/soldiers/${soldierId}/exemptions`, input)).data;
 }
-export async function revokeExemption(soldierId: string, exemptionId: string): Promise<void> {
-  await api.delete(`/soldiers/${soldierId}/exemptions/${exemptionId}`);
+export async function revokeExemption(soldierId: string, exemptionId: string, reason: string): Promise<void> {
+  await api.delete(`/soldiers/${soldierId}/exemptions/${exemptionId}`, { data: { reason } });
 }
 
 export interface ExemptionRequest {

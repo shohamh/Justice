@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import time
+from datetime import date, time
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -273,6 +273,7 @@ def update_exemption_type(
     is_global: bool | None = None,
     is_medical: bool | None = None,
     is_commander_exemption: bool | None = None,
+    active: bool | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
     before = {
@@ -281,6 +282,7 @@ def update_exemption_type(
         "is_global": exemption_type.is_global,
         "is_medical": exemption_type.is_medical,
         "is_commander_exemption": exemption_type.is_commander_exemption,
+        "active": exemption_type.active,
     }
     if name is not None and name != exemption_type.name:
         if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
@@ -294,6 +296,8 @@ def update_exemption_type(
         exemption_type.is_medical = is_medical
     if is_commander_exemption is not None:
         exemption_type.is_commander_exemption = is_commander_exemption
+    if active is not None:
+        exemption_type.active = active
     write_audit(
         session,
         actor_id=actor_id,
@@ -307,6 +311,7 @@ def update_exemption_type(
             "is_global": exemption_type.is_global,
             "is_medical": exemption_type.is_medical,
             "is_commander_exemption": exemption_type.is_commander_exemption,
+            "active": exemption_type.active,
         },
     )
     return exemption_type
@@ -332,6 +337,41 @@ def delete_exemption_type(
         before={"name": exemption_type.name},
     )
     session.delete(exemption_type)
+
+
+def disable_exemption_type_and_revoke_all(
+    session: Session, *, exemption_type: ExemptionType, reason: str, actor_id: uuid.UUID
+) -> int:
+    """Deactivate exemption_type and revoke every soldier's currently-active,
+    not-already-revoked exemption of this type, using the shared reason."""
+    from app.services.exemptions import revoke_exemption
+
+    today = date.today()
+    active_exemption_ids = session.execute(
+        select(SoldierExemption.id).where(
+            SoldierExemption.exemption_type_id == exemption_type.id,
+            SoldierExemption.revoked_at.is_(None),
+            or_(SoldierExemption.end_date.is_(None), SoldierExemption.end_date >= today),
+        )
+    ).scalars().all()
+
+    exemption_type.active = False
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="exemption_type.disable",
+        entity_type="exemption_type",
+        entity_id=exemption_type.id,
+        before={"active": True},
+        after={"active": False},
+        context={"reason": reason},
+    )
+
+    revoked_count = 0
+    for exemption_id in active_exemption_ids:
+        revoke_exemption(session, exemption_id=exemption_id, reason=reason, actor_id=actor_id)
+        revoked_count += 1
+    return revoked_count
 
 
 def map_exemption_to_duty_type(

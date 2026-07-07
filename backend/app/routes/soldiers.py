@@ -463,7 +463,10 @@ def get_soldier_duty_history(
     if include_drafts and user.role != "admin" and not is_duty_manager(session, user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
 
-    events = get_duty_history(session, soldier_id, include_drafts=include_drafts)
+    include_sensitive = can_see_private(session, user, s)
+    events = get_duty_history(
+        session, soldier_id, include_drafts=include_drafts, include_sensitive=include_sensitive
+    )
 
     if is_plain_soldier and not is_self:
         events = [e for e in events if e.event_type in _PUBLIC_EVENT_TYPES]

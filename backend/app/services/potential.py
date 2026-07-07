@@ -165,7 +165,9 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
         active_exemptions = [
             ex for ex in exemptions_by_soldier.get(s.id, [])
-            if ex.start_date <= reference_date and (ex.end_date is None or ex.end_date >= reference_date)
+            if ex.revoked_at is None
+            and ex.start_date <= reference_date
+            and (ex.end_date is None or ex.end_date >= reference_date)
         ]
         excluded: set[uuid.UUID] = set()
         for ex in active_exemptions:

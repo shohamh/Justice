@@ -256,6 +256,13 @@ function EventCard({
                 </div>
               );
             })()}
+            {e.event_type === "exemption" && e.metadata.revoke_reason && (
+              <div className="text-xs text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                <span className="font-medium">בוטל</span>
+                {e.metadata.revoked_by_name && <> ע״י {e.metadata.revoked_by_name}</>}
+                : {e.metadata.revoke_reason}
+              </div>
+            )}
             {dutyType && (() => {
               const hasInfo = dutyType.start_time || dutyType.end_time || dutyType.contact_name || dutyType.contact_phone || dutyType.instructions;
               if (!hasInfo && !dutyType) return null;

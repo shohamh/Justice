@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -101,39 +101,58 @@ def revoke_exemption(
     session: Session,
     *,
     exemption_id: uuid.UUID,
-    actor_id: uuid.UUID | None = None,
+    reason: str,
+    actor_id: uuid.UUID,
 ) -> None:
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification, notify_duty_managers_in_scope
+
     ex = session.get(SoldierExemption, exemption_id)
     if ex is None:
         raise ExemptionError("exemption_not_found")
     today = date.today()
     if ex.end_date is not None and ex.end_date < today:
         # Already expired: revoking would otherwise push end_date forward to
-        # today, re-opening a closed exemption. Treat as a no-op.
+        # today, re-opening a closed exemption. Treat as a true no-op — no
+        # fields change, no notification.
         return
+
+    before = {"end_date": ex.end_date.isoformat() if ex.end_date else None}
     if ex.start_date <= today:
-        before = {"end_date": ex.end_date.isoformat() if ex.end_date else None}
         ex.end_date = today
-        write_audit(
-            session,
-            actor_id=actor_id,
-            action="exemption.revoke",
-            entity_type="soldier_exemption",
-            entity_id=ex.id,
-            before=before,
-            after={"end_date": today.isoformat()},
-        )
-    else:
-        write_audit(
-            session,
-            actor_id=actor_id,
-            action="exemption.revoke",
-            entity_type="soldier_exemption",
-            entity_id=ex.id,
-            before={"start_date": ex.start_date.isoformat()},
-            after={"deleted": True},
-        )
-        session.delete(ex)
+    # Not-yet-started exemptions keep their original start_date/end_date —
+    # historical accuracy — and rely entirely on revoked_at for "not in effect".
+    ex.revoked_at = datetime.now(timezone.utc)
+    ex.revoked_by = actor_id
+    ex.revoke_reason = reason
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="exemption.revoke",
+        entity_type="soldier_exemption",
+        entity_id=ex.id,
+        before=before,
+        after={"end_date": ex.end_date.isoformat() if ex.end_date else None, "revoked": True},
+        context={"reason": reason},
+    )
+    session.flush()
+
+    create_notification(
+        session, soldier_id=ex.soldier_id,
+        type=NotificationType.exemption_revoked,
+        title="פטור בוטל",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
+    )
+    notify_duty_managers_in_scope(
+        session, soldier_id=ex.soldier_id,
+        type=NotificationType.exemption_revoked,
+        title="פטור בוטל",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
+    )
 
 
 def list_exemptions(session: Session, *, soldier_id: uuid.UUID) -> list[SoldierExemption]:

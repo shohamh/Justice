@@ -344,3 +344,29 @@ def test_fully_exempt_soldier_not_counted_as_partial(app_session):
     assert detail.counted is False
     assert detail.partial_exemption_names == []
     assert result.partial_exemption_count == 0
+
+
+def test_compute_potential_ignores_revoked_exemption(app_session):
+    from datetime import datetime, timezone
+
+    node = create_node(app_session, level="team", name="Potential Revoke Co", parent_id=None)
+    app_session.flush()
+    dt = DutyType(name="שמירה-revoke-test", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add(dt)
+    et = ExemptionType(name="פטור-revoke-potential-test", is_global=True, is_commander_exemption=False)
+    app_session.add(et)
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id)
+    app_session.add(SoldierExemption(
+        soldier_id=s.id, exemption_type_id=et.id,
+        start_date=date(2026, 1, 1), end_date=None,
+        revoked_at=datetime.now(timezone.utc),
+    ))
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+
+    # The exemption is revoked, so it must NOT exclude the soldier from eligibility.
+    assert result.raw_eligible_count == 1
+    assert result.soldiers[0].counted is True

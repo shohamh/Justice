@@ -1,5 +1,6 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ExemptionsPanel from "./ExemptionsPanel";
+import * as exemptionsApi from "../api/exemptions";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -12,7 +13,9 @@ vi.mock("../api/dutyConfig", () => ({
 }));
 
 vi.mock("../api/exemptions", () => ({
-  listExemptions: vi.fn(() => Promise.resolve([])),
+  listExemptions: vi.fn(() => Promise.resolve([
+    { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
+  ])),
   grantExemption: vi.fn(() => Promise.resolve({})),
   revokeExemption: vi.fn(() => Promise.resolve()),
   grantCommanderExemption: vi.fn(() => Promise.resolve()),
@@ -60,4 +63,23 @@ test("hides the duty-manager-step approve button for a commander-only viewer", a
   render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
   await screen.findByTestId("exemption-request-row-req-1");
   expect(screen.queryByTestId("exemption-request-approve-req-1")).toBeNull();
+});
+
+test("revoking an exemption requires a reason and calls revokeExemption with it", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+  const revokeButton = await screen.findByTestId("revoke-ex1");
+  fireEvent.click(revokeButton);
+
+  const confirmButton = screen.getByTestId("reason-modal-confirm");
+  expect(confirmButton).toBeDisabled(); // no reason typed yet
+
+  const textarea = screen.getByTestId("reason-modal-textarea");
+  fireEvent.change(textarea, { target: { value: "לא רלוונטי" } });
+  expect(confirmButton).not.toBeDisabled();
+
+  fireEvent.click(confirmButton);
+
+  await waitFor(() => {
+    expect(exemptionsApi.revokeExemption).toHaveBeenCalledWith("abc", "ex1", "לא רלוונטי");
+  });
 });

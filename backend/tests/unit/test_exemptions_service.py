@@ -67,7 +67,7 @@ def test_grant_rejects_unknown_soldier(admin_session):
         )
 
 
-def test_revoke_active_soft_sets_end_date_today(admin_session):
+def test_revoke_active_soft_sets_end_date_today_and_marks_revoked(admin_session):
     s = create_soldier(admin_session, personal_number="7300004")
     et = _et(admin_session, "פטור-4")
     ex = grant_exemption(
@@ -80,30 +80,41 @@ def test_revoke_active_soft_sets_end_date_today(admin_session):
         actor_id=None,
     )
     admin_session.flush()
-    revoke_exemption(admin_session, exemption_id=ex.id, actor_id=None)
+    actor = create_soldier(admin_session, personal_number="7300004a")
+    revoke_exemption(admin_session, exemption_id=ex.id, reason="לא רלוונטי יותר", actor_id=actor.id)
     admin_session.commit()
     refreshed = admin_session.get(SoldierExemption, ex.id)
     assert refreshed is not None
     assert refreshed.end_date == date.today()
+    assert refreshed.revoked_at is not None
+    assert refreshed.revoked_by == actor.id
+    assert refreshed.revoke_reason == "לא רלוונטי יותר"
 
 
-def test_revoke_future_hard_deletes(admin_session):
+def test_revoke_future_keeps_row_marks_revoked_not_deleted(admin_session):
     s = create_soldier(admin_session, personal_number="7300005")
     et = _et(admin_session, "פטור-5")
+    original_start = date.today() + timedelta(days=10)
     ex = grant_exemption(
         admin_session,
         soldier_id=s.id,
         exemption_type_id=et.id,
-        start_date=date.today() + timedelta(days=10),
+        start_date=original_start,
         end_date=None,
         reason=None,
         actor_id=None,
     )
     admin_session.flush()
     ex_id = ex.id
-    revoke_exemption(admin_session, exemption_id=ex_id, actor_id=None)
+    actor = create_soldier(admin_session, personal_number="7300005a")
+    revoke_exemption(admin_session, exemption_id=ex_id, reason="בוטל לפני תחילה", actor_id=actor.id)
     admin_session.commit()
-    assert admin_session.get(SoldierExemption, ex_id) is None
+    refreshed = admin_session.get(SoldierExemption, ex_id)
+    assert refreshed is not None  # no longer hard-deleted
+    assert refreshed.start_date == original_start  # historical dates untouched
+    assert refreshed.revoked_at is not None
+    assert refreshed.revoked_by == actor.id
+    assert refreshed.revoke_reason == "בוטל לפני תחילה"
 
 
 def test_revoke_already_expired_is_noop(admin_session):
@@ -120,11 +131,43 @@ def test_revoke_already_expired_is_noop(admin_session):
         actor_id=None,
     )
     admin_session.flush()
-    revoke_exemption(admin_session, exemption_id=ex.id, actor_id=None)
+    actor = create_soldier(admin_session, personal_number="7300008a")
+    revoke_exemption(admin_session, exemption_id=ex.id, reason="ignored", actor_id=actor.id)
     admin_session.commit()
     refreshed = admin_session.get(SoldierExemption, ex.id)
     assert refreshed is not None
     assert refreshed.end_date == past_end  # unchanged, not pushed forward to today
+    assert refreshed.revoked_at is None  # true no-op: nothing recorded
+    assert refreshed.revoke_reason is None
+
+
+def test_revoke_active_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+    from sqlalchemy import select as sa_select
+
+    s = create_soldier(admin_session, personal_number="7300009")
+    et = _et(admin_session, "פטור-9")
+    ex = grant_exemption(
+        admin_session,
+        soldier_id=s.id,
+        exemption_type_id=et.id,
+        start_date=date.today() - timedelta(days=1),
+        end_date=None,
+        reason=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    actor = create_soldier(admin_session, personal_number="7300009a")
+    revoke_exemption(admin_session, exemption_id=ex.id, reason="נבדק", actor_id=actor.id)
+    admin_session.commit()
+
+    notif = admin_session.execute(
+        sa_select(Notification).where(
+            Notification.soldier_id == s.id,
+            Notification.type == NotificationType.exemption_revoked,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
 
 
 def test_active_exemptions_window(admin_session):

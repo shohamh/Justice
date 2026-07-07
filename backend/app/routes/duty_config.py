@@ -341,6 +341,7 @@ class ExemptionTypeOut(BaseModel):
     is_global: bool = False
     is_medical: bool = False
     is_commander_exemption: bool = False
+    active: bool = True
 
 
 class CreateExemptionTypeRequest(BaseModel):
@@ -357,6 +358,7 @@ class UpdateExemptionTypeRequest(BaseModel):
     is_global: bool | None = None
     is_medical: bool | None = None
     is_commander_exemption: bool | None = None
+    active: bool | None = None
 
 
 class SetDutyTypesRequest(BaseModel):
@@ -371,6 +373,7 @@ def _et_out(et: ExemptionType) -> ExemptionTypeOut:
         is_global=et.is_global,
         is_medical=et.is_medical,
         is_commander_exemption=et.is_commander_exemption,
+        active=et.active,
     )
 
 
@@ -427,6 +430,7 @@ def update_exemption_type(
             is_global=body.is_global,
             is_medical=body.is_medical,
             is_commander_exemption=body.is_commander_exemption,
+            active=body.active,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
@@ -434,6 +438,31 @@ def update_exemption_type(
     session.commit()
     session.refresh(et)
     return _et_out(et)
+
+
+class DisableExemptionTypeRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class DisableExemptionTypeOut(BaseModel):
+    revoked_count: int
+
+
+@router.post("/exemption-types/{exemption_type_id}/disable", response_model=DisableExemptionTypeOut)
+def disable_exemption_type_route(
+    exemption_type_id: uuid.UUID,
+    body: DisableExemptionTypeRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> DisableExemptionTypeOut:
+    et = session.get(ExemptionType, exemption_type_id)
+    if et is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    revoked_count = svc.disable_exemption_type_and_revoke_all(
+        session, exemption_type=et, reason=body.reason, actor_id=user.id,
+    )
+    session.commit()
+    return DisableExemptionTypeOut(revoked_count=revoked_count)
 
 
 @router.delete("/exemption-types/{exemption_type_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

@@ -10,6 +10,7 @@ import {
 import { formatDate } from "../utils/formatDate";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
+import ReasonPromptModal from "./ReasonPromptModal";
 
 function daysBetween(start: string, end: string | null | undefined): number | null {
   if (!end) return null;
@@ -43,6 +44,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
   const [reason, setReason] = useState("");
   const [requests, setRequests] = useState<ExemptionRequest[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setItems(await listExemptions(soldierId));
@@ -71,8 +73,8 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
   }, [refresh]);
 
   const typeName = (id: string) => types.find((tp) => tp.id === id)?.name ?? "—";
-  const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true);
-  const officialExemptionTypes = types.filter((tp) => tp.is_commander_exemption !== true);
+  const commanderExemptionTypes = types.filter((tp) => tp.is_commander_exemption === true && tp.active);
+  const officialExemptionTypes = types.filter((tp) => tp.is_commander_exemption !== true && tp.active);
 
   function toggleExpand(id: string) {
     setExpanded((prev) => {
@@ -94,9 +96,9 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
     await refresh();
   }
 
-  async function onRevoke(id: string) {
-    if (!confirm(t("exemptions.revoke") + "?")) return;
-    await revokeExemption(soldierId, id);
+  async function onRevoke(id: string, reason: string) {
+    await revokeExemption(soldierId, id, reason);
+    setRevokingId(null);
     await refresh();
   }
 
@@ -118,10 +120,10 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
 
   const today = new Date().toISOString().slice(0, 10);
   const activeItems = items.filter(
-    (ex) => ex.end_date == null || ex.end_date >= today
+    (ex) => !ex.revoked_by_name && (ex.end_date == null || ex.end_date >= today)
   );
   const expiredItems = items.filter(
-    (ex) => ex.end_date != null && ex.end_date < today
+    (ex) => ex.revoked_by_name || (ex.end_date != null && ex.end_date < today)
   );
 
   return (
@@ -160,7 +162,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                     {canManage && (
                       <button
                         className="text-red-500 text-xs shrink-0"
-                        onClick={(e) => { e.stopPropagation(); void onRevoke(ex.id); }}
+                        onClick={(e) => { e.stopPropagation(); setRevokingId(ex.id); }}
                         data-testid={`revoke-${ex.id}`}
                       >
                         {t("exemptions.revoke")}
@@ -205,15 +207,6 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                     <span className="text-gray-500 dark:text-gray-400 text-xs">
                       {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}
                     </span>
-                    {canManage && (
-                      <button
-                        className="text-red-500 text-xs mr-auto"
-                        onClick={(e) => { e.stopPropagation(); void onRevoke(ex.id); }}
-                        data-testid={`revoke-${ex.id}`}
-                      >
-                        {t("exemptions.revoke")}
-                      </button>
-                    )}
                   </div>
                   {isExpanded && (
                     <div className="mt-1.5 space-y-0.5">
@@ -304,7 +297,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
       {canManage && (
         <form onSubmit={onGrant} className="flex flex-wrap items-end gap-2 pt-2 border-t dark:border-gray-600" data-testid="grant-form">
           <Combobox
-            items={types.map(tp => ({ id: tp.id, name: tp.name }))}
+            items={types.filter((tp) => tp.active).map(tp => ({ id: tp.id, name: tp.name }))}
             value={typeId}
             onChange={setTypeId}
             placeholder={t("exemptions.type")}
@@ -345,6 +338,14 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
           commanderExemptionTypes={commanderExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
           officialExemptionTypes={officialExemptionTypes.map((tp) => ({ id: tp.id, name: tp.name }))}
           onGranted={() => { void refresh(); void refreshRequests(); }}
+        />
+      )}
+
+      {revokingId && (
+        <ReasonPromptModal
+          title={t("exemptions.revoke")}
+          onConfirm={(reason) => onRevoke(revokingId, reason)}
+          onClose={() => setRevokingId(null)}
         />
       )}
     </div>

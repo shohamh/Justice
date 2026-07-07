@@ -43,6 +43,7 @@ export interface ExemptionType {
   is_global?: boolean;
   is_medical?: boolean;
   is_commander_exemption?: boolean;
+  active: boolean;
 }
 
 export async function listDutyTypes(): Promise<DutyType[]> {
@@ -118,11 +119,14 @@ export async function listExemptionTypes(): Promise<ExemptionType[]> {
 export async function createExemptionType(input: { name: string; description?: string | null; is_global?: boolean; is_medical?: boolean; is_commander_exemption?: boolean }): Promise<ExemptionType> {
   return (await api.post<ExemptionType>("/duty-config/exemption-types", input)).data;
 }
-export async function updateExemptionType(id: string, input: { is_medical?: boolean; is_global?: boolean; is_commander_exemption?: boolean; name?: string }): Promise<ExemptionType> {
+export async function updateExemptionType(id: string, input: { is_medical?: boolean; is_global?: boolean; is_commander_exemption?: boolean; name?: string; active?: boolean }): Promise<ExemptionType> {
   return (await api.patch<ExemptionType>(`/duty-config/exemption-types/${id}`, input)).data;
 }
 export async function deleteExemptionType(id: string): Promise<void> {
   await api.delete(`/duty-config/exemption-types/${id}`);
+}
+export async function disableExemptionType(id: string, reason: string): Promise<{ revoked_count: number }> {
+  return (await api.post<{ revoked_count: number }>(`/duty-config/exemption-types/${id}/disable`, { reason })).data;
 }
 export async function getExemptionDutyTypes(id: string): Promise<string[]> {
   return (await api.get<string[]>(`/duty-config/exemption-types/${id}/duty-types`)).data;
