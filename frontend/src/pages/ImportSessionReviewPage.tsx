@@ -11,6 +11,8 @@ import {
   type RowBase,
   type Selections,
   type ShiftTemplateRow,
+  type DutyLocationRow,
+  type HierarchyImportRow,
   getSession,
   reparseSession,
   saveSelections,
@@ -37,7 +39,23 @@ const ACTION_CHIP: Record<ActionValue, string> = {
   skip: "bg-gray-100 text-gray-500",
 };
 
-type TabKey = "soldiers" | "duty_shifts" | "shift_templates";
+type TabKey =
+  | "soldiers"
+  | "duty_shifts"
+  | "shift_templates"
+  | "duty_locations"
+  | "hierarchy"
+  | "duty_types"
+  | "exemption_types";
+
+type GroupKey =
+  | "soldiers"
+  | "duty_shifts"
+  | "shift_templates"
+  | "duty_locations"
+  | "hierarchy"
+  | "duty_types"
+  | "exemption_types";
 
 function extractDetail(err: unknown): string | undefined {
   return (err as { response?: { data?: { detail?: string } } })?.response?.data
@@ -217,7 +235,7 @@ export default function ImportSessionReviewPage() {
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
-  function setRowAction(group: "soldiers" | "duty_shifts" | "shift_templates", row: number, value: string) {
+  function setRowAction(group: GroupKey, row: number, value: string) {
     if (!id) return;
     setSelections((prev) => {
       const next = {
@@ -327,7 +345,7 @@ export default function ImportSessionReviewPage() {
     }
   }
 
-  function currentSelection(group: "soldiers" | "duty_shifts" | "shift_templates", row: RowBase): string {
+  function currentSelection(group: GroupKey, row: RowBase): string {
     return (selections[group] as Record<string, string> | undefined)?.[String(row.row)] ?? row.action;
   }
 
@@ -346,7 +364,8 @@ export default function ImportSessionReviewPage() {
     );
   }
 
-  const { soldiers, duty_shifts, shift_templates } = detail.parsed_state;
+  const { soldiers, duty_shifts, shift_templates, duty_locations, hierarchy, duty_types, exemption_types } =
+    detail.parsed_state;
 
   return (
     <Layout>
@@ -365,6 +384,10 @@ export default function ImportSessionReviewPage() {
               ["soldiers", `חיילים (${soldiers.length})`],
               ["duty_shifts", `משמרות (${duty_shifts.length})`],
               ["shift_templates", `תבניות (${shift_templates.length})`],
+              ["duty_locations", `מיקומי תורנות (${duty_locations.length})`],
+              ["hierarchy", `היררכיה (${hierarchy.length})`],
+              ["duty_types", `סוגי תורנות (${duty_types.length})`],
+              ["exemption_types", `פטורים (${exemption_types.length})`],
             ] as [TabKey, string][]
           ).map(([key, label]) => (
             <button
@@ -740,6 +763,118 @@ export default function ImportSessionReviewPage() {
                               {row.action !== "skip" && (
                                 <option value="skip">דלג</option>
                               )}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "duty_locations" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">בסיס</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {duty_locations.map((row: DutyLocationRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">{row.base}</td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("duty_locations", row)}
+                              onChange={(e) => setRowAction("duty_locations", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "hierarchy" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">סוג</th>
+                  <th className="text-right p-3">יחידת אב</th>
+                  <th className="text-right p-3">מפקד</th>
+                  <th className="text-right p-3">אחראי תורנות</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {hierarchy.map((row: HierarchyImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">{row.level}</td>
+                      <td className="p-3">{row.parent_name ?? "—"}</td>
+                      <td className="p-3">
+                        {row.commander_personal_number || row.commander_name ? (
+                          <span className={row.resolved_commander_id ? "" : "text-red-600"}>
+                            {row.commander_name ?? row.commander_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.duty_manager_refs.length === 0 ? (
+                          "—"
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            {row.duty_manager_refs.map((dm, i) => (
+                              <span key={i} className={dm.resolved_soldier_id ? "" : "text-red-600"}>
+                                {dm.ref}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("hierarchy", row)}
+                              onChange={(e) => setRowAction("hierarchy", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
                             </select>
                           )}
                         </td>

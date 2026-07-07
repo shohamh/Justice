@@ -114,6 +114,10 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
         },
       ],
       shift_templates: [],
+      duty_locations: [],
+      hierarchy: [],
+      duty_types: [],
+      exemption_types: [],
       parser_id: "p1",
       parser_warnings: [],
     },
@@ -350,6 +354,57 @@ describe("ImportSessionReviewPage", () => {
     await waitFor(() => {
       expect(importSessionsApi.reparseSession).toHaveBeenCalledWith("session-1");
     });
+  });
+
+  it("renders the duty_locations tab with row action controls", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_locations = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "שער חדש",
+        base: null,
+        active: true,
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("מיקומי תורנות (1)"));
+    const row = (await screen.findByText("שער חדש")).closest("tr")!;
+    expect(within(row).getByText("אישור")).toBeInTheDocument();
+  });
+
+  it("renders the hierarchy tab showing commander and duty manager names", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.hierarchy = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "מדור א",
+        level: "group",
+        parent_name: null,
+        resolved_parent_id: null,
+        commander_personal_number: "12345",
+        commander_name: "ישראל ישראלי",
+        resolved_commander_id: "uuid-1",
+        duty_manager_refs: [{ ref: "23456:משה כהן", resolved_soldier_id: "uuid-2" }],
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+
+    fireEvent.click(screen.getByText("היררכיה (1)"));
+    expect(await screen.findByText("מדור א")).toBeInTheDocument();
+    expect(screen.getByText("ישראל ישראלי")).toBeInTheDocument();
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {
