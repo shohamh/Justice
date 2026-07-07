@@ -114,6 +114,7 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
         },
       ],
       shift_templates: [],
+      assignments: [],
       parser_id: "p1",
       parser_warnings: [],
     },
