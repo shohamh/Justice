@@ -223,8 +223,6 @@ class V1StandardParser:
                     duty_manager_refs=dm_refs,
                 )
             )
-
-
         duty_types = [
             ImportDutyTypeRow(
                 source_row=r["_row"],
@@ -233,7 +231,11 @@ class V1StandardParser:
                 description=str(r.get("description") or "").strip() or None,
                 active=_parse_bool(r.get("active")),
                 reserve_ratio=str(r.get("reserve_ratio") or "").strip() or None,
-                reserve_minimum=int(r.get("reserve_minimum")) if r.get("reserve_minimum") else None,
+                reserve_minimum=(
+                    int(r["reserve_minimum"])
+                    if r.get("reserve_minimum") is not None and str(r["reserve_minimum"]).strip() != ""
+                    else None
+                ),
                 is_external=_parse_bool(r.get("is_external")),
                 contact_name=str(r.get("contact_name") or "").strip() or None,
                 contact_phone=str(r.get("contact_phone") or "").strip() or None,

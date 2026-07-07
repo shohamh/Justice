@@ -333,3 +333,20 @@ def test_duty_types_sheet_absent_gives_empty_list():
     ])
     data = V1StandardParser().parse(wb)
     assert data.duty_types == []
+
+
+def test_duty_types_reserve_minimum_zero_is_not_lost():
+    # A literal 0 in the reserve_minimum cell is falsy in Python, so a naive
+    # `if r.get("reserve_minimum") else None` would incorrectly turn a real
+    # zero into None. Must distinguish "cell present and zero" from "cell
+    # blank" using string-emptiness, not truthiness.
+    wb = _wb_with_duty_types_sheet([
+        [
+            "שמירה", "1.50", "", "", "0.200",
+            0, "", "", "",
+            "", "", "", "", "",
+        ],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.duty_types[0]
+    assert row.reserve_minimum == 0
