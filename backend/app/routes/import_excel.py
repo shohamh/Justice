@@ -356,6 +356,32 @@ def download_template():
     ws_d.append(["משמר לילה", "מגדל שמירה צפוני", "18.06.2024", "19.06.2024", "23:00", "05:00", 2, "", "תורנות רגישה — לוודא תדריך"])
     ws_d.append(["תורנות סוף שבוע", "שער ראשי", "21.06.2024", "23.06.2024", "", "", 6, "מדור א:3;מדור ב:3", ""])
 
+    ws_loc = wb.create_sheet("duty_locations")
+    ws_loc.append(["name", "base", "active"])
+    ws_loc.append(["שער ראשי", "בסיס א", "true"])
+    ws_loc.append(["מטבח מרכזי", "בסיס א", "true"])
+
+    ws_h = wb.create_sheet("hierarchy")
+    ws_h.append(["name", "level", "parent_name", "commander_personal_number", "commander_name", "duty_managers"])
+    ws_h.append(["אוגדה 1", "division", "", "", "", ""])
+    ws_h.append(["מדור א", "group", "אוגדה 1", "12345", "ישראל ישראלי", "23456:משה כהן"])
+
+    ws_dt = wb.create_sheet("duty_types")
+    ws_dt.append([
+        "name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
+        "is_external", "contact_name", "contact_phone", "start_time", "end_time",
+        "instructions", "eligible_units", "requirements_json",
+    ])
+    ws_dt.append([
+        "שמירה", "1.50", "שמירה בשער הראשי", "true", "0.200", "2",
+        "false", "דני", "050-1234567", "20:00", "06:00",
+        "הצטיידות במקלע", "מדור א", "{}",
+    ])
+
+    ws_et = wb.create_sheet("exemption_types")
+    ws_et.append(["name", "description", "is_global", "is_medical", "is_commander_exemption", "applies_to_duty_types"])
+    ws_et.append(["פטור רפואי", "אישור רופא", "false", "true", "false", "שמירה"])
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
