@@ -175,3 +175,67 @@ def test_resolve_hierarchy_forward_referenced_parent_is_out_of_scope_for_non_adm
     child = next(r for r in result if r["name"] == "ילד")
     assert child["resolved_parent_id"] is None
     assert child["action"] == "out_of_scope"
+
+
+from decimal import Decimal
+
+from app.services.import_parsers.schema import ImportDutyTypeRow
+from app.services.import_sessions import _resolve_duty_types
+
+
+def test_resolve_duty_types_eligible_units_resolved(app_session):
+    node = create_node(app_session, level="group", name="מדור א")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[
+            ImportDutyTypeRow(
+                source_row=2, name="שמירה", score_per_day="1.50",
+                eligible_unit_names=["מדור א"],
+            ),
+        ],
+    )
+    result = _resolve_duty_types(app_session, data)
+    assert result[0]["action"] == "new"
+    assert result[0]["resolved_eligible_node_ids"] == [str(node.id)]
+
+
+def test_resolve_duty_types_unresolved_eligible_unit_is_error(app_session):
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[
+            ImportDutyTypeRow(source_row=2, name="שמירה", score_per_day="1.50", eligible_unit_names=["רפאים"]),
+        ],
+    )
+    result = _resolve_duty_types(app_session, data)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_duty_types_invalid_json_is_error(app_session):
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[
+            ImportDutyTypeRow(source_row=2, name="שמירה", score_per_day="1.50", requirements_json="{not json"),
+        ],
+    )
+    result = _resolve_duty_types(app_session, data)
+    assert result[0]["action"] == "error"
+
+
+def test_resolve_duty_types_valid_json_parsed(app_session):
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[
+            ImportDutyTypeRow(source_row=2, name="שמירה", score_per_day="1.50", requirements_json='{"min_rank": 1}'),
+        ],
+    )
+    result = _resolve_duty_types(app_session, data)
+    assert result[0]["requirements"] == {"min_rank": 1}
+
+
+def test_resolve_duty_types_non_numeric_score_is_error(app_session):
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        duty_types=[ImportDutyTypeRow(source_row=2, name="שמירה", score_per_day="not-a-number")],
+    )
+    result = _resolve_duty_types(app_session, data)
+    assert result[0]["action"] == "error"

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import io
+import json
 import secrets
 import uuid
 from datetime import UTC, date as date_type, datetime
+from decimal import Decimal
 
 import openpyxl
 from sqlalchemy import select
@@ -252,6 +254,86 @@ def _resolve_hierarchy(
             "commander_name": row.commander_name,
             "resolved_commander_id": resolved_commander_id,
             "duty_manager_refs": dm_results,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_duty_types(
+    session: Session,
+    data: ParsedImportData,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    existing_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+
+    out = []
+    for row in data.duty_types:
+        errors: list[str] = []
+
+        score_per_day: Decimal | None = None
+        try:
+            score_per_day = Decimal(row.score_per_day) if row.score_per_day else None
+            if score_per_day is None:
+                errors.append("חסר ניקוד ליום")
+        except Exception:
+            errors.append(f"ניקוד ליום לא תקין '{row.score_per_day}'")
+
+        reserve_ratio: Decimal | None = None
+        if row.reserve_ratio is not None and row.reserve_ratio != "":
+            try:
+                reserve_ratio = Decimal(row.reserve_ratio)
+            except Exception:
+                errors.append(f"יחס רזרבה לא תקין '{row.reserve_ratio}'")
+
+        requirements: dict | None = None
+        if row.requirements_json:
+            try:
+                requirements = json.loads(row.requirements_json)
+            except Exception as exc:
+                errors.append(f"JSON לא תקין בעמודת requirements_json: {exc}")
+
+        resolved_eligible_node_ids: list[str] = []
+        for unit_name in row.eligible_unit_names:
+            row_key = f"duty_types:{row.source_row}:{unit_name}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(unit_name)
+            node = None
+            if mapped_id:
+                try:
+                    node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if node is None:
+                node = nodes_by_name.get(unit_name)
+            if node is None:
+                errors.append(f"יחידה זכאית לא מזוהה '{unit_name}'")
+            else:
+                resolved_eligible_node_ids.append(str(node.id))
+
+        existing = existing_by_name.get(row.name) if row.name else None
+        action = "error" if errors else ("update" if existing else "new")
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": row.name,
+            "score_per_day": str(score_per_day) if score_per_day is not None else None,
+            "description": row.description,
+            "active": row.active,
+            "reserve_ratio": str(reserve_ratio) if reserve_ratio is not None else None,
+            "reserve_minimum": row.reserve_minimum,
+            "is_external": row.is_external,
+            "contact_name": row.contact_name,
+            "contact_phone": row.contact_phone,
+            "start_time": row.start_time,
+            "end_time": row.end_time,
+            "instructions": row.instructions,
+            "resolved_eligible_node_ids": resolved_eligible_node_ids,
+            "requirements": requirements,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
