@@ -341,3 +341,29 @@ def test_resolve_and_score_includes_all_nine_keys(app_session):
         "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings"
     }
     assert set(result.keys()) == expected_keys
+
+
+def test_resolve_and_score_passes_hierarchy_node_name_mappings_to_resolve_hierarchy(app_session):
+    # Regression guard: _resolve_and_score must forward the user's
+    # "hierarchy_node" name-mapping selections (from the review UI's picker,
+    # applied via the _name_mappings.by_name override) into _resolve_hierarchy
+    # the same way it already does for _resolve_soldiers/_resolve_duty_shifts.
+    # If _resolve_hierarchy is called without them, an unresolved parent_name
+    # can never be manually fixed via the picker for hierarchy rows.
+    admin = _admin(app_session)
+    existing_parent = create_node(app_session, level="unit", name="הורה קיים")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(source_row=2, name="ילד", level="group", parent_name="שם לא תואם"),
+        ],
+    )
+    selections = {
+        "_name_mappings": {
+            "hierarchy_node": {"by_name": {"שם לא תואם": str(existing_parent.id)}},
+        },
+    }
+    result = _resolve_and_score(app_session, data, admin, selections=selections)
+    row = result["hierarchy"][0]
+    assert row["resolved_parent_id"] == str(existing_parent.id)
+    assert row["errors"] == []

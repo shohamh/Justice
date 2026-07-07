@@ -565,7 +565,7 @@ def _resolve_and_score(
         "duty_shifts": _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row),
         "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
         "duty_locations": _resolve_duty_locations(session, data),
-        "hierarchy": _resolve_hierarchy(session, data, actor),
+        "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row),
         "parser_id": data.parser_id,
