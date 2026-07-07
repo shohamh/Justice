@@ -880,13 +880,18 @@ def confirm_session(
                         level=row["level"],
                         name=row["name"],
                         parent_id=parent_id,
-                        commander_id=(
-                            uuid.UUID(row["resolved_commander_id"])
-                            if row.get("resolved_commander_id") else None
-                        ),
                         actor_id=actor.id,
                     )
                     name_to_new_node_id[row["name"]] = node.id
+                    if row.get("resolved_commander_id") is not None:
+                        # Route through set_commander (not create_node's own
+                        # commander_id param) so the reciprocal bookkeeping
+                        # (soldier.hierarchy_node_id, role recompute) that the
+                        # update branch already gets for free also applies here.
+                        set_commander(
+                            session, node_id=node.id,
+                            commander_id=uuid.UUID(row["resolved_commander_id"]), actor_id=actor.id,
+                        )
                     for dm in row.get("duty_manager_refs", []):
                         if dm.get("resolved_soldier_id"):
                             assign_dm_scope(

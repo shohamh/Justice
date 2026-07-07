@@ -160,6 +160,14 @@ def test_confirm_creates_hierarchy_node_with_commander_and_duty_manager(client, 
     scope = admin_session.query(DutyManagerScope).filter_by(hierarchy_node_id=node.id).one()
     assert scope.duty_manager_id == dm.id
 
+    # Regression guard: assigning a commander to a brand-new node on import
+    # must go through the same set_commander() side effects as an update
+    # would — the commander's hierarchy_node_id and display role must be
+    # updated too, not just the node's commander_id column.
+    admin_session.refresh(commander)
+    assert commander.hierarchy_node_id == node.id
+    assert commander.role == "commander"
+
 
 def test_confirm_creates_exemption_type_with_applies_to(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
