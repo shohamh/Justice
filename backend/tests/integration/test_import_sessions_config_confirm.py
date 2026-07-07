@@ -240,3 +240,51 @@ def test_session_summary_includes_new_group_counts(client, admin_session):
     ).json()
     entry = next(s for s in listing if s["id"] == session_id)
     assert entry["row_summary"]["duty_locations"] == 1
+
+
+def test_confirm_creates_and_updates_duty_type_start_end_time(client, admin_session):
+    # Regression guard: start_time/end_time are parsed and resolved but were
+    # never passed to create_duty_type()/update_duty_type() in confirm_session(),
+    # silently dropping them on both create and update.
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    dt_name = f"dt_{_uid()}"
+    xlsx = _wb({
+        "duty_types": [
+            ["name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
+             "is_external", "contact_name", "contact_phone", "start_time", "end_time",
+             "instructions", "eligible_units", "requirements_json"],
+            [dt_name, "1.50", "", "true", "0.000", "0", "false", "", "", "20:00", "06:00", "", "", ""],
+        ],
+    })
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+    confirmed = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["created"] == 1
+
+    dt = admin_session.query(DutyType).filter_by(name=dt_name).one()
+    assert dt.start_time is not None and dt.start_time.strftime("%H:%M") == "20:00"
+    assert dt.end_time is not None and dt.end_time.strftime("%H:%M") == "06:00"
+
+    # Update path: change the times via a second import of the same name.
+    xlsx2 = _wb({
+        "duty_types": [
+            ["name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
+             "is_external", "contact_name", "contact_phone", "start_time", "end_time",
+             "instructions", "eligible_units", "requirements_json"],
+            [dt_name, "1.50", "", "true", "0.000", "0", "false", "", "", "21:00", "07:00", "", "", ""],
+        ],
+    })
+    resp2 = _upload(client, _token(admin), xlsx2)
+    confirmed2 = client.post(
+        f"/api/import/sessions/{resp2.json()['session_id']}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirmed2.status_code == 200
+    assert confirmed2.json()["updated"] == 1
+    admin_session.refresh(dt)
+    assert dt.start_time.strftime("%H:%M") == "21:00"
+    assert dt.end_time.strftime("%H:%M") == "07:00"

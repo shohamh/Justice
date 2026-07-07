@@ -815,6 +815,12 @@ def confirm_session(
         try:
             with session.begin_nested():
                 eligible_ids = [uuid.UUID(nid) for nid in row.get("resolved_eligible_node_ids", [])] or None
+                start_time = (
+                    datetime.strptime(row["start_time"], "%H:%M").time() if row.get("start_time") else None
+                )
+                end_time = (
+                    datetime.strptime(row["end_time"], "%H:%M").time() if row.get("end_time") else None
+                )
                 if effective == "new":
                     new_dt = create_duty_type(
                         session,
@@ -825,6 +831,8 @@ def confirm_session(
                         reserve_minimum=row.get("reserve_minimum") or 0,
                         contact_name=row.get("contact_name"),
                         contact_phone=row.get("contact_phone"),
+                        start_time=start_time,
+                        end_time=end_time,
                         instructions=row.get("instructions"),
                         is_external=bool(row.get("is_external")),
                         eligible_node_ids=eligible_ids,
@@ -846,6 +854,8 @@ def confirm_session(
                             reserve_minimum=row.get("reserve_minimum"),
                             contact_name=row.get("contact_name"),
                             contact_phone=row.get("contact_phone"),
+                            start_time=start_time,
+                            end_time=end_time,
                             instructions=row.get("instructions"),
                             is_external=row.get("is_external"),
                             eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
