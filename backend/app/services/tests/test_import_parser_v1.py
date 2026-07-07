@@ -261,3 +261,75 @@ def test_parses_exemption_types_with_whitespace_in_applies_to_list():
     assert len(data.exemption_types) == 1
     row = data.exemption_types[0]
     assert row.applies_to_duty_type_names == ["שמירה", "טיול", "ביקור"]
+
+
+def _wb_with_duty_types_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_types")
+    ws.append([
+        "name", "score_per_day", "description", "active", "reserve_ratio",
+        "reserve_minimum", "is_external", "contact_name", "contact_phone",
+        "start_time", "end_time", "instructions", "eligible_units", "requirements_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_duty_types_sheet():
+    wb = _wb_with_duty_types_sheet([
+        [
+            "שמירה", "1.50", "תיאור", "true", "0.200",
+            "2", "false", "דני", "050-1234567",
+            "20:00", "06:00", "הצטיידות", "מדור א, מדור ב", '{"min_rank": 1}',
+        ],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.duty_types) == 1
+    row = data.duty_types[0]
+    assert row.name == "שמירה"
+    assert row.score_per_day == "1.50"
+    assert row.description == "תיאור"
+    assert row.active is True
+    assert row.reserve_ratio == "0.200"
+    assert row.reserve_minimum == 2
+    assert row.is_external is False
+    assert row.contact_name == "דני"
+    assert row.contact_phone == "050-1234567"
+    assert row.start_time == "20:00"
+    assert row.end_time == "06:00"
+    assert row.instructions == "הצטיידות"
+    # Regression test: the spreadsheet column is `eligible_units`, not
+    # `eligible_unit_names` — the parser must read from the real column name.
+    assert row.eligible_unit_names == ["מדור א", "מדור ב"]
+    assert row.requirements_json == '{"min_rank": 1}'
+
+
+def test_duty_types_numeric_fields_stay_as_raw_strings_or_ints():
+    wb = _wb_with_duty_types_sheet([
+        [
+            "שמירה", "1.50", "", "", "0.200",
+            "2", "", "", "",
+            "", "", "", "", "",
+        ],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.duty_types[0]
+    # score_per_day and reserve_ratio are kept as raw strings (not Decimal)
+    # at this parsing stage — conversion happens later in validation.
+    assert row.score_per_day == "1.50"
+    assert isinstance(row.score_per_day, str)
+    assert row.reserve_ratio == "0.200"
+    assert isinstance(row.reserve_ratio, str)
+    # reserve_minimum is parsed as an int at this stage.
+    assert row.reserve_minimum == 2
+    assert isinstance(row.reserve_minimum, int)
+
+
+def test_duty_types_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_types == []

@@ -240,7 +240,7 @@ class V1StandardParser:
                 start_time=str(r.get("start_time") or "").strip() or None,
                 end_time=str(r.get("end_time") or "").strip() or None,
                 instructions=str(r.get("instructions") or "").strip() or None,
-                eligible_unit_names=_parse_name_list(r.get("eligible_unit_names")),
+                eligible_unit_names=_parse_name_list(r.get("eligible_units")),
                 requirements_json=str(r.get("requirements_json") or "").strip() or None,
             )
             for r in _sheet_rows(wb, "duty_types")
