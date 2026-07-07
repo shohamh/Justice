@@ -104,6 +104,29 @@ def _resolve_soldiers(
     return out
 
 
+def _resolve_duty_locations(session: Session, data: ParsedImportData) -> list[dict]:
+    existing_by_name = {
+        loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()
+    }
+    out = []
+    for row in data.duty_locations:
+        errors: list[str] = []
+        if not row.name:
+            errors.append("חסר שם מיקום")
+        existing = existing_by_name.get(row.name) if row.name else None
+        action = "error" if errors else ("update" if existing else "new")
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": row.name,
+            "base": row.base,
+            "active": row.active,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
 def _resolve_duty_shifts(
     session: Session,
     data: ParsedImportData,
