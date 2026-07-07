@@ -14,6 +14,7 @@ from app.db.models import (
     DutyLocation,
     DutyShift,
     DutyType,
+    HierarchyLevelType,
     HierarchyNode,
     ImportSession,
     Soldier,
@@ -122,6 +123,130 @@ def _resolve_duty_locations(session: Session, data: ParsedImportData) -> list[di
             "name": row.name,
             "base": row.base,
             "active": row.active,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def _resolve_soldier_ref(
+    personal_number: str | None,
+    full_name: str | None,
+    by_pn: dict[str, Soldier],
+    by_name: dict[str, list[Soldier]],
+) -> tuple[Soldier | None, str | None]:
+    """personal-number-first, name-fallback soldier lookup shared by commander
+    and duty-manager-ref resolution. Returns (soldier_or_None, error_or_None)."""
+    if personal_number and personal_number in by_pn:
+        return by_pn[personal_number], None
+    if full_name:
+        matches = by_name.get(full_name, [])
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            return None, f"שם '{full_name}' מתאים ליותר מחייל אחד"
+    return None, f"לא נמצא חייל (מספר אישי '{personal_number or ''}', שם '{full_name or ''}')"
+
+
+def _resolve_hierarchy(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+) -> list[dict]:
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    existing_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    valid_levels = {
+        lt.key for lt in session.execute(select(HierarchyLevelType)).scalars()
+    }
+    by_pn = {s.personal_number: s for s in session.execute(select(Soldier)).scalars()}
+    by_name: dict[str, list[Soldier]] = {}
+    for s in by_pn.values():
+        by_name.setdefault(s.full_name, []).append(s)
+
+    # Pass 1: figure out each row's own resolved-or-new identity (name -> row index),
+    # so pass 2 can resolve forward-referenced parents regardless of sheet order.
+    row_by_name = {row.name: row for row in data.hierarchy}
+
+    out = []
+    for row in data.hierarchy:
+        errors: list[str] = []
+
+        if row.level not in valid_levels:
+            errors.append(f"סוג יחידה לא מוכר '{row.level}'")
+
+        existing = existing_by_name.get(row.name)
+
+        resolved_parent_id = None
+        if row.parent_name:
+            row_key = f"hierarchy:{row.source_row}"
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.parent_name)
+            if mapped_id:
+                resolved_parent_id = mapped_id
+            elif row.parent_name in existing_by_name:
+                resolved_parent_id = str(existing_by_name[row.parent_name].id)
+            elif row.parent_name in row_by_name:
+                resolved_parent_id = None  # resolved to another *new* row by name at commit time
+            else:
+                errors.append(f"יחידת אב לא מזוהה '{row.parent_name}'")
+
+        resolved_commander_id = None
+        if row.commander_personal_number or row.commander_name:
+            soldier, err = _resolve_soldier_ref(
+                row.commander_personal_number, row.commander_name, by_pn, by_name
+            )
+            if soldier is not None:
+                resolved_commander_id = str(soldier.id)
+            else:
+                errors.append(f"מפקד לא מזוהה: {err}")
+
+        dm_results = []
+        for ref in row.duty_manager_refs:
+            pn, _, name = ref.partition(":")
+            soldier, err = _resolve_soldier_ref(pn.strip(), name.strip(), by_pn, by_name)
+            dm_results.append({
+                "ref": ref,
+                "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            })
+            if soldier is None:
+                errors.append(f"אחראי תורנות לא מזוהה: {err}")
+
+        action: str
+        if errors:
+            action = "error"
+        elif existing is not None:
+            action = "update"
+        else:
+            action = "new"
+
+        if action != "error" and existing is not None and actor.role != "admin":
+            if not is_node_in_actor_scope(session=session, actor=actor, node_id=existing.id):
+                action = "out_of_scope"
+        elif action == "new" and actor.role != "admin" and resolved_parent_id:
+            try:
+                if not is_node_in_actor_scope(
+                    session=session, actor=actor, node_id=uuid.UUID(resolved_parent_id)
+                ):
+                    action = "out_of_scope"
+            except ValueError:
+                pass
+        elif action == "new" and actor.role != "admin" and not resolved_parent_id and not row.parent_name:
+            # A brand-new root node: only admins may create root nodes via import.
+            action = "out_of_scope"
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "name": row.name,
+            "level": row.level,
+            "parent_name": row.parent_name,
+            "resolved_parent_id": resolved_parent_id,
+            "commander_personal_number": row.commander_personal_number,
+            "commander_name": row.commander_name,
+            "resolved_commander_id": resolved_commander_id,
+            "duty_manager_refs": dm_results,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out

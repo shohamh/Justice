@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from app.db.models import DutyLocation
-from app.services.import_parsers.schema import ImportDutyLocationRow, ParsedImportData
-from app.services.import_sessions import _resolve_duty_locations
+from app.db.models import DutyLocation, HierarchyLevelType, Soldier
+from app.services.import_parsers.schema import (
+    ImportDutyLocationRow,
+    ImportHierarchyNodeRow,
+    ParsedImportData,
+)
+from app.services.import_sessions import _resolve_duty_locations, _resolve_hierarchy
+from tests.helpers import create_node, create_soldier
 
 
 def test_resolve_duty_locations_new_and_update(app_session):
@@ -65,3 +70,87 @@ def test_resolve_duty_locations_empty_sheet(app_session):
     )
     result = _resolve_duty_locations(app_session, data)
     assert result == []
+
+
+def _admin(app_session):
+    return create_soldier(app_session, personal_number="admin-1", role="admin")
+
+
+def test_resolve_hierarchy_parent_forward_reference(app_session):
+    # "group" ranks below "unit" per the seeded HierarchyLevelType data.
+    admin = _admin(app_session)
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(source_row=2, name="ילד", level="group", parent_name="הורה"),
+            ImportHierarchyNodeRow(source_row=3, name="הורה", level="unit"),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, admin)
+    child = next(r for r in result if r["name"] == "ילד")
+    parent = next(r for r in result if r["name"] == "הורה")
+    assert child["action"] == "new"
+    assert parent["action"] == "new"
+    assert child["errors"] == []
+
+
+def test_resolve_hierarchy_commander_personal_number_then_name_fallback(app_session):
+    admin = _admin(app_session)
+    soldier = create_soldier(app_session, personal_number="12345")  # full_name = "Test 12345"
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(
+                source_row=2, name="מדור א", level="group",
+                commander_personal_number="not-found", commander_name="Test 12345",
+            ),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, admin)
+    assert result[0]["resolved_commander_id"] == str(soldier.id)
+    assert result[0]["errors"] == []
+
+
+def test_resolve_hierarchy_unresolvable_commander_is_row_error(app_session):
+    admin = _admin(app_session)
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(
+                source_row=2, name="מדור א", level="group",
+                commander_personal_number="ghost", commander_name="לא קיים",
+            ),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, admin)
+    assert result[0]["action"] == "error"
+    assert result[0]["errors"]
+
+
+def test_resolve_hierarchy_duty_manager_refs_resolved(app_session):
+    admin = _admin(app_session)
+    dm = create_soldier(app_session, personal_number="99999")
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(
+                source_row=2, name="מדור א", level="group",
+                duty_manager_refs=["99999:Test 99999"],
+            ),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, admin)
+    assert result[0]["duty_manager_refs"] == [{"ref": "99999:Test 99999", "resolved_soldier_id": str(dm.id)}]
+
+
+def test_resolve_hierarchy_out_of_scope_for_non_admin(app_session):
+    root = create_node(app_session, level="corps", name="שורש אחר")
+    dm = create_soldier(app_session, personal_number="dm-1", role="duty_manager", hierarchy_node_id=root.id)
+    data = ParsedImportData(
+        parser_id="v1_standard",
+        hierarchy=[
+            ImportHierarchyNodeRow(source_row=2, name="מחוץ לטווח", level="corps"),
+        ],
+    )
+    result = _resolve_hierarchy(app_session, data, dm)
+    assert result[0]["action"] == "out_of_scope"
