@@ -42,6 +42,10 @@ def _session_summary(sess: ImportSession) -> dict[str, Any]:
         "row_summary": {
             "soldiers": len(state.get("soldiers", [])),
             "duty_shifts": len(state.get("duty_shifts", [])),
+            "duty_locations": len(state.get("duty_locations", [])),
+            "hierarchy": len(state.get("hierarchy", [])),
+            "duty_types": len(state.get("duty_types", [])),
+            "exemption_types": len(state.get("exemption_types", [])),
         },
     }
 

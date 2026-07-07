@@ -227,3 +227,16 @@ def test_confirm_links_forward_referenced_parent_in_same_sheet(client, admin_ses
     parent = admin_session.query(HierarchyNode).filter_by(name=parent_name).one()
     child = admin_session.query(HierarchyNode).filter_by(name=child_name).one()
     assert child.parent_id == parent.id
+
+
+def test_session_summary_includes_new_group_counts(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    xlsx = _wb({"duty_locations": [["name", "base", "active"], [f"שער_{_uid()}", "", "true"]]})
+    resp = _upload(client, _token(admin), xlsx)
+    session_id = resp.json()["session_id"]
+
+    listing = client.get(
+        "/api/import/sessions", headers={"Authorization": f"Bearer {_token(admin)}"}
+    ).json()
+    entry = next(s for s in listing if s["id"] == session_id)
+    assert entry["row_summary"]["duty_locations"] == 1
