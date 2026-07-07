@@ -22,6 +22,12 @@ from app.db.models import (
     ImportSession,
     Soldier,
 )
+from app.services.duty_config import (
+    create_duty_type,
+    create_location,
+    update_duty_type,
+    update_location,
+)
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
@@ -762,6 +768,89 @@ def confirm_session(
             created_duty_shifts.append(str(shift.id))
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
+
+    # ── Duty locations ─────────────────────────────────────────────────
+    for row in state.get("duty_locations", []):
+        effective = _effective_action(selections, "duty_locations", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    create_location(
+                        session, name=row["name"], base=row.get("base"), actor_id=actor.id,
+                    )
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    loc = session.get(DutyLocation, uuid.UUID(row["existing_id"]))
+                    if loc is not None:
+                        update_location(
+                            session, location=loc, name=None, base=row.get("base"), actor_id=actor.id,
+                        )
+                        if row.get("active") is not None:
+                            loc.active = row["active"]
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "duty_locations", "error": str(exc)})
+
+    # ── Duty types ──────────────────────────────────────────────────────
+    for row in state.get("duty_types", []):
+        effective = _effective_action(selections, "duty_types", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                eligible_ids = [uuid.UUID(nid) for nid in row.get("resolved_eligible_node_ids", [])] or None
+                if effective == "new":
+                    create_duty_type(
+                        session,
+                        name=row["name"],
+                        score_per_day=Decimal(row["score_per_day"]),
+                        description=row.get("description"),
+                        reserve_ratio=Decimal(row["reserve_ratio"]) if row.get("reserve_ratio") else Decimal("0.000"),
+                        reserve_minimum=row.get("reserve_minimum") or 0,
+                        contact_name=row.get("contact_name"),
+                        contact_phone=row.get("contact_phone"),
+                        instructions=row.get("instructions"),
+                        is_external=bool(row.get("is_external")),
+                        eligible_node_ids=eligible_ids,
+                        actor_id=actor.id,
+                    )
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    dt = session.get(DutyType, uuid.UUID(row["existing_id"]))
+                    if dt is not None:
+                        update_duty_type(
+                            session,
+                            duty_type=dt,
+                            name=None,
+                            score_per_day=Decimal(row["score_per_day"]) if row.get("score_per_day") else None,
+                            description=row.get("description"),
+                            reserve_ratio=Decimal(row["reserve_ratio"]) if row.get("reserve_ratio") else None,
+                            reserve_minimum=row.get("reserve_minimum"),
+                            contact_name=row.get("contact_name"),
+                            contact_phone=row.get("contact_phone"),
+                            instructions=row.get("instructions"),
+                            is_external=row.get("is_external"),
+                            eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
+                            requirements=row.get("requirements"),
+                            actor_id=actor.id,
+                        )
+                        if row.get("active") is not None:
+                            dt.active = row["active"]
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "duty_types", "error": str(exc)})
 
     import_session.created_links = {
         "soldiers": created_soldiers,
