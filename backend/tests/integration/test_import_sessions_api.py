@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import openpyxl
 import pytest
+from sqlalchemy import select
 
 from app.db.models import DutyLocation
 from app.services.duty_config import create_duty_type
@@ -24,6 +25,19 @@ def _wb_with_duty_shifts(rows):
     ws.append([
         "duty_type_name", "duty_location_name", "start_date", "end_date",
         "start_time", "end_time", "required_count", "node_quotas", "notes",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def _wb_with_assignments(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("assignments")
+    ws.append([
+        "personal_number", "full_name", "duty_type_name", "duty_location_name",
+        "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes",
     ])
     for r in rows:
         ws.append(r)
@@ -416,3 +430,46 @@ def test_done_enforces_ownership(client, admin_session):
         headers={"Authorization": f"Bearer {_token(dm)}"},
     )
     assert owner_ok.status_code == 200
+
+
+def test_upload_and_confirm_assignments_end_to_end(client, admin_session):
+    from app.db.models import DutyAssignment
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sol_{_uid()}")
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    # No matching shift exists yet, so this row will resolve as an error —
+    # this test only verifies the end-to-end wiring (upload -> list -> get -> confirm),
+    # not the resolution rules (covered in test_import_sessions_service.py).
+    resp = _upload(client, _token(admin), _to_bytes(wb))
+    assert resp.status_code == 200
+    session_id = resp.json()["session_id"]
+    assert resp.json()["preview"]["assignments"][0]["action"] == "error"
+
+    list_resp = client.get(
+        "/api/import/sessions", headers={"Authorization": f"Bearer {_token(admin)}"}
+    )
+    summary = next(s for s in list_resp.json() if s["id"] == session_id)
+    assert summary["row_summary"]["assignments"] == 1
+
+    detail_resp = client.get(
+        f"/api/import/sessions/{session_id}", headers={"Authorization": f"Bearer {_token(admin)}"}
+    )
+    assert detail_resp.json()["parsed_state"]["assignments"][0]["action"] == "error"
+
+    confirm_resp = client.post(
+        f"/api/import/sessions/{session_id}/confirm",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert confirm_resp.status_code == 200
+    assert confirm_resp.json()["created"] == 0  # error row, nothing created
+    assert admin_session.execute(select(DutyAssignment)).scalars().all() == []

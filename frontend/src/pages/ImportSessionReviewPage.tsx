@@ -11,6 +11,7 @@ import {
   type RowBase,
   type Selections,
   type ShiftTemplateRow,
+  type AssignmentRow,
   getSession,
   reparseSession,
   saveSelections,
@@ -37,14 +38,22 @@ const ACTION_CHIP: Record<ActionValue, string> = {
   skip: "bg-gray-100 text-gray-500",
 };
 
-type TabKey = "soldiers" | "duty_shifts" | "shift_templates";
+type TabKey = "soldiers" | "duty_shifts" | "shift_templates" | "assignments";
 
 function extractDetail(err: unknown): string | undefined {
   return (err as { response?: { data?: { detail?: string } } })?.response?.data
     ?.detail;
 }
 
-function StatusChip({ action, errors }: { action: ActionValue; errors?: string[] }) {
+function StatusChip({
+  action,
+  errors,
+  warnings,
+}: {
+  action: ActionValue;
+  errors?: string[];
+  warnings?: string[];
+}) {
   return (
     <div className="space-y-0.5">
       <span
@@ -56,6 +65,13 @@ function StatusChip({ action, errors }: { action: ActionValue; errors?: string[]
         <ul className="text-red-600 text-xs list-none">
           {errors.map((e, i) => (
             <li key={i}>{e}</li>
+          ))}
+        </ul>
+      )}
+      {warnings && warnings.length > 0 && (
+        <ul className="text-yellow-600 text-xs list-none">
+          {warnings.map((w, i) => (
+            <li key={i}>{w}</li>
           ))}
         </ul>
       )}
@@ -217,7 +233,11 @@ export default function ImportSessionReviewPage() {
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
-  function setRowAction(group: "soldiers" | "duty_shifts" | "shift_templates", row: number, value: string) {
+  function setRowAction(
+    group: "soldiers" | "duty_shifts" | "shift_templates" | "assignments",
+    row: number,
+    value: string,
+  ) {
     if (!id) return;
     setSelections((prev) => {
       const next = {
@@ -327,7 +347,10 @@ export default function ImportSessionReviewPage() {
     }
   }
 
-  function currentSelection(group: "soldiers" | "duty_shifts" | "shift_templates", row: RowBase): string {
+  function currentSelection(
+    group: "soldiers" | "duty_shifts" | "shift_templates" | "assignments",
+    row: RowBase,
+  ): string {
     return (selections[group] as Record<string, string> | undefined)?.[String(row.row)] ?? row.action;
   }
 
@@ -346,7 +369,7 @@ export default function ImportSessionReviewPage() {
     );
   }
 
-  const { soldiers, duty_shifts, shift_templates } = detail.parsed_state;
+  const { soldiers, duty_shifts, shift_templates, assignments } = detail.parsed_state;
 
   return (
     <Layout>
@@ -365,6 +388,7 @@ export default function ImportSessionReviewPage() {
               ["soldiers", `חיילים (${soldiers.length})`],
               ["duty_shifts", `משמרות (${duty_shifts.length})`],
               ["shift_templates", `תבניות (${shift_templates.length})`],
+              ["assignments", `שיבוצים (${assignments.length})`],
             ] as [TabKey, string][]
           ).map(([key, label]) => (
             <button
@@ -455,7 +479,7 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
-                        <StatusChip action={row.action} errors={row.errors} />
+                        <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
                       </td>
                       {!readOnly && (
                         <td className="p-3">
@@ -734,6 +758,64 @@ export default function ImportSessionReviewPage() {
                                   row.row,
                                   e.target.value,
                                 )
+                              }
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && (
+                                <option value="skip">דלג</option>
+                              )}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "assignments" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">מ&quot;א</th>
+                  <th className="text-right p-3">סוג תורנות</th>
+                  <th className="text-right p-3">מיקום</th>
+                  <th className="text-right p-3">תאריכים</th>
+                  <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.map((row: AssignmentRow) => {
+                  const canToggle =
+                    row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.full_name}</td>
+                      <td className="p-3">{row.personal_number}</td>
+                      <td className="p-3">{row.duty_type_name}</td>
+                      <td className="p-3">{row.duty_location_name}</td>
+                      <td className="p-3">
+                        {row.start_date} – {row.end_date}
+                      </td>
+                      <td className="p-3">{row.is_reserve ? "כן" : "לא"}</td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("assignments", row)}
+                              onChange={(e) =>
+                                setRowAction("assignments", row.row, e.target.value)
                               }
                             >
                               <option value={row.action}>אישור</option>

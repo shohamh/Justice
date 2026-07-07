@@ -123,21 +123,71 @@ def test_soldiers_sheet_absent_gives_empty_list():
     assert data.soldiers == []
 
 
-def test_legacy_assignments_sheet_falls_back_to_duty_shifts():
+def _wb_with_assignments_sheet(rows):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     ws = wb.create_sheet("assignments")
-    ws.append(["personal_number", "duty_type_name", "start_date", "end_date", "is_reserve"])
-    ws.append(["12345", "שמירה", "15.06.2024", "16.06.2024", "false"])
+    ws.append([
+        "personal_number", "full_name", "duty_type_name", "duty_location_name",
+        "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
 
+
+def test_parses_assignments_sheet_row():
+    wb = _wb_with_assignments_sheet([
+        ["12345", "ישראל ישראלי", "שמירה", "שער ראשי",
+         "15.06.2024", "16.06.2024", "20:00", "06:00", "true", "הערה"],
+    ])
     data = V1StandardParser().parse(wb)
-    assert len(data.duty_shifts) == 1
-    row = data.duty_shifts[0]
+    assert len(data.assignments) == 1
+    row = data.assignments[0]
+    assert row.personal_number == "12345"
+    assert row.full_name == "ישראל ישראלי"
     assert row.duty_type_name == "שמירה"
+    assert row.duty_location_name == "שער ראשי"
     assert row.start_date == "2024-06-15"
     assert row.end_date == "2024-06-16"
-    assert row.required_count == 1
-    assert any("assignments" in w for w in data.parser_warnings)
+    assert row.start_time == "20:00"
+    assert row.end_time == "06:00"
+    assert row.is_reserve is True
+    assert row.notes == "הערה"
+
+
+def test_assignments_sheet_does_not_produce_synthetic_duty_shifts():
+    wb = _wb_with_assignments_sheet([
+        ["12345", "ישראל ישראלי", "שמירה", "שער ראשי",
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_shifts == []
+    assert not any("assignments" in w for w in data.parser_warnings)
+
+
+def test_assignments_sheet_absent_gives_empty_list():
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    data = V1StandardParser().parse(wb)
+    assert data.assignments == []
+
+
+def test_assignments_and_duty_shifts_both_present_both_parsed():
+    wb = _wb_with_assignments_sheet([
+        ["12345", "ישראל ישראלי", "שמירה", "שער ראשי",
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    ws = wb.create_sheet("duty_shifts")
+    ws.append([
+        "duty_type_name", "duty_location_name", "start_date", "end_date",
+        "start_time", "end_time", "required_count", "node_quotas", "notes",
+    ])
+    ws.append(["שמירה", "שער ראשי", "15.06.2024", "16.06.2024", "", "", 2, "", ""])
+
+    data = V1StandardParser().parse(wb)
+    assert len(data.assignments) == 1
+    assert len(data.duty_shifts) == 1
 
 
 def _wb_with_duty_types_sheet(rows):

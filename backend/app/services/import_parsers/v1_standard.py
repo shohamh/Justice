@@ -8,6 +8,7 @@ from app.services.import_parsers._shared_parsing import parse_bool as _parse_boo
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
+    ImportAssignmentRow,
     ImportDutyShiftRow,
     ImportNodeQuota,
     ImportSoldierRow,
@@ -69,15 +70,10 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
 
 
 class V1StandardParser:
-    """Standard v1 layout: `soldiers`, `duty_shifts` (primary).
+    """Standard v1 layout: `soldiers`, `duty_shifts`, `assignments`.
 
     Shift templates are not importable via Excel — they're managed only
     through the system UI. A `shift_templates` sheet, if present, is ignored.
-
-    Also accepts the legacy `assignments` sheet as a fallback source for
-    duty shifts when no `duty_shifts` sheet is present, converting each
-    assignment row (which has no `required_count`) into a duty shift row
-    with `required_count=1`.
     """
 
     id = "v1_standard"
@@ -109,26 +105,8 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "soldiers")
         ]
 
-        duty_shift_rows = _sheet_rows(wb, "duty_shifts")
-        if not duty_shift_rows and "assignments" in wb.sheetnames:
-            warnings.append(
-                "לא נמצא גיליון 'duty_shifts' — נעשה שימוש בגיליון הישן 'assignments' "
-                "(הכמות הנדרשת הוגדרה כברירת מחדל 1 לשורה, ללא תמיכה במכסות יחידה)"
-            )
-            for r in _sheet_rows(wb, "assignments"):
-                duty_shift_rows.append({
-                    "_row": r["_row"],
-                    "duty_type_name": r.get("duty_type_name"),
-                    "duty_location_name": None,
-                    "start_date": r.get("start_date"),
-                    "end_date": r.get("end_date"),
-                    "required_count": 1,
-                    "node_quotas": None,
-                    "notes": None,
-                })
-
         duty_shifts = []
-        for r in duty_shift_rows:
+        for r in _sheet_rows(wb, "duty_shifts"):
             node_quotas, node_quota_warnings = _parse_node_quotas(r.get("node_quotas"), r["_row"])
             warnings.extend(node_quota_warnings)
             duty_shifts.append(
@@ -146,9 +124,27 @@ class V1StandardParser:
                 )
             )
 
+        assignments = [
+            ImportAssignmentRow(
+                source_row=r["_row"],
+                personal_number=str(r.get("personal_number") or "").strip(),
+                full_name=str(r.get("full_name") or "").strip(),
+                duty_type_name=str(r.get("duty_type_name") or "").strip(),
+                duty_location_name=str(r.get("duty_location_name") or "").strip(),
+                start_date=_parse_date(r.get("start_date")) or "",
+                end_date=_parse_date(r.get("end_date")) or "",
+                start_time=str(r.get("start_time") or "").strip() or None,
+                end_time=str(r.get("end_time") or "").strip() or None,
+                is_reserve=_parse_bool(r.get("is_reserve")) or False,
+                notes=str(r.get("notes") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "assignments")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
+            assignments=assignments,
             parser_id=self.id,
             parser_warnings=warnings,
         )

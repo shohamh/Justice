@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.password import hash_password
 from app.db.models import (
+    DutyAssignment,
     DutyLocation,
     DutyShift,
     DutyType,
@@ -40,11 +41,15 @@ def _resolve_soldiers(
     existing_by_pn = {
         s.personal_number: s for s in session.execute(select(Soldier)).scalars()
     }
+    existing_by_full_name: dict[str, list[Soldier]] = {}
+    for s in existing_by_pn.values():
+        existing_by_full_name.setdefault(s.full_name, []).append(s)
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
 
     out = []
     for row in data.soldiers:
         errors: list[str] = []
+        warnings: list[str] = []
         if not row.personal_number:
             errors.append("חסר מספר אישי")
         if not row.full_name:
@@ -65,6 +70,17 @@ def _resolve_soldiers(
                 errors.append(f"יחידה לא מזוהה '{row.hierarchy_node_name}'")
 
         existing = existing_by_pn.get(row.personal_number) if row.personal_number else None
+        if existing is None and row.personal_number and row.full_name:
+            candidates = existing_by_full_name.get(row.full_name, [])
+            if len(candidates) == 1:
+                existing = candidates[0]
+                warnings.append(
+                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{row.personal_number}'"
+                )
+            elif len(candidates) > 1:
+                errors.append(
+                    f"שם '{row.full_name}' אינו חד משמעי (מספר אישי '{row.personal_number}' לא נמצא)"
+                )
 
         if errors:
             action = "error"
@@ -88,6 +104,7 @@ def _resolve_soldiers(
             "row": row.source_row,
             "action": action,
             "errors": errors,
+            "warnings": warnings,
             "personal_number": row.personal_number,
             "full_name": row.full_name,
             "rank": row.rank,
@@ -251,6 +268,159 @@ def _resolve_shift_templates(
     return out
 
 
+def _resolve_assignments(
+    session: Session,
+    data: ParsedImportData,
+    actor: Soldier,
+    resolved_duty_shifts: list[dict],
+) -> list[dict]:
+    def _default_time(value: str | None, default: str) -> str:
+        return value if value else default
+
+    soldiers_by_pn = {s.personal_number: s for s in session.execute(select(Soldier)).scalars()}
+    soldiers_by_full_name: dict[str, list[Soldier]] = {}
+    for s in soldiers_by_pn.values():
+        soldiers_by_full_name.setdefault(s.full_name, []).append(s)
+    duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
+
+    existing_shifts = session.execute(select(DutyShift)).scalars().all()
+    existing_shift_by_key: dict[tuple, DutyShift] = {}
+    for shift in existing_shifts:
+        key = (
+            shift.duty_type_id, shift.duty_location_id,
+            shift.start_date.isoformat(), shift.end_date.isoformat(),
+            shift.start_time, shift.end_time,
+        )
+        existing_shift_by_key[key] = shift
+
+    session_shift_by_key: dict[tuple, dict] = {}
+    for shift_row in resolved_duty_shifts:
+        if (
+            shift_row["action"] != "new"
+            or not shift_row.get("resolved_duty_type_id")
+            or not shift_row.get("resolved_duty_location_id")
+        ):
+            continue
+        key = (
+            uuid.UUID(shift_row["resolved_duty_type_id"]),
+            uuid.UUID(shift_row["resolved_duty_location_id"]),
+            shift_row["start_date"], shift_row["end_date"],
+            _default_time(shift_row.get("start_time"), "00:00"),
+            _default_time(shift_row.get("end_time"), "23:59"),
+        )
+        session_shift_by_key[key] = shift_row
+
+    existing_assignment_pairs = {
+        (a.soldier_id, a.duty_shift_id)
+        for a in session.execute(select(DutyAssignment)).scalars()
+        if a.duty_shift_id is not None
+    }
+    running_count: dict[str, int] = {}
+    for (_, shift_id) in existing_assignment_pairs:
+        key = f"existing:{shift_id}"
+        running_count[key] = running_count.get(key, 0) + 1
+
+    out = []
+    for row in data.assignments:
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        soldier = soldiers_by_pn.get(row.personal_number) if row.personal_number else None
+        if soldier is not None:
+            if soldier.full_name != row.full_name:
+                errors.append(
+                    f"שם מלא '{row.full_name}' אינו תואם לחייל עם מספר אישי "
+                    f"'{row.personal_number}' ('{soldier.full_name}')"
+                )
+        else:
+            candidates = soldiers_by_full_name.get(row.full_name, []) if row.full_name else []
+            if len(candidates) == 1:
+                soldier = candidates[0]
+                warnings.append(f"נמצא לפי שם — מספר אישי '{row.personal_number}' לא נמצא")
+            elif len(candidates) > 1:
+                errors.append(
+                    f"מספר אישי '{row.personal_number}' לא נמצא ושם '{row.full_name}' אינו חד משמעי"
+                )
+            else:
+                errors.append(
+                    f"לא נמצא חייל עם מספר אישי '{row.personal_number}' או שם '{row.full_name}'"
+                )
+
+        duty_type = duty_types_by_name.get(row.duty_type_name) if row.duty_type_name else None
+        if duty_type is None:
+            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
+        location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
+        if location is None:
+            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
+
+        resolved_duty_shift_id: str | None = None
+        matched_session_row: int | None = None
+        shift_key_str: str | None = None
+        required_count: int | None = None
+        if duty_type is not None and location is not None and row.start_date and row.end_date:
+            key = (
+                duty_type.id, location.id, row.start_date, row.end_date,
+                _default_time(row.start_time, "00:00"),
+                _default_time(row.end_time, "23:59"),
+            )
+            existing_match = existing_shift_by_key.get(key)
+            session_match = session_shift_by_key.get(key)
+            if existing_match is not None:
+                resolved_duty_shift_id = str(existing_match.id)
+                shift_key_str = f"existing:{existing_match.id}"
+                required_count = existing_match.required_count
+            elif session_match is not None:
+                matched_session_row = session_match["row"]
+                shift_key_str = f"session_row:{matched_session_row}"
+                required_count = session_match["required_count"]
+            else:
+                errors.append("לא נמצאה משמרת תואמת (סוג תורנות, מיקום, תאריכים ושעות)")
+
+        action = "error" if errors else "new"
+
+        if action == "new" and soldier is not None and actor.role != "admin":
+            if soldier.hierarchy_node_id is None or not is_node_in_actor_scope(
+                session=session, actor=actor, node_id=soldier.hierarchy_node_id
+            ):
+                action = "out_of_scope"
+
+        if (
+            action == "new"
+            and soldier is not None
+            and resolved_duty_shift_id is not None
+            and (soldier.id, uuid.UUID(resolved_duty_shift_id)) in existing_assignment_pairs
+        ):
+            action = "skip"
+
+        if action == "new" and shift_key_str is not None and required_count is not None:
+            current = running_count.get(shift_key_str, 0)
+            if current >= required_count:
+                warnings.append(f"למשמרת כבר משויכים {current}/{required_count} חיילים")
+            running_count[shift_key_str] = current + 1
+
+        out.append({
+            "row": row.source_row,
+            "action": action,
+            "errors": errors,
+            "warnings": warnings,
+            "personal_number": row.personal_number,
+            "full_name": row.full_name,
+            "duty_type_name": row.duty_type_name,
+            "duty_location_name": row.duty_location_name,
+            "start_date": row.start_date,
+            "end_date": row.end_date,
+            "start_time": row.start_time,
+            "end_time": row.end_time,
+            "is_reserve": row.is_reserve,
+            "notes": row.notes,
+            "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
+            "resolved_duty_shift_id": resolved_duty_shift_id,
+            "matched_session_row": matched_session_row,
+        })
+    return out
+
+
 def _resolve_and_score(
     session: Session,
     data: ParsedImportData,
@@ -262,10 +432,12 @@ def _resolve_and_score(
     dt_by_row   = nm.get("duty_type", {}).get("by_row", {})
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
+    duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row)
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
-        "duty_shifts": _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row),
+        "duty_shifts": duty_shifts,
         "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
+        "assignments": _resolve_assignments(session, data, actor, duty_shifts),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }
@@ -349,6 +521,8 @@ def confirm_session(
     errors: list[dict] = []
     created_soldiers: list[str] = []
     created_duty_shifts: list[str] = []
+    created_assignments: list[str] = []
+    shift_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
     for row in state.get("soldiers", []):
@@ -385,6 +559,7 @@ def confirm_session(
             elif effective == "update" and row.get("existing_id"):
                 s = session.get(Soldier, uuid.UUID(row["existing_id"]))
                 if s is not None:
+                    s.personal_number = row["personal_number"]
                     s.full_name = row["full_name"]
                     if row.get("rank") is not None:
                         s.rank = row["rank"]
@@ -458,12 +633,68 @@ def confirm_session(
 
             created += 1
             created_duty_shifts.append(str(shift.id))
+            shift_row_to_id[row["row"]] = shift.id
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_shifts", "error": str(exc)})
+
+    # ── Assignments ─────────────────────────────────────────────────────
+    for row in state.get("assignments", []):
+        effective = _effective_action(selections, "assignments", row)
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
+            skipped += 1
+            continue
+        if effective != "new":
+            skipped += 1
+            continue
+        try:
+            if row.get("resolved_duty_shift_id"):
+                duty_shift_id = uuid.UUID(row["resolved_duty_shift_id"])
+            elif row.get("matched_session_row") is not None:
+                mapped = shift_row_to_id.get(row["matched_session_row"])
+                if mapped is None:
+                    errors.append({
+                        "row": row["row"], "type": "assignments",
+                        "error": "המשמרת המתאימה לא נוצרה (דולגה או נכשלה)",
+                    })
+                    continue
+                duty_shift_id = mapped
+            else:
+                errors.append({
+                    "row": row["row"], "type": "assignments", "error": "לא נמצאה משמרת תואמת",
+                })
+                continue
+
+            # Nested transaction (SAVEPOINT), same rationale as the duty_shifts
+            # loop above: isolates this row's write so a flush-time failure
+            # can't poison the outer session/transaction for subsequent rows.
+            with session.begin_nested():
+                shift = session.get(DutyShift, duty_shift_id)
+                assignment = DutyAssignment(
+                    soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                    duty_type_id=shift.duty_type_id,
+                    duty_location_id=shift.duty_location_id,
+                    duty_shift_id=duty_shift_id,
+                    start_date=shift.start_date,
+                    end_date=shift.end_date,
+                    is_reserve=row.get("is_reserve") or False,
+                    notes=row.get("notes"),
+                )
+                if shift.start_time:
+                    assignment.start_time = shift.start_time
+                if shift.end_time:
+                    assignment.end_time = shift.end_time
+                session.add(assignment)
+                session.flush()
+
+            created += 1
+            created_assignments.append(str(assignment.id))
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "assignments", "error": str(exc)})
 
     import_session.created_links = {
         "soldiers": created_soldiers,
         "duty_shifts": created_duty_shifts,
+        "assignments": created_assignments,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)
