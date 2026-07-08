@@ -111,6 +111,16 @@ export interface HierarchyImportRow extends RowBase {
 export interface DutyTypeImportRow extends RowBase {
   name: string;
   score_per_day: string | null;
+  description: string | null;
+  active: boolean | null;
+  reserve_ratio: string | null;
+  reserve_minimum: number | null;
+  is_external: boolean | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  instructions: string | null;
   resolved_eligible_node_ids: string[];
   requirements: Record<string, unknown> | null;
   existing_id: string | null;

@@ -981,6 +981,16 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">ניקוד ליום</th>
+                  <th className="text-right p-3">תיאור</th>
+                  <th className="text-right p-3">פעיל</th>
+                  <th className="text-right p-3">יחס רזרבה</th>
+                  <th className="text-right p-3">מינימום רזרבה</th>
+                  <th className="text-right p-3">חיצוני</th>
+                  <th className="text-right p-3">איש קשר</th>
+                  <th className="text-right p-3">טלפון</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
+                  <th className="text-right p-3">הוראות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -992,6 +1002,58 @@ export default function ImportSessionReviewPage() {
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">{row.name}</td>
                       <td className="p-3">{row.score_per_day}</td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.description ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-3">{row.active === null ? "—" : row.active ? "כן" : "לא"}</td>
+                      <td className="p-3">{row.reserve_ratio ?? "—"}</td>
+                      <td className="p-3">{row.reserve_minimum ?? "—"}</td>
+                      <td className="p-3">{row.is_external === null ? "—" : row.is_external ? "כן" : "לא"}</td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.contact_name ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.contact_phone ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.start_time ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.end_time ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
+                      <td className="p-3">
+                        <textarea
+                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.instructions ?? ""}
+                          disabled
+                          readOnly
+                        />
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>

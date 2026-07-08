@@ -417,6 +417,16 @@ describe("ImportSessionReviewPage", () => {
         errors: [],
         name: "שמירה",
         score_per_day: "1.50",
+        description: "שמירה בשער",
+        active: true,
+        reserve_ratio: "0.200",
+        reserve_minimum: 2,
+        is_external: false,
+        contact_name: "דני",
+        contact_phone: "050-1234567",
+        start_time: "20:00",
+        end_time: "06:00",
+        instructions: "הצטיידות במקלע",
         resolved_eligible_node_ids: [],
         requirements: null,
         existing_id: null,
@@ -442,6 +452,42 @@ describe("ImportSessionReviewPage", () => {
 
     fireEvent.click(screen.getByText("פטורים (1)"));
     expect(await screen.findByText("פטור")).toBeInTheDocument();
+  });
+
+  it("shows full duty_type detail fields", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "שמירה",
+        score_per_day: "1.50",
+        description: "שמירה בשער",
+        active: true,
+        reserve_ratio: "0.200",
+        reserve_minimum: 2,
+        is_external: false,
+        contact_name: "דני",
+        contact_phone: "050-1234567",
+        start_time: "20:00",
+        end_time: "06:00",
+        instructions: "הצטיידות במקלע",
+        resolved_eligible_node_ids: [],
+        requirements: null,
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    expect(await screen.findByDisplayValue("שמירה בשער")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("דני")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("050-1234567")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("הצטיידות במקלע")).toBeInTheDocument();
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {
