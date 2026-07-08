@@ -270,6 +270,35 @@ export default function ImportSessionReviewPage() {
     });
   }
 
+  function setFieldOverride(
+    group: "duty_types" | "exemption_types" | "shift_templates",
+    row: number,
+    field: string,
+    value: unknown,
+  ) {
+    if (!id) return;
+    setSelections((prev) => {
+      const fo = prev._field_overrides ?? {};
+      const groupOverrides = (fo as Record<string, Record<string, Record<string, unknown>>>)[group] ?? {};
+      const rowOverrides = groupOverrides[String(row)] ?? {};
+      const next = {
+        ...prev,
+        _field_overrides: {
+          ...fo,
+          [group]: {
+            ...groupOverrides,
+            [String(row)]: { ...rowOverrides, [field]: value },
+          },
+        },
+      };
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        void saveSelections(id, next).then(() => handleReparse());
+      }, 500);
+      return next;
+    });
+  }
+
   async function handleReparse() {
     if (!id) return;
     try {
@@ -1000,59 +1029,114 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.score_per_day}</td>
                       <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.description ?? ""}
-                          disabled
-                          readOnly
-                        />
-                      </td>
-                      <td className="p-3">{row.active === null ? "—" : row.active ? "כן" : "לא"}</td>
-                      <td className="p-3">{row.reserve_ratio ?? "—"}</td>
-                      <td className="p-3">{row.reserve_minimum ?? "—"}</td>
-                      <td className="p-3">{row.is_external === null ? "—" : row.is_external ? "כן" : "לא"}</td>
-                      <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.contact_name ?? ""}
-                          disabled
-                          readOnly
-                        />
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "name", e.target.value)}
+                          />
+                        )}
                       </td>
                       <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.contact_phone ?? ""}
-                          disabled
-                          readOnly
-                        />
+                        {readOnly ? row.score_per_day : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.score_per_day ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "score_per_day", e.target.value)}
+                          />
+                        )}
                       </td>
                       <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.start_time ?? ""}
-                          disabled
-                          readOnly
-                        />
+                        {readOnly ? row.description ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.description ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "description", e.target.value || null)}
+                          />
+                        )}
                       </td>
                       <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.end_time ?? ""}
-                          disabled
-                          readOnly
-                        />
+                        {readOnly ? (row.active === null ? "—" : row.active ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.active ?? false}
+                            onChange={(e) => setFieldOverride("duty_types", row.row, "active", e.target.checked)}
+                          />
+                        )}
                       </td>
                       <td className="p-3">
-                        <textarea
-                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.instructions ?? ""}
-                          disabled
-                          readOnly
-                        />
+                        {readOnly ? row.reserve_ratio ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reserve_ratio ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "reserve_ratio", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reserve_minimum ?? "—" : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reserve_minimum ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "reserve_minimum", e.target.value ? Number(e.target.value) : null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_external === null ? "—" : row.is_external ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_external ?? false}
+                            onChange={(e) => setFieldOverride("duty_types", row.row, "is_external", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.contact_name ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.contact_name ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "contact_name", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.contact_phone ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.contact_phone ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "contact_phone", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.instructions ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.instructions ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "instructions", e.target.value || null)}
+                          />
+                        )}
                       </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
@@ -1098,17 +1182,51 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
                       <td className="p-3">
-                        <input
-                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
-                          value={row.description ?? ""}
-                          disabled
-                        />
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("exemption_types", row.row, "name", e.target.value)}
+                          />
+                        )}
                       </td>
-                      <td className="p-3">{row.is_global ? "כן" : "לא"}</td>
-                      <td className="p-3">{row.is_medical ? "כן" : "לא"}</td>
-                      <td className="p-3">{row.is_commander_exemption ? "כן" : "לא"}</td>
+                      <td className="p-3">
+                        {readOnly ? row.description ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.description ?? ""}
+                            onBlur={(e) => setFieldOverride("exemption_types", row.row, "description", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_global ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_global}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_global", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_medical ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_medical}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_medical", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_commander_exemption ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_commander_exemption}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_commander_exemption", e.target.checked)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>

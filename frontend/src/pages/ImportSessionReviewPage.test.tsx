@@ -452,10 +452,10 @@ describe("ImportSessionReviewPage", () => {
     await screen.findByText("יוסי כהן");
 
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
-    expect(await screen.findByText("שמירה")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("שמירה")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("פטורים (1)"));
-    expect(await screen.findByText("פטור")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("פטור")).toBeInTheDocument();
   });
 
   it("shows full duty_type detail fields", async () => {
@@ -517,6 +517,40 @@ describe("ImportSessionReviewPage", () => {
     fireEvent.click(screen.getByText("פטורים (1)"));
 
     expect(await screen.findByDisplayValue("פטור רפואי")).toBeInTheDocument();
+  });
+
+  it("edits a duty_type field inline and saves it as a field override", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2, action: "new", errors: [], name: "שמירה", score_per_day: "1.50",
+        description: "ישן", active: true, reserve_ratio: null, reserve_minimum: null,
+        is_external: false, contact_name: null, contact_phone: null,
+        start_time: null, end_time: null, instructions: null,
+        resolved_eligible_node_ids: [], requirements: null, existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    const input = await screen.findByDisplayValue("ישן");
+    fireEvent.change(input, { target: { value: "חדש" } });
+    fireEvent.blur(input);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        _field_overrides: { duty_types: { "2": { description: "חדש" } } },
+      }),
+    );
+    vi.useRealTimers();
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {
