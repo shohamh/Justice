@@ -1278,3 +1278,65 @@ def test_shift_template_field_override_none_value_still_bypasses_resolution(admi
     row = sess.parsed_state["shift_templates"][0]
     assert row["action"] == "new"
     assert row["resolved_eligible_node_ids"] == []
+
+
+def test_confirm_session_creates_shift_template(admin_session):
+    from app.db.models import ShiftTemplate as ShiftTemplateModel
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    tpl_name = f"tpl_{_uid()}"
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "08:00", "17:00", 2, "false", "", 1, "note", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    assert len(sess.created_links["shift_templates"]) == 1
+    created = admin_session.get(ShiftTemplateModel, uuid.UUID(sess.created_links["shift_templates"][0]))
+    assert created is not None
+    assert created.name == tpl_name
+    assert created.duty_type_id == dt.id
+    assert created.required_count == 2
+    assert created.notes == "note"
+
+
+def test_confirm_session_updates_existing_shift_template(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_{_uid()}"
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[], required_count=1,
+    )
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "", "", 3, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.required_count == 3

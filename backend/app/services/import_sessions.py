@@ -40,6 +40,7 @@ from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.shift_quotas import set_shift_quotas
+from app.services.shift_templates import create_template, update_template
 
 
 class ImportSessionError(Exception):
@@ -922,6 +923,7 @@ def confirm_session(
     created_soldiers: list[str] = []
     created_duty_shifts: list[str] = []
     created_assignments: list[str] = []
+    created_shift_templates: list[str] = []
     shift_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
@@ -1188,6 +1190,68 @@ def confirm_session(
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_types", "error": str(exc)})
 
+    # ── Shift templates ─────────────────────────────────────────────────
+    for row in state.get("shift_templates", []):
+        effective = _effective_action(selections, "shift_templates", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                eligible_ids = [uuid.UUID(nid) for nid in row.get("resolved_eligible_node_ids", [])] or None
+                if effective == "new":
+                    tpl = create_template(
+                        session,
+                        name=row["name"],
+                        duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
+                        duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
+                        recurrence_type=row["recurrence_type"],
+                        weekdays=row.get("weekdays") or [],
+                        duration_days=row.get("duration_days") or 1,
+                        start_time=row.get("start_time") or "00:00",
+                        end_time=row.get("end_time") or "23:59",
+                        required_count=row.get("required_count") or 1,
+                        auto_roll=bool(row.get("auto_roll")),
+                        auto_roll_until=(
+                            date_type.fromisoformat(row["auto_roll_until"])
+                            if row.get("auto_roll_until") else None
+                        ),
+                        notes=row.get("notes"),
+                        eligible_node_ids=eligible_ids,
+                        actor_id=actor.id,
+                    )
+                    created += 1
+                    created_shift_templates.append(str(tpl.id))
+                elif effective == "update" and row.get("existing_id"):
+                    tpl = session.get(ShiftTemplate, uuid.UUID(row["existing_id"]))
+                    if tpl is not None:
+                        update_template(
+                            session,
+                            tpl=tpl,
+                            recurrence_type=row.get("recurrence_type"),
+                            weekdays=row.get("weekdays"),
+                            duration_days=row.get("duration_days"),
+                            start_time=row.get("start_time"),
+                            end_time=row.get("end_time"),
+                            required_count=row.get("required_count"),
+                            auto_roll=row.get("auto_roll"),
+                            auto_roll_until=(
+                                date_type.fromisoformat(row["auto_roll_until"])
+                                if row.get("auto_roll_until") else None
+                            ),
+                            notes=row.get("notes"),
+                            eligible_node_ids=eligible_ids,
+                            actor_id=actor.id,
+                        )
+                        updated += 1
+                        created_shift_templates.append(str(tpl.id))
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "shift_templates", "error": str(exc)})
+
     # ── Hierarchy ───────────────────────────────────────────────────────
     name_to_new_node_id: dict[str, uuid.UUID] = {}
     for row in state.get("hierarchy", []):
@@ -1330,6 +1394,7 @@ def confirm_session(
         "soldiers": created_soldiers,
         "duty_shifts": created_duty_shifts,
         "assignments": created_assignments,
+        "shift_templates": created_shift_templates,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)
