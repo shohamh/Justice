@@ -35,11 +35,10 @@ export default function DutyTypeRequirementsEditor(props: Props) {
   }, []);
 
   function setReqs(updater: (prev: Reqs) => Reqs) {
-    const next = updater(reqs);
     if (isControlled) {
-      props.onChange(next);
+      props.onChange(updater(reqs));
     } else {
-      setLocalReqs(next);
+      setLocalReqs(updater);
     }
   }
 
