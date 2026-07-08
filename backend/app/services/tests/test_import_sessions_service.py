@@ -1053,3 +1053,48 @@ def test_exemption_type_field_override_changes_resolved_flag(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["exemption_types"][0]
     assert row["is_medical"] is True
+
+
+def test_duty_type_field_override_bypasses_eligible_unit_resolution(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "לא קיים", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+    # Without the override, "לא קיים" fails to resolve and the row errors.
+    assert sess.parsed_state["duty_types"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"resolved_eligible_node_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["action"] == "new"
+    assert row["resolved_eligible_node_ids"] == []
+
+
+def test_exemption_type_field_override_bypasses_applies_to_resolution(admin_session):
+    wb = _wb_with_exemption_types([
+        ["פטור", "", "false", "false", "false", "לא קיים"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["exemption_types"][0]["row"]
+    assert sess.parsed_state["exemption_types"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"exemption_types": {str(row_num): {"resolved_duty_type_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["exemption_types"][0]
+    assert row["action"] == "new"
+    assert row["resolved_duty_type_ids"] == []

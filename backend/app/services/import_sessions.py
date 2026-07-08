@@ -412,8 +412,8 @@ def _resolve_exemption_types(
         name = field("name", row.name)
         applies_to_duty_type_names = field("applies_to_duty_type_names", row.applies_to_duty_type_names)
 
-        resolved_duty_type_ids: list[str] | None = field("resolved_duty_type_ids", None)
-        if resolved_duty_type_ids is None:
+        resolved_duty_type_ids: list[str] = field("resolved_duty_type_ids", None) or []
+        if "resolved_duty_type_ids" not in override:
             resolved_duty_type_ids = []
             for duty_type_name in applies_to_duty_type_names:
                 row_key = f"exemption_types:{row.source_row}:{duty_type_name}"
