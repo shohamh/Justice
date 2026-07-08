@@ -21,6 +21,7 @@ from app.db.models import (
     DutyShiftNodeQuota,
     DutyType,
     HierarchyNode,
+    ShiftTemplate,
     Soldier,
 )
 from app.db.session import get_session
@@ -328,11 +329,8 @@ def apply(
 def download_template():
     """Download an example workbook for the active import pipeline.
 
-    Matches the `v1_standard` parser's expected sheets (`soldiers`,
-    `duty_shifts`, `assignments`) — see
-    app/services/import_parsers/v1_standard.py. Shift templates are
-    intentionally not included: they're created only through the system UI
-    (app/routes/shift_templates.py), not via Excel import.
+    Matches the `v1_standard` parser's expected sheets — see
+    app/services/import_parsers/v1_standard.py.
     """
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -390,6 +388,17 @@ def download_template():
     ws_et = wb.create_sheet("exemption_types")
     ws_et.append(["name", "description", "is_global", "is_medical", "is_commander_exemption", "applies_to_duty_types"])
     ws_et.append(["פטור רפואי", "אישור רופא", "false", "true", "false", "שמירה"])
+
+    ws_tpl = wb.create_sheet("shift_templates")
+    ws_tpl.append([
+        "name", "duty_type_name", "duty_location_name", "recurrence_type", "weekdays",
+        "start_time", "end_time", "required_count", "auto_roll", "auto_roll_until",
+        "duration_days", "notes", "eligible_units",
+    ])
+    ws_tpl.append([
+        "שמירה לילה", "שמירה", "שער ראשי", "weekly", "1,3",
+        "20:00", "06:00", 2, "false", "", 1, "", "מדור א",
+    ])
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -477,6 +486,32 @@ def export_current_data(
             shift.start_time, shift.end_time,
             "true" if a.is_reserve else "false",
             a.notes or "",
+        ])
+
+    ws_tpl = wb.create_sheet("shift_templates")
+    ws_tpl.append([
+        "name", "duty_type_name", "duty_location_name", "recurrence_type", "weekdays",
+        "start_time", "end_time", "required_count", "auto_roll", "auto_roll_until",
+        "duration_days", "notes", "eligible_units",
+    ])
+    for tpl in session.execute(select(ShiftTemplate)).scalars():
+        dt = duty_types_by_id.get(tpl.duty_type_id)
+        loc = locations_by_id.get(tpl.duty_location_id)
+        eligible = ", ".join(
+            nodes_by_id[nid].name for nid in (tpl.eligible_node_ids or []) if nid in nodes_by_id
+        )
+        ws_tpl.append([
+            tpl.name,
+            dt.name if dt else "",
+            loc.name if loc else "",
+            tpl.recurrence_type,
+            ",".join(str(d) for d in tpl.weekdays),
+            tpl.start_time, tpl.end_time, tpl.required_count,
+            "true" if tpl.auto_roll else "false",
+            tpl.auto_roll_until.strftime("%d.%m.%Y") if tpl.auto_roll_until else "",
+            tpl.duration_days,
+            tpl.notes or "",
+            eligible,
         ])
 
     buf = io.BytesIO()

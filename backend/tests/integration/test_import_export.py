@@ -45,7 +45,7 @@ def test_export_round_trips_soldiers_duty_shifts_and_assignments(client, admin_s
     assert "spreadsheetml" in resp.headers["content-type"]
 
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert set(wb.sheetnames) == {"soldiers", "duty_shifts", "assignments"}
+    assert set(wb.sheetnames) == {"soldiers", "duty_shifts", "assignments", "shift_templates"}
 
     soldier_rows = list(wb["soldiers"].iter_rows(min_row=2, values_only=True))
     assert any(r[0] == soldier.personal_number for r in soldier_rows)
