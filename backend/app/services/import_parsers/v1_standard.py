@@ -269,14 +269,27 @@ class V1StandardParser:
                 name=str(r.get("name") or "").strip(),
                 duty_type_name=str(r.get("duty_type_name") or "").strip(),
                 duty_location_name=str(r.get("duty_location_name") or "").strip(),
-                recurrence_type=str(r.get("recurrence_type") or "").strip() or "weekdays",
+                recurrence_type=str(r.get("recurrence_type") or "").strip() or None,
                 weekdays=_parse_int_list(r.get("weekdays")),
                 start_time=str(r.get("start_time") or "").strip() or None,
                 end_time=str(r.get("end_time") or "").strip() or None,
-                required_count=int(r.get("required_count") or 1),
-                auto_roll=_parse_bool(r.get("auto_roll")) or False,
+                required_count=(
+                    int(r["required_count"])
+                    if r.get("required_count") is not None and str(r["required_count"]).strip() != ""
+                    else None
+                ),
+                # `or None` first: an empty-string cell (as opposed to a genuinely
+                # unset/None cell) would otherwise parse_bool to False rather than
+                # "blank" — normalize both to None so a blank auto_roll cell means
+                # "leave unchanged" on an update row, matching required_count/
+                # duration_days/recurrence_type above.
+                auto_roll=_parse_bool(r.get("auto_roll") or None),
                 auto_roll_until=_parse_date(r.get("auto_roll_until")),
-                duration_days=int(r.get("duration_days") or 1),
+                duration_days=(
+                    int(r["duration_days"])
+                    if r.get("duration_days") is not None and str(r["duration_days"]).strip() != ""
+                    else None
+                ),
                 notes=str(r.get("notes") or "").strip() or None,
                 eligible_unit_names=_parse_name_list(r.get("eligible_units")),
             )

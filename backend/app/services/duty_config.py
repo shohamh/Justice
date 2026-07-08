@@ -36,12 +36,16 @@ def create_duty_type(
     instructions: str | None = None,
     is_external: bool = False,
     eligible_node_ids: list[uuid.UUID] | None = None,
+    requirements: dict | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> DutyType:
     if score_per_day < 0:
         raise DutyConfigError("score_per_day must be >= 0")
     if session.execute(select(DutyType.id).where(DutyType.name == name)).first():
         raise DutyConfigError("name_taken")
+    if requirements is not None:
+        from app.services.eligibility import DutyTypeRequirements
+        DutyTypeRequirements.model_validate(requirements)  # validate shape
     dt = DutyType(
         name=name,
         score_per_day=score_per_day,
@@ -55,6 +59,7 @@ def create_duty_type(
         instructions=instructions,
         is_external=is_external,
         eligible_node_ids=eligible_node_ids,
+        **({"requirements": requirements} if requirements is not None else {}),
     )
     session.add(dt)
     session.flush()

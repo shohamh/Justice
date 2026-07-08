@@ -75,14 +75,14 @@ class ImportShiftTemplateRow(BaseModel):
     name: str
     duty_type_name: str
     duty_location_name: str
-    recurrence_type: str = "weekdays"
+    recurrence_type: str | None = None
     weekdays: list[int] = []
     start_time: str | None = None
     end_time: str | None = None
-    required_count: int = 1
-    auto_roll: bool = False
+    required_count: int | None = None
+    auto_roll: bool | None = None
     auto_roll_until: str | None = None
-    duration_days: int = 1
+    duration_days: int | None = None
     notes: str | None = None
     eligible_unit_names: list[str] = []
 

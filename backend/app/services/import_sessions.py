@@ -613,7 +613,11 @@ def _resolve_shift_templates(
         if location is None:
             errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
-        if recurrence_type not in ("daily", "weekdays", "weekly"):
+        if recurrence_type is not None and recurrence_type not in ("daily", "weekdays", "weekly"):
+            # A blank cell (None) means "leave unchanged" on an update row, or
+            # "apply the create-time default" on a new row (both handled where
+            # the resolved row is consumed) — only an explicit-but-invalid
+            # value is an error here.
             errors.append(f"סוג חזרתיות לא תקין '{recurrence_type}'")
 
         resolved_eligible_node_ids: list[str] = field("resolved_eligible_node_ids", None) or []
@@ -1154,6 +1158,7 @@ def confirm_session(
                         instructions=row.get("instructions"),
                         is_external=bool(row.get("is_external")),
                         eligible_node_ids=eligible_ids,
+                        requirements=row.get("requirements"),
                         actor_id=actor.id,
                     )
                     if row.get("active") is not None:
@@ -1205,7 +1210,7 @@ def confirm_session(
                         name=row["name"],
                         duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
                         duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
-                        recurrence_type=row["recurrence_type"],
+                        recurrence_type=row.get("recurrence_type") or "weekdays",
                         weekdays=row.get("weekdays") or [],
                         duration_days=row.get("duration_days") or 1,
                         start_time=row.get("start_time") or "00:00",

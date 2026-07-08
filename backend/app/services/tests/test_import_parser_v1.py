@@ -496,13 +496,19 @@ def test_shift_templates_sheet_absent_gives_empty_list():
 
 
 def test_shift_templates_row_defaults():
+    # A blank cell now parses to None at the parser level for these four fields
+    # (recurrence_type/required_count/auto_roll/duration_days), rather than being
+    # coerced to a hard default here. That lets a blank cell on an UPDATE row
+    # mean "leave the existing value unchanged"; the create-time default
+    # (weekdays/1/False/1) is applied only for brand-new rows, in
+    # confirm_session's shift_templates loop.
     wb = _wb_with_shift_templates([
         ["שמירה", "שמירה", "שער ראשי", "", "", "", "", "", "", "", "", "", ""],
     ])
     data = V1StandardParser().parse(wb)
     row = data.shift_templates[0]
-    assert row.recurrence_type == "weekdays"
+    assert row.recurrence_type is None
     assert row.weekdays == []
-    assert row.required_count == 1
-    assert row.auto_roll is False
-    assert row.duration_days == 1
+    assert row.required_count is None
+    assert row.auto_roll is None
+    assert row.duration_days is None

@@ -1100,6 +1100,36 @@ def test_exemption_type_field_override_bypasses_applies_to_resolution(admin_sess
     assert row["resolved_duty_type_ids"] == []
 
 
+def test_confirm_session_new_duty_type_preserves_requirements(admin_session):
+    from app.db.models import DutyType as DutyTypeModel
+
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"requirements": {"officers_allowed": False}}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    created = admin_session.execute(
+        select(DutyTypeModel).where(DutyTypeModel.name == "שמירה")
+    ).scalar_one()
+    assert created.requirements == {"officers_allowed": False}
+
+
 def _wb_with_shift_templates(rows):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -1377,3 +1407,50 @@ def test_confirm_session_shift_template_update_preserves_unspecified_fields(admi
     assert tpl.required_count == 5
     assert tpl.notes == "existing note"  # not cleared
     assert tpl.eligible_node_ids == [node.id]  # not cleared
+
+
+def test_confirm_session_shift_template_update_preserves_blank_recurrence_fields(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_{_uid()}"
+    # recurrence_type must be "weekly" here: update_template forces duration_days
+    # back to 1 for any non-"weekly" recurrence (a separate, deliberate rule in
+    # update_template itself, unrelated to this blank-cell bug) — so only
+    # "weekly" lets duration_days > 1 survive an update to exercise the fix.
+    # weekdays is filled in the re-import row below (not left blank), since
+    # blank-cell preservation for `weekdays` itself is not part of this fix.
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekly", weekdays=[1, 2, 3], required_count=7, duration_days=3, auto_roll=True,
+        auto_roll_until=None,
+    )
+    admin_session.commit()
+
+    # Re-import leaving recurrence_type/required_count/duration_days/auto_roll blank,
+    # only specifying notes (and weekdays, kept identical to the existing template).
+    # auto_roll is left as a genuinely-empty cell (None) rather than "" — parse_bool
+    # only treats a true None cell as "blank" (an empty *string* cell parses to
+    # False, same as a real openpyxl blank cell always yields None, never "").
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "", "1,2,3", "", "", "", None, "", "", "updated note", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.notes == "updated note"
+    assert tpl.recurrence_type == "weekly"  # preserved, not reset to "weekdays"
+    assert tpl.required_count == 7  # preserved, not reset to 1
+    assert tpl.duration_days == 3  # preserved, not reset to 1
+    assert tpl.auto_roll is True  # preserved, not reset to False
