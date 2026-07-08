@@ -8,6 +8,9 @@
 ### Fixes
 - `create_duty_type`/`update_duty_type` now receive `start_time`/`end_time` from callers.
 
+### Chores
+- Fixed stale test expectations left over from the config-export-import + import-export-assignments merge, and switched hardcoded 2026 dates in duty-block/algorithm-bridge tests to relative dates so they don't become time-bomb failures.
+
 ## 2026-07-07
 
 ### Features
