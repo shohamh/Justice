@@ -628,6 +628,57 @@ describe("ImportSessionReviewPage", () => {
     vi.useRealTimers();
   });
 
+  it("does not revert the user's own edit inside an open exemption_type fields modal", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([
+      { id: "dt-1", name: "שמירה" },
+    ]);
+    // the debounced save+reparse hasn't landed yet when we assert below, so this
+    // mock resolving is irrelevant to the assertion — it only matters that it
+    // resolves with the SAME (still-stale) data a real in-flight reparse would
+    // return before the user's edit has been persisted server-side.
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    // open the fields modal for the row
+    fireEvent.click(await screen.findByText("ערוך חל-על"));
+    const checkbox = (await screen.findByText("שמירה")).closest("label")!.querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    // simulate the user checking the box inside the modal: this fires the modal's
+    // own onChange, which (1) queues a debounced field-override save+reparse and
+    // (2) optimistically echoes the edit into the local dutyTypeFieldsRow-style
+    // snapshot state. That local-state update must NOT be mistaken by the resync
+    // effect for a genuine background reparse and reverted back to the stale value.
+    fireEvent.click(checkbox);
+
+    // assert immediately after the state update commits (before the debounce timer
+    // has any chance to fire) that the edit is reflected and not reverted...
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    // ...and that it's still reflected after letting further render/effect cycles
+    // flush, as long as we stay below the debounce threshold so no real reparse
+    // has landed yet.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(checkbox.checked).toBe(true);
+
+    vi.useRealTimers();
+  });
+
   it("hides selects and confirm button when session is not in draft status", async () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(
       makeDraftDetail({ status: "confirmed" }),

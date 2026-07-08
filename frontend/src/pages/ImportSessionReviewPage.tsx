@@ -261,19 +261,32 @@ export default function ImportSessionReviewPage() {
   // field edit on the same row while the modal is open), so the modal
   // doesn't keep showing stale data. Matched by `row` (stable row identity).
   const dutyTypesForSync = detail?.parsed_state.duty_types;
+  const prevDutyTypesForSyncRef = useRef(dutyTypesForSync);
   useEffect(() => {
+    // Only resync when the live array itself has genuinely changed (a real
+    // background reparse), not merely because dutyTypeFieldsRow changed for
+    // its own reasons (e.g. the modal's own optimistic local edit echo) —
+    // otherwise this effect would revert the user's own in-progress edit
+    // before the debounced save/reparse round-trip completes.
+    if (prevDutyTypesForSyncRef.current === dutyTypesForSync) return;
+    prevDutyTypesForSyncRef.current = dutyTypesForSync;
     if (!dutyTypeFieldsRow || !dutyTypesForSync) return;
     const fresh = dutyTypesForSync.find((r) => r.row === dutyTypeFieldsRow.row);
-    if (fresh && fresh !== dutyTypeFieldsRow) {
+    if (fresh) {
       setDutyTypeFieldsRow(fresh);
     }
   }, [dutyTypesForSync, dutyTypeFieldsRow]);
 
   const exemptionTypesForSync = detail?.parsed_state.exemption_types;
+  const prevExemptionTypesForSyncRef = useRef(exemptionTypesForSync);
   useEffect(() => {
+    // See comment above the duty_types resync effect for why this guards
+    // on the ref rather than resyncing on every dependency-array change.
+    if (prevExemptionTypesForSyncRef.current === exemptionTypesForSync) return;
+    prevExemptionTypesForSyncRef.current = exemptionTypesForSync;
     if (!exemptionTypeFieldsRow || !exemptionTypesForSync) return;
     const fresh = exemptionTypesForSync.find((r) => r.row === exemptionTypeFieldsRow.row);
-    if (fresh && fresh !== exemptionTypeFieldsRow) {
+    if (fresh) {
       setExemptionTypeFieldsRow(fresh);
     }
   }, [exemptionTypesForSync, exemptionTypeFieldsRow]);
