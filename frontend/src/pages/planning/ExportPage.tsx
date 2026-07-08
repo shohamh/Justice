@@ -70,6 +70,20 @@ const CONFIG_SHEET_OPTIONS = [
   { key: "exemption_types", label: "פטורים" },
 ] as const;
 
+const DATA_SHEET_OPTIONS = [
+  { key: "soldiers", label: "חיילים" },
+  { key: "duty_shifts", label: "משמרות" },
+  { key: "assignments", label: "שיבוצים" },
+  { key: "shift_templates", label: "תבניות תורנות" },
+] as const;
+
+const ALL_KEYS = [
+  "transparency",
+  "sub_units",
+  ...CONFIG_SHEET_OPTIONS.map((o) => o.key),
+  ...DATA_SHEET_OPTIONS.map((o) => o.key),
+] as const;
+
 export default function ExportPage() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<TransparencyRow[]>([]);
@@ -152,6 +166,13 @@ export default function ExportPage() {
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  const allChecked = ALL_KEYS.every((key) => checked[key]);
+
+  function toggleAll() {
+    const next = !allChecked;
+    setChecked(Object.fromEntries(ALL_KEYS.map((key) => [key, next])));
+  }
+
   async function handleExport() {
     const wb = XLSX.utils.book_new();
 
@@ -178,8 +199,9 @@ export default function ExportPage() {
       }
     }
 
-    if (checked.system_data) {
-      const resp = await fetch("/api/import/export", {
+    const dataSheets = DATA_SHEET_OPTIONS.filter((o) => checked[o.key]).map((o) => o.key);
+    if (dataSheets.length > 0) {
+      const resp = await fetch(`/api/import/export?sheets=${dataSheets.join(",")}`, {
         headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
       });
       const buf = await resp.arrayBuffer();
@@ -199,6 +221,10 @@ export default function ExportPage() {
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("nav.planning_export")}</h2>
         <div className="space-y-2">
+          <label className="flex items-center gap-2 font-medium border-b pb-2 dark:border-gray-700">
+            <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+            בחר הכל
+          </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={!!checked.transparency} onChange={() => toggle("transparency")} />
             {t("export.transparency_title")}
@@ -213,14 +239,12 @@ export default function ExportPage() {
               {o.label}
             </label>
           ))}
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={!!checked.system_data}
-              onChange={() => toggle("system_data")}
-            />
-            ייצוא נתוני מערכת (חיילים, משמרות, שיבוצים, תבניות)
-          </label>
+          {DATA_SHEET_OPTIONS.map((o) => (
+            <label key={o.key} className="flex items-center gap-2">
+              <input type="checkbox" checked={!!checked[o.key]} onChange={() => toggle(o.key)} />
+              {o.label}
+            </label>
+          ))}
         </div>
         <button
           type="button"
