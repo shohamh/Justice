@@ -178,6 +178,17 @@ export default function ExportPage() {
       }
     }
 
+    if (checked.system_data) {
+      const resp = await fetch("/api/import/export", {
+        headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+      });
+      const buf = await resp.arrayBuffer();
+      const dataWb = XLSX.read(buf, { type: "array" });
+      for (const name of dataWb.SheetNames) {
+        XLSX.utils.book_append_sheet(wb, dataWb.Sheets[name], name);
+      }
+    }
+
     if (wb.SheetNames.length > 0) {
       XLSX.writeFile(wb, "export.xlsx");
     }
@@ -202,6 +213,14 @@ export default function ExportPage() {
               {o.label}
             </label>
           ))}
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={!!checked.system_data}
+              onChange={() => toggle("system_data")}
+            />
+            ייצוא נתוני מערכת (חיילים, משמרות, שיבוצים, תבניות)
+          </label>
         </div>
         <button
           type="button"

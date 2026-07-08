@@ -1,5 +1,6 @@
 import { describe, test, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import * as XLSX from "xlsx";
 import "../../i18n";
 import { dfsOrder } from "./ExportPage";
 import ExportPage from "./ExportPage";
@@ -69,6 +70,28 @@ describe("ExportPage", () => {
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining("/config/export?sheets=duty_types"),
         expect.anything(),
+      );
+    });
+  });
+
+  it("merges /api/import/export sheets when the data checkbox is checked", async () => {
+    const importWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(importWb, XLSX.utils.aoa_to_sheet([["personal_number"], ["123"]]), "soldiers");
+    const importBuf = XLSX.write(importWb, { type: "array", bookType: "xlsx" });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      arrayBuffer: () => Promise.resolve(importBuf),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExportPage />);
+    fireEvent.click(await screen.findByLabelText(/נתוני מערכת/));
+    fireEvent.click(screen.getByText("ייצוא"));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/import/export",
+        expect.objectContaining({ headers: expect.any(Object) }),
       );
     });
   });
