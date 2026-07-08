@@ -1085,6 +1085,10 @@ export default function ImportSessionReviewPage() {
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">תיאור</th>
+                  <th className="text-right p-3">גלובלי</th>
+                  <th className="text-right p-3">רפואי</th>
+                  <th className="text-right p-3">פטור פיקודי</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1095,6 +1099,16 @@ export default function ImportSessionReviewPage() {
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">{row.name}</td>
+                      <td className="p-3">
+                        <input
+                          className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                          value={row.description ?? ""}
+                          disabled
+                        />
+                      </td>
+                      <td className="p-3">{row.is_global ? "כן" : "לא"}</td>
+                      <td className="p-3">{row.is_medical ? "כן" : "לא"}</td>
+                      <td className="p-3">{row.is_commander_exemption ? "כן" : "לא"}</td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>

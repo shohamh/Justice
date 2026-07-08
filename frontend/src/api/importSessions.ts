@@ -128,6 +128,10 @@ export interface DutyTypeImportRow extends RowBase {
 
 export interface ExemptionTypeImportRow extends RowBase {
   name: string;
+  description: string | null;
+  is_global: boolean;
+  is_medical: boolean;
+  is_commander_exemption: boolean;
   resolved_duty_type_ids: string[];
   existing_id: string | null;
 }

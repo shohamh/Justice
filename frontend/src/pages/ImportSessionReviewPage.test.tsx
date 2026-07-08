@@ -438,6 +438,10 @@ describe("ImportSessionReviewPage", () => {
         action: "new",
         errors: [],
         name: "פטור",
+        description: "פטור רפואי",
+        is_global: false,
+        is_medical: true,
+        is_commander_exemption: false,
         resolved_duty_type_ids: [],
         existing_id: null,
       },
@@ -488,6 +492,31 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByDisplayValue("דני")).toBeInTheDocument();
     expect(screen.getByDisplayValue("050-1234567")).toBeInTheDocument();
     expect(screen.getByDisplayValue("הצטיידות במקלע")).toBeInTheDocument();
+  });
+
+  it("shows full exemption_type detail fields", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "פטור",
+        description: "פטור רפואי",
+        is_global: false,
+        is_medical: true,
+        is_commander_exemption: false,
+        resolved_duty_type_ids: [],
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    expect(await screen.findByDisplayValue("פטור רפואי")).toBeInTheDocument();
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {
