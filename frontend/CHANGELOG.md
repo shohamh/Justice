@@ -3,23 +3,40 @@
 ## 2026-07-08
 
 ### Features
-- **Config export/import** — duty types, duty locations, hierarchy, and exemption types can now be exported to Excel and re-imported as new sheets in the import template, alongside the existing soldier/shift/assignment sheets, with review tabs in the import session UI and a unified single-workbook export page.
-- **Duty-assignment import/export** — a new `assignments` sheet lets duty assignments round-trip through Excel import/export directly (resolved to soldiers and shifts), with its own review tab and a full DB-state round-trip endpoint.
-- **Exemption-type disable/delete and cancellation reason** — deleting an in-use exemption type now offers a reason-gated disable (bulk-revoking its active exemptions) instead of failing outright; revoking an individual exemption now requires and records a reason, shown on duty-history entries alongside who revoked it.
-- **Registration** now requires phone, email, gender, rank, and service dates; soldiers can request mandatory-end/discharge date changes from their profile.
+- **Config export/import UI polish** — unified the export page into a single checkbox panel producing one merged workbook; added duty_types/exemption_types and duty_locations/hierarchy review tabs to the import session UI, backed by typed row interfaces for the 4 new sheets, with an end-to-end round-trip test.
+
+### Fixes
+- `create_duty_type`/`update_duty_type` now receive `start_time`/`end_time` from callers.
+
+## 2026-07-07
+
+### Features
+- **Config export/import (core)** — new `GET /config/export` endpoint and import-sheet parsing/resolution for duty_locations, hierarchy, duty_types, and exemption_types, with dm-scope diffing and forward-parent linking on commit, blanking `requirements_json` instead of writing the literal string `"null"` on export, and an updated import-session row summary.
+- **Exemption-type disable/delete** — deleting an in-use exemption type now offers a reason-gated disable (bulk-revoking its active exemptions) instead of failing outright, with a new `active` flag, re-enable support, and delete/disable UI; revoking an exemption now requires a reason via a new `ReasonPromptModal` (skipped for already-expired exemptions).
 - Transparency page's unit filter is now searchable.
 
 ### Fixes
-- Revoked exemptions are excluded from potential/scoring eligibility checks.
-- `duty_types` import parsing preserves `reserve_minimum=0` and reads the correct `eligible_units` column.
-- Hierarchy import rows route commander assignment through `set_commander` on create, not just update.
-- Approval/rejection actions surface the backend's real error detail on failure.
-- Config-sheet export blanks `requirements_json` instead of writing the literal string `"null"`.
-- Shared-IP login rate limit raised, with retry-after time shown.
-- Assignment creation wrapped in a savepoint for parity with duty-shift creation.
+- `duty_types` import parsing preserves `reserve_minimum=0` and reads the correct `eligible_units` column; hierarchy and duty_types added to the parser's known sheets.
+- Hierarchy import rows route commander assignment through `set_commander` on create, not just update; hierarchy-node name mappings now reach the resolver.
+- `active=False` now applies on duty_location/duty_type create, not just update.
+- Explicit `response_model=None` added to the 204 DELETE endpoint.
+- Military-license date label clarified and its value formatted in approvals.
+- Duty-history revoke fields (reason/revoker) now gated behind `can_see_private`.
 
-### Chores
-- Added a health-check path to the frontend dev launch config.
+## 2026-07-06
+
+### Features
+- **Duty-assignment import/export** — a new `assignments` sheet resolves rows to soldiers/shifts and creates `DutyAssignment` records on import-session confirm, with its own review tab, an assignments count in the session summary, and a `GET /import/export` full DB-state round-trip endpoint.
+- **Exemption revocation reason** — revoking an exemption now requires and records a reason, sends duty-manager/soldier notifications, and no longer hard-deletes not-yet-started exemptions; duty-history entries now show the revocation reason and who revoked it.
+- **Registration** now requires phone, email, gender, rank, and service dates; soldiers can request mandatory-end/discharge date changes from their profile.
+
+### Fixes
+- Revoked exemptions are excluded from potential/scoring eligibility checks.
+- Approval/rejection actions surface the backend's real error detail on failure.
+- Partially-filled exemption/constraint import rows are rejected with a clear message instead of crashing.
+- Assignment creation wrapped in a savepoint for parity with duty-shift creation.
+- Shared-IP login rate limit raised, with retry-after time shown.
+- Import now falls back to full-name match when `personal_number` is unrecognized.
 
 ## 2026-07-04
 
@@ -39,6 +56,7 @@
 
 ### Chores
 - **Refactor**: extracted `can_see_private_node` helper to centralize scope-based private-field checks.
+- Added a health-check path to the frontend dev launch config.
 
 ## 2026-07-03
 
