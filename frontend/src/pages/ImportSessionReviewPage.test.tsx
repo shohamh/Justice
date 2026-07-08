@@ -553,6 +553,31 @@ describe("ImportSessionReviewPage", () => {
     vi.useRealTimers();
   });
 
+  it("opens the fields modal and edits eligible units for a duty_type row", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2, action: "new", errors: [], name: "שמירה", score_per_day: "1.50",
+        description: null, active: true, reserve_ratio: null, reserve_minimum: null,
+        is_external: false, contact_name: null, contact_phone: null,
+        start_time: null, end_time: null, instructions: null,
+        resolved_eligible_node_ids: [], requirements: null, existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    fireEvent.click(await screen.findByText("ערוך יחידות/דרישות"));
+    expect(await screen.findByText("יחידות זכאיות")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("hides selects and confirm button when session is not in draft status", async () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(
       makeDraftDetail({ status: "confirmed" }),

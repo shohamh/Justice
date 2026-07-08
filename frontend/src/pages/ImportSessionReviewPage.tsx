@@ -5,6 +5,7 @@ import Combobox, { type ComboboxItem } from "../components/Combobox";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
+import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
 import {
   type SessionDetail,
   type ConfirmSessionResult,
@@ -183,6 +184,8 @@ export default function ImportSessionReviewPage() {
   const [nodeCreateContext, setNodeCreateContext] = useState<{
     unresolvedName: string;
   } | null>(null);
+  const [dutyTypeFieldsRow, setDutyTypeFieldsRow] = useState<DutyTypeImportRow | null>(null);
+  const [exemptionTypeFieldsRow, setExemptionTypeFieldsRow] = useState<ExemptionTypeImportRow | null>(null);
 
   // lookup data
   const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
@@ -1020,6 +1023,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">שעת התחלה</th>
                   <th className="text-right p-3">שעת סיום</th>
                   <th className="text-right p-3">הוראות</th>
+                  <th className="text-right p-3">יחידות/דרישות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1139,6 +1143,17 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setDutyTypeFieldsRow(row)}
+                          >
+                            ערוך יחידות/דרישות
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -1173,6 +1188,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">גלובלי</th>
                   <th className="text-right p-3">רפואי</th>
                   <th className="text-right p-3">פטור פיקודי</th>
+                  <th className="text-right p-3">חל על</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1225,6 +1241,17 @@ export default function ImportSessionReviewPage() {
                             checked={row.is_commander_exemption}
                             onChange={(e) => setFieldOverride("exemption_types", row.row, "is_commander_exemption", e.target.checked)}
                           />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setExemptionTypeFieldsRow(row)}
+                          >
+                            ערוך חל-על
+                          </button>
                         )}
                       </td>
                       <td className="p-3">
@@ -1309,6 +1336,41 @@ export default function ImportSessionReviewPage() {
             void handleReparse();
           }}
           onClose={() => setNodeCreateContext(null)}
+        />
+      )}
+
+      {dutyTypeFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setDutyTypeFieldsRow(null)}
+          eligibleUnits={{
+            value: dutyTypeFieldsRow.resolved_eligible_node_ids,
+            onChange: (next) => {
+              setFieldOverride("duty_types", dutyTypeFieldsRow.row, "resolved_eligible_node_ids", next);
+              setDutyTypeFieldsRow({ ...dutyTypeFieldsRow, resolved_eligible_node_ids: next });
+            },
+          }}
+          requirements={{
+            value: dutyTypeFieldsRow.requirements ?? {},
+            onChange: (next) => {
+              setFieldOverride("duty_types", dutyTypeFieldsRow.row, "requirements", next);
+              setDutyTypeFieldsRow({ ...dutyTypeFieldsRow, requirements: next });
+            },
+          }}
+        />
+      )}
+
+      {exemptionTypeFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setExemptionTypeFieldsRow(null)}
+          dutyTypeMultiSelect={{
+            label: "חל על סוגי תורנות",
+            options: allDutyTypes,
+            value: exemptionTypeFieldsRow.resolved_duty_type_ids,
+            onChange: (next) => {
+              setFieldOverride("exemption_types", exemptionTypeFieldsRow.row, "resolved_duty_type_ids", next);
+              setExemptionTypeFieldsRow({ ...exemptionTypeFieldsRow, resolved_duty_type_ids: next });
+            },
+          }}
         />
       )}
     </Layout>
