@@ -1340,3 +1340,40 @@ def test_confirm_session_updates_existing_shift_template(admin_session):
     assert result["updated"] == 1
     admin_session.refresh(tpl)
     assert tpl.required_count == 3
+
+
+def test_confirm_session_shift_template_update_preserves_unspecified_fields(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    tpl_name = f"tpl_{_uid()}"
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[], required_count=1,
+        notes="existing note", eligible_node_ids=[node.id],
+    )
+    admin_session.commit()
+
+    # Re-import the same template with notes/eligible_units left blank in the sheet,
+    # only changing required_count.
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "", "", 5, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.required_count == 5
+    assert tpl.notes == "existing note"  # not cleared
+    assert tpl.eligible_node_ids == [node.id]  # not cleared

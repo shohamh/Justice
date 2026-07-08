@@ -1237,10 +1237,10 @@ def confirm_session(
                             auto_roll=row.get("auto_roll"),
                             auto_roll_until=(
                                 date_type.fromisoformat(row["auto_roll_until"])
-                                if row.get("auto_roll_until") else None
+                                if row.get("auto_roll_until") else ...
                             ),
-                            notes=row.get("notes"),
-                            eligible_node_ids=eligible_ids,
+                            notes=row.get("notes") if row.get("notes") else ...,
+                            eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
                             actor_id=actor.id,
                         )
                         updated += 1
