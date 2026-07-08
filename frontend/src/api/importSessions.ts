@@ -64,9 +64,19 @@ export interface ShiftTemplateRow extends RowBase {
   name: string;
   duty_type_name: string;
   resolved_duty_type_id: string | null;
-  days_of_week: number[];
-  required_primary: number;
-  required_reserve: number;
+  duty_location_name: string;
+  resolved_duty_location_id: string | null;
+  recurrence_type: string;
+  weekdays: number[];
+  start_time: string | null;
+  end_time: string | null;
+  required_count: number;
+  auto_roll: boolean;
+  auto_roll_until: string | null;
+  duration_days: number;
+  notes: string | null;
+  resolved_eligible_node_ids: string[];
+  existing_id: string | null;
 }
 
 export interface AssignmentRow extends RowBase {

@@ -679,6 +679,42 @@ describe("ImportSessionReviewPage", () => {
     vi.useRealTimers();
   });
 
+  it("renders full shift_template detail and allows inline edits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.shift_templates = [
+      {
+        row: 2, action: "new", errors: [],
+        name: "שמירה לילה", duty_type_name: "שמירה", resolved_duty_type_id: "dt-1",
+        duty_location_name: "שער ראשי", resolved_duty_location_id: "loc-1",
+        recurrence_type: "weekly", weekdays: [1, 3],
+        start_time: "20:00", end_time: "06:00", required_count: 2,
+        auto_roll: false, auto_roll_until: null, duration_days: 1,
+        notes: null, resolved_eligible_node_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("תבניות (1)"));
+
+    const countInput = await screen.findByDisplayValue("2");
+    fireEvent.change(countInput, { target: { value: "5" } });
+    fireEvent.blur(countInput);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        _field_overrides: { shift_templates: { "2": { required_count: 5 } } },
+      }),
+    );
+    vi.useRealTimers();
+  });
+
   it("hides selects and confirm button when session is not in draft status", async () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(
       makeDraftDetail({ status: "confirmed" }),

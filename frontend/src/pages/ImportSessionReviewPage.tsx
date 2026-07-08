@@ -186,6 +186,7 @@ export default function ImportSessionReviewPage() {
   } | null>(null);
   const [dutyTypeFieldsRow, setDutyTypeFieldsRow] = useState<DutyTypeImportRow | null>(null);
   const [exemptionTypeFieldsRow, setExemptionTypeFieldsRow] = useState<ExemptionTypeImportRow | null>(null);
+  const [shiftTemplateFieldsRow, setShiftTemplateFieldsRow] = useState<ShiftTemplateRow | null>(null);
 
   // lookup data
   const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
@@ -290,6 +291,20 @@ export default function ImportSessionReviewPage() {
       setExemptionTypeFieldsRow(fresh);
     }
   }, [exemptionTypesForSync, exemptionTypeFieldsRow]);
+
+  const shiftTemplatesForSync = detail?.parsed_state.shift_templates;
+  const prevShiftTemplatesForSyncRef = useRef(shiftTemplatesForSync);
+  useEffect(() => {
+    // See comment above the duty_types resync effect for why this guards
+    // on the ref rather than resyncing on every dependency-array change.
+    if (prevShiftTemplatesForSyncRef.current === shiftTemplatesForSync) return;
+    prevShiftTemplatesForSyncRef.current = shiftTemplatesForSync;
+    if (!shiftTemplateFieldsRow || !shiftTemplatesForSync) return;
+    const fresh = shiftTemplatesForSync.find((r) => r.row === shiftTemplateFieldsRow.row);
+    if (fresh) {
+      setShiftTemplateFieldsRow(fresh);
+    }
+  }, [shiftTemplatesForSync, shiftTemplateFieldsRow]);
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
@@ -769,75 +784,181 @@ export default function ImportSessionReviewPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
-                  <th className="text-right p-3">סוג תורנות</th>
                   <th className="text-right p-3">שם</th>
-                  <th className="text-right p-3">ראשי</th>
-                  <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">סוג תורנות</th>
+                  <th className="text-right p-3">מיקום</th>
+                  <th className="text-right p-3">חזרתיות</th>
                   <th className="text-right p-3">ימים</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
+                  <th className="text-right p-3">נדרש</th>
+                  <th className="text-right p-3">גלגול אוטומטי</th>
+                  <th className="text-right p-3">עד תאריך</th>
+                  <th className="text-right p-3">משך (ימים)</th>
+                  <th className="text-right p-3">הערות</th>
+                  <th className="text-right p-3">יחידות זכאיות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
               </thead>
               <tbody>
                 {shift_templates.map((row: ShiftTemplateRow) => {
-                  const canToggle =
-                    row.action !== "error" && row.action !== "out_of_scope";
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   const unresolvedType = !row.resolved_duty_type_id;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
                         {unresolvedType ? (
                           <div className="flex flex-col gap-1">
-                            <span className="text-red-600 text-xs font-medium">
-                              {row.duty_type_name}
-                            </span>
+                            <span className="text-red-600 text-xs font-medium">{row.duty_type_name}</span>
                             {!readOnly && (
-                              <>
-                                <Combobox
-                                  items={buildPickerItems(
-                                    row.duty_type_name,
-                                    allDutyTypes,
-                                    sortedDutyTypeItems,
-                                  )}
-                                  value=""
-                                  onChange={(pickedId) => {
-                                    if (pickedId)
-                                      handlePick(
-                                        "duty_type",
-                                        row.duty_type_name,
-                                        `shift_templates:${row.row}`,
-                                        pickedId,
-                                      );
-                                  }}
-                                />
-                                <button
-                                  className="text-indigo-600 hover:underline text-xs self-start"
-                                  onClick={() =>
-                                    setDutyTypeContext({ unresolvedName: row.duty_type_name })
-                                  }
-                                >
-                                  צור סוג תורנות
-                                </button>
-                              </>
+                              <Combobox
+                                items={buildPickerItems(row.duty_type_name, allDutyTypes, sortedDutyTypeItems)}
+                                value=""
+                                onChange={(pickedId) => {
+                                  if (pickedId)
+                                    handlePick("duty_type", row.duty_type_name, `shift_templates:${row.row}`, pickedId);
+                                }}
+                              />
                             )}
-                            {pendingPick?.rowKey === `shift_templates:${row.row}` &&
-                              pendingPick.kind === "duty_type" && (
-                                <PendingPickBanner
-                                  pick={pendingPick}
-                                  onApplyAll={() => void applyMapping("all", pendingPick)}
-                                  onApplyRow={() => void applyMapping("row", pendingPick)}
-                                  onCancel={() => setPendingPick(null)}
-                                />
-                              )}
+                            {pendingPick?.rowKey === `shift_templates:${row.row}` && pendingPick.kind === "duty_type" && (
+                              <PendingPickBanner
+                                pick={pendingPick}
+                                onApplyAll={() => void applyMapping("all", pendingPick)}
+                                onApplyRow={() => void applyMapping("row", pendingPick)}
+                                onCancel={() => setPendingPick(null)}
+                              />
+                            )}
                           </div>
                         ) : (
                           row.duty_type_name
                         )}
                       </td>
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.required_primary}</td>
-                      <td className="p-3">{row.required_reserve}</td>
-                      <td className="p-3">{row.days_of_week?.join(", ")}</td>
+                      <td className="p-3">{row.duty_location_name}</td>
+                      <td className="p-3">
+                        {readOnly ? row.recurrence_type : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.recurrence_type}
+                            onChange={(e) => setFieldOverride("shift_templates", row.row, "recurrence_type", e.target.value)}
+                          >
+                            <option value="weekdays">א׳-ה׳</option>
+                            <option value="daily">יומי</option>
+                            <option value="weekly">שבועי (ימים נבחרים)</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.recurrence_type !== "weekly" ? "—" : readOnly ? row.weekdays.join(",") : (
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5, 6, 7].map((iso) => (
+                              <button
+                                key={iso}
+                                type="button"
+                                className={`w-6 h-6 rounded text-xs border ${
+                                  row.weekdays.includes(iso)
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                                }`}
+                                onClick={() => {
+                                  const next = row.weekdays.includes(iso)
+                                    ? row.weekdays.filter((d) => d !== iso)
+                                    : [...row.weekdays, iso].sort((a, b) => a - b);
+                                  setFieldOverride("shift_templates", row.row, "weekdays", next);
+                                }}
+                              >
+                                {iso}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.required_count : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.required_count}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "required_count", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.auto_roll ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.auto_roll}
+                            onChange={(e) => setFieldOverride("shift_templates", row.row, "auto_roll", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!row.auto_roll ? "—" : readOnly ? row.auto_roll_until ?? "—" : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.auto_roll_until ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "auto_roll_until", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.duration_days : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.duration_days}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "duration_days", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.notes ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.notes ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "notes", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setShiftTemplateFieldsRow(row)}
+                          >
+                            ערוך יחידות
+                          </button>
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
@@ -847,18 +968,10 @@ export default function ImportSessionReviewPage() {
                             <select
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("shift_templates", row)}
-                              onChange={(e) =>
-                                setRowAction(
-                                  "shift_templates",
-                                  row.row,
-                                  e.target.value,
-                                )
-                              }
+                              onChange={(e) => setRowAction("shift_templates", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
-                              {row.action !== "skip" && (
-                                <option value="skip">דלג</option>
-                              )}
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
                             </select>
                           )}
                         </td>
@@ -1404,6 +1517,19 @@ export default function ImportSessionReviewPage() {
             onChange: (next) => {
               setFieldOverride("exemption_types", exemptionTypeFieldsRow.row, "resolved_duty_type_ids", next);
               setExemptionTypeFieldsRow({ ...exemptionTypeFieldsRow, resolved_duty_type_ids: next });
+            },
+          }}
+        />
+      )}
+
+      {shiftTemplateFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setShiftTemplateFieldsRow(null)}
+          eligibleUnits={{
+            value: shiftTemplateFieldsRow.resolved_eligible_node_ids,
+            onChange: (next) => {
+              setFieldOverride("shift_templates", shiftTemplateFieldsRow.row, "resolved_eligible_node_ids", next);
+              setShiftTemplateFieldsRow({ ...shiftTemplateFieldsRow, resolved_eligible_node_ids: next });
             },
           }}
         />
