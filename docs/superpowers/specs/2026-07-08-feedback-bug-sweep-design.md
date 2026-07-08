@@ -172,10 +172,12 @@ limiter is IP-keyed, not account-keyed:
 behind a shared IP (e.g. a base's shared internet/NAT) throttle each other's
 login attempts.
 
-**Fix:** key the login endpoint's rate limit off the submitted
-`personal_number` (falling back to IP if the field is missing/malformed)
-instead of solely the client IP, so the limiter tracks per-account attempt
-rate rather than per-network.
+**Fix:** keep the existing IP-based rate limit (still useful against a
+single source hammering many accounts) and add a second, independent
+per-account limit keyed on the submitted `personal_number`. Both must pass
+for a login attempt to proceed — an attacker can't bypass the account lock
+by rotating IPs, and users on a shared IP no longer throttle each other's
+own accounts.
 
 ## H. Enrollment/intake: missing notifications + no permission gate
 
