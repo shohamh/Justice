@@ -84,11 +84,53 @@ export interface AssignmentRow extends RowBase {
   matched_session_row: number | null;
 }
 
+export interface DutyLocationRow extends RowBase {
+  name: string;
+  base: string | null;
+  active: boolean | null;
+  existing_id: string | null;
+}
+
+export interface DutyManagerRefRow {
+  ref: string;
+  resolved_soldier_id: string | null;
+}
+
+export interface HierarchyImportRow extends RowBase {
+  name: string;
+  level: string;
+  parent_name: string | null;
+  resolved_parent_id: string | null;
+  commander_personal_number: string | null;
+  commander_name: string | null;
+  resolved_commander_id: string | null;
+  duty_manager_refs: DutyManagerRefRow[];
+  existing_id: string | null;
+}
+
+export interface DutyTypeImportRow extends RowBase {
+  name: string;
+  score_per_day: string | null;
+  resolved_eligible_node_ids: string[];
+  requirements: Record<string, unknown> | null;
+  existing_id: string | null;
+}
+
+export interface ExemptionTypeImportRow extends RowBase {
+  name: string;
+  resolved_duty_type_ids: string[];
+  existing_id: string | null;
+}
+
 export interface ParsedState {
   soldiers: SoldierRow[];
   duty_shifts: DutyShiftRow[];
   shift_templates: ShiftTemplateRow[];
   assignments: AssignmentRow[];
+  duty_locations: DutyLocationRow[];
+  hierarchy: HierarchyImportRow[];
+  duty_types: DutyTypeImportRow[];
+  exemption_types: ExemptionTypeImportRow[];
   parser_id: string;
   parser_warnings: string[];
 }
@@ -102,6 +144,10 @@ export interface SessionSummary {
     soldiers: number;
     duty_shifts: number;
     assignments: number;
+    duty_locations: number;
+    hierarchy: number;
+    duty_types: number;
+    exemption_types: number;
   };
 }
 

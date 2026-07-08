@@ -9,13 +9,17 @@ from app.services.import_parsers._shared_parsing import parse_date as _parse_dat
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportAssignmentRow,
+    ImportDutyLocationRow,
     ImportDutyShiftRow,
+    ImportDutyTypeRow,
+    ImportExemptionTypeRow,
+    ImportHierarchyNodeRow,
     ImportNodeQuota,
     ImportSoldierRow,
     ParsedImportData,
 )
 
-KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments"}
+KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments", "duty_locations", "hierarchy", "duty_types", "exemption_types"}
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
@@ -34,6 +38,18 @@ def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
             continue
         out.append({"_row": i, **dict(zip(headers, row))})
     return out
+
+
+def _parse_name_list(raw: Any) -> list[str]:
+    """Parse a comma-separated list of names, stripping whitespace.
+
+    Used for applies_to_duty_type_names, eligible_unit_names, etc.
+    Empty cell or whitespace-only cell returns empty list.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return []
+    return [name.strip() for name in s.split(",") if name.strip()]
 
 
 def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota], list[str]]:
@@ -67,6 +83,29 @@ def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota]
             continue
         quotas.append(ImportNodeQuota(node_name=name.strip(), count=count))
     return quotas, warnings
+
+
+def _parse_duty_manager_refs(raw: Any, source_row: int) -> tuple[list[str], list[str]]:
+    """Parse `personal_number:full_name;personal_number:full_name` into a list
+    of raw `"pn:name"` strings (resolved later against real soldiers) — same
+    `;`-then-`:` convention as `_parse_node_quotas`. Malformed entries (missing
+    colon) produce a row-tagged warning and are skipped individually."""
+    s = str(raw or "").strip()
+    if not s:
+        return [], []
+    refs: list[str] = []
+    warnings: list[str] = []
+    for part in s.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" not in part:
+            warnings.append(
+                f"שורה {source_row}: ערך אחראי תורנות שגוי '{part}' — הפורמט הנדרש הוא 'מספר_אישי:שם_מלא'"
+            )
+            continue
+        refs.append(part)
+    return refs, warnings
 
 
 class V1StandardParser:
@@ -141,10 +180,77 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "assignments")
         ]
 
+        duty_locations = [
+            ImportDutyLocationRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                base=str(r.get("base") or "").strip() or None,
+                active=_parse_bool(r.get("active")),
+            )
+            for r in _sheet_rows(wb, "duty_locations")
+        ]
+
+        exemption_types = [
+            ImportExemptionTypeRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                description=str(r.get("description") or "").strip() or None,
+                is_global=_parse_bool(r.get("is_global")),
+                is_medical=_parse_bool(r.get("is_medical")),
+                is_commander_exemption=_parse_bool(r.get("is_commander_exemption")),
+                applies_to_duty_type_names=_parse_name_list(r.get("applies_to_duty_types")),
+            )
+            for r in _sheet_rows(wb, "exemption_types")
+        ]
+
+        hierarchy = []
+        for r in _sheet_rows(wb, "hierarchy"):
+            dm_refs, dm_warnings = _parse_duty_manager_refs(r.get("duty_managers"), r["_row"])
+            warnings.extend(dm_warnings)
+            hierarchy.append(
+                ImportHierarchyNodeRow(
+                    source_row=r["_row"],
+                    name=str(r.get("name") or "").strip(),
+                    level=str(r.get("level") or "").strip(),
+                    parent_name=str(r.get("parent_name") or "").strip() or None,
+                    commander_personal_number=str(r.get("commander_personal_number") or "").strip() or None,
+                    commander_name=str(r.get("commander_name") or "").strip() or None,
+                    duty_manager_refs=dm_refs,
+                )
+            )
+        duty_types = [
+            ImportDutyTypeRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                score_per_day=str(r.get("score_per_day") or "").strip(),
+                description=str(r.get("description") or "").strip() or None,
+                active=_parse_bool(r.get("active")),
+                reserve_ratio=str(r.get("reserve_ratio") or "").strip() or None,
+                reserve_minimum=(
+                    int(r["reserve_minimum"])
+                    if r.get("reserve_minimum") is not None and str(r["reserve_minimum"]).strip() != ""
+                    else None
+                ),
+                is_external=_parse_bool(r.get("is_external")),
+                contact_name=str(r.get("contact_name") or "").strip() or None,
+                contact_phone=str(r.get("contact_phone") or "").strip() or None,
+                start_time=str(r.get("start_time") or "").strip() or None,
+                end_time=str(r.get("end_time") or "").strip() or None,
+                instructions=str(r.get("instructions") or "").strip() or None,
+                eligible_unit_names=_parse_name_list(r.get("eligible_units")),
+                requirements_json=str(r.get("requirements_json") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "duty_types")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
             assignments=assignments,
+            duty_locations=duty_locations,
+            hierarchy=hierarchy,
+            duty_types=duty_types,
+            exemption_types=exemption_types,
             parser_id=self.id,
             parser_warnings=warnings,
         )

@@ -41,6 +41,7 @@ from app.routes import enrollment as enrollment_routes
 from app.routes import invite_codes as invite_code_routes
 from app.routes import system_settings as system_settings_routes
 from app.routes import hakpaza as hakpaza_routes
+from app.routes import config_export as config_export_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
 from app.routes import import_sessions as import_sessions_routes
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(invite_code_routes.router, prefix="/api")
     app.include_router(system_settings_routes.router, prefix="/api")
     app.include_router(hakpaza_routes.router, prefix="/api")
+    app.include_router(config_export_routes.router, prefix="/api")
     app.include_router(import_excel_routes.router, prefix="/api")
     app.include_router(import_lookup_routes.router, prefix="/api")
     app.include_router(import_sessions_routes.router, prefix="/api")

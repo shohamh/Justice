@@ -190,14 +190,141 @@ def test_assignments_and_duty_shifts_both_present_both_parsed():
     assert len(data.duty_shifts) == 1
 
 
+def _wb_with_hierarchy_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("hierarchy")
+    ws.append([
+        "name", "level", "parent_name", "commander_personal_number", "commander_name", "duty_managers",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_hierarchy_sheet_with_duty_managers():
+    wb = _wb_with_hierarchy_sheet([
+        ["מדור א", "group", "יחידה ראשית", "12345", "ישראל ישראלי", "12345:ישראל ישראלי;23456:משה כהן"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.hierarchy) == 1
+    row = data.hierarchy[0]
+    assert row.name == "מדור א"
+    assert row.level == "group"
+    assert row.parent_name == "יחידה ראשית"
+    assert row.commander_personal_number == "12345"
+    assert row.commander_name == "ישראל ישראלי"
+    assert row.duty_manager_refs == ["12345:ישראל ישראלי", "23456:משה כהן"]
+
+
+def test_hierarchy_malformed_duty_manager_entry_produces_warning_not_error():
+    wb = _wb_with_hierarchy_sheet([
+        ["מדור ב", "group", "", "", "", "not-a-valid-entry"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.hierarchy[0].duty_manager_refs == []
+    assert any("מדור ב" in w or "שורה 2" in w for w in data.parser_warnings)
+
+
+def _wb_with_duty_locations_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_locations")
+    ws.append(["name", "base", "active"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_duty_locations_sheet():
+    wb = _wb_with_duty_locations_sheet([
+        ["בסיס א", "base_a", True],
+        ["בסיס ב", "base_b", False],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.duty_locations) == 2
+    assert data.duty_locations[0].name == "בסיס א"
+    assert data.duty_locations[0].base == "base_a"
+    assert data.duty_locations[0].active is True
+    assert data.duty_locations[1].name == "בסיס ב"
+    assert data.duty_locations[1].active is False
+
+
+def test_duty_locations_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.duty_locations == []
+
+
+def test_parses_duty_locations_with_optional_fields():
+    wb = _wb_with_duty_locations_sheet([
+        ["בסיס א", None, None],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.duty_locations) == 1
+    row = data.duty_locations[0]
+    assert row.name == "בסיס א"
+    assert row.base is None
+    assert row.active is None
+
+
+def _wb_with_exemption_types_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("exemption_types")
+    ws.append(["name", "description", "is_global", "is_medical", "is_commander_exemption", "applies_to_duty_types"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_exemption_types_sheet():
+    wb = _wb_with_exemption_types_sheet([
+        ["פטור בריאות", "health reason", True, True, False, ""],
+        ["פטור שמירות", "security reason", False, False, False, "שמירה,טיול"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.exemption_types) == 2
+    assert data.exemption_types[0].name == "פטור בריאות"
+    assert data.exemption_types[0].is_global is True
+    assert data.exemption_types[0].is_medical is True
+    assert data.exemption_types[0].applies_to_duty_type_names == []
+    assert data.exemption_types[1].name == "פטור שמירות"
+    assert data.exemption_types[1].applies_to_duty_type_names == ["שמירה", "טיול"]
+
+
+def test_exemption_types_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.exemption_types == []
+
+
+def test_parses_exemption_types_with_whitespace_in_applies_to_list():
+    wb = _wb_with_exemption_types_sheet([
+        ["פטור שמירות", "", False, False, False, "שמירה , טיול , ביקור"],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.exemption_types) == 1
+    row = data.exemption_types[0]
+    assert row.applies_to_duty_type_names == ["שמירה", "טיול", "ביקור"]
+
+
 def _wb_with_duty_types_sheet(rows):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     ws = wb.create_sheet("duty_types")
     ws.append([
-        "name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
-        "is_external", "contact_name", "contact_phone", "start_time", "end_time", "instructions",
-        "eligible_unit_names", "requirements_json",
+        # Column is `eligible_units` in the real spreadsheet layout — the
+        # parser reads r.get("eligible_units") into the ImportDutyTypeRow
+        # field named `eligible_unit_names`. Keep the header name matching
+        # the actual sheet, not the schema attribute name.
+        "name", "score_per_day", "description", "active", "reserve_ratio",
+        "reserve_minimum", "is_external", "contact_name", "contact_phone",
+        "start_time", "end_time", "instructions", "eligible_units", "requirements_json",
     ])
     for r in rows:
         ws.append(r)
@@ -206,25 +333,53 @@ def _wb_with_duty_types_sheet(rows):
 
 def test_parses_duty_types_sheet():
     wb = _wb_with_duty_types_sheet([
-        ["שמירה", "1.50", "guard duty", True, "0.30", 5, False, "עמית", "0500000000", "08:00", "16:00", "be alert", "יחידה א,יחידה ב", '{"skill":"shooting"}'],
+        [
+            "שמירה", "1.50", "תיאור", "true", "0.200",
+            "2", "false", "דני", "050-1234567",
+            "20:00", "06:00", "הצטיידות", "מדור א, מדור ב", '{"min_rank": 1}',
+        ],
     ])
     data = V1StandardParser().parse(wb)
     assert len(data.duty_types) == 1
     row = data.duty_types[0]
     assert row.name == "שמירה"
     assert row.score_per_day == "1.50"
-    assert row.description == "guard duty"
+    assert row.description == "תיאור"
     assert row.active is True
-    assert row.reserve_ratio == "0.30"
-    assert row.reserve_minimum == 5
+    assert row.reserve_ratio == "0.200"
+    assert row.reserve_minimum == 2
     assert row.is_external is False
-    assert row.contact_name == "עמית"
-    assert row.contact_phone == "0500000000"
-    assert row.start_time == "08:00"
-    assert row.end_time == "16:00"
-    assert row.instructions == "be alert"
-    assert row.eligible_unit_names == ["יחידה א", "יחידה ב"]
-    assert row.requirements_json == '{"skill":"shooting"}'
+    assert row.contact_name == "דני"
+    assert row.contact_phone == "050-1234567"
+    assert row.start_time == "20:00"
+    assert row.end_time == "06:00"
+    assert row.instructions == "הצטיידות"
+    # Regression test: the spreadsheet column is `eligible_units`, not
+    # `eligible_unit_names` — the parser must read from the real column name.
+    assert row.eligible_unit_names == ["מדור א", "מדור ב"]
+    assert row.requirements_json == '{"min_rank": 1}'
+
+
+
+def test_duty_types_numeric_fields_stay_as_raw_strings_or_ints():
+    wb = _wb_with_duty_types_sheet([
+        [
+            "שמירה", "1.50", "", "", "0.200",
+            "2", "", "", "",
+            "", "", "", "", "",
+        ],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.duty_types[0]
+    # score_per_day and reserve_ratio are kept as raw strings (not Decimal)
+    # at this parsing stage — conversion happens later in validation.
+    assert row.score_per_day == "1.50"
+    assert isinstance(row.score_per_day, str)
+    assert row.reserve_ratio == "0.200"
+    assert isinstance(row.reserve_ratio, str)
+    # reserve_minimum is parsed as an int at this stage.
+    assert row.reserve_minimum == 2
+    assert isinstance(row.reserve_minimum, int)
 
 
 def test_duty_types_sheet_absent_gives_empty_list():
@@ -277,3 +432,20 @@ def test_parses_multiple_duty_types():
     assert len(data.duty_types) == 2
     assert data.duty_types[0].name == "שמירה"
     assert data.duty_types[1].name == "טיול"
+
+
+def test_duty_types_reserve_minimum_zero_is_not_lost():
+    # A literal 0 in the reserve_minimum cell is falsy in Python, so a naive
+    # `if r.get("reserve_minimum") else None` would incorrectly turn a real
+    # zero into None. Must distinguish "cell present and zero" from "cell
+    # blank" using string-emptiness, not truthiness.
+    wb = _wb_with_duty_types_sheet([
+        [
+            "שמירה", "1.50", "", "", "0.200",
+            0, "", "", "",
+            "", "", "", "", "",
+        ],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.duty_types[0]
+    assert row.reserve_minimum == 0
