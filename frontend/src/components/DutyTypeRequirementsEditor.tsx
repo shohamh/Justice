@@ -3,21 +3,47 @@ import { useTranslation } from "react-i18next";
 import { DutyType, updateDutyTypeRequirements } from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
 
-interface Props {
+type Reqs = NonNullable<DutyType["requirements"]>;
+
+interface UncontrolledProps {
   dutyType: DutyType;
   onSaved: () => void;
+  value?: undefined;
+  onChange?: undefined;
 }
 
-export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props) {
+interface ControlledProps {
+  dutyType?: undefined;
+  onSaved?: undefined;
+  value: Reqs;
+  onChange: (next: Reqs) => void;
+}
+
+type Props = UncontrolledProps | ControlledProps;
+
+export default function DutyTypeRequirementsEditor(props: Props) {
   const { t } = useTranslation();
-  const [reqs, setReqs] = useState<NonNullable<DutyType["requirements"]>>(dutyType.requirements ?? {});
+  const isControlled = props.value !== undefined;
+  const [localReqs, setLocalReqs] = useState<Reqs>(
+    isControlled ? props.value : (props.dutyType!.requirements ?? {})
+  );
+  const reqs = isControlled ? props.value : localReqs;
   const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
     void getRanks().then(setRanks);
   }, []);
 
-  function toggleItem(key: keyof NonNullable<DutyType["requirements"]>, value: string) {
+  function setReqs(updater: (prev: Reqs) => Reqs) {
+    const next = updater(reqs);
+    if (isControlled) {
+      props.onChange(next);
+    } else {
+      setLocalReqs(next);
+    }
+  }
+
+  function toggleItem(key: keyof Reqs, value: string) {
     const current: string[] = (reqs[key] as string[] | undefined) ?? [];
     const next = current.includes(value)
       ? current.filter((v: string) => v !== value)
@@ -26,8 +52,9 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
   }
 
   async function save() {
-    await updateDutyTypeRequirements(dutyType.id, reqs);
-    onSaved();
+    if (isControlled) return;
+    await updateDutyTypeRequirements(props.dutyType!.id, reqs);
+    props.onSaved!();
   }
 
   return (
@@ -111,20 +138,22 @@ export default function DutyTypeRequirementsEditor({ dutyType, onSaved }: Props)
         <label key={key} className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={(reqs[key as keyof NonNullable<DutyType["requirements"]>] as boolean | undefined) ?? (defaultVal ?? false)}
+            checked={(reqs[key as keyof Reqs] as boolean | undefined) ?? (defaultVal ?? false)}
             onChange={e => setReqs(prev => ({ ...prev, [key]: e.target.checked }))}
           />
           {label}
         </label>
       ))}
 
-      <button
-        type="button"
-        onClick={save}
-        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-      >
-        {t("eligibility.save")}
-      </button>
+      {!isControlled && (
+        <button
+          type="button"
+          onClick={save}
+          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+        >
+          {t("eligibility.save")}
+        </button>
+      )}
     </div>
   );
 }
