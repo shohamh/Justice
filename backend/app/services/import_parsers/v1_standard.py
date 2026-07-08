@@ -15,11 +15,15 @@ from app.services.import_parsers.schema import (
     ImportExemptionTypeRow,
     ImportHierarchyNodeRow,
     ImportNodeQuota,
+    ImportShiftTemplateRow,
     ImportSoldierRow,
     ParsedImportData,
 )
 
-KNOWN_SHEETS = {"soldiers", "duty_shifts", "assignments", "duty_locations", "hierarchy", "duty_types", "exemption_types"}
+KNOWN_SHEETS = {
+    "soldiers", "duty_shifts", "assignments", "duty_locations", "hierarchy",
+    "duty_types", "exemption_types", "shift_templates",
+}
 
 
 def _sheet_rows(wb: openpyxl.Workbook, name: str) -> list[dict[str, Any]]:
@@ -50,6 +54,23 @@ def _parse_name_list(raw: Any) -> list[str]:
     if not s:
         return []
     return [name.strip() for name in s.split(",") if name.strip()]
+
+
+def _parse_int_list(raw: Any) -> list[int]:
+    """Parse a comma-separated list of integers (used for `weekdays`).
+
+    Non-integer entries are skipped silently — malformed weekday values are
+    caught by the resolver's recurrence_type/weekdays validation, not here.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return []
+    out = []
+    for part in s.split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.append(int(part))
+    return out
 
 
 def _parse_node_quotas(raw: Any, source_row: int) -> tuple[list[ImportNodeQuota], list[str]]:
@@ -109,10 +130,9 @@ def _parse_duty_manager_refs(raw: Any, source_row: int) -> tuple[list[str], list
 
 
 class V1StandardParser:
-    """Standard v1 layout: `soldiers`, `duty_shifts`, `assignments`.
-
-    Shift templates are not importable via Excel — they're managed only
-    through the system UI. A `shift_templates` sheet, if present, is ignored.
+    """Standard v1 layout: `soldiers`, `duty_shifts`, `assignments`,
+    `duty_locations`, `hierarchy`, `duty_types`, `exemption_types`,
+    `shift_templates`.
     """
 
     id = "v1_standard"
@@ -243,6 +263,26 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "duty_types")
         ]
 
+        shift_templates = [
+            ImportShiftTemplateRow(
+                source_row=r["_row"],
+                name=str(r.get("name") or "").strip(),
+                duty_type_name=str(r.get("duty_type_name") or "").strip(),
+                duty_location_name=str(r.get("duty_location_name") or "").strip(),
+                recurrence_type=str(r.get("recurrence_type") or "").strip() or "weekdays",
+                weekdays=_parse_int_list(r.get("weekdays")),
+                start_time=str(r.get("start_time") or "").strip() or None,
+                end_time=str(r.get("end_time") or "").strip() or None,
+                required_count=int(r.get("required_count") or 1),
+                auto_roll=_parse_bool(r.get("auto_roll")) or False,
+                auto_roll_until=_parse_date(r.get("auto_roll_until")),
+                duration_days=int(r.get("duration_days") or 1),
+                notes=str(r.get("notes") or "").strip() or None,
+                eligible_unit_names=_parse_name_list(r.get("eligible_units")),
+            )
+            for r in _sheet_rows(wb, "shift_templates")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
@@ -250,6 +290,7 @@ class V1StandardParser:
             duty_locations=duty_locations,
             hierarchy=hierarchy,
             duty_types=duty_types,
+            shift_templates=shift_templates,
             exemption_types=exemption_types,
             parser_id=self.id,
             parser_warnings=warnings,

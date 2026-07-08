@@ -70,6 +70,23 @@ class ImportDutyTypeRow(BaseModel):
     requirements_json: str | None = None
 
 
+class ImportShiftTemplateRow(BaseModel):
+    source_row: int
+    name: str
+    duty_type_name: str
+    duty_location_name: str
+    recurrence_type: str = "weekdays"
+    weekdays: list[int] = []
+    start_time: str | None = None
+    end_time: str | None = None
+    required_count: int = 1
+    auto_roll: bool = False
+    auto_roll_until: str | None = None
+    duration_days: int = 1
+    notes: str | None = None
+    eligible_unit_names: list[str] = []
+
+
 class ImportExemptionTypeRow(BaseModel):
     source_row: int
     name: str
@@ -102,9 +119,6 @@ class ParsedImportData(BaseModel):
     spreadsheet layouts can be supported by adding a parser without changing
     how imported data is validated or applied.
 
-    Shift templates are intentionally not importable via Excel — they're
-    created and managed only through the system UI (see
-    app/routes/shift_templates.py).
     """
 
     soldiers: list[ImportSoldierRow] = []
@@ -112,6 +126,7 @@ class ParsedImportData(BaseModel):
     duty_locations: list[ImportDutyLocationRow] = []
     hierarchy: list[ImportHierarchyNodeRow] = []
     duty_types: list[ImportDutyTypeRow] = []
+    shift_templates: list[ImportShiftTemplateRow] = []
     exemption_types: list[ImportExemptionTypeRow] = []
     assignments: list[ImportAssignmentRow] = []
     parser_id: str
