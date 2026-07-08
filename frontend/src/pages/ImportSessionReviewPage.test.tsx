@@ -578,6 +578,56 @@ describe("ImportSessionReviewPage", () => {
     vi.useRealTimers();
   });
 
+  it("resyncs an open exemption_type fields modal to fresh data after a background reparse", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([
+      { id: "dt-1", name: "שמירה" },
+    ]);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    // open the fields modal for the row
+    fireEvent.click(await screen.findByText("ערוך חל-על"));
+    const checkbox = (await screen.findByText("שמירה")).closest("label")!.querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    // simulate a background reparse (e.g. triggered by an inline edit elsewhere on the
+    // page) returning a fresh version of the same row (matched by `row`) with the
+    // duty-type association already resolved server-side
+    const reparsedDetail = makeDraftDetail();
+    reparsedDetail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: ["dt-1"], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(reparsedDetail);
+
+    // trigger handleReparse via the existing debounced field-override path: editing
+    // the name field on the same row saves and then reparses ~500ms later
+    const nameInput = screen.getByDisplayValue("פטור רפואי");
+    fireEvent.blur(nameInput);
+    await vi.advanceTimersByTimeAsync(600);
+
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    vi.useRealTimers();
+  });
+
   it("hides selects and confirm button when session is not in draft status", async () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(
       makeDraftDetail({ status: "confirmed" }),

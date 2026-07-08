@@ -256,6 +256,28 @@ export default function ImportSessionReviewPage() {
     };
   }, []);
 
+  // Resync any open field-edit modal's captured row snapshot to the live
+  // parsed_state after a background reparse (e.g. triggered by an inline
+  // field edit on the same row while the modal is open), so the modal
+  // doesn't keep showing stale data. Matched by `row` (stable row identity).
+  const dutyTypesForSync = detail?.parsed_state.duty_types;
+  useEffect(() => {
+    if (!dutyTypeFieldsRow || !dutyTypesForSync) return;
+    const fresh = dutyTypesForSync.find((r) => r.row === dutyTypeFieldsRow.row);
+    if (fresh && fresh !== dutyTypeFieldsRow) {
+      setDutyTypeFieldsRow(fresh);
+    }
+  }, [dutyTypesForSync, dutyTypeFieldsRow]);
+
+  const exemptionTypesForSync = detail?.parsed_state.exemption_types;
+  useEffect(() => {
+    if (!exemptionTypeFieldsRow || !exemptionTypesForSync) return;
+    const fresh = exemptionTypesForSync.find((r) => r.row === exemptionTypeFieldsRow.row);
+    if (fresh && fresh !== exemptionTypeFieldsRow) {
+      setExemptionTypeFieldsRow(fresh);
+    }
+  }, [exemptionTypesForSync, exemptionTypeFieldsRow]);
+
   const readOnly = detail ? detail.status !== "draft" : true;
 
   function setRowAction(group: GroupKey, row: number, value: string) {
