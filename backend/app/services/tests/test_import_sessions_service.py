@@ -1218,3 +1218,31 @@ def test_shift_template_field_override_changes_resolved_name(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["shift_templates"][0]
     assert row["required_count"] == 5
+
+
+def test_shift_template_field_override_bypasses_eligible_unit_resolution(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", "לא קיים"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["shift_templates"][0]["row"]
+    # Without the override, the unresolvable "לא קיים" eligible unit errors the row.
+    assert sess.parsed_state["shift_templates"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"shift_templates": {str(row_num): {"resolved_eligible_node_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "new"
+    assert row["resolved_eligible_node_ids"] == []

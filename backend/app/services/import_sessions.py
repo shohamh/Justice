@@ -615,8 +615,8 @@ def _resolve_shift_templates(
         if recurrence_type not in ("daily", "weekdays", "weekly"):
             errors.append(f"סוג חזרתיות לא תקין '{recurrence_type}'")
 
-        resolved_eligible_node_ids: list[str] | None = field("resolved_eligible_node_ids", None)
-        if resolved_eligible_node_ids is None:
+        resolved_eligible_node_ids: list[str] = field("resolved_eligible_node_ids", None) or []
+        if "resolved_eligible_node_ids" not in override:
             resolved_eligible_node_ids = []
             for unit_name in eligible_unit_names:
                 row_key = f"shift_templates:{row.source_row}:{unit_name}"
