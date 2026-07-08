@@ -965,3 +965,91 @@ def test_confirm_session_assignment_matched_shift_skipped_errors_gracefully(admi
     assert len(result["errors"]) == 1
     assert result["errors"][0]["type"] == "assignments"
     assert sess.created_links["assignments"] == []
+
+
+def _wb_with_duty_types(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_types")
+    ws.append([
+        "name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
+        "is_external", "contact_name", "contact_phone", "start_time", "end_time",
+        "instructions", "eligible_units", "requirements_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def _wb_with_exemption_types(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("exemption_types")
+    ws.append([
+        "name", "description", "is_global", "is_medical", "is_commander_exemption",
+        "applies_to_duty_types",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_duty_type_field_override_changes_resolved_score(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"score_per_day": "2.50"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["score_per_day"] == "2.50"
+
+
+def test_duty_type_field_override_invalid_value_produces_row_error(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"score_per_day": "not-a-number"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["action"] == "error"
+    assert any("ניקוד ליום לא תקין" in e for e in row["errors"])
+
+
+def test_exemption_type_field_override_changes_resolved_flag(admin_session):
+    wb = _wb_with_exemption_types([
+        ["פטור", "", "false", "false", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["exemption_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"exemption_types": {str(row_num): {"is_medical": True}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["exemption_types"][0]
+    assert row["is_medical"] is True
