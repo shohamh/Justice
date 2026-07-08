@@ -321,8 +321,8 @@ def test_resolve_exemption_types_boolean_fields_not_lost(app_session):
     assert row["is_commander_exemption"] is False
 
 
-def test_resolve_and_score_includes_all_nine_keys(app_session):
-    """_resolve_and_score should include all 9 expected keys in returned dict."""
+def test_resolve_and_score_includes_all_expected_keys(app_session):
+    """_resolve_and_score should include every resolved group's key in the returned dict."""
     admin = _admin(app_session)
     data = ParsedImportData(
         parser_id="v1_standard",
@@ -337,7 +337,7 @@ def test_resolve_and_score_includes_all_nine_keys(app_session):
     result = _resolve_and_score(app_session, data, admin)
 
     expected_keys = {
-        "soldiers", "duty_shifts", "shift_templates", "duty_locations",
+        "soldiers", "duty_shifts", "shift_templates", "assignments", "duty_locations",
         "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings"
     }
     assert set(result.keys()) == expected_keys

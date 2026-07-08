@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app.db.models import DutyLocation, DutyShift, DutyType
@@ -38,13 +38,15 @@ def _shift(session, dt, loc, start, end, count=1) -> DutyShift:
 def test_single_shift_required_count_1(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date(2026, 7, 1), date(2026, 7, 3), count=1)
+    start = date.today() + timedelta(days=1)
+    end = date.today() + timedelta(days=3)
+    shift = _shift(admin_session, dt, loc, start, end, count=1)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
     assert len(blocks) == 1
     assert blocks[0].duty_type_id == dt.id
-    assert blocks[0].start_date == date(2026, 7, 1)
+    assert blocks[0].start_date == start
     assert b2s[blocks[0].id] == shift.id
 
 
