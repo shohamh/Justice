@@ -22,6 +22,7 @@ from app.db.models import (
     HierarchyLevelType,
     HierarchyNode,
     ImportSession,
+    ShiftTemplate,
     Soldier,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
@@ -565,40 +566,97 @@ def _resolve_shift_templates(
     data: ParsedImportData,
     dt_by_name: dict[str, str] | None = None,
     dt_by_row: dict[str, str] | None = None,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     dt_by_name = dt_by_name or {}
     dt_by_row = dt_by_row or {}
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    overrides = overrides or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    existing_by_name = {tpl.name: tpl for tpl in session.execute(select(ShiftTemplate)).scalars()}
 
     out = []
-    for row in getattr(data, "shift_templates", []):
+    for row in data.shift_templates:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        recurrence_type = field("recurrence_type", row.recurrence_type)
+        eligible_unit_names = field("eligible_unit_names", row.eligible_unit_names)
+
         duty_type = None
-        if row.duty_type_name:
+        if duty_type_name:
             row_key = f"shift_templates:{row.source_row}"
-            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
             if mapped_id:
                 try:
                     duty_type = session.get(DutyType, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if duty_type is None:
-                duty_type = duty_types_by_name.get(row.duty_type_name)
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
 
-        action = "error" if errors else "new"
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
+        if location is None:
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
+
+        if recurrence_type not in ("daily", "weekdays", "weekly"):
+            errors.append(f"סוג חזרתיות לא תקין '{recurrence_type}'")
+
+        resolved_eligible_node_ids: list[str] | None = field("resolved_eligible_node_ids", None)
+        if resolved_eligible_node_ids is None:
+            resolved_eligible_node_ids = []
+            for unit_name in eligible_unit_names:
+                row_key = f"shift_templates:{row.source_row}:{unit_name}"
+                mapped_id = node_by_row.get(row_key) or node_by_name.get(unit_name)
+                node = None
+                if mapped_id:
+                    try:
+                        node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                    except ValueError:
+                        pass
+                if node is None:
+                    node = nodes_by_name.get(unit_name)
+                if node is None:
+                    errors.append(f"יחידה זכאית לא מזוהה '{unit_name}'")
+                else:
+                    resolved_eligible_node_ids.append(str(node.id))
+
+        existing = existing_by_name.get(name) if name else None
+        action = "error" if errors else ("update" if existing else "new")
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "duty_type_name": row.duty_type_name,
+            "name": name,
+            "duty_type_name": duty_type_name,
             "resolved_duty_type_id": str(duty_type.id) if duty_type is not None else None,
-            "days_of_week": row.days_of_week,
-            "required_primary": row.required_primary,
-            "required_reserve": row.required_reserve,
+            "duty_location_name": duty_location_name,
+            "resolved_duty_location_id": str(location.id) if location is not None else None,
+            "recurrence_type": recurrence_type,
+            "weekdays": field("weekdays", row.weekdays),
+            "start_time": field("start_time", row.start_time),
+            "end_time": field("end_time", row.end_time),
+            "required_count": field("required_count", row.required_count),
+            "auto_roll": field("auto_roll", row.auto_roll),
+            "auto_roll_until": field("auto_roll_until", row.auto_roll_until),
+            "duration_days": field("duration_days", row.duration_days),
+            "notes": field("notes", row.notes),
+            "resolved_eligible_node_ids": resolved_eligible_node_ids,
+            "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
 
@@ -772,7 +830,9 @@ def _resolve_and_score(
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
         "duty_shifts": duty_shifts,
-        "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
+        "shift_templates": _resolve_shift_templates(
+            session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
+        ),
         "assignments": _resolve_assignments(session, data, actor, duty_shifts),
         "duty_locations": _resolve_duty_locations(session, data),
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
