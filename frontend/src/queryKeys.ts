@@ -52,5 +52,4 @@ export const queryKeys = {
   commandDashboardAlerts: () => ["commandDashboard", "alerts"] as const,
   assignments: (soldierId: string) => ["assignments", soldierId] as const,
   draftsPreview: () => ["algorithm", "draftsPreview"] as const,
-  shiftTemplates: () => ["shiftTemplates"] as const,
 };
