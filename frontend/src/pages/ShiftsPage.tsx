@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import ShiftFormModal from "../components/ShiftFormModal";
 import ShiftEditAssignmentsModal from "../components/ShiftEditAssignmentsModal";
@@ -10,7 +12,7 @@ import SplitInUnitModal from "../components/SplitInUnitModal";
 import AutoAssignResponsibilityModal from "../components/AutoAssignResponsibilityModal";
 import { BulkDeletePreview, BulkDeletePreviewShift, DutyShift, activateShift, bulkClearAssignments, bulkDeleteShifts, cancelShift, clearShiftAssignments, deleteShift, getBulkDeletePreview, listShifts } from "../api/shifts";
 import { clearAllAssignments } from "../api/assignments";
-import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
 import { DataTable, type ColDef } from "../components/DataTable";
@@ -403,13 +405,9 @@ function BulkActionBar({ selectedShifts, onDone, onAutoAssign, showAlgorithmPane
 
 export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: string) => void } = {}) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const autoAssignSectionRef = useRef<HTMLDivElement>(null);
-  const [shifts, setShifts] = useState<DutyShift[]>([]);
-  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
-  const [locations, setLocations] = useState<DutyLocation[]>([]);
-  const [nodeMap, setNodeMap] = useState<Map<string, string>>(new Map());
-  const [nodeTree, setNodeTree] = useState<NodeDTO[]>([]);
   const [nodeFilterIds, setNodeFilterIds] = useState<string[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -418,49 +416,60 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const [editAssignmentsShift, setEditAssignmentsShift] = useState<DutyShift | null>(null);
   const [selectedShiftIds, setSelectedShiftIds] = useState<string[]>([]);
   const [showAlgorithmPanel, setShowAlgorithmPanel] = useState(false);
-  const [runningCount, setRunningCount] = useState(0);
-  const [doneUnpublishedCount, setDoneUnpublishedCount] = useState(0);
-  const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
   const [viewTemplate, setViewTemplate] = useState<ShiftTemplate | null>(null);
 
-  const refresh = useCallback(async () => {
-    const [ss, dts, locs, tmpls] = await Promise.all([
-      listShifts({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
-      listDutyTypes(),
-      listLocations(),
-      listTemplates(true),
-    ]);
-    setShifts(ss);
-    setDutyTypes(dts);
-    setLocations(locs);
-    setTemplates(tmpls);
-  }, [dateFrom, dateTo]);
+  const shiftsParams = useMemo(
+    () => ({ date_from: dateFrom || undefined, date_to: dateTo || undefined }),
+    [dateFrom, dateTo],
+  );
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const shiftsQuery = useQuery({
+    queryKey: queryKeys.shifts(shiftsParams),
+    queryFn: () => listShifts(shiftsParams),
+  });
+  const shifts = shiftsQuery.data ?? [];
 
-  useEffect(() => {
-    void fetchFullTree().then((roots) => {
-      const map = new Map<string, string>();
-      function walk(nodes: NodeDTO[]) {
-        for (const n of nodes) {
-          map.set(n.id, n.name);
-          if (n.children) walk(n.children);
-        }
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
+
+  const locationsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
+  const locations = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
+
+  const templatesQuery = useQuery({ queryKey: queryKeys.shiftTemplatesAll(), queryFn: () => listTemplates(true) });
+  const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
+
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const nodeTree = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, string>();
+    function walk(nodes: NodeDTO[]) {
+      for (const n of nodes) {
+        map.set(n.id, n.name);
+        if (n.children) walk(n.children);
       }
-      walk(roots);
-      setNodeMap(map);
-      setNodeTree(roots);
-    }).catch(() => {});
-  }, []);
+    }
+    walk(nodeTree);
+    return map;
+  }, [nodeTree]);
 
-  useEffect(() => {
-    void listJobs(50, 0)
-      .then((data) => {
-        setRunningCount(data.items.filter((j) => j.status === "pending" || j.status === "running").length);
-        setDoneUnpublishedCount(data.items.filter((j) => j.status === "done").length);
-      })
-      .catch(() => {});
-  }, []);
+  const jobsQuery = useQuery({ queryKey: queryKeys.algorithmJobs(50, 0), queryFn: () => listJobs(50, 0) });
+  const runningCount = useMemo(
+    () => (jobsQuery.data?.items ?? []).filter((j) => j.status === "pending" || j.status === "running").length,
+    [jobsQuery.data],
+  );
+  const doneUnpublishedCount = useMemo(
+    () => (jobsQuery.data?.items ?? []).filter((j) => j.status === "done").length,
+    [jobsQuery.data],
+  );
+
+  const invalidateShifts = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.shiftsList() }),
+    [queryClient],
+  );
+
+  const refresh = useCallback(async () => {
+    await invalidateShifts();
+  }, [invalidateShifts]);
 
   useEffect(() => {
     if (selectedShiftIds.length === 0) setShowAlgorithmPanel(false);
@@ -477,24 +486,24 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   const handleCancel = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_cancel"))) return;
     await cancelShift(shift.id);
-    await refresh();
-  }, [t, refresh]);
+    await invalidateShifts();
+  }, [t, invalidateShifts]);
 
   const handleActivate = useCallback(async (shift: DutyShift) => {
     await activateShift(shift.id);
-    await refresh();
-  }, [refresh]);
+    await invalidateShifts();
+  }, [invalidateShifts]);
 
   const handleDelete = useCallback(async (shift: DutyShift) => {
     if (!window.confirm(t("shifts.confirm_delete_permanent"))) return;
     try {
       await deleteShift(shift.id);
-      await refresh();
+      await invalidateShifts();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (detail === "has_assignments") alert(t("shifts.has_assignments_error"));
     }
-  }, [t, refresh]);
+  }, [t, invalidateShifts]);
 
   const dtName = useCallback((id: string) => dutyTypes.find(d => d.id === id)?.name ?? id.slice(0, 8), [dutyTypes]);
   const locName = useCallback((id: string) => locations.find(l => l.id === id)?.name ?? id.slice(0, 8), [locations]);
@@ -853,7 +862,13 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           dutyTypes={dutyTypes}
           locations={locations}
           initial={viewTemplate}
-          onSubmit={async () => { setViewTemplate(null); await refresh(); }}
+          onSubmit={async () => {
+            setViewTemplate(null);
+            await Promise.all([
+              invalidateShifts(),
+              queryClient.invalidateQueries({ queryKey: queryKeys.shiftTemplatesAll() }),
+            ]);
+          }}
           onClose={() => setViewTemplate(null)}
         />
       )}

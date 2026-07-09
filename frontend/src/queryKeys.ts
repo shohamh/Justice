@@ -55,4 +55,8 @@ export const queryKeys = {
   assignments: (soldierId: string) => ["assignments", soldierId] as const,
   draftsPreview: () => ["algorithm", "draftsPreview"] as const,
   shiftTemplates: () => ["shiftTemplates"] as const,
+  shiftTemplatesAll: () => ["shiftTemplates", "all"] as const,
+  shiftsList: () => ["shifts", "list"] as const,
+  shifts: (params?: Record<string, unknown>) => ["shifts", "list", params ?? {}] as const,
+  algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
 };
