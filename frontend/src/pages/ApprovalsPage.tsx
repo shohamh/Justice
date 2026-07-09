@@ -30,9 +30,9 @@ import {
 } from "../api/soldiers";
 import {
   SwapRequest,
-  approveSwapSide,
+  managerApproveSwap,
   listPendingSwaps,
-  rejectSwap,
+  managerRejectSwap,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 
@@ -208,7 +208,7 @@ export default function ApprovalsPage() {
 
   async function onSwapApproveSide(id: string, side: "requester" | "covering") {
     try {
-      await approveSwapSide(id, side);
+      await managerApproveSwap(id, side);
       await refresh();
     } catch (err) {
       setActionError(describeError(err));
@@ -216,7 +216,7 @@ export default function ApprovalsPage() {
   }
   async function onSwapReject(id: string) {
     try {
-      await rejectSwap(id, swapRejectNotes[id]);
+      await managerRejectSwap(id, swapRejectNotes[id]);
       const next = { ...swapRejectNotes };
       delete next[id];
       setSwapRejectNotes(next);
