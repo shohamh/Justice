@@ -42,4 +42,5 @@ export const queryKeys = {
   hierarchyTreeVisible: () => ["hierarchy", "tree", "visible"] as const,
   notificationsList: () => ["notifications", "list"] as const,
   notifications: (filter: string, offset: number) => ["notifications", "list", filter, offset] as const,
+  soldiers: () => ["soldiers", "list"] as const,
 };

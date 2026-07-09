@@ -1,12 +1,14 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import { DataTable, type ColDef } from "../components/DataTable";
 import Layout from "../components/Layout";
 import HierarchyTree from "../components/HierarchyTree";
 import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { fetchTree } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
 import { SoldierDTO, listSoldiers, onboardSoldier, updateSoldier, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
@@ -17,8 +19,7 @@ export default function TeamHierarchyPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { openSoldierModal } = useSoldierModal();
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
+  const queryClient = useQueryClient();
   const [pn, setPn] = useState("");
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
@@ -26,11 +27,16 @@ export default function TeamHierarchyPage() {
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
 
+  const nodesQuery = useQuery({ queryKey: queryKeys.hierarchyTreeVisible(), queryFn: fetchTree });
+  const nodes = nodesQuery.data ?? [];
+
+  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const soldiers: SoldierDTO[] = soldiersQuery.data ?? [];
+
   async function refresh() {
-    setNodes(await fetchTree());
-    setSoldiers(await listSoldiers());
+    await queryClient.invalidateQueries({ queryKey: queryKeys.hierarchyTreeVisible() });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.soldiers() });
   }
-  useEffect(() => { void refresh(); }, []);
 
   const portfolioDialog = usePortfolioDialog(nodes, refresh);
 
