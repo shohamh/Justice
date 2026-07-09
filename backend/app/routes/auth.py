@@ -1,9 +1,11 @@
+import json
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
 from pydantic import BaseModel, Field
+from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
@@ -101,8 +103,23 @@ def _client_context(request: Request) -> dict[str, str]:
     }
 
 
+def _login_account_key(request: Request) -> str:
+    """Rate-limit key for /auth/login: the submitted personal_number, falling
+    back to client IP if the body is missing/malformed."""
+    try:
+        raw = getattr(request, "_body", b"") or b""
+        data = json.loads(raw)
+        pn = data.get("personal_number")
+        if pn:
+            return f"login-account:{pn}"
+    except Exception:
+        pass
+    return get_remote_address(request)
+
+
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit(get_settings().login_rate_limit)
+@limiter.limit(lambda: get_settings().login_rate_limit)
+@limiter.limit(lambda: get_settings().login_account_rate_limit, key_func=_login_account_key)
 def login(
     body: Annotated[LoginRequest, Body()],
     request: Request,
