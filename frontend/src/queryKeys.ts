@@ -31,4 +31,7 @@ export const queryKeys = {
   publicExemptionTypes: () => ["exemptionTypes", "public"] as const,
   swapConfig: () => ["swaps", "config"] as const,
   swapCoverEligibility: (ids: string[]) => ["swaps", "coverEligibility", ids] as const,
+  exemptionTypes: () => ["exemptionTypes"] as const,
+  exemptionDutyTypeMap: () => ["exemptionTypes", "dutyTypeMap"] as const,
+  myExemptions: (soldierId: string) => ["exemptions", "mine", soldierId] as const,
 };
