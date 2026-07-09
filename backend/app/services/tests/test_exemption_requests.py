@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
+
+import pytest
 
 from app.db.models import ExemptionType, Soldier
 from app.services.exemption_requests import (
@@ -220,3 +222,53 @@ def test_escalation_apply_immediately_requires_commander_type(app_session):
         assert False, "expected ExemptionRequestError"
     except ExemptionRequestError as exc:
         assert "commander_exemption_type_required" in str(exc)
+
+
+def test_submit_request_rejects_span_over_364_days(admin_session):
+    from app.services.exemption_requests import submit_request, ExemptionRequestError
+    from app.db.models import ExemptionType
+    from tests.helpers import create_soldier
+
+    et = ExemptionType(name="span_test_type", description=None)
+    admin_session.add(et)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="7910001")
+
+    start = date.today()
+    with pytest.raises(ExemptionRequestError, match="date_range_too_long"):
+        submit_request(
+            admin_session, soldier.id, et.id,
+            start_date=start, end_date=start + timedelta(days=365),
+        )
+
+
+def test_submit_request_allows_span_of_exactly_364_days(admin_session):
+    from app.services.exemption_requests import submit_request
+    from app.db.models import ExemptionType
+    from tests.helpers import create_soldier
+
+    et = ExemptionType(name="span_test_type_ok", description=None)
+    admin_session.add(et)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="7910002")
+
+    start = date.today()
+    req = submit_request(
+        admin_session, soldier.id, et.id,
+        start_date=start, end_date=start + timedelta(days=364),
+    )
+    assert req.id is not None
+
+
+def test_submit_request_allows_open_ended(admin_session):
+    from app.services.exemption_requests import submit_request
+    from app.db.models import ExemptionType
+    from tests.helpers import create_soldier
+
+    et = ExemptionType(name="span_test_type_open", description=None)
+    admin_session.add(et)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="7910003")
+
+    req = submit_request(admin_session, soldier.id, et.id, start_date=date.today(), end_date=None)
+    assert req.end_date is None
