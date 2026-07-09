@@ -26,6 +26,34 @@ class PasswordPolicyError(SoldierError):
     """Raised when a password fails policy (length-over-complexity, >= 10 chars)."""
 
 
+class SoldierValidationError(SoldierError):
+    """Raised when a soldier's date fields fail a cross-field sanity check."""
+
+
+def _check_soldier_dates(
+    *,
+    enlistment_date: date | None,
+    discharge_date: date | None,
+    mandatory_end_date: date | None,
+    is_career: bool,
+) -> None:
+    if discharge_date is not None and enlistment_date is not None and discharge_date <= enlistment_date:
+        raise SoldierValidationError("discharge_date must be after enlistment_date")
+    if mandatory_end_date is not None and discharge_date is not None and mandatory_end_date > discharge_date:
+        raise SoldierValidationError("mandatory_end_date must not be after discharge_date")
+    if is_career and discharge_date is not None and discharge_date < date.today():
+        raise SoldierValidationError("career soldier's discharge_date cannot be in the past")
+
+
+def validate_soldier_dates(soldier: Soldier) -> None:
+    _check_soldier_dates(
+        enlistment_date=soldier.enlistment_date,
+        discharge_date=soldier.discharge_date,
+        mandatory_end_date=soldier.mandatory_end_date,
+        is_career=soldier.is_career,
+    )
+
+
 def validate_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise PasswordPolicyError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
@@ -185,6 +213,7 @@ def update_soldier_profile(
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
+    validate_soldier_dates(soldier)
     write_audit(
         session,
         actor_id=actor_id,
@@ -285,6 +314,7 @@ def approve_field_update(
         soldier.has_military_driving_license = payload["has_license"]
         expiry = payload.get("expiry_date")
         soldier.military_driving_license_expiry = date.fromisoformat(expiry) if expiry else None
+    validate_soldier_dates(soldier)
     update.status = "approved"
     update.decided_by = actor_id
     update.decided_at = datetime.now(tz=timezone.utc)
