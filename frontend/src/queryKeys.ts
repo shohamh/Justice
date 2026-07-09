@@ -27,4 +27,6 @@ export const queryKeys = {
   pendingConstraints: () => ["constraints", "pending"] as const,
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
+  hierarchyTree: () => ["hierarchy", "tree"] as const,
+  publicExemptionTypes: () => ["exemptionTypes", "public"] as const,
 };

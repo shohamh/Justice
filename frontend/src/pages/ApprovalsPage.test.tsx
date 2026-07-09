@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ApprovalsPage from "./ApprovalsPage";
 import * as constraintsApi from "../api/constraints";
@@ -58,12 +59,17 @@ beforeEach(() => {
 
 describe("ApprovalsPage - action error banner", () => {
   it("shows the backend error message when approving a constraint fails", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     render(
-      <MemoryRouter>
-        <SoldierModalProvider>
-          <ApprovalsPage />
-        </SoldierModalProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
     const approveBtn = await screen.findByTestId("approve-c1");
     fireEvent.click(approveBtn);
