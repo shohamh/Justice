@@ -43,4 +43,11 @@ export const queryKeys = {
   notificationsList: () => ["notifications", "list"] as const,
   notifications: (filter: string, offset: number) => ["notifications", "list", filter, offset] as const,
   soldiers: () => ["soldiers", "list"] as const,
+  commandDashboardSummary: () => ["commandDashboard", "summary"] as const,
+  commandDashboardSoldiers: () => ["commandDashboard", "soldiers"] as const,
+  commandDashboardFairnessInternal: () => ["commandDashboard", "fairnessInternal"] as const,
+  commandDashboardFairnessExternal: () => ["commandDashboard", "fairnessExternal"] as const,
+  commandDashboardPotential: () => ["commandDashboard", "potential"] as const,
+  commandDashboardUpcoming: () => ["commandDashboard", "upcoming"] as const,
+  commandDashboardAlerts: () => ["commandDashboard", "alerts"] as const,
 };
