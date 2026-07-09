@@ -51,7 +51,8 @@ export default function MyDutiesPage() {
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
-    queryFn: () => getTransparency().then((out) => out.rows),
+    queryFn: getTransparency,
+    select: (out) => out.rows,
   });
   const allRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
 

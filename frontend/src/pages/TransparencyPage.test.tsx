@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import TransparencyPage from "./TransparencyPage";
 import * as scoringApi from "../api/scoring";
@@ -8,6 +9,17 @@ import * as potentialApi from "../api/potential";
 import type { TransparencyOut, TransparencyRow } from "../api/scoring";
 import type { NodeDTO } from "../api/hierarchy";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      {ui}
+    </QueryClientProvider>
+  );
+}
 
 function makeTree(nodeId: string, nodeName: string): NodeDTO[] {
   return [
@@ -80,7 +92,7 @@ describe("TransparencyPage exemptions column", () => {
     };
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
 
-    render(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByText("מגבלה רפואית (חלקי, עד 15/08/2026)")).toBeInTheDocument();
@@ -94,7 +106,7 @@ describe("TransparencyPage exemptions column", () => {
     };
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
 
-    render(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
       expect(screen.getByText("חסוי")).toBeInTheDocument();
@@ -112,7 +124,7 @@ describe("TransparencyPage sub-units exemption aggregates", () => {
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
     vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue(makeTree("node-1", "יחידה 1"));
 
-    render(
+    renderWithProviders(
       <MemoryRouter initialEntries={["/transparency?tab=sub_units"]}>
         <SoldierModalProvider>
           <TransparencyPage />
@@ -143,7 +155,7 @@ describe("TransparencyPage sub-units exemption aggregates", () => {
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
     vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue(makeTree("node-1", "יחידה 1"));
 
-    render(
+    renderWithProviders(
       <MemoryRouter initialEntries={["/transparency?tab=sub_units"]}>
         <SoldierModalProvider>
           <TransparencyPage />

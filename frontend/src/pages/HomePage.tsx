@@ -81,7 +81,8 @@ export default function HomePage() {
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
-    queryFn: () => getTransparency().then((out) => out.rows),
+    queryFn: getTransparency,
+    select: (out) => out.rows,
   });
   const transparencyRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
 
