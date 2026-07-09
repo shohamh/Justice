@@ -67,4 +67,9 @@ export const queryKeys = {
   effortBreakdown: (soldierId: string) => ["scoring", "effortBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
   telegramLinkCode: () => ["telegram", "linkCode"] as const,
+  importSessionsList: () => ["import", "sessions"] as const,
+  importSessions: (statusFilter?: string) => ["import", "sessions", statusFilter ?? "active"] as const,
+  importSessionDetail: (sessionId: string) => ["import", "session", sessionId] as const,
+  importDutyTypesForImport: () => ["import", "dutyTypesForImport"] as const,
+  importNodesForImport: () => ["import", "nodesForImport"] as const,
 };
