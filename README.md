@@ -134,6 +134,13 @@ docker-compose exec backend uv run python -m app.scripts.bootstrap
 Open <http://localhost:5173> and log in with the bootstrap admin
 (`BOOTSTRAP_ADMIN_PERSONAL_NUMBER` / `BOOTSTRAP_ADMIN_PASSWORD` from `.env`).
 
+> **`COOKIE_SECURE`:** keep this `false` unless the app is served over real HTTPS.
+> Browsers silently drop the `refresh_token` cookie over plain HTTP when it's `true`,
+> which manifests as an unexplained logout on page refresh. This also applies to
+> deployments fronted by a TLS-terminating proxy (e.g. a Tailscale funnel) — the
+> backend process itself still sees a plain-HTTP request, so `COOKIE_SECURE` must
+> stay `false` there too.
+
 The `backend` service automatically runs `alembic upgrade head` before starting,
 so migrations are always applied on container start.
 
