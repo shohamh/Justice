@@ -355,6 +355,9 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={er.soldier_id} name={er.soldier_name || er.soldier_id.slice(0, 8)} /></strong>
                     {er.node_name && <span className="text-xs text-gray-400">{er.node_name}</span>}
                   </div>
+                  <p className="text-sm font-medium mb-1">
+                    {exemptionTypes.find(et => et.id === er.exemption_type_id)?.name ?? t("exemptions.unknown_type")}
+                  </p>
                   <p className="text-xs text-gray-500 mb-1" data-testid={`er-stage-${er.id}`}>
                     {er.status === "pending_commander"
                       ? "ממתין לאישור מפקד"

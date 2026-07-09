@@ -168,6 +168,7 @@
     "revoke": "בטל",
     "none": "אין פטורים",
     "forever": "ללא הגבלה",
+    "unknown_type": "סוג פטור לא ידוע",
     "exempts_from": "פוטר מ",
     "past": "פטורים שפגו",
     "requests_title": "בקשות פטור",
