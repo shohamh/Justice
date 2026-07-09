@@ -52,7 +52,8 @@ export const queryKeys = {
   commandDashboardAlerts: () => ["commandDashboard", "alerts"] as const,
   commandDashboardOwnPotentialAll: () => ["commandDashboard", "ownPotential"] as const,
   commandDashboardOwnPotential: (nodeId: string) => ["commandDashboard", "ownPotential", nodeId] as const,
-  assignments: (soldierId: string) => ["assignments", soldierId] as const,
+  assignments: (soldierId: string, params?: Record<string, unknown>) =>
+    ["assignments", soldierId, params ?? {}] as const,
   draftsPreview: () => ["algorithm", "draftsPreview"] as const,
   shiftTemplates: () => ["shiftTemplates"] as const,
   shiftTemplatesAll: () => ["shiftTemplates", "all"] as const,
@@ -60,4 +61,5 @@ export const queryKeys = {
   shifts: (params?: Record<string, unknown>) => ["shifts", "list", params ?? {}] as const,
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
+  soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
 };
