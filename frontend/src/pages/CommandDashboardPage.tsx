@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -33,7 +33,6 @@ export default function CommandDashboardPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [_activePanel, setActivePanel] = useState<string>("summary");
-  const [ownPotential, setOwnPotential] = useState<Record<string, PotentialResult>>({});
 
   const summaryQuery = useQuery({ queryKey: queryKeys.commandDashboardSummary(), queryFn: getSummary });
   const summaryData = summaryQuery.data ?? null;
@@ -97,6 +96,7 @@ export default function CommandDashboardPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.commandDashboardOwnPotentialAll() }),
     ]);
   }, [queryClient]);
 
@@ -107,26 +107,25 @@ export default function CommandDashboardPage() {
     [nodes, user],
   );
 
-  useEffect(() => {
-    if (myNodes.length === 0) {
-      setOwnPotential({});
-      return;
-    }
-    let cancelled = false;
-    Promise.allSettled(myNodes.map((n) => getNodePotential(n.id))).then((results) => {
-      if (cancelled) return;
-      const byId: Record<string, PotentialResult> = {};
-      results.forEach((r, i) => {
-        if (r.status === "fulfilled") {
-          byId[myNodes[i].id] = r.value;
-        } else {
-          console.error(`Failed to fetch potential for node ${myNodes[i].id}:`, r.reason);
-        }
-      });
-      setOwnPotential(byId);
+  const ownPotentialQueries = useQueries({
+    queries: myNodes.map((n) => ({
+      queryKey: queryKeys.commandDashboardOwnPotential(n.id),
+      queryFn: () => getNodePotential(n.id),
+    })),
+  });
+
+  const ownPotential = useMemo(() => {
+    const byId: Record<string, PotentialResult> = {};
+    myNodes.forEach((n, i) => {
+      const result = ownPotentialQueries[i];
+      if (result?.data) {
+        byId[n.id] = result.data;
+      } else if (result?.isError) {
+        console.error(`Failed to fetch potential for node ${n.id}:`, result.error);
+      }
     });
-    return () => { cancelled = true; };
-  }, [myNodes]);
+    return byId;
+  }, [myNodes, ownPotentialQueries]);
 
   const handleCardClick = (panel: string) => setActivePanel(panel);
 
