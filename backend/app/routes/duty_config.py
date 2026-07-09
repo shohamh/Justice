@@ -115,8 +115,11 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
 
 @router.get("/duty-types", response_model=list[DutyTypeOut])
 def list_duty_types(
-    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
 ) -> list[DutyTypeOut]:
+    # Reference data: any authenticated (password-changed) user may list duty-type
+    # names/details, same precedent as list_exemption_types below. Mutations stay
+    # gated behind require_config_manager.
     return [_dt_out(d) for d in session.execute(select(DutyType)).scalars().all()]
 
 
