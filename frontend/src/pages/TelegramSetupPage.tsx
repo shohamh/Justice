@@ -1,31 +1,39 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { generateTelegramCode, getTelegramStatus, GenerateCodeResult } from "../api/telegram";
+import { useQuery } from "@tanstack/react-query";
+import { generateTelegramCode, getTelegramStatus } from "../api/telegram";
 import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 
 export default function TelegramSetupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { refreshMe, telegramRequired } = useAuth();
-  const [codeInfo, setCodeInfo] = useState<GenerateCodeResult | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [verified, setVerified] = useState(false);
 
-  useEffect(() => { generateTelegramCode().then(setCodeInfo).catch(() => {}); }, []);
+  const codeQuery = useQuery({ queryKey: queryKeys.telegramLinkCode(), queryFn: generateTelegramCode });
+  const codeInfo = codeQuery.data ?? null;
+
+  // Status is only fetched on demand (the "check" button below), not polled —
+  // this mirrors the page's original manual-check UX exactly.
+  const statusQuery = useQuery({
+    queryKey: queryKeys.telegramStatus(),
+    queryFn: getTelegramStatus,
+    enabled: false,
+  });
+  const verified = statusQuery.data?.is_verified ?? false;
+  const checking = statusQuery.isFetching;
+
+  useEffect(() => {
+    if (verified) {
+      void refreshMe();
+      const timer = setTimeout(() => navigate("/", { replace: true }), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [verified, navigate, refreshMe]);
 
   async function checkVerification() {
-    setChecking(true);
-    try {
-      const status = await getTelegramStatus();
-      if (status.is_verified) {
-        setVerified(true);
-        await refreshMe();
-        setTimeout(() => navigate("/", { replace: true }), 1200);
-      }
-    } finally {
-      setChecking(false);
-    }
+    await statusQuery.refetch();
   }
 
   return (
