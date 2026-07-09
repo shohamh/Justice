@@ -59,4 +59,5 @@ export const queryKeys = {
   shiftsList: () => ["shifts", "list"] as const,
   shifts: (params?: Record<string, unknown>) => ["shifts", "list", params ?? {}] as const,
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
+  algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
 };
