@@ -168,8 +168,17 @@ _ALL_DATA_TABLES = [
 def pg_container() -> Iterator[PostgresContainer]:
     # Match the prod database/role names so migration 0001's hardcoded
     # `GRANT CONNECT ON DATABASE justice` and the 'app'/'app_pw' role line apply cleanly.
+    #
+    # fsync/full_page_writes/synchronous_commit are disabled: this container is
+    # throwaway (destroyed at session end), so crash-durability guarantees are
+    # irrelevant, but Postgres pays their fsync cost on every TRUNCATE (new
+    # relfilenode per truncated table). On Docker Desktop/Windows that fsync cost
+    # measured ~3s for the per-test _truncate_tables truncate — the dominant
+    # per-test cost in the whole suite. With these off it drops to ~2ms.
     with PostgresContainer(
         "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
+    ).with_command(
+        "postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off"
     ) as pg:
         yield pg
 
