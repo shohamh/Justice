@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { formatDate } from "../utils/formatDate";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
@@ -9,14 +11,13 @@ import ExemptionsPanel from "../components/ExemptionsPanel";
 import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 import {
-  FieldUpdateDTO,
   submitFieldUpdate,
   listFieldUpdates,
   getRanks,
 } from "../api/soldiers";
 import { setEmail } from "../api/auth";
-import { generateTelegramCode, getTelegramStatus, unlinkTelegram, TelegramStatus } from "../api/telegram";
-import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref, CommanderScope } from "../api/notifications";
+import { generateTelegramCode, getTelegramStatus, unlinkTelegram } from "../api/telegram";
+import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref } from "../api/notifications";
 import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
@@ -24,71 +25,88 @@ import Combobox from "../components/Combobox";
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [fieldUpdates, setFieldUpdates] = useState<FieldUpdateDTO[]>([]);
+  const queryClient = useQueryClient();
+
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
   const [mandatoryEndReq, setMandatoryEndReq] = useState("");
   const [dischargeReq, setDischargeReq] = useState("");
   const [genderReq, setGenderReq] = useState("");
   const [rankReq, setRankReq] = useState("");
-  const [ranks, setRanks] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
   const [phoneReq, setPhoneReq] = useState("");
   const [licenseHasReq, setLicenseHasReq] = useState(false);
   const [licenseExpiryReq, setLicenseExpiryReq] = useState("");
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
-  const [tgStatus, setTgStatus] = useState<TelegramStatus | null>(null);
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
   const [tgPolling, setTgPolling] = useState(false);
   const [prefs, setPrefs] = useState<NotificationPref[]>([]);
   const latestPrefsRef = useRef<NotificationPref[]>([]);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [scopes, setScopes] = useState<CommanderScope[]>([]);
-  const [hierarchyNodes, setHierarchyNodes] = useState<NodeDTO[]>([]);
   const [addNodeId, setAddNodeId] = useState("");
   const [addDepth, setAddDepth] = useState<number>(-1);
   const [addingScopeLoading, setAddingScopeLoading] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      void (async () => {
-        const updates = await listFieldUpdates(user.id);
-        setFieldUpdates(updates);
-      })();
-    }
-  }, [user]);
+  const isCommanderLike = !!(user?.role === "admin" || user?.is_commander || user?.is_duty_manager);
+
+  const fieldUpdatesQuery = useQuery({
+    queryKey: user ? queryKeys.fieldUpdates(user.id) : ["soldiers", "fieldUpdates", "anonymous"],
+    queryFn: () => listFieldUpdates(user!.id),
+    enabled: !!user,
+  });
+  const fieldUpdates = fieldUpdatesQuery.data ?? [];
+
+  const ranksQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
+  const ranks = ranksQuery.data ?? { enlisted: [], officers: [] };
+
+  // Poll while tgPolling is true (i.e. while waiting for the user to confirm
+  // the link code via the Telegram bot); stop once verified.
+  const tgStatusQuery = useQuery({
+    queryKey: queryKeys.telegramStatus(),
+    queryFn: getTelegramStatus,
+    refetchInterval: tgPolling ? 3000 : false,
+  });
+  const tgStatus = tgStatusQuery.data ?? null;
 
   useEffect(() => {
-    getRanks().then(setRanks).catch(() => {});
-    getTelegramStatus().then(setTgStatus).catch(() => {});
-    getPreferences().then((p) => { latestPrefsRef.current = p; setPrefs(p); }).catch(() => {});
-    if (user?.role === "admin" || user?.is_commander || user?.is_duty_manager) {
-      listCommanderScopes().then(setScopes).catch(() => {});
-      fetchTree().then((nodes) => {
-        const flat: NodeDTO[] = [];
-        function flatten(ns: NodeDTO[]) { for (const n of ns) { flat.push(n); if (n.children) flatten(n.children); } }
-        flatten(nodes);
-        setHierarchyNodes(flat);
-      }).catch(() => {});
+    if (tgPolling && tgStatus?.is_verified) {
+      setTgPolling(false);
+      setTgCode(null);
     }
-  }, [user]);
+  }, [tgPolling, tgStatus]);
 
+  const prefsQuery = useQuery({ queryKey: queryKeys.notificationPreferences(), queryFn: getPreferences });
+
+  // prefs/latestPrefsRef mirror the query result but are then edited locally
+  // (optimistic toggling + a debounced write-back), so they stay useState fed
+  // by an effect rather than reading straight from the query on every render.
   useEffect(() => {
-    if (!tgPolling) return;
-    const interval = setInterval(async () => {
-      try {
-        const s = await getTelegramStatus();
-        setTgStatus(s);
-        if (s?.is_verified) {
-          setTgPolling(false);
-          setTgCode(null);
-        }
-      } catch { setTgPolling(false); }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [tgPolling]);
+    if (prefsQuery.data) {
+      latestPrefsRef.current = prefsQuery.data;
+      setPrefs(prefsQuery.data);
+    }
+  }, [prefsQuery.data]);
+
+  const scopesQuery = useQuery({
+    queryKey: queryKeys.commanderScopes(),
+    queryFn: listCommanderScopes,
+    enabled: isCommanderLike,
+  });
+  const scopes = scopesQuery.data ?? [];
+
+  const hierarchyTreeQuery = useQuery({
+    queryKey: queryKeys.hierarchyTreeVisible(),
+    queryFn: fetchTree,
+    enabled: isCommanderLike,
+  });
+  const hierarchyNodes = useMemo(() => {
+    const flat: NodeDTO[] = [];
+    function flatten(ns: NodeDTO[]) { for (const n of ns) { flat.push(n); if (n.children) flatten(n.children); } }
+    flatten(hierarchyTreeQuery.data ?? []);
+    return flat;
+  }, [hierarchyTreeQuery.data]);
 
   function militaryLicensePayload(hasLicense: boolean, expiry: string): string {
     return JSON.stringify({ has_license: hasLicense, expiry_date: expiry || null });
@@ -98,8 +116,7 @@ export default function ProfilePage() {
     if (!user || !value) return;
     try {
       await submitFieldUpdate(user.id, field, value);
-      const updated = await listFieldUpdates(user.id);
-      setFieldUpdates(updated);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.fieldUpdates(user.id) });
       if (field === "last_mitvahim_date") setMitvahimReq("");
       if (field === "last_alal_date") setAlalReq("");
       if (field === "mandatory_end_date") setMandatoryEndReq("");
@@ -126,7 +143,7 @@ export default function ProfilePage() {
 
   async function handleUnlinkTelegram() {
     await unlinkTelegram();
-    setTgStatus({ is_verified: false });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.telegramStatus() });
   }
 
   function scheduleSyncPrefs() {
@@ -136,7 +153,7 @@ export default function ProfilePage() {
       try {
         await updatePreferences(latestPrefsRef.current);
       } catch {
-        getPreferences().then((p) => { latestPrefsRef.current = p; setPrefs(p); }).catch(() => {});
+        await prefsQuery.refetch();
       }
     }, 300);
   }
@@ -161,8 +178,8 @@ export default function ProfilePage() {
     if (!addNodeId) return;
     setAddingScopeLoading(true);
     try {
-      const scope = await addCommanderScope(addNodeId, addDepth);
-      setScopes((prev) => [...prev, scope]);
+      await addCommanderScope(addNodeId, addDepth);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.commanderScopes() });
       setAddNodeId("");
       setAddDepth(-1);
     } catch {
@@ -174,7 +191,7 @@ export default function ProfilePage() {
 
   async function handleRemoveScope(id: string) {
     await removeCommanderScope(id);
-    setScopes((prev) => prev.filter((s) => s.id !== id));
+    await queryClient.invalidateQueries({ queryKey: queryKeys.commanderScopes() });
   }
 
   return (

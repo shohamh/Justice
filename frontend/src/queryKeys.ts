@@ -34,4 +34,10 @@ export const queryKeys = {
   exemptionTypes: () => ["exemptionTypes"] as const,
   exemptionDutyTypeMap: () => ["exemptionTypes", "dutyTypeMap"] as const,
   myExemptions: (soldierId: string) => ["exemptions", "mine", soldierId] as const,
+  fieldUpdates: (soldierId: string) => ["soldiers", "fieldUpdates", soldierId] as const,
+  ranks: () => ["soldiers", "ranks"] as const,
+  telegramStatus: () => ["telegram", "status"] as const,
+  notificationPreferences: () => ["notifications", "preferences"] as const,
+  commanderScopes: () => ["notifications", "commanderScopes"] as const,
+  hierarchyTreeVisible: () => ["hierarchy", "tree", "visible"] as const,
 };
