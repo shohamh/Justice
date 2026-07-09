@@ -509,6 +509,34 @@ class SwapRequest(Base):
     )
 
 
+class SwapManagerApproval(Base):
+    __tablename__ = "swap_manager_approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    swap_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("swap_requests.id", ondelete="CASCADE")
+    )
+    # "requester" | "covering" -- which side of the swap this approval belongs to.
+    side: Mapped[str] = mapped_column(Text)
+    # The commander whose chain-of-command approval this row represents.
+    commander_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # May differ from commander_id when an admin/duty-manager approves on the
+    # required commander's behalf (broader-scope override).
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class PersonalConstraint(Base):
     __tablename__ = "personal_constraints"
 
