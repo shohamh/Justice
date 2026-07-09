@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
 import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
   listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
   CoverEligibilityResult, checkCoverEligibility,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import type { DutyType } from "../api/dutyConfig";
+import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { api } from "../api/client";
 import { lastDutyDay } from "../utils/formatDate";
@@ -233,31 +235,81 @@ export default function SwapsPage() {
   function setTab(next: number) {
     setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "mine"); return prev; }, { replace: true });
   }
-  const [myDuties, setMyDuties] = useState<EffectiveDuty[]>([]);
-  const [dutyTypes, setDutyTypes] = useState<Record<string, string>>({});
-  const [dutyTypeList, setDutyTypeList] = useState<DutyType[]>([]);
-  const [hierarchyNodes, setHierarchyNodes] = useState<HierarchyNode[]>([]);
-  const [mySwaps, setMySwaps] = useState<SwapRequest[]>([]);
-  const [boardSwaps, setBoardSwaps] = useState<SwapRequest[]>([]);
-  const [incomingSwaps, setIncomingSwaps] = useState<SwapRequest[]>([]);
   const [askSwapDuty, setAskSwapDuty] = useState<EffectiveDuty | null>(null);
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
-  const [requireManagerApproval, setRequireManagerApproval] = useState(false);
-  const [coverEligibility, setCoverEligibility] = useState<Record<string, CoverEligibilityResult>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
+  // Board filters
+  const [boardFilters, setBoardFilters] = useState<BoardFilters>({});
 
-  async function fetchEligibilities(swaps: SwapRequest[]) {
-    const ids = [...new Set(swaps.map((s) => s.duty_assignment_id))];
-    const results = await Promise.all(
-      ids.map((id) =>
-        checkCoverEligibility(id)
-          .then((r) => [id, r] as const)
-          .catch(() => [id, { eligible: true, reason: null }] as const)
-      )
-    );
-    setCoverEligibility((prev) => ({ ...prev, ...Object.fromEntries(results) }));
-  }
+  const queryClient = useQueryClient();
+
+  const dutiesQuery = useQuery({
+    queryKey: user ? queryKeys.effectiveDuties(user.id) : ["effectiveDuties", "anonymous"],
+    queryFn: () => listEffectiveDuties(user!.id).catch(() => [] as EffectiveDuty[]),
+    enabled: !!user,
+  });
+  const myDuties = dutiesQuery.data ?? [];
+
+  const dutyTypesQuery = useQuery({
+    queryKey: queryKeys.dutyTypes(),
+    queryFn: () => listDutyTypes().catch(() => [] as DutyType[]),
+  });
+  const dutyTypeList = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
+  const dutyTypes = useMemo(
+    () => Object.fromEntries(dutyTypeList.map(d => [d.id, d.name])),
+    [dutyTypeList],
+  );
+
+  const hierarchyNodesQuery = useQuery({
+    queryKey: queryKeys.hierarchyTree(),
+    queryFn: () => api.get<HierarchyNode[]>("/hierarchy/tree").then(r => r.data).catch(() => [] as HierarchyNode[]),
+  });
+  const hierarchyNodes = hierarchyNodesQuery.data ?? [];
+
+  const configQuery = useQuery({
+    queryKey: queryKeys.swapConfig(),
+    queryFn: () => getSwapConfig().catch(() => ({ require_manager_approval: false })),
+  });
+  const requireManagerApproval = configQuery.data?.require_manager_approval ?? false;
+
+  const mySwapsQuery = useQuery({ queryKey: queryKeys.mySwaps(), queryFn: listMySwaps });
+  const mySwaps = mySwapsQuery.data ?? [];
+
+  const boardQuery = useQuery({
+    queryKey: queryKeys.swapBoard(boardFilters as Record<string, unknown>),
+    queryFn: () => listBoard(boardFilters),
+  });
+  const boardSwaps = useMemo(() => boardQuery.data ?? [], [boardQuery.data]);
+  const boardLoading = boardQuery.isFetching;
+
+  const incomingQuery = useQuery({ queryKey: queryKeys.incomingSwaps(), queryFn: listIncomingSwaps });
+  const incomingSwaps = useMemo(() => incomingQuery.data ?? [], [incomingQuery.data]);
+
+  const eligibilityIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of [...boardSwaps, ...incomingSwaps]) ids.add(s.duty_assignment_id);
+    return Array.from(ids).sort();
+  }, [boardSwaps, incomingSwaps]);
+
+  const eligibilityQuery = useQuery({
+    queryKey: queryKeys.swapCoverEligibility(eligibilityIds),
+    queryFn: async () => {
+      const results = await Promise.all(
+        eligibilityIds.map((id) =>
+          checkCoverEligibility(id)
+            .then((r) => [id, r] as const)
+            .catch(() => [id, { eligible: true, reason: null }] as const)
+        )
+      );
+      return Object.fromEntries(results) as Record<string, CoverEligibilityResult>;
+    },
+    enabled: eligibilityIds.length > 0,
+  });
+  const coverEligibility = eligibilityQuery.data ?? {};
+
+  const loadError = (mySwapsQuery.error || boardQuery.error || incomingQuery.error)
+    ? "שגיאה בטעינת נתוני ההחלפות"
+    : null;
 
   async function handleShiftClick(shiftId: string | null) {
     if (!shiftId) return;
@@ -269,62 +321,15 @@ export default function SwapsPage() {
     }
   }
 
-  // Board filters
-  const [boardFilters, setBoardFilters] = useState<BoardFilters>({});
-  const [boardLoading, setBoardLoading] = useState(false);
-
-  const refreshBoard = useCallback(async (filters: BoardFilters) => {
-    setBoardLoading(true);
-    try {
-      const board = await listBoard(filters);
-      setBoardSwaps(board);
-      void fetchEligibilities(board);
-    } finally {
-      setBoardLoading(false);
-    }
-  }, []);
-
-  const refresh = useCallback(async () => {
-    if (!user) return;
-    setLoadError(null);
-    try {
-      const [mine, board, incoming, duties, config] = await Promise.all([
-        listMySwaps(),
-        listBoard({}),
-        listIncomingSwaps(),
-        listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
-        getSwapConfig().catch(() => ({ require_manager_approval: false })),
-      ]);
-      const { listDutyTypes } = await import("../api/dutyConfig");
-      const [dts, nodes] = await Promise.all([
-        listDutyTypes().catch(() => [] as DutyType[]),
-        api.get<HierarchyNode[]>("/hierarchy/tree").then(r => r.data).catch(() => [] as HierarchyNode[]),
-      ]);
-      setMySwaps(mine);
-      setBoardSwaps(board);
-      setIncomingSwaps(incoming);
-      setMyDuties(duties);
-      setDutyTypes(Object.fromEntries(dts.map(d => [d.id, d.name])));
-      setDutyTypeList(dts);
-      setHierarchyNodes(nodes);
-      setRequireManagerApproval(config.require_manager_approval);
-      setBoardFilters({});
-      void fetchEligibilities([...board, ...incoming]);
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setLoadError(detail ?? "שגיאה בטעינת נתוני ההחלפות");
-    }
-  }, [user]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  // Re-fetch only the board when filters change (skip initial mount handled by refresh)
-  const [filtersInitialized, setFiltersInitialized] = useState(false);
-  useEffect(() => {
-    if (!filtersInitialized) { setFiltersInitialized(true); return; }
-    void refreshBoard(boardFilters);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardFilters]);
+  async function refreshSwapData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.swapBoard(boardFilters as Record<string, unknown>) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() }),
+      user ? queryClient.invalidateQueries({ queryKey: queryKeys.effectiveDuties(user.id) }) : Promise.resolve(),
+    ]);
+  }
 
   function applyFilters(updates: Partial<BoardFilters>) {
     setBoardFilters(prev => ({ ...prev, ...updates }));
@@ -337,7 +342,7 @@ export default function SwapsPage() {
   const hasActiveFilters = !!(boardFilters.dateFrom || boardFilters.dateTo || boardFilters.dutyTypeIds?.length || boardFilters.nodeIds?.length || boardFilters.eligibleOnly);
 
   async function handleCancel(id: string) {
-    try { await cancelSwap(id); await refresh(); }
+    try { await cancelSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
       alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
     }
@@ -605,7 +610,7 @@ export default function SwapsPage() {
           duty={askSwapDuty}
           dutyTypeName={dutyTypes[askSwapDuty.duty_type_id] ?? askSwapDuty.duty_type_id}
           onClose={() => setAskSwapDuty(null)}
-          onCreated={async () => { setAskSwapDuty(null); await refresh(); }}
+          onCreated={async () => { setAskSwapDuty(null); await refreshSwapData(); }}
         />
       )}
 
@@ -615,7 +620,7 @@ export default function SwapsPage() {
           myDuties={myDuties}
           dutyTypes={dutyTypes}
           onClose={() => setCoverSwap(null)}
-          onDone={async () => { setCoverSwap(null); await refresh(); }}
+          onDone={async () => { setCoverSwap(null); await refreshSwapData(); }}
         />
       )}
 
@@ -623,7 +628,7 @@ export default function SwapsPage() {
         <ShiftDetailPanel
           shift={selectedShift}
           onClose={() => setSelectedShift(null)}
-          onRefreshNeeded={() => { setSelectedShift(null); void refresh(); }}
+          onRefreshNeeded={() => { setSelectedShift(null); void refreshSwapData(); }}
         />
       )}
     </Layout>

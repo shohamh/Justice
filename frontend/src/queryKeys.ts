@@ -29,4 +29,6 @@ export const queryKeys = {
   pendingFieldUpdates: () => ["soldiers", "pendingFieldUpdates"] as const,
   hierarchyTree: () => ["hierarchy", "tree"] as const,
   publicExemptionTypes: () => ["exemptionTypes", "public"] as const,
+  swapConfig: () => ["swaps", "config"] as const,
+  swapCoverEligibility: (ids: string[]) => ["swaps", "coverEligibility", ids] as const,
 };
