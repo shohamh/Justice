@@ -74,3 +74,28 @@ def test_login_writes_audit_row_on_failure(client: TestClient, admin_session: Se
         )
     ).all()
     assert len(rows) == 1
+
+
+import logging
+
+
+def test_warns_when_secure_cookie_set_over_plain_http(client, admin_session, caplog, monkeypatch):
+    from app.settings import get_settings
+    from tests.helpers import create_soldier
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    get_settings.cache_clear()
+    try:
+        s = create_soldier(admin_session, personal_number="7700001", password="password-1234")
+        with caplog.at_level(logging.WARNING, logger="app.auth"):
+            r = client.post(
+                "/api/auth/login",
+                json={"personal_number": "7700001", "password": "password-1234"},
+                headers={"X-Forwarded-Proto": "http"},
+            )
+        assert r.status_code == 200
+        assert any("cookie_secure" in rec.message.lower() for rec in caplog.records)
+    finally:
+        monkeypatch.delenv("COOKIE_SECURE", raising=False)
+        get_settings.cache_clear()

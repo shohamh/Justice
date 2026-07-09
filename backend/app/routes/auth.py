@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
@@ -23,6 +24,8 @@ from app.services.soldiers import PasswordPolicyError, bump_token_version, valid
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_logger = logging.getLogger("app.auth")
 
 _LOCKOUT_THRESHOLD = 10
 _LOCKOUT_MINUTES = 15
@@ -101,6 +104,16 @@ def _client_context(request: Request) -> dict[str, str]:
     }
 
 
+def _warn_if_insecure_cookie_mismatch(request: Request, settings) -> None:
+    if settings.cookie_secure and request.url.scheme != "https":
+        _logger.warning(
+            "cookie_secure is enabled but this request arrived over %s — the "
+            "refresh_token cookie will be silently dropped by the browser. "
+            "Set COOKIE_SECURE=false for non-HTTPS environments.",
+            request.url.scheme,
+        )
+
+
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit(get_settings().login_rate_limit)
 def login(
@@ -110,6 +123,7 @@ def login(
     session: Session = Depends(get_session),
 ) -> LoginResponse:
     settings = get_settings()
+    _warn_if_insecure_cookie_mismatch(request, settings)
     stmt = select(Soldier).where(
         Soldier.personal_number == body.personal_number, Soldier.left_at.is_(None)
     )
@@ -212,6 +226,7 @@ def refresh(
         )
 
     settings = get_settings()
+    _warn_if_insecure_cookie_mismatch(request, settings)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
@@ -219,7 +234,7 @@ def refresh(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True,
-        secure=get_settings().cookie_secure,
+        secure=settings.cookie_secure,
         samesite="strict",
         path="/api/auth",
     )
