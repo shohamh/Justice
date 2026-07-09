@@ -78,6 +78,109 @@ def test_execute_action_exemption_approve_duty_manager_step_calls_service():
     assert "אושרה" in result
 
 
+def test_execute_action_swap_approve_requester_required_commander_calls_approve_manager_row():
+    from bot.actions import execute_action
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+
+    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=True) as mock_required, \
+         patch("bot.actions.swap_svc.approve_manager_row") as mock_approve:
+        mock_approve.return_value = MagicMock()
+        result = execute_action(token, session)
+
+    mock_required.assert_called_once_with(
+        session, request_id=token.resource_id, side="requester", commander_id=token.soldier_id
+    )
+    mock_approve.assert_called_once_with(
+        session, request_id=token.resource_id, side="requester",
+        commander_id=token.soldier_id, actor_id=token.soldier_id,
+    )
+    assert "אושרה" in result
+
+
+def test_execute_action_swap_approve_requester_non_chain_commander_uses_override_when_authorized():
+    from bot.actions import execute_action
+    from app.db.models import HierarchyNode, Soldier, SwapRequest
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+
+    req = MagicMock(spec=SwapRequest)
+    req.requesting_soldier_id = uuid.uuid4()
+    requester = MagicMock(spec=Soldier)
+    requester.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    node.path_ids = [uuid.uuid4()]
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+    actor.role = "admin"
+
+    def _get(model, obj_id):
+        if model is SwapRequest:
+            return req
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return requester
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+
+    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=False), \
+         patch("bot.actions.swap_svc.approve_manager_side_override") as mock_override:
+        mock_override.return_value = MagicMock()
+        result = execute_action(token, session)
+
+    mock_override.assert_called_once_with(
+        session, request_id=token.resource_id, side="requester", actor_id=token.soldier_id
+    )
+    assert "אושרה" in result
+
+
+def test_execute_action_swap_approve_requester_unauthorized_stranger_is_denied():
+    from bot.actions import execute_action
+    from app.db.models import HierarchyNode, Soldier, SwapRequest
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+
+    req = MagicMock(spec=SwapRequest)
+    req.requesting_soldier_id = uuid.uuid4()
+    requester = MagicMock(spec=Soldier)
+    requester.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    node.path_ids = [uuid.uuid4()]
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+    actor.role = "soldier"
+    actor.rank = None
+
+    def _get(model, obj_id):
+        if model is SwapRequest:
+            return req
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return requester
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+    session.execute.return_value.scalars.return_value.all.return_value = []
+    session.execute.return_value.first.return_value = None
+
+    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=False), \
+         patch("bot.actions.swap_svc.approve_manager_side_override") as mock_override:
+        result = execute_action(token, session)
+
+    mock_override.assert_not_called()
+    assert "forbidden" in result or "שגיאה" in result
+
+
 def test_execute_action_with_reason_constraint_reject():
     from bot.actions import execute_action_with_reason
 

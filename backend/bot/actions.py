@@ -6,11 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
 from app.db.models import (
     CommanderNotificationDepth,
     ExemptionRequest,
+    HierarchyNode,
     NotificationPreference,
     NotificationType,
+    Soldier,
+    SwapRequest,
     TelegramActionToken,
 )
 from app.services import constraints as constraint_svc
@@ -76,7 +80,29 @@ def execute_action(token_row: TelegramActionToken, session: Session) -> str:
 
     if action == "swap:approve_requester":
         try:
-            swap_svc.approve_side(session, request_id=resource_id, side="requester", actor_id=soldier_id)
+            if swap_svc.has_required_manager_row(
+                session, request_id=resource_id, side="requester", commander_id=soldier_id
+            ):
+                swap_svc.approve_manager_row(
+                    session, request_id=resource_id, side="requester", commander_id=soldier_id, actor_id=soldier_id
+                )
+                return "✅ ההחלפה אושרה מצידך."
+            req = session.get(SwapRequest, resource_id)
+            if req is None:
+                return "שגיאה: swap_not_found"
+            actor = session.get(Soldier, soldier_id)
+            node: HierarchyNode | None = None
+            requester = session.get(Soldier, req.requesting_soldier_id) if req.requesting_soldier_id else None
+            if requester is not None and requester.hierarchy_node_id is not None:
+                node = session.get(HierarchyNode, requester.hierarchy_node_id)
+            if actor is None or not can(
+                actor, Action.SWAP_APPROVE, target_node=node,
+                roots=scope_root_ids(session, actor),
+                is_commander=is_commander(session, actor.id),
+                is_duty_manager=is_duty_manager(session, actor.id),
+            ):
+                return "שגיאה: forbidden"
+            swap_svc.approve_manager_side_override(session, request_id=resource_id, side="requester", actor_id=soldier_id)
             return "✅ ההחלפה אושרה מצידך."
         except swap_svc.SwapError as e:
             return f"שגיאה: {e}"

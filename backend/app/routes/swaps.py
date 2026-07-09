@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapRequest, Soldier
+from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapManagerApproval, SwapRequest, Soldier
 from app.db.session import get_session
 from app.services import swaps as svc
 from app.services.eligibility import check_soldier_for_assignment
@@ -21,6 +21,15 @@ router = APIRouter(tags=["swaps"])
 class CoverEligibilityOut(BaseModel):
     eligible: bool
     reason: str | None
+
+
+class SwapManagerApprovalOut(BaseModel):
+    commander_id: uuid.UUID
+    commander_name: str | None = None
+    approved: bool
+    approved_by: uuid.UUID | None = None
+    approved_by_name: str | None = None
+    approved_at: datetime | None = None
 
 
 class SwapOut(BaseModel):
@@ -50,6 +59,8 @@ class SwapOut(BaseModel):
     requesting_commander_name: str | None = None
     covering_commander_name: str | None = None
     requesting_soldier_node_name: str | None = None
+    requester_manager_approvals: list[SwapManagerApprovalOut] = []
+    covering_manager_approvals: list[SwapManagerApprovalOut] = []
 
 
 class CreateSwapRequest(BaseModel):
@@ -60,10 +71,6 @@ class CreateSwapRequest(BaseModel):
 
 class ClaimRequest(BaseModel):
     pass
-
-
-class ApproveSideRequest(BaseModel):
-    side: str  # "requester" | "covering"
 
 
 class RejectRequest(BaseModel):
@@ -87,6 +94,28 @@ def _soldier_names(
             if commander is not None:
                 commander_name = commander.full_name
     return soldier.full_name, commander_name
+
+
+def _manager_approvals_out(session: Session, request_id: uuid.UUID, side: str) -> list[SwapManagerApprovalOut]:
+    rows = session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == request_id,
+            SwapManagerApproval.side == side,
+        )
+    ).scalars().all()
+    out = []
+    for row in rows:
+        commander = session.get(Soldier, row.commander_id)
+        approved_by = session.get(Soldier, row.approved_by) if row.approved_by else None
+        out.append(SwapManagerApprovalOut(
+            commander_id=row.commander_id,
+            commander_name=commander.full_name if commander else None,
+            approved=row.approved,
+            approved_by=row.approved_by,
+            approved_by_name=approved_by.full_name if approved_by else None,
+            approved_at=row.approved_at,
+        ))
+    return out
 
 
 def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | None = None) -> SwapOut:
@@ -118,6 +147,8 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
             loc = session.get(DutyLocation, assignment.duty_location_id)
             duty_type_name = dt.name if dt else None
             duty_location_name = loc.name if loc else None
+    requester_manager_approvals = _manager_approvals_out(session, r.id, "requester") if session is not None else []
+    covering_manager_approvals = _manager_approvals_out(session, r.id, "covering") if session is not None else []
     return SwapOut(
         id=r.id, duty_assignment_id=r.duty_assignment_id, duty_date=r.duty_date,
         requesting_soldier_id=r.requesting_soldier_id, target_soldier_id=r.target_soldier_id,
@@ -140,6 +171,8 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
         requesting_commander_name=requesting_commander_name,
         covering_commander_name=covering_commander_name,
         requesting_soldier_node_name=requesting_soldier_node_name,
+        requester_manager_approvals=requester_manager_approvals,
+        covering_manager_approvals=covering_manager_approvals,
     )
 
 
@@ -435,29 +468,35 @@ def pending(
         select(DutyLocation).where(DutyLocation.id.in_(loc_ids))
     ).scalars().all()} if loc_ids else {}
 
-    def _requester_node(r: SwapRequest) -> HierarchyNode | None:
-        s = soldiers.get(r.requesting_soldier_id)
+    def _side_node_bulk(r: SwapRequest, soldier_id: uuid.UUID | None) -> HierarchyNode | None:
+        if soldier_id is None:
+            return None
+        s = soldiers.get(soldier_id)
         if s is None or s.hierarchy_node_id is None:
             return None
         return nodes.get(s.hierarchy_node_id)
 
     if user.role == "admin":
-        return [_out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations) for r in all_pending]
+        return [_out_bulk(session, r, soldiers, nodes, assignments, duty_types, duty_locations) for r in all_pending]
 
     roots = scope_root_ids(session, user)
     user_is_commander = is_commander(session, user.id)
     user_is_duty_manager = is_duty_manager(session, user.id)
     return [
-        _out_bulk(r, soldiers, nodes, assignments, duty_types, duty_locations)
+        _out_bulk(session, r, soldiers, nodes, assignments, duty_types, duty_locations)
         for r in all_pending
         if can(
-            user, Action.SWAP_APPROVE, target_node=_requester_node(r), roots=roots,
+            user, Action.SWAP_APPROVE, target_node=_side_node_bulk(r, r.requesting_soldier_id), roots=roots,
+            is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+        ) or can(
+            user, Action.SWAP_APPROVE, target_node=_side_node_bulk(r, r.covering_soldier_id), roots=roots,
             is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
         )
     ]
 
 
 def _out_bulk(
+    session: Session,
     r: SwapRequest,
     soldiers: dict,
     nodes: dict,
@@ -492,6 +531,9 @@ def _out_bulk(
     dt = duty_types.get(assignment.duty_type_id) if assignment else None
     loc = duty_locations.get(assignment.duty_location_id) if assignment else None
 
+    requester_manager_approvals = _manager_approvals_out(session, r.id, "requester")
+    covering_manager_approvals = _manager_approvals_out(session, r.id, "covering")
+
     return SwapOut(
         id=r.id, duty_assignment_id=r.duty_assignment_id, duty_date=r.duty_date,
         requesting_soldier_id=r.requesting_soldier_id,
@@ -516,45 +558,19 @@ def _out_bulk(
         requesting_commander_name=_commander_name(r.requesting_soldier_id),
         covering_commander_name=_commander_name(r.covering_soldier_id),
         requesting_soldier_node_name=_node_name(r.requesting_soldier_id),
+        requester_manager_approvals=requester_manager_approvals,
+        covering_manager_approvals=covering_manager_approvals,
     )
 
 
-def _load_swap_and_node(
-    session: Session, request_id: uuid.UUID
-) -> tuple[SwapRequest, HierarchyNode | None]:
-    """Load a SwapRequest and the requester's hierarchy node (for scope checks)."""
-    swap = session.get(SwapRequest, request_id)
-    if swap is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
-    requester = session.get(Soldier, swap.requesting_soldier_id)
-    node: HierarchyNode | None = None
-    if requester and requester.hierarchy_node_id:
-        node = session.get(HierarchyNode, requester.hierarchy_node_id)
-    return swap, node
-
-
-def _swap_request_node(session: Session, request_id: uuid.UUID) -> HierarchyNode | None:
-    """Resolve the hierarchy node of the swap requester. Returns None if not found."""
-    swap = session.get(SwapRequest, request_id)
-    if swap is None:
-        return None
-    requester = session.get(Soldier, swap.requesting_soldier_id)
-    if requester is None or requester.hierarchy_node_id is None:
-        return None
-    return session.get(HierarchyNode, requester.hierarchy_node_id)
-
-
-@router.post("/swaps/{request_id}/approve", response_model=SwapOut)
-def approve(
+@router.post("/me/swaps/{request_id}/approve", response_model=SwapOut)
+def soldier_approve(
     request_id: uuid.UUID,
-    body: ApproveSideRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
-    _, node = _load_swap_and_node(session, request_id)
-    authorize(session, user, Action.SWAP_APPROVE, target_node=node)
     try:
-        r = svc.approve_side(session, request_id=request_id, side=body.side, actor_id=user.id)
+        r = svc.approve_soldier_side(session, request_id=request_id, soldier_id=user.id, actor_id=user.id)
     except svc.SwapError as exc:
         raise _err(exc) from exc
     session.commit()
@@ -562,15 +578,93 @@ def approve(
     return _out(r, session)
 
 
-@router.post("/swaps/{request_id}/reject", response_model=SwapOut)
-def reject(
+@router.post("/me/swaps/{request_id}/reject", response_model=SwapOut)
+def soldier_reject(
     request_id: uuid.UUID,
     body: RejectRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
-    _, node = _load_swap_and_node(session, request_id)
-    authorize(session, user, Action.SWAP_APPROVE, target_node=node)
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if user.id not in (req.requesting_soldier_id, req.covering_soldier_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        r = svc.reject_request(session, request_id=request_id, decision_note=body.decision_note, actor_id=user.id)
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    session.refresh(r)
+    return _out(r, session)
+
+
+class ManagerSideRequest(BaseModel):
+    side: str  # "requester" | "covering"
+
+
+def _side_node(session: Session, req: SwapRequest, side: str) -> HierarchyNode | None:
+    soldier_id = req.requesting_soldier_id if side == "requester" else req.covering_soldier_id
+    if soldier_id is None:
+        return None
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None or soldier.hierarchy_node_id is None:
+        return None
+    return session.get(HierarchyNode, soldier.hierarchy_node_id)
+
+
+@router.post("/swaps/{request_id}/manager-approve", response_model=SwapOut)
+def manager_approve(
+    request_id: uuid.UUID,
+    body: ManagerSideRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SwapOut:
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
+    if body.side not in ("requester", "covering"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_side")
+    is_required_commander = svc.has_required_manager_row(
+        session, request_id=request_id, side=body.side, commander_id=user.id
+    )
+    try:
+        if is_required_commander:
+            r = svc.approve_manager_row(
+                session, request_id=request_id, side=body.side, commander_id=user.id, actor_id=user.id
+            )
+        else:
+            authorize(session, user, Action.SWAP_APPROVE, target_node=_side_node(session, req, body.side))
+            r = svc.approve_manager_side_override(session, request_id=request_id, side=body.side, actor_id=user.id)
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    session.refresh(r)
+    return _out(r, session)
+
+
+@router.post("/swaps/{request_id}/manager-reject", response_model=SwapOut)
+def manager_reject(
+    request_id: uuid.UUID,
+    body: RejectRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> SwapOut:
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
+    req_node = _side_node(session, req, "requester")
+    cov_node = _side_node(session, req, "covering")
+    authorized = False
+    for node in (req_node, cov_node):
+        try:
+            authorize(session, user, Action.SWAP_APPROVE, target_node=node)
+            authorized = True
+            break
+        except HTTPException:
+            continue
+    if not authorized:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         r = svc.reject_request(session, request_id=request_id, decision_note=body.decision_note, actor_id=user.id)
     except svc.SwapError as exc:
