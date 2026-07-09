@@ -42,8 +42,39 @@ def test_plain_soldier_forbidden(client: TestClient, admin_session: Session):
 
 
 def test_commander_forbidden(client: TestClient, admin_session: Session):
+    # GET is open to any authenticated soldier (reference data); mutation is still gated.
     c = create_soldier(admin_session, personal_number="5100004", role="commander")
-    r = client.get("/api/duty-config/duty-types", headers=auth_headers(c))
+    r = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(c),
+        json={"name": "y", "score_per_day": "1.00"},
+    )
+    assert r.status_code == 403
+
+
+def test_plain_soldier_can_list_duty_types(client, admin_session):
+    from tests.helpers import create_soldier, auth_headers
+    from app.db.models import DutyType
+
+    dt = DutyType(name="plain_soldier_read_test", score_per_day=1)
+    admin_session.add(dt)
+    admin_session.commit()
+
+    s = create_soldier(admin_session, personal_number="7800001")
+    r = client.get("/api/duty-config/duty-types", headers=auth_headers(s))
+    assert r.status_code == 200
+    assert any(d["name"] == "plain_soldier_read_test" for d in r.json())
+
+
+def test_plain_soldier_cannot_create_duty_type(client, admin_session):
+    from tests.helpers import create_soldier, auth_headers
+
+    s = create_soldier(admin_session, personal_number="7800002")
+    r = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(s),
+        json={"name": "should_not_be_allowed", "score_per_day": "1"},
+    )
     assert r.status_code == 403
 
 
