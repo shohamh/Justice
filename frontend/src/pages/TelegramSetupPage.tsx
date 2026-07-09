@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { generateTelegramCode, getTelegramStatus } from "../api/telegram";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
@@ -11,8 +11,21 @@ export default function TelegramSetupPage() {
   const navigate = useNavigate();
   const { refreshMe, telegramRequired } = useAuth();
 
-  const codeQuery = useQuery({ queryKey: queryKeys.telegramLinkCode(), queryFn: generateTelegramCode });
-  const codeInfo = codeQuery.data ?? null;
+  // generateTelegramCode is a state-mutating POST that overwrites the soldier's
+  // verification_code/expires_at on the server every time it's called, so it must
+  // only fire once on mount — NOT a useQuery, since refetchOnWindowFocus would
+  // silently re-fire it (and invalidate a code the user already copied) every time
+  // the tab regains focus after alt-tabbing to Telegram to verify.
+  const codeMutation = useMutation({ mutationFn: generateTelegramCode });
+  const hasRequestedCode = useRef(false);
+  useEffect(() => {
+    if (!hasRequestedCode.current) {
+      hasRequestedCode.current = true;
+      codeMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const codeInfo = codeMutation.data ?? null;
 
   // Status is only fetched on demand (the "check" button below), not polled —
   // this mirrors the page's original manual-check UX exactly.

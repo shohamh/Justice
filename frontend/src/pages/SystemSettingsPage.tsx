@@ -237,7 +237,7 @@ export function SystemSettingsContent() {
   const saveMutation = useMutation({
     mutationFn: updateSystemSettings,
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKeys.systemSettings(), updated);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemSettings() });
       setDraft(updated);
       setSaved(true);
     },

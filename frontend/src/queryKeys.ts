@@ -66,7 +66,6 @@ export const queryKeys = {
   effortGapNodes: () => ["potential", "effortGap"] as const,
   effortBreakdown: (soldierId: string) => ["scoring", "effortBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
-  telegramLinkCode: () => ["telegram", "linkCode"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
   importSessions: (statusFilter?: string) => ["import", "sessions", statusFilter ?? "active"] as const,
   importSessionDetail: (sessionId: string) => ["import", "session", sessionId] as const,
