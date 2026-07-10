@@ -1,10 +1,18 @@
 import { describe, test, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import "../../i18n";
 import { dfsOrder } from "./ExportPage";
 import ExportPage from "./ExportPage";
 import type { NodeDTO } from "../../api/hierarchy";
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 function mockNode(id: string, name: string, parent_id: string | null): NodeDTO {
   return {
@@ -51,7 +59,7 @@ global.fetch = vi.fn().mockResolvedValue({
 
 describe("ExportPage", () => {
   it("renders one checkbox per exportable data type and a single export button", async () => {
-    render(<ExportPage />);
+    renderWithProviders(<ExportPage />);
     await waitFor(() => screen.getByText("ייצוא"));
     expect(screen.getByLabelText(/בחר הכל/)).toBeInTheDocument();
     expect(screen.getByLabelText(/שקיפות/)).toBeInTheDocument();
@@ -67,7 +75,7 @@ describe("ExportPage", () => {
   });
 
   it("selects and deselects every checkbox via the select-all control", async () => {
-    render(<ExportPage />);
+    renderWithProviders(<ExportPage />);
     await waitFor(() => screen.getByText("ייצוא"));
     const selectAll = screen.getByLabelText(/בחר הכל/) as HTMLInputElement;
     const transparency = screen.getByLabelText(/שקיפות/) as HTMLInputElement;
@@ -85,7 +93,7 @@ describe("ExportPage", () => {
   });
 
   it("calls /config/export with only the checked config sheets when export is clicked", async () => {
-    render(<ExportPage />);
+    renderWithProviders(<ExportPage />);
     await waitFor(() => screen.getByText("ייצוא"));
     fireEvent.click(screen.getByLabelText(/סוגי תורנות/));
     fireEvent.click(screen.getByText("ייצוא"));
@@ -107,7 +115,7 @@ describe("ExportPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExportPage />);
+    renderWithProviders(<ExportPage />);
     fireEvent.click(await screen.findByLabelText(/^חיילים$/));
     fireEvent.click(screen.getByText("ייצוא"));
 

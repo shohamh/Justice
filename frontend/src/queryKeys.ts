@@ -71,4 +71,8 @@ export const queryKeys = {
   importSessionDetail: (sessionId: string) => ["import", "session", sessionId] as const,
   importDutyTypesForImport: () => ["import", "dutyTypesForImport"] as const,
   importNodesForImport: () => ["import", "nodesForImport"] as const,
+  potentialByNode: (nodeId: string, referenceDate: string) => ["potential", "byNode", nodeId, referenceDate] as const,
+  potentialModifiers: (nodeId: string) => ["potential", "modifiers", nodeId] as const,
+  scoreAdjustments: (soldierId: string) => ["scoreAdjustments", soldierId] as const,
+  soldierScore: (soldierId: string) => ["soldiers", "score", soldierId] as const,
 };

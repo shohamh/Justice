@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import Layout from "../../components/Layout";
+import { queryKeys } from "../../queryKeys";
 import { TransparencyRow, getTransparency } from "../../api/scoring";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { getAccessToken } from "../../api/client";
@@ -86,12 +88,13 @@ const ALL_KEYS = [
 
 export default function ExportPage() {
   const { t } = useTranslation();
-  const [rows, setRows] = useState<TransparencyRow[]>([]);
-  const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
-  useEffect(() => { void getTransparency().then((out) => setRows(out.rows)); }, []);
-  useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
+  const transparencyQuery = useQuery({ queryKey: queryKeys.transparency(), queryFn: getTransparency });
+  const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
+
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeNodes = useMemo<NodeDTO[]>(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const flatNodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);
   const nodesById = useMemo(() => new Map(flatNodes.map((n) => [n.id, n])), [flatNodes]);
