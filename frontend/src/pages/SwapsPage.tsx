@@ -16,7 +16,7 @@ import {
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
-import { api } from "../api/client";
+import { fetchTree } from "../api/hierarchy";
 import { lastDutyDay } from "../utils/formatDate";
 
 interface HierarchyNode {
@@ -261,8 +261,8 @@ export default function SwapsPage() {
   );
 
   const hierarchyNodesQuery = useQuery({
-    queryKey: queryKeys.hierarchyTree(),
-    queryFn: () => api.get<HierarchyNode[]>("/hierarchy/tree").then(r => r.data).catch(() => [] as HierarchyNode[]),
+    queryKey: queryKeys.hierarchyTreeVisible(),
+    queryFn: () => fetchTree().catch(() => [] as HierarchyNode[]),
   });
   const hierarchyNodes = hierarchyNodesQuery.data ?? [];
 
