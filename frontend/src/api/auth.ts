@@ -17,6 +17,7 @@ export interface Me {
   hierarchy_node_id: string | null;
   telegram_linked: boolean;
   telegram_required: boolean;
+  enrollment_pending: boolean;
   phone?: string | null;
   gender?: string | null;
   is_officer?: boolean | null;

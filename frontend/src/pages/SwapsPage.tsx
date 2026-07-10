@@ -176,6 +176,7 @@ function AskSwapModal({
   duty: EffectiveDuty; dutyTypeName: string; onClose: () => void; onCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const { enrollmentPending } = useAuth();
   const [mode, setMode] = useState<"open" | "soldier">("open");
   const [targetSoldierId, setTargetSoldierId] = useState("");
   const [reason, setReason] = useState("");
@@ -211,6 +212,11 @@ function AskSwapModal({
             return duty.start_date === last ? duty.start_date : `${duty.start_date} → ${last}`;
           })()}
         </p>
+        {enrollmentPending && (
+          <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+            בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
@@ -233,7 +239,7 @@ function AskSwapModal({
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300">{t("swaps.cancel")}</button>
-            <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">{t("swaps.save")}</button>
+            <button type="submit" disabled={enrollmentPending} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("swaps.save")}</button>
           </div>
         </form>
       </div>

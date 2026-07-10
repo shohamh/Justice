@@ -21,7 +21,7 @@ import {
 
 export default function MyRequestsPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, enrollmentPending } = useAuth();
   const [items, setItems] = useState<PersonalConstraint[]>([]);
   const [exemptions, setExemptions] = useState<Exemption[]>([]);
   const [start, setStart] = useState("");
@@ -161,11 +161,16 @@ export default function MyRequestsPage() {
           {error && <div className="text-red-600 text-sm" data-testid="req-error">{error}</div>}
         </div>
 
+        {enrollmentPending && (
+          <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+            בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
+          </div>
+        )}
         <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
           <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />
           <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(e) => setEnd(e.target.value)} required data-testid="req-end" />
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("my_requests.reason")} required data-testid="req-reason" />
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting} data-testid="req-submit">
+          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting || enrollmentPending} data-testid="req-submit">
             {submitting ? t("app.loading") : t("my_requests.send")}
           </button>
         </form>
@@ -230,6 +235,11 @@ export default function MyRequestsPage() {
         <div className="pt-4 border-t dark:border-gray-600">
           <h3 className="font-medium">{t("exemption_requests.title")}</h3>
           {erError && <div className="text-red-600 dark:text-red-400 text-sm" data-testid="er-error">{erError}</div>}
+          {enrollmentPending && (
+            <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2 mt-2">
+              בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
+            </div>
+          )}
           <form onSubmit={onErSubmit} className="mt-2 space-y-3" dir="rtl">
             <div className="flex flex-wrap gap-2 items-end">
               <div className="flex flex-col gap-1">
@@ -351,7 +361,7 @@ export default function MyRequestsPage() {
             <button
               type="submit"
               className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
-              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0)}
+              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending}
               data-testid="er-submit"
             >
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}
