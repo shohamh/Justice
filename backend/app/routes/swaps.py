@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
-from app.auth.deps import require_password_changed
+from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, SwapManagerApproval, SwapRequest, Soldier
 from app.db.session import get_session
 from app.services import swaps as svc
@@ -340,7 +340,7 @@ def list_swaps_for_assignment(
 def create(
     body: CreateSwapRequest,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> SwapOut:
     try:
         r = svc.create_request(
@@ -363,7 +363,7 @@ class TakeFreeDutyRequest(BaseModel):
 def take_free(
     body: TakeFreeDutyRequest,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> SwapOut:
     try:
         r, warnings = svc.take_free(
@@ -388,7 +388,7 @@ def submit_cover_offer(
     swap_id: uuid.UUID,
     body: CoverOfferInput,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> SwapOut:
     try:
         swap = svc.cover_offer(
@@ -410,7 +410,7 @@ def claim(
     request_id: uuid.UUID,
     _body: ClaimRequest,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> SwapOut:
     try:
         r = svc.claim_request(session, request_id=request_id, covering_soldier_id=user.id, actor_id=user.id)
