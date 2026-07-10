@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../../components/Layout";
-import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment, ScoreAdjustment } from "../../api/scoreAdjustments";
-import { getSoldierScore, listSoldiers, SoldierDTO, SoldierScoreDTO } from "../../api/soldiers";
-import { getEffortBreakdown, EffortBreakdown } from "../../api/scoring";
+import { queryKeys } from "../../queryKeys";
+import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment } from "../../api/scoreAdjustments";
+import { getSoldierScore, listSoldiers, SoldierDTO } from "../../api/soldiers";
+import { getEffortBreakdown } from "../../api/scoring";
 
 export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
-  const [adjustments, setAdjustments] = useState<ScoreAdjustment[]>([]);
+  const queryClient = useQueryClient();
 
   // Soldier search combobox
   const [soldierSearch, setSoldierSearch] = useState("");
@@ -16,39 +17,71 @@ export default function ScoreAdjustmentPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const comboRef = useRef<HTMLDivElement>(null);
 
-  // Current soldier metrics
-  const [soldierScore, setSoldierScore] = useState<SoldierScoreDTO | null>(null);
-  const [effortData, setEffortData] = useState<EffortBreakdown | null>(null);
-
   // Delta: sign + positive amount
   const [sign, setSign] = useState<"+" | "-">("+");
   const [amount, setAmount] = useState("");
 
   // Preview
   const [preview, setPreview] = useState<AdjustmentPreview | null>(null);
-  const [previewing, setPreviewing] = useState(false);
 
   const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
 
+  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const soldiers = soldiersQuery.data ?? [];
+
   useEffect(() => {
-    listSoldiers().then(setSoldiers).catch(() => setError(t("score_adjustment.soldiers_load_error")));
-  }, [t]);
+    if (soldiersQuery.isError) setError(t("score_adjustment.soldiers_load_error"));
+  }, [soldiersQuery.isError, t]);
+
+  const adjustmentsQuery = useQuery({
+    queryKey: queryKeys.scoreAdjustments(soldierId),
+    queryFn: () => listAdjustments(soldierId),
+    enabled: !!soldierId,
+  });
+  const adjustments = adjustmentsQuery.data ?? [];
+
+  const soldierScoreQuery = useQuery({
+    queryKey: queryKeys.soldierScore(soldierId),
+    queryFn: () => getSoldierScore(soldierId),
+    enabled: !!soldierId,
+  });
+  const soldierScore = soldierScoreQuery.data ?? null;
+
+  const effortBreakdownQuery = useQuery({
+    queryKey: queryKeys.effortBreakdown(soldierId),
+    queryFn: () => getEffortBreakdown(soldierId),
+    enabled: !!soldierId,
+  });
+  const effortData = effortBreakdownQuery.data ?? null;
 
   useEffect(() => {
     setPreview(null);
-    if (!soldierId) {
-      setAdjustments([]);
-      setSoldierScore(null);
-      setEffortData(null);
-      return;
-    }
-    listAdjustments(soldierId).then(setAdjustments).catch(() => setAdjustments([]));
-    getSoldierScore(soldierId).then(setSoldierScore).catch(() => setSoldierScore(null));
-    getEffortBreakdown(soldierId).then(setEffortData).catch(() => setEffortData(null));
   }, [soldierId]);
+
+  const previewMutation = useMutation({
+    mutationFn: () => previewAdjustment(soldierId, delta),
+    onSuccess: (result) => setPreview(result),
+    onError: () => { /* ignore — preview is optional */ },
+  });
+
+  const submitMutation = useMutation({
+    mutationFn: () => createAdjustment({ soldier_id: soldierId, delta, reason: reason.trim() }),
+    onSuccess: () => {
+      setSuccessMsg(t("score_adjustment.success_msg"));
+      setAmount("");
+      setSign("+");
+      setReason("");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.scoreAdjustments(soldierId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.soldierScore(soldierId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.effortBreakdown(soldierId) });
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? t("score_adjustment.generic_error"));
+    },
+  });
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -75,47 +108,23 @@ export default function ScoreAdjustmentPage() {
   function clearSoldier() {
     setSoldierId("");
     setSoldierSearch("");
-    setAdjustments([]);
     setSuccessMsg("");
   }
 
   const delta = amount ? (sign === "+" ? amount : `-${amount}`) : "";
 
-  async function handlePreview() {
+  function handlePreview() {
     if (!soldierId || !delta) return;
-    setPreviewing(true);
     setPreview(null);
-    try {
-      const result = await previewAdjustment(soldierId, delta);
-      setPreview(result);
-    } catch {
-      // ignore — preview is optional
-    } finally {
-      setPreviewing(false);
-    }
+    previewMutation.mutate();
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!soldierId || !delta || !reason.trim()) return;
-    setSubmitting(true);
     setError("");
     setSuccessMsg("");
-    try {
-      await createAdjustment({ soldier_id: soldierId, delta, reason: reason.trim() });
-      setSuccessMsg(t("score_adjustment.success_msg"));
-      setAmount("");
-      setSign("+");
-      setReason("");
-      listAdjustments(soldierId).then(setAdjustments).catch(() => {});
-      getSoldierScore(soldierId).then(setSoldierScore).catch(() => {});
-      getEffortBreakdown(soldierId).then(setEffortData).catch(() => {});
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? t("score_adjustment.generic_error"));
-    } finally {
-      setSubmitting(false);
-    }
+    submitMutation.mutate();
   }
 
   return (
@@ -272,10 +281,10 @@ export default function ScoreAdjustmentPage() {
                 <button
                   type="button"
                   onClick={handlePreview}
-                  disabled={previewing || !soldierId}
+                  disabled={previewMutation.isPending || !soldierId}
                   className="px-3 py-2 text-xs border border-indigo-400 text-indigo-600 dark:text-indigo-400 dark:border-indigo-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50 transition-colors"
                 >
-                  {previewing ? "..." : "תצוגה מקדימה"}
+                  {previewMutation.isPending ? "..." : "תצוגה מקדימה"}
                 </button>
               )}
             </div>
@@ -301,7 +310,7 @@ export default function ScoreAdjustmentPage() {
 
           <button
             type="submit"
-            disabled={submitting || !soldierId || !amount || Number(amount) <= 0 || !reason.trim()}
+            disabled={submitMutation.isPending || !soldierId || !amount || Number(amount) <= 0 || !reason.trim()}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             {t("score_adjustment.submit_btn")}
