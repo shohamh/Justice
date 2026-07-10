@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import ExemptionsPanel from "./ExemptionsPanel";
 import * as exemptionsApi from "../api/exemptions";
 
@@ -15,6 +15,7 @@ vi.mock("../api/dutyConfig", () => ({
 vi.mock("../api/exemptions", () => ({
   listExemptions: vi.fn(() => Promise.resolve([
     { id: "ex1", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: null, reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
+    { id: "ex2", soldier_id: "abc", exemption_type_id: null, start_date: "2020-01-01", end_date: "2020-01-10", reason: null, granted_by: null, revoke_reason: null, revoked_by_name: null },
   ])),
   grantExemption: vi.fn(() => Promise.resolve({})),
   revokeExemption: vi.fn(() => Promise.resolve()),
@@ -28,7 +29,7 @@ vi.mock("../api/exemptions", () => ({
       node_name: null,
       exemption_type_id: "et-1",
       start_date: "2026-01-01",
-      end_date: null,
+      end_date: "2026-01-05",
       reason: "סיבה",
       status: "pending_duty_manager",
       enrollment_request_id: null,
@@ -63,6 +64,16 @@ test("hides the duty-manager-step approve button for a commander-only viewer", a
   render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
   await screen.findByTestId("exemption-request-row-req-1");
   expect(screen.queryByTestId("exemption-request-approve-req-1")).toBeNull();
+});
+
+test("shows a day-count badge next to expired and request-history date ranges", async () => {
+  render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} />);
+
+  const pastList = await screen.findByTestId("exemptions-list-past");
+  expect(within(pastList).getByText("(10 ימים)")).toBeTruthy();
+
+  const requestRow = await screen.findByTestId("exemption-request-row-req-1");
+  expect(within(requestRow).getByText("(5 ימים)")).toBeTruthy();
 });
 
 test("revoking an exemption requires a reason and calls revokeExemption with it", async () => {

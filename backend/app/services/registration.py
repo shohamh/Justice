@@ -17,6 +17,7 @@ from app.db.models import (
 )
 from app.services.invite_codes import InviteCodeError, consume_invite_code
 from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.soldiers import SoldierError, _check_soldier_dates
 
 
 class RegistrationError(Exception):
@@ -63,6 +64,14 @@ def register(
 
     if session.get(HierarchyNode, requested_node_id) is None:
         raise RegistrationError("requested node not found")
+
+    try:
+        _check_soldier_dates(
+            enlistment_date=enlistment_date, discharge_date=discharge_date,
+            mandatory_end_date=mandatory_end_date, is_career=is_career,
+        )
+    except SoldierError as exc:
+        raise RegistrationError(str(exc)) from exc
 
     soldier = Soldier(
         personal_number=personal_number,

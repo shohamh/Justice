@@ -418,3 +418,86 @@ Expected: no regressions. Pay particular attention to any existing fixture/seed 
 git add backend/app/services/soldiers.py backend/app/services/registration.py backend/app/services/tests/test_soldiers.py backend/app/services/tests/test_registration.py
 git commit -m "feat: validate soldier profile date cross-field constraints"
 ```
+
+---
+
+### Task 3: Show span duration next to every exemption/constraint date range
+
+**Motivation:** the reported failure mode from the Goal section (a soldier submits "today to the same date next year," and approvers don't notice the span) is a UI visibility gap as much as a backend one. `frontend/src/components/ExemptionsPanel.tsx` and `frontend/src/pages/ApprovalsPage.tsx` already each define their own local, duplicated `daysBetween`/`DaysBadge` helper and use it on *some* date ranges but not others. This task extracts that into one shared component and applies it to every remaining exemption/constraint date-range display, so an approver always sees `start → end (N days)` and never a bare range.
+
+**Files:**
+- Create: `frontend/src/components/DaysBadge.tsx`
+- Modify: `frontend/src/components/ExemptionsPanel.tsx` (remove local `daysBetween`/`DaysBadge`, import shared one, add to the expired-items range at ~line 208 and the request-history range at ~line 250 — both currently missing it)
+- Modify: `frontend/src/pages/ApprovalsPage.tsx` (remove local `daysBetween`/`DaysBadge`, import shared one — behavior unchanged, already applied at both call sites)
+- Modify: `frontend/src/components/ExemptionInstanceModal.tsx` (add next to the start/end display at ~lines 56-58)
+- Modify: `frontend/src/pages/MyRequestsPage.tsx` (add to all constraint ranges at ~lines 181, 200, 217, and both exemption/exemption-request ranges at ~lines 370, 406 — none currently have it)
+- Test: `frontend/src/components/ExemptionsPanel.test.tsx`
+- Test: `frontend/src/pages/MyRequestsPage.test.tsx` (check with `ls frontend/src/pages/ | grep MyRequestsPage.test` first — create if it doesn't exist yet, following the fixture conventions of `ApprovalsPage.test.tsx`)
+
+**Interfaces:**
+- Produces: `daysBetween(start: string, end: string | null | undefined): number | null` and `DaysBadge({ start, end }: { start: string; end: string | null | undefined })` in `frontend/src/components/DaysBadge.tsx` — identical logic to the existing duplicated versions (inclusive day count: `Math.round((b - a) / 86400000) + 1`; color thresholds `> 90` red, `> 30` yellow, else gray; renders `null` when `end` is null/undefined, i.e. open-ended ranges show no badge).
+
+- [ ] **Step 1: Extract the shared component**
+
+Create `frontend/src/components/DaysBadge.tsx` by moving the existing `daysBetween`/`DaysBadge` definitions verbatim out of `ExemptionsPanel.tsx` (lines 15-32), as a named export:
+
+```tsx
+export function daysBetween(start: string, end: string | null | undefined): number | null {
+  if (!end) return null;
+  const a = new Date(start);
+  const b = new Date(end);
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+export function DaysBadge({ start, end }: { start: string; end: string | null | undefined }) {
+  const days = daysBetween(start, end);
+  if (days === null) return null;
+  const cls =
+    days > 90
+      ? "text-red-600 dark:text-red-400"
+      : days > 30
+      ? "text-yellow-600 dark:text-yellow-400"
+      : "text-gray-400 dark:text-gray-500";
+  return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
+}
+```
+
+- [ ] **Step 2: Wire the shared component into `ExemptionsPanel.tsx`**
+
+Remove the local `daysBetween`/`DaysBadge` definitions (lines 15-32) and add `import { DaysBadge } from "./DaysBadge";`.
+
+Add `<DaysBadge start={ex.start_date} end={ex.end_date} />` next to the expired-items range (~line 208, currently `{formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}`) and next to the request-history range (~line 250, currently `{formatDate(req.start_date)} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}`) — matching the pattern already used for the active-items list at line 160.
+
+- [ ] **Step 3: Wire the shared component into `ApprovalsPage.tsx`**
+
+Remove the local `daysBetween`/`DaysBadge` definitions and add `import { DaysBadge } from "../components/DaysBadge";`. The two existing call sites (constraints tab ~line 317, exemptions tab ~line 367) are unchanged.
+
+- [ ] **Step 4: Add to `ExemptionInstanceModal.tsx`**
+
+Add `import { DaysBadge } from "./DaysBadge";` and place `<DaysBadge start={detail.start_date} end={detail.end_date} />` next to the existing start/end display (~lines 56-58).
+
+- [ ] **Step 5: Add to `MyRequestsPage.tsx`**
+
+Add `import { DaysBadge } from "../components/DaysBadge";`. Add `<DaysBadge start={c.start_date} end={c.end_date} />` next to each of the three constraint-list ranges (~lines 181, 200, 217), `<DaysBadge start={er.start_date} end={er.end_date} />` next to the exemption-request range (~line 370), and `<DaysBadge start={ex.start_date} end={ex.end_date} />` next to the exemptions range (~line 406).
+
+- [ ] **Step 6: Write/update tests**
+
+In `ExemptionsPanel.test.tsx`, add a case asserting the days badge text (e.g. `"(365 ימים)"` or the appropriate count for a fixture date range) renders in both the expired-items list and the request-history list, not just the active-items list.
+
+In `MyRequestsPage.test.tsx` (create if missing, following `ApprovalsPage.test.tsx`'s fixture/render conventions), add a case asserting a days-count badge renders next to a constraint row and an exemption-request row.
+
+- [ ] **Step 7: Run frontend checks**
+
+Run: `cd frontend && npm test -- --run` and `npm run typecheck`
+Expected: all pass, no regressions.
+
+- [ ] **Step 8: Manual verification**
+
+Start the dev stack (`.\dev.ps1`), open a soldier's profile exemptions panel and the approvals page, and confirm every date range — active, expired, pending request, and both approvals tabs — now shows `start → end (N days)` (or no badge for open-ended `forever` ranges).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add frontend/src/components/DaysBadge.tsx frontend/src/components/ExemptionsPanel.tsx frontend/src/pages/ApprovalsPage.tsx frontend/src/components/ExemptionInstanceModal.tsx frontend/src/pages/MyRequestsPage.tsx frontend/src/components/ExemptionsPanel.test.tsx frontend/src/pages/MyRequestsPage.test.tsx
+git commit -m "feat: show span duration next to every exemption/constraint date range"
+```

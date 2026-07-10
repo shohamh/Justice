@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import ExemptionRequest, ExemptionType, NotificationType, SoldierExemption
+from app.services.date_validation import check_max_span
 from app.services.exemptions import ExemptionError, grant_commander_exemption
 from app.services.notifications import create_notification
 
@@ -25,6 +26,7 @@ def submit_request(
 ) -> ExemptionRequest:
     if end_date and end_date < start_date:
         raise ExemptionRequestError("bad_date_range")
+    check_max_span(start_date, end_date, ExemptionRequestError)
 
     et = session.get(ExemptionType, exemption_type_id)
     if et is None:
@@ -75,6 +77,9 @@ def submit_commander_escalation(
         raise ExemptionRequestError("official_exemption_type_required")
     if apply_immediately and commander_exemption_type_id is None:
         raise ExemptionRequestError("commander_exemption_type_required")
+    if end_date is not None and end_date < start_date:
+        raise ExemptionRequestError("bad_date_range")
+    check_max_span(start_date, end_date, ExemptionRequestError)
 
     linked_exemption_id = None
     if apply_immediately:

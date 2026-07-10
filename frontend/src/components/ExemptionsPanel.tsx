@@ -10,26 +10,8 @@ import {
 import { formatDate } from "../utils/formatDate";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
+import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
-
-function daysBetween(start: string, end: string | null | undefined): number | null {
-  if (!end) return null;
-  const a = new Date(start);
-  const b = new Date(end);
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-}
-
-function DaysBadge({ start, end }: { start: string; end: string | null | undefined }) {
-  const days = daysBetween(start, end);
-  if (days === null) return null;
-  const cls =
-    days > 90
-      ? "text-red-600 dark:text-red-400"
-      : days > 30
-      ? "text-yellow-600 dark:text-yellow-400"
-      : "text-gray-400 dark:text-gray-500";
-  return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
-}
 
 export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
@@ -207,6 +189,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                     <span className="text-gray-500 dark:text-gray-400 text-xs">
                       {formatDate(ex.start_date)} → {ex.end_date ? formatDate(ex.end_date) : ""}
                     </span>
+                    <DaysBadge start={ex.start_date} end={ex.end_date} />
                   </div>
                   {isExpanded && (
                     <div className="mt-1.5 space-y-0.5">
@@ -248,6 +231,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                 </p>
                 <p className="text-sm flex items-center gap-2" dir="ltr">
                   <span>{formatDate(req.start_date)} → {req.end_date ? formatDate(req.end_date) : t("exemptions.forever")}</span>
+                  <DaysBadge start={req.start_date} end={req.end_date} />
                 </p>
                 {req.reason && <p className="text-xs text-gray-500 mb-2">{req.reason}</p>}
                 {canManage && (req.status === "pending_commander" || req.status === "pending_duty_manager") && (
