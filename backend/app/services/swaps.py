@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta
+from typing import Callable
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -163,15 +164,31 @@ def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None
 
 
 def _all_approved(session: Session, req: SwapRequest) -> bool:
+    """Both soldiers must have approved, and — for each side that has at least
+    one required chain-commander row — at least one of that side's rows must
+    be approved (any single chain commander suffices; a side with zero rows
+    has no commander in the chain and is trivially satisfied)."""
     if not (req.requester_side_approved and req.covering_side_approved):
         return False
-    pending = session.execute(
-        select(SwapManagerApproval.id).where(
-            SwapManagerApproval.swap_request_id == req.id,
-            SwapManagerApproval.approved == False,  # noqa: E712
-        ).limit(1)
-    ).first()
-    return pending is None
+    for side in ("requester", "covering"):
+        has_rows = session.execute(
+            select(SwapManagerApproval.id).where(
+                SwapManagerApproval.swap_request_id == req.id,
+                SwapManagerApproval.side == side,
+            ).limit(1)
+        ).first()
+        if has_rows is None:
+            continue  # no commander in this side's chain — trivially satisfied
+        has_approved = session.execute(
+            select(SwapManagerApproval.id).where(
+                SwapManagerApproval.swap_request_id == req.id,
+                SwapManagerApproval.side == side,
+                SwapManagerApproval.approved == True,  # noqa: E712
+            ).limit(1)
+        ).first()
+        if has_approved is None:
+            return False
+    return True
 
 
 def _try_finalize(session: Session, req: SwapRequest, actor_id: uuid.UUID | None) -> None:
@@ -219,15 +236,20 @@ def approve_soldier_side(
     return req
 
 
-def has_required_manager_row(
+def is_chain_commander_for_side(
     session: Session, *, request_id: uuid.UUID, side: str, commander_id: uuid.UUID
 ) -> bool:
+    """Is `commander_id` one of the required chain commanders for this side at
+    all — regardless of whether they've already approved. (Answers "is this
+    person in the chain", not "...and haven't they approved yet" — a commander
+    who already approved is still a chain commander, so a second click stays
+    on the idempotent chain-approval path instead of rerouting into the
+    override path meant for people outside the chain.)"""
     return session.execute(
         select(SwapManagerApproval.id).where(
             SwapManagerApproval.swap_request_id == request_id,
             SwapManagerApproval.side == side,
             SwapManagerApproval.commander_id == commander_id,
-            SwapManagerApproval.approved == False,  # noqa: E712
         )
     ).first() is not None
 
@@ -235,6 +257,13 @@ def has_required_manager_row(
 def approve_manager_row(
     session: Session, *, request_id: uuid.UUID, side: str, commander_id: uuid.UUID, actor_id: uuid.UUID
 ) -> SwapRequest:
+    """Approve `commander_id`'s own row for this side. Idempotent: if the row
+    is already approved (e.g. this same commander clicking approve twice),
+    this is a harmless no-op — the original approver/timestamp are kept, but
+    _try_finalize still runs in case the swap wasn't finalized yet for some
+    other reason (e.g. the other side just approved). Raises
+    SwapError("not_required_approver") only if there is no row at all for
+    (request_id, side, commander_id) — i.e. this person isn't in the chain."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
@@ -245,22 +274,52 @@ def approve_manager_row(
             SwapManagerApproval.swap_request_id == request_id,
             SwapManagerApproval.side == side,
             SwapManagerApproval.commander_id == commander_id,
-            SwapManagerApproval.approved == False,  # noqa: E712
         )
     ).scalar_one_or_none()
     if row is None:
         raise SwapError("not_required_approver")
-    row.approved = True
-    row.approved_by = actor_id
-    row.approved_at = datetime.utcnow()
-    write_audit(
-        session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
-        entity_id=req.id, after={"side": side, "commander_id": str(commander_id)},
-    )
-    session.flush()
+    if not row.approved:
+        row.approved = True
+        row.approved_by = actor_id
+        row.approved_at = datetime.utcnow()
+        write_audit(
+            session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
+            entity_id=req.id, after={"side": side, "commander_id": str(commander_id)},
+        )
+        session.flush()
     _try_finalize(session, req, actor_id)
     session.flush()
     return req
+
+
+def approve_manager_side(
+    session: Session, *, request_id: uuid.UUID, side: str, actor_id: uuid.UUID,
+    is_authorized_override: Callable[[], bool] | bool,
+) -> SwapRequest:
+    """Shared entry point for "approve this side's manager requirement as
+    actor_id", used by the manager-approve REST route, the Telegram bot
+    action, and the notifications action-token dispatcher — the three of
+    which previously duplicated this branching logic near-verbatim.
+
+    If actor_id is a required chain commander for this side, approves their
+    own row via approve_manager_row (idempotent if already approved).
+    Otherwise, falls back to override authorization: is_authorized_override
+    may be a plain bool the caller already computed, or a zero-arg callable
+    deferred until it's actually needed (useful when computing/asserting
+    authorization is itself the thing that would raise, e.g. a caller that
+    wants to defer calling authorize() — which raises HTTPException on
+    failure — until we've confirmed the actor isn't simply a chain commander).
+    If authorized, clears the whole side via approve_manager_side_override.
+    Raises SwapError("forbidden") if neither applies.
+    """
+    if is_chain_commander_for_side(session, request_id=request_id, side=side, commander_id=actor_id):
+        return approve_manager_row(
+            session, request_id=request_id, side=side, commander_id=actor_id, actor_id=actor_id
+        )
+    authorized = is_authorized_override() if callable(is_authorized_override) else is_authorized_override
+    if not authorized:
+        raise SwapError("forbidden")
+    return approve_manager_side_override(session, request_id=request_id, side=side, actor_id=actor_id)
 
 
 def approve_manager_side_override(

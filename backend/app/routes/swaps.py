@@ -684,17 +684,15 @@ def manager_approve(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
     if body.side not in ("requester", "covering"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="bad_side")
-    is_required_commander = svc.has_required_manager_row(
-        session, request_id=request_id, side=body.side, commander_id=user.id
-    )
+    def _override_authorized() -> bool:
+        authorize(session, user, Action.SWAP_APPROVE, target_node=_side_node(session, req, body.side))
+        return True
+
     try:
-        if is_required_commander:
-            r = svc.approve_manager_row(
-                session, request_id=request_id, side=body.side, commander_id=user.id, actor_id=user.id
-            )
-        else:
-            authorize(session, user, Action.SWAP_APPROVE, target_node=_side_node(session, req, body.side))
-            r = svc.approve_manager_side_override(session, request_id=request_id, side=body.side, actor_id=user.id)
+        r = svc.approve_manager_side(
+            session, request_id=request_id, side=body.side, actor_id=user.id,
+            is_authorized_override=_override_authorized,
+        )
     except svc.SwapError as exc:
         raise _err(exc) from exc
     session.commit()

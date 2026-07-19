@@ -209,6 +209,129 @@ def test_approve_manager_row_rejects_wrong_commander(admin_session):
         approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=stranger.id, actor_id=stranger.id)
 
 
+def _setup_pending_swap_with_chain(session):
+    """Requester side has TWO chain commanders (mid + root); covering side has none."""
+    root = create_node(session, level="division", name=f"root_{_uid()}")
+    root_cmd = create_soldier(session, personal_number=f"rc_{_uid()}", role="commander")
+    root.commander_id = root_cmd.id
+    mid = create_node(session, level="unit", name=f"mid_{_uid()}", parent=root)
+    mid_cmd = create_soldier(session, personal_number=f"mc_{_uid()}", role="commander")
+    mid.commander_id = mid_cmd.id
+    session.commit()
+    requester = create_soldier(session, personal_number=f"req_{_uid()}", hierarchy_node_id=mid.id)
+    cov_node = create_node(session, level="unit", name=f"covn_{_uid()}")
+    covering = create_soldier(session, personal_number=f"cov_{_uid()}", hierarchy_node_id=cov_node.id)
+    assignment = _make_assignment(session, soldier=requester, node=mid)
+
+    from app.services.swaps import claim_request
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="open",
+    )
+    session.add(req)
+    session.commit()
+    req = claim_request(session, request_id=req.id, covering_soldier_id=covering.id)
+    session.commit()
+    return req, requester, covering, mid_cmd, root_cmd
+
+
+def test_any_one_chain_commander_approval_suffices_for_side(admin_session):
+    """Per the product clarification, only ONE commander anywhere in a side's
+    chain needs to approve — not every one of them."""
+    from app.services.swaps import approve_manager_row, approve_soldier_side
+
+    req, requester, covering, mid_cmd, root_cmd = _setup_pending_swap_with_chain(admin_session)
+
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id)
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id)
+    admin_session.commit()
+    admin_session.refresh(req)
+    assert req.status == "pending_approval"  # no chain commander has approved yet
+
+    # Only the mid-level commander approves — the root commander's row stays untouched.
+    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id, actor_id=mid_cmd.id)
+    admin_session.commit()
+    admin_session.refresh(req)
+    assert req.status == "applied"  # one approval on the side was enough
+
+    root_row = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == req.id,
+            SwapManagerApproval.side == "requester",
+            SwapManagerApproval.commander_id == root_cmd.id,
+        )
+    ).scalar_one()
+    assert root_row.approved is False  # left untouched, not cleared
+
+
+def test_same_commander_reapproving_is_a_harmless_noop(admin_session):
+    """A legitimate chain commander clicking approve a second time must be a
+    no-op via the normal path — it must NOT reroute into the override path
+    (which would incorrectly clear other pending rows on the OLD "require
+    all" semantics, and is meant for people outside the chain regardless)."""
+    from app.services.swaps import approve_manager_row, approve_soldier_side
+
+    # Two-sided setup so the swap stays pending_approval after the requester
+    # side's single commander approves (covering side's commander hasn't).
+    req, requester, covering, requester_cmd, covering_cmd = _setup_pending_swap(admin_session, with_commanders=True)
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id)
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id)
+    admin_session.commit()
+
+    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=requester_cmd.id, actor_id=requester_cmd.id)
+    admin_session.commit()
+    admin_session.refresh(req)
+    assert req.status == "pending_approval"  # covering side's commander still pending
+
+    row = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == req.id,
+            SwapManagerApproval.side == "requester",
+            SwapManagerApproval.commander_id == requester_cmd.id,
+        )
+    ).scalar_one()
+    first_approved_at = row.approved_at
+    first_approved_by = row.approved_by
+
+    # Second click by the same commander: no error, original approval record
+    # untouched, swap still not finalized (covering side still pending).
+    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=requester_cmd.id, actor_id=requester_cmd.id)
+    admin_session.commit()
+    admin_session.refresh(row)
+    admin_session.refresh(req)
+    assert row.approved_at == first_approved_at
+    assert row.approved_by == first_approved_by
+    assert req.status == "pending_approval"
+
+
+def test_is_chain_commander_for_side_true_regardless_of_approval_state(admin_session):
+    from app.services.swaps import approve_manager_row, is_chain_commander_for_side
+
+    req, requester, covering, mid_cmd, root_cmd = _setup_pending_swap_with_chain(admin_session)
+
+    assert is_chain_commander_for_side(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id, actor_id=mid_cmd.id)
+    admin_session.commit()
+    # Still True after approving — chain membership, not "still pending".
+    assert is_chain_commander_for_side(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id)
+
+
+def test_stranger_is_not_a_chain_commander_and_cannot_approve(admin_session):
+    from app.services.swaps import SwapError, approve_manager_side, is_chain_commander_for_side
+
+    req, *_rest = _setup_pending_swap_with_chain(admin_session)
+    stranger = create_soldier(admin_session, personal_number=f"str3_{_uid()}")
+
+    assert not is_chain_commander_for_side(
+        admin_session, request_id=req.id, side="requester", commander_id=stranger.id
+    )
+    with pytest.raises(SwapError, match="forbidden"):
+        approve_manager_side(
+            admin_session, request_id=req.id, side="requester", actor_id=stranger.id,
+            is_authorized_override=False,
+        )
+
+
 def test_approve_manager_side_override_clears_all_rows_for_side(admin_session):
     from app.services.swaps import approve_manager_side_override, approve_soldier_side
 

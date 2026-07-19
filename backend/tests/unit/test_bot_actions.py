@@ -78,28 +78,33 @@ def test_execute_action_exemption_approve_duty_manager_step_calls_service():
     assert "אושרה" in result
 
 
-def test_execute_action_swap_approve_requester_required_commander_calls_approve_manager_row():
+def test_execute_action_swap_approve_requester_delegates_to_approve_manager_side():
     from bot.actions import execute_action
+    from app.db.models import SwapRequest
 
     session = MagicMock()
     token = _make_token("swap:approve_requester")
+    session.get.return_value = MagicMock(spec=SwapRequest)
 
-    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=True) as mock_required, \
-         patch("bot.actions.swap_svc.approve_manager_row") as mock_approve:
+    with patch("bot.actions.swap_svc.approve_manager_side") as mock_approve:
         mock_approve.return_value = MagicMock()
         result = execute_action(token, session)
 
-    mock_required.assert_called_once_with(
-        session, request_id=token.resource_id, side="requester", commander_id=token.soldier_id
-    )
-    mock_approve.assert_called_once_with(
-        session, request_id=token.resource_id, side="requester",
-        commander_id=token.soldier_id, actor_id=token.soldier_id,
-    )
+    assert mock_approve.call_count == 1
+    _, kwargs = mock_approve.call_args
+    assert kwargs["request_id"] == token.resource_id
+    assert kwargs["side"] == "requester"
+    assert kwargs["actor_id"] == token.soldier_id
+    assert callable(kwargs["is_authorized_override"])
     assert "אושרה" in result
 
 
-def test_execute_action_swap_approve_requester_non_chain_commander_uses_override_when_authorized():
+def test_execute_action_swap_approve_requester_override_callable_reflects_can():
+    """The is_authorized_override callable passed to approve_manager_side must
+    resolve to True when the actor is authorized (e.g. an admin/duty-manager
+    outside the chain) and False otherwise — exercised directly here since the
+    real chain-membership branching now lives entirely in
+    app.services.swaps.approve_manager_side."""
     from bot.actions import execute_action
     from app.db.models import HierarchyNode, Soldier, SwapRequest
 
@@ -129,20 +134,18 @@ def test_execute_action_swap_approve_requester_non_chain_commander_uses_override
 
     session.get.side_effect = _get
 
-    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=False), \
-         patch("bot.actions.swap_svc.approve_manager_side_override") as mock_override:
-        mock_override.return_value = MagicMock()
-        result = execute_action(token, session)
+    with patch("bot.actions.swap_svc.approve_manager_side") as mock_approve:
+        mock_approve.return_value = MagicMock()
+        execute_action(token, session)
 
-    mock_override.assert_called_once_with(
-        session, request_id=token.resource_id, side="requester", actor_id=token.soldier_id
-    )
-    assert "אושרה" in result
+    _, kwargs = mock_approve.call_args
+    assert kwargs["is_authorized_override"]() is True  # admin is authorized
 
 
-def test_execute_action_swap_approve_requester_unauthorized_stranger_is_denied():
+def test_execute_action_swap_approve_requester_unauthorized_stranger_override_is_false():
     from bot.actions import execute_action
     from app.db.models import HierarchyNode, Soldier, SwapRequest
+    from app.services import swaps as swap_svc
 
     session = MagicMock()
     token = _make_token("swap:approve_requester")
@@ -173,11 +176,14 @@ def test_execute_action_swap_approve_requester_unauthorized_stranger_is_denied()
     session.execute.return_value.scalars.return_value.all.return_value = []
     session.execute.return_value.first.return_value = None
 
-    with patch("bot.actions.swap_svc.has_required_manager_row", return_value=False), \
-         patch("bot.actions.swap_svc.approve_manager_side_override") as mock_override:
+    with patch(
+        "bot.actions.swap_svc.approve_manager_side",
+        side_effect=lambda *a, is_authorized_override, **k: (_ for _ in ()).throw(
+            swap_svc.SwapError("forbidden")
+        ) if not is_authorized_override() else None,
+    ):
         result = execute_action(token, session)
 
-    mock_override.assert_not_called()
     assert "forbidden" in result or "שגיאה" in result
 
 

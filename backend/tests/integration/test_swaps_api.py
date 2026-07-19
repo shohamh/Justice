@@ -91,6 +91,33 @@ def test_wrong_commander_cannot_manager_approve(client: TestClient, admin_sessio
     assert r.status_code == 403
 
 
+def test_manager_reapprove_is_noop_not_override(client: TestClient, admin_session: Session):
+    """A chain commander clicking approve a second time should be a harmless
+    no-op through the normal (idempotent) path, not silently reroute through
+    the broader-authority override path."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(requester))
+    client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(covering))
+    r1 = client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(req_cmd), json={"side": "requester"})
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "pending_approval"  # covering side's commander hasn't approved yet
+
+    row = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == swap_req.id, SwapManagerApproval.side == "requester"
+        )
+    ).scalar_one()
+    first_approved_at = row.approved_at
+
+    r2 = client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(req_cmd), json={"side": "requester"})
+    assert r2.status_code == 200, r2.text
+    admin_session.refresh(row)
+    assert row.approved_by == req_cmd.id
+    assert row.approved_at == first_approved_at
+
+
 def test_admin_override_clears_manager_side(client: TestClient, admin_session: Session):
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
