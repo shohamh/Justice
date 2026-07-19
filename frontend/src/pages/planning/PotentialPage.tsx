@@ -342,7 +342,7 @@ export default function PotentialPage() {
         <h2 className="text-xl font-semibold">{t("potential.title")}</h2>
         <div className="flex gap-2 items-center">
           <label>{t("potential.reference_date")}:</label>
-          <input type="date" value={referenceDate} onChange={(e) => setReferenceDate(e.target.value)} className="border rounded p-1" />
+          <input type="date" lang="he" value={referenceDate} onChange={(e) => setReferenceDate(e.target.value)} className="border rounded p-1" />
         </div>
 
         <div className="flex justify-start" dir="ltr">
