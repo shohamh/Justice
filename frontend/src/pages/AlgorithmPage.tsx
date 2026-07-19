@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import AlgorithmRunForm from "../components/AlgorithmRunForm";
 import AlgorithmJobTabs from "../components/AlgorithmJobTabs";
-import { AlgorithmJob, JobSummaryOut, listJobs, pollJob, cancelJob } from "../api/algorithm";
-import { DutyType, listDutyTypes } from "../api/dutyConfig";
-import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { AlgorithmJob, listJobs, pollJob, cancelJob } from "../api/algorithm";
+import { listDutyTypes } from "../api/dutyConfig";
+import { listSoldiers } from "../api/soldiers";
 import { useSeenJobs } from "../contexts/AlgorithmSeenContext";
+
+const JOBS_LIMIT = 20;
+const JOBS_OFFSET = 0;
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -27,51 +32,35 @@ function formatRunTimestamp(iso: string): string {
 export function AlgorithmContent({ initialJobId }: { initialJobId?: string | null } = {}) {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
 
   const { markJobSeen, markAllSeen, seenIds, seedSeenIds } = useSeenJobs();
 
-  const [jobs, setJobs] = useState<JobSummaryOut[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [selectedJob, setSelectedJob] = useState<AlgorithmJob | null>(null);
   const [showRunForm, setShowRunForm] = useState(false);
   const [rerunOverrides, setRerunOverrides] = useState<Record<string, number> | null>(null);
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
-  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
 
-  const listPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const jobPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const soldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
 
-  const loadJobs = useCallback(async () => {
-    try {
-      const result = await listJobs();
-      setJobs(result.items);
-      seedSeenIds(result.items);
-    } catch { /* ignore */ }
-  }, [seedSeenIds]);
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
 
-  useEffect(() => {
-    Promise.all([listSoldiers(), listDutyTypes()]).then(([ss, dts]) => {
-      setSoldiers(ss);
-      setDutyTypes(dts);
-    }).catch(() => {});
-  }, []);
+  // Poll the job list every 3s while any job is active
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.algorithmJobs(JOBS_LIMIT, JOBS_OFFSET),
+    queryFn: () => listJobs(JOBS_LIMIT, JOBS_OFFSET),
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? [];
+      const hasActive = items.some(j => j.status === "pending" || j.status === "running");
+      return hasActive ? 3000 : false;
+    },
+  });
+  const jobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data]);
 
   useEffect(() => {
-    void loadJobs();
-  }, [loadJobs]);
-
-  // Poll job list every 3s while any job is active
-  useEffect(() => {
-    const hasActive = jobs.some(j => j.status === "pending" || j.status === "running");
-    if (hasActive) {
-      listPollRef.current = setInterval(() => void loadJobs(), 3000);
-    } else {
-      if (listPollRef.current) clearInterval(listPollRef.current);
-    }
-    return () => {
-      if (listPollRef.current) clearInterval(listPollRef.current);
-    };
-  }, [jobs, loadJobs]);
+    if (jobsQuery.data) seedSeenIds(jobsQuery.data.items);
+  }, [jobsQuery.data, seedSeenIds]);
 
   // Pre-select job from URL param
   useEffect(() => {
@@ -84,28 +73,17 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
     if (initialJobId) setSelectedJobId(initialJobId);
   }, [initialJobId]);
 
-  // Poll selected job every 1s while pending/running
-  useEffect(() => {
-    if (!selectedJobId) return;
-    setSelectedJob(null);
-
-    const poll = async () => {
-      try {
-        const j = await pollJob(selectedJobId);
-        setSelectedJob(j);
-        if (j.status === "done" || j.status === "failed") {
-          if (jobPollRef.current) clearInterval(jobPollRef.current);
-        }
-      } catch { /* ignore */ }
-    };
-
-    void poll();
-    jobPollRef.current = setInterval(() => void poll(), 1000);
-
-    return () => {
-      if (jobPollRef.current) clearInterval(jobPollRef.current);
-    };
-  }, [selectedJobId]);
+  // Poll the selected job every 1s while pending/running
+  const selectedJobQuery = useQuery({
+    queryKey: selectedJobId ? queryKeys.algorithmJob(selectedJobId) : queryKeys.algorithmJob("none"),
+    queryFn: () => pollJob(selectedJobId!),
+    enabled: !!selectedJobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "pending" || status === "running" ? 1000 : false;
+    },
+  });
+  const selectedJob = selectedJobQuery.data ?? null;
 
   // Opening a job dismisses its nav badge, unless it's still pending/running —
   // in that case the badge should stay until there's actually something to see.
@@ -118,7 +96,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
   function handleJobSubmitted(jobId: string) {
     handleCloseRunForm();
     setSelectedJobId(jobId);
-    void loadJobs();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(JOBS_LIMIT, JOBS_OFFSET) });
   }
 
   function handleRerun(overrides: Record<string, number>) {
@@ -135,7 +113,14 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
     if (!selectedJobId) return;
     try {
       await cancelJob(selectedJobId);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJob(selectedJobId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(JOBS_LIMIT, JOBS_OFFSET) });
     } catch { /* 409 = already done, ignore */ }
+  }
+
+  function handleProposalUpdate(updated: AlgorithmJob) {
+    if (!selectedJobId) return;
+    queryClient.setQueryData(queryKeys.algorithmJob(selectedJobId), updated);
   }
 
   const STATUS_BADGE: Record<string, string> = {
@@ -331,7 +316,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                 jobId={selectedJobId!}
                 soldiers={soldiers}
                 dutyTypes={dutyTypes}
-                onProposalUpdate={setSelectedJob}
+                onProposalUpdate={handleProposalUpdate}
                 onRerun={handleRerun}
                 onRetried={handleJobSubmitted}
               />

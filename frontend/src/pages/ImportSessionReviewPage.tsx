@@ -1,13 +1,14 @@
 import Fuse from "fuse.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Combobox, { type ComboboxItem } from "../components/Combobox";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
+import { queryKeys } from "../queryKeys";
 import {
-  type SessionDetail,
   type ConfirmSessionResult,
   type RowBase,
   type Selections,
@@ -127,6 +128,9 @@ function buildPickerItems(
   ];
 }
 
+const EMPTY_DUTY_TYPES: LookupItem[] = [];
+const EMPTY_NODES: LookupNode[] = [];
+
 interface PendingPick {
   pickedId: string;
   kind: "duty_type" | "hierarchy_node";
@@ -168,9 +172,8 @@ function PendingPickBanner({
 
 export default function ImportSessionReviewPage() {
   const { id } = useParams<{ id: string }>();
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("soldiers");
   const [selections, setSelections] = useState<Selections>({});
   const [confirming, setConfirming] = useState(false);
@@ -189,8 +192,16 @@ export default function ImportSessionReviewPage() {
   const [shiftTemplateFieldsRow, setShiftTemplateFieldsRow] = useState<ShiftTemplateRow | null>(null);
 
   // lookup data
-  const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
-  const [allNodes, setAllNodes] = useState<LookupNode[]>([]);
+  const dutyTypesQuery = useQuery({
+    queryKey: queryKeys.importDutyTypesForImport(),
+    queryFn: listDutyTypesForImport,
+  });
+  const nodesQuery = useQuery({
+    queryKey: queryKeys.importNodesForImport(),
+    queryFn: listNodesForImport,
+  });
+  const allDutyTypes: LookupItem[] = dutyTypesQuery.data ?? EMPTY_DUTY_TYPES;
+  const allNodes: LookupNode[] = nodesQuery.data ?? EMPTY_NODES;
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
 
   const sortedNodeItems = useMemo<ComboboxItem[]>(() => {
@@ -217,39 +228,27 @@ export default function ImportSessionReviewPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await getSession(id);
-      setDetail(result);
-      setSelections(result.user_selections ?? {});
-    } catch {
-      setError("שגיאה בטעינת פרטי הייבוא");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const sessionQuery = useQuery({
+    queryKey: queryKeys.importSessionDetail(id ?? ""),
+    queryFn: () => getSession(id as string),
+    enabled: !!id,
+  });
+  const detail = sessionQuery.data ?? null;
+  const loading = sessionQuery.isLoading;
 
+  // selections mirrors the query result but is then edited locally (row
+  // actions / field overrides) before the debounced save round-trip, so it
+  // stays a useState fed by an effect rather than reading straight from the
+  // query on every render (same pattern as SystemSettingsPage's draft).
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (detail) setSelections(detail.user_selections ?? {});
+  }, [detail]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [dts, nodes] = await Promise.all([
-          listDutyTypesForImport(),
-          listNodesForImport(),
-        ]);
-        setAllDutyTypes(dts);
-        setAllNodes(nodes);
-      } catch {
-        setError("שגיאה בטעינת נתוני בחירה");
-      }
-    })();
-  }, []);
+  const error = sessionQuery.isError
+    ? "שגיאה בטעינת פרטי הייבוא"
+    : dutyTypesQuery.isError || nodesQuery.isError
+      ? "שגיאה בטעינת נתוני בחירה"
+      : actionError;
 
   useEffect(() => {
     return () => {
@@ -356,10 +355,10 @@ export default function ImportSessionReviewPage() {
     if (!id) return;
     try {
       const result = await reparseSession(id);
-      setDetail(result);
+      queryClient.setQueryData(queryKeys.importSessionDetail(id), result);
       setSelections(result.user_selections ?? {});
     } catch {
-      setError("שגיאה ברענון הנתונים");
+      setActionError("שגיאה ברענון הנתונים");
     }
   }
 
@@ -439,7 +438,8 @@ export default function ImportSessionReviewPage() {
     try {
       const result = await confirmSession(id);
       setConfirmResult(result);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionDetail(id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
       setConfirmError(extractDetail(err) ?? "שגיאה באישור הייבוא");
     } finally {

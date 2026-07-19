@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
+import { queryKeys } from "../queryKeys";
 import {
   type SessionSummary,
   cancelSession,
@@ -36,30 +38,19 @@ function formatDate(iso: string): string {
 
 export default function ImportSessionsListPage() {
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const loadSessions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await listSessions(
-        showAll ? "draft,confirmed,cancelled,done" : undefined,
-      );
-      setSessions(result);
-    } catch {
-      setError("שגיאה בטעינת רשימת הייבואים");
-    } finally {
-      setLoading(false);
-    }
-  }, [showAll]);
+  const statusFilter = showAll ? "draft,confirmed,cancelled,done" : undefined;
+  const sessionsQuery = useQuery({
+    queryKey: queryKeys.importSessions(statusFilter),
+    queryFn: () => listSessions(statusFilter),
+  });
 
-  useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
+  const sessions = sessionsQuery.data ?? [];
+  const loading = sessionsQuery.isLoading;
+  const error = sessionsQuery.isError ? "שגיאה בטעינת רשימת הייבואים" : null;
 
   async function handleCancel(id: string) {
     if (pendingId) return;
@@ -67,7 +58,7 @@ export default function ImportSessionsListPage() {
     setPendingId(id);
     try {
       await cancelSession(id);
-      await loadSessions();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail;
@@ -82,7 +73,7 @@ export default function ImportSessionsListPage() {
     setPendingId(id);
     try {
       await markSessionDone(id);
-      await loadSessions();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail;

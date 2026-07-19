@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Combobox from "../components/Combobox";
 import Layout from "../components/Layout";
 import UnitCalendar from "../components/UnitCalendar";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
-import { useAuth } from "../auth/AuthContext";
 
 function treeOrder(nodes: NodeDTO[]): NodeDTO[] {
   const ids = new Set(nodes.map((n) => n.id));
@@ -35,13 +36,10 @@ function buildDepthMap(nodes: NodeDTO[]): Map<string, number> {
 
 export default function UnitCalendarPage() {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
   const [nodeId, setNodeId] = useState<string>("");
 
-  useEffect(() => {
-    void fetchFullTree().then((ns) => setNodes(treeOrder(ns)));
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const nodes = useMemo(() => treeOrder(treeQuery.data ?? []), [treeQuery.data]);
 
   const depthMap = useMemo(() => buildDepthMap(nodes), [nodes]);
 

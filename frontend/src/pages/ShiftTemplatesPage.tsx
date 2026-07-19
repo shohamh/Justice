@@ -1,33 +1,33 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
 import ShiftTemplateFormModal from "../components/ShiftTemplateFormModal";
 import GenerateShiftsModal from "../components/GenerateShiftsModal";
+import { queryKeys } from "../queryKeys";
 import { ShiftTemplate, deleteTemplate, listTemplates } from "../api/shiftTemplates";
-import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
 
 export function ShiftTemplatesContent() {
   const { t } = useTranslation();
-  const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
-  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
-  const [locations, setLocations] = useState<DutyLocation[]>([]);
+  const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [editTemplate, setEditTemplate] = useState<ShiftTemplate | null>(null);
   const [generateTemplateId, setGenerateTemplateId] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const [tmps, dts, locs] = await Promise.all([
-      listTemplates(),
-      listDutyTypes(),
-      listLocations(),
-    ]);
-    setTemplates(tmps);
-    setDutyTypes(dts);
-    setLocations(locs);
-  }, []);
+  const templatesQuery = useQuery({ queryKey: queryKeys.shiftTemplates(), queryFn: () => listTemplates() });
+  const templates = templatesQuery.data ?? [];
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypes = dutyTypesQuery.data ?? [];
+
+  const locationsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
+  const locations = locationsQuery.data ?? [];
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.shiftTemplates() });
+  }
 
   async function handleDelete(tmpl: ShiftTemplate) {
     if (!window.confirm(t("shift_templates.confirm_delete"))) return;

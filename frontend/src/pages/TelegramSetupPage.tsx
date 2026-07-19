@@ -1,31 +1,52 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { generateTelegramCode, getTelegramStatus, GenerateCodeResult } from "../api/telegram";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { generateTelegramCode, getTelegramStatus } from "../api/telegram";
 import { useAuth } from "../auth/AuthContext";
+import { queryKeys } from "../queryKeys";
 
 export default function TelegramSetupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { refreshMe, telegramRequired } = useAuth();
-  const [codeInfo, setCodeInfo] = useState<GenerateCodeResult | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [verified, setVerified] = useState(false);
 
-  useEffect(() => { generateTelegramCode().then(setCodeInfo).catch(() => {}); }, []);
+  // generateTelegramCode is a state-mutating POST that overwrites the soldier's
+  // verification_code/expires_at on the server every time it's called, so it must
+  // only fire once on mount — NOT a useQuery, since refetchOnWindowFocus would
+  // silently re-fire it (and invalidate a code the user already copied) every time
+  // the tab regains focus after alt-tabbing to Telegram to verify.
+  const codeMutation = useMutation({ mutationFn: generateTelegramCode });
+  const hasRequestedCode = useRef(false);
+  useEffect(() => {
+    if (!hasRequestedCode.current) {
+      hasRequestedCode.current = true;
+      codeMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const codeInfo = codeMutation.data ?? null;
+
+  // Status is only fetched on demand (the "check" button below), not polled —
+  // this mirrors the page's original manual-check UX exactly.
+  const statusQuery = useQuery({
+    queryKey: queryKeys.telegramStatus(),
+    queryFn: getTelegramStatus,
+    enabled: false,
+  });
+  const verified = statusQuery.data?.is_verified ?? false;
+  const checking = statusQuery.isFetching;
+
+  useEffect(() => {
+    if (verified) {
+      void refreshMe();
+      const timer = setTimeout(() => navigate("/", { replace: true }), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [verified, navigate, refreshMe]);
 
   async function checkVerification() {
-    setChecking(true);
-    try {
-      const status = await getTelegramStatus();
-      if (status.is_verified) {
-        setVerified(true);
-        await refreshMe();
-        setTimeout(() => navigate("/", { replace: true }), 1200);
-      }
-    } finally {
-      setChecking(false);
-    }
+    await statusQuery.refetch();
   }
 
   return (

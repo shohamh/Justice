@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import HakpazaPage from "./HakpazaPage";
 import * as soldiersApi from "../api/soldiers";
@@ -34,10 +35,15 @@ beforeEach(() => {
 });
 
 function renderAt(path: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <HakpazaPage />
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <HakpazaPage />
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 

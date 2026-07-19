@@ -1,28 +1,27 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import Combobox from "../components/Combobox";
 import ExplanationModal from "../components/ExplanationModal";
 import { Assignment, cancelAssignment, listAssignments, setOverride } from "../api/assignments";
 import { createAdjustment } from "../api/scoreAdjustments";
-import { SoldierDTO, listSoldiers } from "../api/soldiers";
-import { DraftPreviewItem, getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm";
+import { listSoldiers } from "../api/soldiers";
+import { getDraftsPreview, resetDrafts, resetPublished } from "../api/algorithm";
 import { lastDutyDay } from "../utils/formatDate";
 
 export function DutyManagementContent() {
   const { t } = useTranslation();
-  const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
+  const queryClient = useQueryClient();
   const [soldierId, setSoldierId] = useState("");
-  const [rows, setRows] = useState<Assignment[]>([]);
   const [adjDelta, setAdjDelta] = useState("");
   const [adjReason, setAdjReason] = useState("");
 
   const [explanationId, setExplanationId] = useState<string | null>(null);
 
   // Bulk cancel state
-  const [draftCount, setDraftCount] = useState<number>(0);
-  const [draftItems, setDraftItems] = useState<DraftPreviewItem[]>([]);
   const [draftsExpanded, setDraftsExpanded] = useState(false);
   const [cancelDraftsLoading, setCancelDraftsLoading] = useState(false);
   const [cancelDraftsMsg, setCancelDraftsMsg] = useState<string | null>(null);
@@ -31,25 +30,28 @@ export function DutyManagementContent() {
   const draftsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const soldiers = soldiersQuery.data ?? [];
+
   useEffect(() => {
-    void listSoldiers().then(ss => { setSoldiers(ss); if (ss[0]) setSoldierId(ss[0].id); });
-  }, []);
+    if (!soldierId && soldiersQuery.data?.[0]) setSoldierId(soldiersQuery.data[0].id);
+  }, [soldiersQuery.data, soldierId]);
 
-  const refresh = useCallback(async (sid: string) => {
-    if (sid) setRows(await listAssignments(sid));
-  }, []);
+  const assignmentsQuery = useQuery({
+    queryKey: queryKeys.assignments(soldierId),
+    queryFn: () => listAssignments(soldierId),
+    enabled: !!soldierId,
+  });
+  const rows: Assignment[] = assignmentsQuery.data ?? [];
 
-  useEffect(() => { void refresh(soldierId); }, [soldierId, refresh]);
-
-  const refreshDraftPreview = useCallback(async () => {
-    try {
-      const preview = await getDraftsPreview();
-      setDraftCount(preview.count);
-      setDraftItems(preview.items);
-    } catch { /* silently skip — DM-only endpoint */ }
-  }, []);
-
-  useEffect(() => { void refreshDraftPreview(); }, [refreshDraftPreview]);
+  // DM-only endpoint — non-managers get a 403; treat that the same as "no drafts" without surfacing an error.
+  const draftsQuery = useQuery({
+    queryKey: queryKeys.draftsPreview(),
+    queryFn: getDraftsPreview,
+    retry: false,
+  });
+  const draftCount = draftsQuery.data?.count ?? 0;
+  const draftItems = draftsQuery.data?.items ?? [];
 
   useEffect(() => {
     return () => {
@@ -62,7 +64,7 @@ export function DutyManagementContent() {
     const reason = window.prompt(t("duty_management.cancel_reason"));
     if (!reason) return;
     await cancelAssignment(id, reason);
-    await refresh(soldierId);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
   }
 
   async function doOverride(id: string) {
@@ -70,7 +72,7 @@ export function DutyManagementContent() {
     if (!day) return;
     const repl = window.prompt(t("duty_management.replacement"));
     await setOverride(id, day, { effective_soldier_id: repl || null, reason: repl ? "replacement" : "cancelled" });
-    await refresh(soldierId);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(soldierId) });
   }
 
   async function submitAdj(e: FormEvent) {
@@ -91,7 +93,7 @@ export function DutyManagementContent() {
         : t("duty_management.cancel_drafts_result", { count: result.rejected });
       setCancelDraftsMsg(msg);
       draftsTimerRef.current = setTimeout(() => setCancelDraftsMsg(null), 5000);
-      await refreshDraftPreview();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.draftsPreview() });
       setDraftsExpanded(false);
     } catch {
       setCancelDraftsMsg(t("errors.generic"));
@@ -113,7 +115,7 @@ export function DutyManagementContent() {
         : t("duty_management.cancel_published_result", { count: result.cancelled });
       setCancelPublishedMsg(msg);
       publishedTimerRef.current = setTimeout(() => setCancelPublishedMsg(null), 5000);
-      await refreshDraftPreview();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.draftsPreview() });
     } catch {
       setCancelPublishedMsg(t("errors.generic"));
       publishedTimerRef.current = setTimeout(() => setCancelPublishedMsg(null), 5000);

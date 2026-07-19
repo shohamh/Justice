@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
 import Layout from "../../components/Layout";
+import { queryKeys } from "../../queryKeys";
 import { DataTable, type ColDef } from "../../components/DataTable";
 import { ExcelExportButton } from "../../components/ExcelExportButton";
 import SoldierLink from "../../components/SoldierLink";
@@ -12,9 +14,7 @@ import {
   deleteModifier,
   getEffortGap,
   PotentialResult,
-  PotentialModifierDTO,
   SoldierPotentialDetail,
-  NodeEffortPotential,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
@@ -24,24 +24,44 @@ import ExemptionsCell from "../../components/ExemptionsCell";
 
 export default function PotentialPage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { levelTypes } = useLevelTypes();
   const levelLabelByKey = useMemo(
     () => new Map(levelTypes.map((lt) => [lt.key, lt.label])),
     [levelTypes],
   );
-  const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [referenceDate, setReferenceDate] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [results, setResults] = useState<Record<string, PotentialResult>>({});
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
-  const [modifiers, setModifiers] = useState<PotentialModifierDTO[]>([]);
   const [newReason, setNewReason] = useState("");
   const [newDelta, setNewDelta] = useState(0);
   const [exportRows, setExportRows] = useState<NodeDTO[]>([]);
-  const [effortGapByNode, setEffortGapByNode] = useState<Map<string, NodeEffortPotential>>(new Map());
+
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const nodes = useMemo(() => sortNodesByTree(treeNodes).map((n) => n.node), [treeNodes]);
 
   const topLevelRoots = useMemo(() => nodes.filter((n) => n.parent_id === null), [nodes]);
+
+  const potentialQueries = useQueries({
+    queries: nodes.map((n) => ({
+      queryKey: queryKeys.potentialByNode(n.id, referenceDate),
+      queryFn: () => getPotential(n.id, referenceDate),
+    })),
+  });
+
+  const results = useMemo(() => {
+    const byId: Record<string, PotentialResult> = {};
+    nodes.forEach((n, i) => {
+      const result = potentialQueries[i];
+      if (result?.data) {
+        byId[n.id] = result.data;
+      } else if (result?.isError) {
+        console.error(`Failed to fetch potential for node ${n.id}:`, result.error);
+      }
+    });
+    return byId;
+  }, [nodes, potentialQueries]);
 
   // Synthetic aggregate row representing the whole organization. Skipped when
   // there's exactly one real root node, since that node's own row already IS
@@ -84,41 +104,36 @@ export default function PotentialPage() {
     [wholeOrgResult, wholeOrgNode, nodes],
   );
 
-  useEffect(() => {
-    fetchFullTree().then(setTreeNodes);
-  }, []);
+  const modifiersQuery = useQuery({
+    queryKey: queryKeys.potentialModifiers(expandedNodeId ?? "none"),
+    queryFn: () => listModifiers(expandedNodeId!),
+    enabled: !!expandedNodeId && expandedNodeId !== WHOLE_ORG_ID,
+  });
+  const modifiers = useMemo(() => modifiersQuery.data ?? [], [modifiersQuery.data]);
 
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    Promise.allSettled(nodes.map((n) => getPotential(n.id, referenceDate))).then((all) => {
-      const byId: Record<string, PotentialResult> = {};
-      all.forEach((r, i) => {
-        if (r.status === "fulfilled") {
-          byId[nodes[i].id] = r.value;
-        } else {
-          console.error(`Failed to fetch potential for node ${nodes[i].id}:`, r.reason);
-        }
-      });
-      setResults(byId);
-    });
-  }, [nodes, referenceDate]);
-
-  useEffect(() => {
-    if (expandedNodeId && expandedNodeId !== WHOLE_ORG_ID) listModifiers(expandedNodeId).then(setModifiers);
-  }, [expandedNodeId]);
-
-  useEffect(() => {
-    void getEffortGap(referenceDate).then((rows) => {
-      setEffortGapByNode(new Map(rows.map((r) => [r.node_id, r])));
-    }).catch(() => {});
-  }, [referenceDate]);
+  const effortGapQuery = useQuery({
+    queryKey: queryKeys.effortGapNodes(referenceDate),
+    queryFn: () => getEffortGap(referenceDate),
+  });
+  const effortGapByNode = useMemo(
+    () => new Map((effortGapQuery.data ?? []).map((r) => [r.node_id, r])),
+    [effortGapQuery.data],
+  );
 
   async function handleAddModifier() {
     if (!expandedNodeId || expandedNodeId === WHOLE_ORG_ID || !newReason.trim()) return;
     await createModifier({ hierarchy_node_id: expandedNodeId, delta: newDelta, reason: newReason, start_date: referenceDate });
-    setModifiers(await listModifiers(expandedNodeId));
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiers(expandedNodeId) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialByNode(expandedNodeId, referenceDate) });
     setNewReason("");
     setNewDelta(0);
+  }
+
+  async function handleDeleteModifier(modifierId: string) {
+    if (!expandedNodeId) return;
+    await deleteModifier(modifierId);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialModifiers(expandedNodeId) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.potentialByNode(expandedNodeId, referenceDate) });
   }
 
   function modifierSum(r: PotentialResult | undefined): number {
@@ -382,10 +397,7 @@ export default function PotentialPage() {
                   {m.end_date ? ` ${t("potential.modifier_until")} ${m.end_date}` : ""})
                   <button
                     className="text-red-600 mr-2"
-                    onClick={async () => {
-                      await deleteModifier(m.id);
-                      setModifiers(await listModifiers(expandedNodeId));
-                    }}
+                    onClick={() => void handleDeleteModifier(m.id)}
                   >
                     {t("potential.modifier_delete")}
                   </button>

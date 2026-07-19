@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import Combobox from "../components/Combobox";
 import { useAuth } from "../auth/AuthContext";
-import { EffortBreakdown, FairnessComponents, TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
+import { TransparencyRow, getEffortBreakdown, getFairnessComponents, getTransparency } from "../api/scoring";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { ExcelExportButton } from "../components/ExcelExportButton";
 import SoldierLink from "../components/SoldierLink";
@@ -16,7 +18,7 @@ import FairnessComponentsCard, { COMPONENT_COLORS, type GroupKey } from "../comp
 import { InlineMath, BlockMath } from "react-katex";
 import { computeEffortStats, getEffortColor, type EffortStats } from "../utils/effortStats";
 import { WHOLE_ORG_ID } from "../utils/wholeOrg";
-import { getEffortGap, type NodeEffortPotential } from "../api/potential";
+import { getEffortGap } from "../api/potential";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 
 // ─── tree helpers ────────────────────────────────────────────────────────────
@@ -267,10 +269,6 @@ function FairnessCard({ stats, helpVariant }: { stats: EffortStats | null; helpV
 export default function TransparencyPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [rows, setRows] = useState<TransparencyRow[]>([]);
-  const [effortBreakdown, setEffortBreakdown] = useState<EffortBreakdown | null>(null);
-  const [effortBreakdownSoldierName, setEffortBreakdownSoldierName] = useState<string | null>(null);
-  const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [treeOpen, setTreeOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -288,29 +286,46 @@ export default function TransparencyPage() {
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [activeGroupKeys, setActiveGroupKeys] = useState<Set<GroupKey>>(new Set());
   const [groupSoldiersMap, setGroupSoldiersMap] = useState<Map<GroupKey, string[]>>(new Map());
-  const [fairnessComponents, setFairnessComponents] = useState<FairnessComponents | null>(null);
   const [exportSoldierRows, setExportSoldierRows] = useState<NumberedRow[]>([]);
   const [exportSubRows, setExportSubRows] = useState<SubRow[]>([]);
-  const [canSeeExemptionAggregates, setCanSeeExemptionAggregates] = useState(false);
-  const [effortGapByNode, setEffortGapByNode] = useState<Map<string, NodeEffortPotential>>(new Map());
+  const [effortBreakdownFor, setEffortBreakdownFor] = useState<{ soldierId: string; soldierName: string } | null>(null);
 
-  useEffect(() => {
-    void getTransparency().then((out) => {
-      setRows(out.rows);
-      setCanSeeExemptionAggregates(out.can_see_exemption_aggregates);
-    });
-  }, []);
-  useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
-  useEffect(() => { void getFairnessComponents().then(setFairnessComponents).catch(() => {}); }, []);
-  useEffect(() => {
-    void getEffortGap().then((rows) => {
-      setEffortGapByNode(new Map(rows.map((r) => [r.node_id, r])));
-    }).catch(() => {});
-  }, []);
+  const transparencyQuery = useQuery({
+    queryKey: queryKeys.transparency(),
+    queryFn: getTransparency,
+  });
+  const rows = useMemo(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
+  const canSeeExemptionAggregates = transparencyQuery.data?.can_see_exemption_aggregates ?? false;
 
-  async function openEffortBreakdown(soldierId: string, soldierName: string) {
-    setEffortBreakdownSoldierName(soldierName);
-    setEffortBreakdown(await getEffortBreakdown(soldierId));
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
+
+  const fairnessComponentsQuery = useQuery({
+    queryKey: queryKeys.fairnessComponents(),
+    queryFn: getFairnessComponents,
+  });
+  const fairnessComponents = fairnessComponentsQuery.data ?? null;
+
+  const effortGapQuery = useQuery({ queryKey: queryKeys.effortGapNodes(), queryFn: () => getEffortGap() });
+  const effortGapByNode = useMemo(
+    () => new Map((effortGapQuery.data ?? []).map((r) => [r.node_id, r])),
+    [effortGapQuery.data],
+  );
+
+  const effortBreakdownQuery = useQuery({
+    queryKey: effortBreakdownFor ? queryKeys.effortBreakdown(effortBreakdownFor.soldierId) : ["scoring", "effortBreakdown", "none"],
+    queryFn: () => getEffortBreakdown(effortBreakdownFor!.soldierId),
+    enabled: !!effortBreakdownFor,
+  });
+  const effortBreakdown = effortBreakdownFor ? effortBreakdownQuery.data ?? null : null;
+  const effortBreakdownSoldierName = effortBreakdownFor?.soldierName ?? null;
+
+  function openEffortBreakdown(soldierId: string, soldierName: string) {
+    setEffortBreakdownFor({ soldierId, soldierName });
+  }
+
+  function closeEffortBreakdown() {
+    setEffortBreakdownFor(null);
   }
 
   // ── flat node list & lookup map ──
@@ -599,7 +614,7 @@ export default function TransparencyPage() {
           <span className={`inline-block w-full rounded px-0.5 ${colorClass}`}>
             <button
               className="text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
-              onClick={() => void openEffortBreakdown(r.soldier_id, r.full_name)}
+              onClick={() => openEffortBreakdown(r.soldier_id, r.full_name)}
               title="לחץ לפירוט רבעוני"
             >
               {label}
@@ -1046,7 +1061,7 @@ export default function TransparencyPage() {
       {effortBreakdown && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={() => setEffortBreakdown(null)}
+          onClick={closeEffortBreakdown}
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col overflow-hidden"
@@ -1060,7 +1075,7 @@ export default function TransparencyPage() {
               </h2>
               <button
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
-                onClick={() => setEffortBreakdown(null)}
+                onClick={closeEffortBreakdown}
               >
                 ✕
               </button>
