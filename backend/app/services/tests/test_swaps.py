@@ -84,8 +84,27 @@ def test_commander_chain_walks_to_root(admin_session):
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=mid.id)
 
     chain = commander_chain_for_soldier(admin_session, soldier.id)
-    assert chain == [mid_cmd.id, root_cmd.id] or chain == [root_cmd.id, mid_cmd.id]
-    assert set(chain) == {mid_cmd.id, root_cmd.id}
+    assert chain == [mid_cmd.id, root_cmd.id]
+
+
+def test_commander_chain_orders_nearest_first(admin_session):
+    """The soldier's own node has no commander; mid has commander B; root has
+    commander A. The chain must come back nearest-first: [B, A] — not [A, B]
+    and not merely the same set."""
+    from app.services.swaps import commander_chain_for_soldier
+
+    root = create_node(admin_session, level="division", name=f"root_{_uid()}")
+    root_cmd = create_soldier(admin_session, personal_number=f"rc2_{_uid()}", role="commander")
+    root.commander_id = root_cmd.id
+    mid = create_node(admin_session, level="unit", name=f"mid2_{_uid()}", parent=root)
+    mid_cmd = create_soldier(admin_session, personal_number=f"mc2_{_uid()}", role="commander")
+    mid.commander_id = mid_cmd.id
+    leaf = create_node(admin_session, level="team", name=f"leaf_{_uid()}", parent=mid)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number=f"s2_{_uid()}", hierarchy_node_id=leaf.id)
+
+    chain = commander_chain_for_soldier(admin_session, soldier.id)
+    assert chain == [mid_cmd.id, root_cmd.id]
 
 
 def test_commander_chain_excludes_soldier_commanding_own_node(admin_session):

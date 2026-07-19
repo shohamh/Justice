@@ -133,19 +133,33 @@ def _require_approval(session: Session) -> bool:
 
 def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
     """Every distinct commander from the soldier's own node up to the root of
-    the hierarchy, excluding the soldier themself if they command their own node."""
+    the hierarchy, excluding the soldier themself if they command their own node.
+
+    Ordered NEAREST-commander-first: chain[0] is the closest ancestor (or the
+    soldier's own node) that has a commander, and the list walks outward to
+    the root from there. `node.path_ids` is materialized root-first (see
+    `hierarchy.py`: `node.path_ids = [*parent.path_ids, node.id]`), so we
+    reorder via `reversed(node.path_ids)` rather than relying on the `IN (...)`
+    query's row order, which SQL does not guarantee to match the list order.
+    """
     soldier = session.get(Soldier, soldier_id)
     if soldier is None or soldier.hierarchy_node_id is None:
         return []
     node = session.get(HierarchyNode, soldier.hierarchy_node_id)
     if node is None or not node.path_ids:
         return []
-    nodes = session.execute(
-        select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
-    ).scalars().all()
+    nodes_by_id = {
+        n.id: n
+        for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
+        ).scalars().all()
+    }
     seen: set[uuid.UUID] = set()
     chain: list[uuid.UUID] = []
-    for n in nodes:
+    for node_id in reversed(node.path_ids):
+        n = nodes_by_id.get(node_id)
+        if n is None:
+            continue
         if n.commander_id and n.commander_id != soldier_id and n.commander_id not in seen:
             seen.add(n.commander_id)
             chain.append(n.commander_id)
