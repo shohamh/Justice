@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-20
+
+### Features
+- **Import review inline editing** — new `ImportRowFieldsModal` lets duty_types/exemption_types import rows have their eligible units, requirements, and applies-to lists edited directly in the review table, which now also shows full field detail for both sheet types.
+- **Shift-templates import/export** — a new `shift_templates` sheet is parsed, resolved against duty types/locations/eligible units, and creates/updates `ShiftTemplate` rows on import-session confirm; the export page now offers select-all and splits system data into 4 separate sheets, reconciled with the full-data round trip.
+- **Per-account login rate limit**, alongside the existing per-IP limit.
+- Soldier profile date fields now get cross-field validation (e.g. discharge after enlistment); self-submitted exemption/constraint requests are capped at 364 days.
+- Exemption/constraint date ranges now show their span duration alongside the dates.
+
+### Fixes
+- `COOKIE_SECURE` now defaults to `false` in the env template, with a warning on http/secure-cookie mismatch (was breaking non-HTTPS deployments).
+- Exemption type name now shows on the exemption-request approval row; any authenticated soldier can list duty types (was over-restricted).
+- Fixed several react-query migration regressions: `TelegramSetupPage` polling and `SystemSettingsPage` cache invalidation, a `SwapsPage` hierarchy query-key collision with other `fetchFullTree` consumers, missing `lang=he` on date inputs in `PotentialPage`/`CommanderExemptionGrantForm`, and a test render missing its `QueryClientProvider` wrapper.
+
+### Chores
+- Migrated nearly every page's data fetching from manual `useEffect`/state to react-query, backed by a new central query-key registry (`frontend/src/queryKeys.ts`).
+- Disabled fsync on the test Postgres container to speed up the test suite.
+
 ## 2026-07-08
 
 ### Features
