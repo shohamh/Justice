@@ -14,8 +14,8 @@ from app.services.exemptions import (
 from tests.helpers import create_soldier
 
 
-def _et(session, name="פטור"):
-    et = ExemptionType(name=name)
+def _et(session, name="פטור", is_commander_exemption=False):
+    et = ExemptionType(name=name, is_commander_exemption=is_commander_exemption)
     session.add(et)
     session.flush()
     return et
@@ -198,6 +198,48 @@ def test_active_exemptions_window(admin_session):
     assert len(on_jan) == 1
     assert len(on_feb) == 0
     assert len(on_apr) == 1  # the open-ended one
+
+
+def test_grant_exemption_rejects_commander_exemption_type(admin_session):
+    """A commander-exemption type must only be grantable via grant_commander_exemption,
+    not the generic grant_exemption — otherwise the rasan+/level rank gate on commander
+    exemptions is bypassable."""
+    s = create_soldier(admin_session, personal_number="7300010")
+    commander_et = _et(admin_session, "פטור-פיקודי-10", is_commander_exemption=True)
+    with pytest.raises(ExemptionError, match="commander_exemption_requires_dedicated_endpoint"):
+        grant_exemption(
+            admin_session,
+            soldier_id=s.id,
+            exemption_type_id=commander_et.id,
+            start_date=date.today(),
+            end_date=None,
+            reason="test",
+        )
+
+
+def test_grant_exemption_notifies_soldier(admin_session):
+    from sqlalchemy import select as sa_select
+
+    from app.db.models import Notification, NotificationType
+
+    s = create_soldier(admin_session, personal_number="7300011")
+    regular_et = _et(admin_session, "פטור-11")
+    grant_exemption(
+        admin_session,
+        soldier_id=s.id,
+        exemption_type_id=regular_et.id,
+        start_date=date.today(),
+        end_date=None,
+        reason="test",
+    )
+    admin_session.commit()
+    notif = admin_session.execute(
+        sa_select(Notification).where(
+            Notification.soldier_id == s.id,
+            Notification.type == NotificationType.exemption_approved,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
 
 
 def test_list_exemptions(admin_session):

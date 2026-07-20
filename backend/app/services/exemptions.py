@@ -24,10 +24,16 @@ def grant_exemption(
     reason: str | None,
     actor_id: uuid.UUID | None = None,
 ) -> SoldierExemption:
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification, notify_duty_managers_in_scope
+
     if session.get(Soldier, soldier_id) is None:
         raise ExemptionError("soldier_not_found")
-    if session.get(ExemptionType, exemption_type_id) is None:
+    et = session.get(ExemptionType, exemption_type_id)
+    if et is None:
         raise ExemptionError("exemption_type_not_found")
+    if et.is_commander_exemption:
+        raise ExemptionError("commander_exemption_requires_dedicated_endpoint")
     if end_date is not None and end_date < start_date:
         raise ExemptionError("bad_date_range")
     ex = SoldierExemption(
@@ -52,6 +58,22 @@ def grant_exemption(
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat() if end_date else None,
         },
+    )
+    create_notification(
+        session, soldier_id=soldier_id,
+        type=NotificationType.exemption_approved,
+        title="ניתן לך פטור",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
+    )
+    notify_duty_managers_in_scope(
+        session, soldier_id=soldier_id,
+        type=NotificationType.exemption_approved,
+        title="ניתן פטור",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
     )
     return ex
 
@@ -93,6 +115,26 @@ def grant_commander_exemption(
         entity_id=ex.id,
         after={"soldier_id": str(soldier_id), "exemption_type_id": str(exemption_type_id)},
         context={"reason": reason},
+    )
+
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification, notify_duty_managers_in_scope
+
+    create_notification(
+        session, soldier_id=soldier_id,
+        type=NotificationType.exemption_approved,
+        title="ניתן לך פטור מפקדתי",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
+    )
+    notify_duty_managers_in_scope(
+        session, soldier_id=soldier_id,
+        type=NotificationType.exemption_approved,
+        title="ניתן פטור מפקדתי",
+        body=reason,
+        reference_type="soldier_exemption", reference_id=ex.id,
+        actor_id=actor_id,
     )
     return ex
 
