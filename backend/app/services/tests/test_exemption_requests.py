@@ -5,11 +5,22 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.db.models import ExemptionType, Soldier
+from sqlalchemy import delete
+
+from app.db.models import (
+    DutyManagerScope,
+    ExemptionType,
+    HierarchyLevelType,
+    HierarchyNode,
+    Notification,
+    NotificationType,
+    Soldier,
+)
 from app.services.exemption_requests import (
     ExemptionRequestError, approve_commander_step, approve_duty_manager_step,
     reject_request, submit_commander_escalation, submit_request,
 )
+from app.services.authority import REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY
 
 
 def _soldier(session, **kw):
@@ -38,6 +49,53 @@ def test_approve_commander_step_moves_to_pending_duty_manager(app_session):
     result = approve_commander_step(app_session, req.id, approved_by=approver.id)
     assert result.status == "pending_duty_manager"
     assert result.commander_approved_by == approver.id
+
+
+def test_approve_commander_step_notifies_duty_managers(app_session):
+    """When a commander approves their step, duty managers in scope over the
+    soldier's node must get a pending-approval notification — mirroring what
+    submit_commander_escalation already does when landing directly in
+    pending_duty_manager (see test_notifications_dm.py for the DM-scope
+    fixture pattern reused here)."""
+    # The shared English-keyed level defaults (seeded by conftest's
+    # _truncate_tables fixture) don't include a level whose key matches
+    # REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY ("מרכז"), so dm_scope_covers_level
+    # would never find a rank and no DM would ever qualify. Replace them
+    # with a minimal Hebrew-keyed hierarchy, as test_notifications_dm.py does.
+    app_session.execute(delete(HierarchyLevelType))
+    app_session.add(HierarchyLevelType(key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+                                        label=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY, rank=1))
+    app_session.add(HierarchyLevelType(key="פלוגה", label="פלוגה", rank=2))
+    app_session.flush()
+
+    center_node = HierarchyNode(level=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY, name="Center", path_ids=[])
+    app_session.add(center_node)
+    app_session.flush()
+    center_node.path_ids = [center_node.id]
+
+    co_node = HierarchyNode(level="פלוגה", name="Co", path_ids=[])
+    app_session.add(co_node)
+    app_session.flush()
+    co_node.path_ids = [center_node.id, co_node.id]
+    app_session.flush()
+
+    et = ExemptionType(name="פטור רפואי - dm notify")
+    app_session.add(et)
+    app_session.flush()
+
+    soldier = _soldier(app_session, hierarchy_node_id=co_node.id)
+    commander = _soldier(app_session)
+    dm = _soldier(app_session)
+    app_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=center_node.id))
+    app_session.flush()
+
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    approve_commander_step(app_session, req.id, approved_by=commander.id)
+
+    notif = app_session.query(Notification).filter_by(
+        soldier_id=dm.id, type=NotificationType.exemption_request_pending,
+    ).one_or_none()
+    assert notif is not None
 
 
 def test_approve_duty_manager_step_finalizes_and_creates_exemption(app_session):
