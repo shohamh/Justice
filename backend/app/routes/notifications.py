@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier
+from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import notifications as svc
 from app.settings import get_settings
@@ -359,7 +359,22 @@ def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
         return {"action": action, "status": "ok"}
     elif action == "swap:approve_requester":
         from app.services import swaps as swap_svc
-        swap_svc.approve_side(session, request_id=resource_id, side="requester", actor_id=actor_id)
+        req = session.get(SwapRequest, resource_id)
+        if req is None:
+            raise HTTPException(status_code=404, detail="swap_not_found")
+
+        def _override_authorized() -> bool:
+            node: HierarchyNode | None = None
+            requester = session.get(Soldier, req.requesting_soldier_id) if req.requesting_soldier_id else None
+            if requester is not None and requester.hierarchy_node_id is not None:
+                node = session.get(HierarchyNode, requester.hierarchy_node_id)
+            authorize(session, session.get(Soldier, actor_id), Action.SWAP_APPROVE, target_node=node)
+            return True
+
+        swap_svc.approve_manager_side(
+            session, request_id=resource_id, side="requester", actor_id=actor_id,
+            is_authorized_override=_override_authorized,
+        )
         return {"action": action, "status": "ok"}
     elif action == "swap:approve_covering":
         from app.services import swaps as swap_svc

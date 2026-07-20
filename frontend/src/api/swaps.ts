@@ -1,5 +1,14 @@
 import { api } from "./client";
 
+export interface SwapManagerApproval {
+  commander_id: string;
+  commander_name: string | null;
+  approved: boolean;
+  approved_by: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+}
+
 export interface SwapRequest {
   id: string;
   duty_assignment_id: string;
@@ -27,6 +36,8 @@ export interface SwapRequest {
   requesting_commander_name?: string | null;
   covering_commander_name?: string | null;
   requesting_soldier_node_name?: string | null;
+  requester_manager_approvals: SwapManagerApproval[];
+  covering_manager_approvals: SwapManagerApproval[];
 }
 
 export interface CreateSwapInput {
@@ -73,12 +84,20 @@ export async function listPendingSwaps(): Promise<SwapRequest[]> {
   return (await api.get<SwapRequest[]>("/swaps/pending")).data;
 }
 
-export async function approveSwapSide(id: string, side: "requester" | "covering"): Promise<SwapRequest> {
-  return (await api.post<SwapRequest>(`/swaps/${id}/approve`, { side })).data;
+export async function soldierApproveSwap(id: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/me/swaps/${id}/approve`, {})).data;
 }
 
-export async function rejectSwap(id: string, decision_note?: string): Promise<SwapRequest> {
-  return (await api.post<SwapRequest>(`/swaps/${id}/reject`, { decision_note })).data;
+export async function soldierRejectSwap(id: string, decision_note?: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/me/swaps/${id}/reject`, { decision_note })).data;
+}
+
+export async function managerApproveSwap(id: string, side: "requester" | "covering"): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/swaps/${id}/manager-approve`, { side })).data;
+}
+
+export async function managerRejectSwap(id: string, decision_note?: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/swaps/${id}/manager-reject`, { decision_note })).data;
 }
 
 export async function getIncomingSwapCount(): Promise<number> {

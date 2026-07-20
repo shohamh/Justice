@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids, can_see_private
-from app.auth.deps import require_password_changed
+from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
 from app.services import constraints as svc
@@ -99,7 +99,7 @@ def list_own(
 def submit(
     body: SubmitRequest,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> ConstraintOut:
     try:
         c = svc.submit_constraint(

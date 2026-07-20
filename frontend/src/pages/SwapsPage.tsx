@@ -6,12 +6,13 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
+import DirectCommanderApproval from "../components/DirectCommanderApproval";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
   listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
-  CoverEligibilityResult, checkCoverEligibility,
+  CoverEligibilityResult, checkCoverEligibility, soldierApproveSwap, soldierRejectSwap,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
@@ -144,9 +145,15 @@ function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; r
   const { t } = useTranslation();
   if (!requireManagerApproval || swap.status !== "pending_approval") return null;
   return (
-    <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap gap-3 mt-1">
-      <span>{t("swaps.requester_approval")}: <ApprovalDot value={swap.requester_side_approved} /></span>
-      <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
+    <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 mt-1">
+      <div className="flex flex-wrap gap-3">
+        <span>{t("swaps.requester_approval")}: <ApprovalDot value={swap.requester_side_approved} /></span>
+        <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span>{t("swaps.requester_managers")}: <DirectCommanderApproval approvals={swap.requester_manager_approvals} /></span>
+        <span>{t("swaps.covering_managers")}: <DirectCommanderApproval approvals={swap.covering_manager_approvals} /></span>
+      </div>
     </div>
   );
 }
@@ -157,6 +164,7 @@ function AskSwapModal({
   duty: EffectiveDuty; dutyTypeName: string; onClose: () => void; onCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const { enrollmentPending } = useAuth();
   const [mode, setMode] = useState<"open" | "soldier">("open");
   const [targetSoldierId, setTargetSoldierId] = useState("");
   const [reason, setReason] = useState("");
@@ -192,6 +200,11 @@ function AskSwapModal({
             return duty.start_date === last ? duty.start_date : `${duty.start_date} → ${last}`;
           })()}
         </p>
+        {enrollmentPending && (
+          <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2">
+            בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
@@ -214,7 +227,7 @@ function AskSwapModal({
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300">{t("swaps.cancel")}</button>
-            <button type="submit" className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">{t("swaps.save")}</button>
+            <button type="submit" disabled={enrollmentPending} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("swaps.save")}</button>
           </div>
         </form>
       </div>
@@ -348,6 +361,24 @@ export default function SwapsPage() {
     }
   }
 
+  const [swapRejectNote, setSwapRejectNote] = useState<Record<string, string>>({});
+
+  async function handleSoldierApprove(id: string) {
+    try { await soldierApproveSwap(id); await refreshSwapData(); }
+    catch (err: unknown) {
+      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
+    }
+  }
+  async function handleSoldierReject(id: string) {
+    try {
+      await soldierRejectSwap(id, swapRejectNote[id]);
+      setSwapRejectNote((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      await refreshSwapData();
+    } catch (err: unknown) {
+      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
+    }
+  }
+
   const pendingApproval = [...mySwaps, ...incomingSwaps]
     .filter((s) => s.status === "pending_approval")
     .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
@@ -363,6 +394,24 @@ export default function SwapsPage() {
         </span>
       </div>
       <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+      {swap.status === "pending_approval" && swap.requester_side_approved !== true && (
+        <div className="flex gap-2 items-center">
+          <button type="button" onClick={() => handleSoldierApprove(swap.id)}
+            className="bg-green-600 text-white px-2 py-1 rounded text-xs">
+            {t("approvals.approve")}
+          </button>
+          <input
+            placeholder={t("approvals.decision_note")}
+            value={swapRejectNote[swap.id] ?? ""}
+            onChange={(e) => setSwapRejectNote((prev) => ({ ...prev, [swap.id]: e.target.value }))}
+            className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+          />
+          <button type="button" onClick={() => handleSoldierReject(swap.id)}
+            className="bg-red-600 text-white px-2 py-1 rounded text-xs">
+            {t("approvals.reject")}
+          </button>
+        </div>
+      )}
       {swap.covering_soldier_id && swap.status === "pending_approval" && (
         <p className="text-xs text-indigo-600 dark:text-indigo-300">{t("swaps.has_cover_candidate")}</p>
       )}
@@ -426,6 +475,24 @@ export default function SwapsPage() {
           </span>
         </div>
         <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+        {swap.status === "pending_approval" && swap.covering_side_approved !== true && (
+          <div className="flex gap-2 items-center">
+            <button type="button" onClick={() => handleSoldierApprove(swap.id)}
+              className="bg-green-600 text-white px-2 py-1 rounded text-xs">
+              {t("approvals.approve")}
+            </button>
+            <input
+              placeholder={t("approvals.decision_note")}
+              value={swapRejectNote[swap.id] ?? ""}
+              onChange={(e) => setSwapRejectNote((prev) => ({ ...prev, [swap.id]: e.target.value }))}
+              className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            />
+            <button type="button" onClick={() => handleSoldierReject(swap.id)}
+              className="bg-red-600 text-white px-2 py-1 rounded text-xs">
+              {t("approvals.reject")}
+            </button>
+          </div>
+        )}
         {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
         <button
           type="button"

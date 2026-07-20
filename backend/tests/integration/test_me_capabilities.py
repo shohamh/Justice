@@ -28,3 +28,26 @@ def test_me_plain_soldier_has_no_capabilities(client: TestClient, admin_session:
     body = r.json()
     assert body["is_commander"] is False
     assert body["is_duty_manager"] is False
+
+
+def test_me_reports_enrollment_pending(client, admin_session):
+    from app.db.models import SoldierEnrollmentRequest
+    from tests.helpers import create_node, create_soldier, auth_headers
+
+    node = create_node(admin_session, level="unit", name="me_enrollment_pending_unit")
+    s = create_soldier(admin_session, personal_number="7600020", hierarchy_node_id=node.id)
+    admin_session.add(SoldierEnrollmentRequest(soldier_id=s.id, requested_node_id=node.id, status="pending"))
+    admin_session.commit()
+
+    r = client.get("/api/me", headers=auth_headers(s))
+    assert r.status_code == 200
+    assert r.json()["enrollment_pending"] is True
+
+
+def test_me_reports_not_pending_when_no_enrollment_request(client, admin_session):
+    from tests.helpers import create_soldier, auth_headers
+
+    s = create_soldier(admin_session, personal_number="7600021")
+    r = client.get("/api/me", headers=auth_headers(s))
+    assert r.status_code == 200
+    assert r.json()["enrollment_pending"] is False

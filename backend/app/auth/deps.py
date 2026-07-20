@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import InvalidToken, decode_token
@@ -64,4 +65,23 @@ def require_password_changed(user: Soldier = Depends(get_current_user)) -> Soldi
     """Block protected endpoints while the user still must change their password."""
     if user.must_change_password:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="must_change_password")
+    return user
+
+
+def require_enrolled(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Soldier:
+    """Block soldier-initiated write actions while intake (enrollment) is still
+    pending. Read access is never gated here — only used on write endpoints."""
+    from app.db.models import SoldierEnrollmentRequest
+
+    pending = session.execute(
+        select(SoldierEnrollmentRequest.id).where(
+            SoldierEnrollmentRequest.soldier_id == user.id,
+            SoldierEnrollmentRequest.status.in_(("pending", "commander_approved")),
+        ).limit(1)
+    ).first()
+    if pending is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="enrollment_pending")
     return user

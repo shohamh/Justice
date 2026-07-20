@@ -78,6 +78,115 @@ def test_execute_action_exemption_approve_duty_manager_step_calls_service():
     assert "אושרה" in result
 
 
+def test_execute_action_swap_approve_requester_delegates_to_approve_manager_side():
+    from bot.actions import execute_action
+    from app.db.models import SwapRequest
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+    session.get.return_value = MagicMock(spec=SwapRequest)
+
+    with patch("bot.actions.swap_svc.approve_manager_side") as mock_approve:
+        mock_approve.return_value = MagicMock()
+        result = execute_action(token, session)
+
+    assert mock_approve.call_count == 1
+    _, kwargs = mock_approve.call_args
+    assert kwargs["request_id"] == token.resource_id
+    assert kwargs["side"] == "requester"
+    assert kwargs["actor_id"] == token.soldier_id
+    assert callable(kwargs["is_authorized_override"])
+    assert "אושרה" in result
+
+
+def test_execute_action_swap_approve_requester_override_callable_reflects_can():
+    """The is_authorized_override callable passed to approve_manager_side must
+    resolve to True when the actor is authorized (e.g. an admin/duty-manager
+    outside the chain) and False otherwise — exercised directly here since the
+    real chain-membership branching now lives entirely in
+    app.services.swaps.approve_manager_side."""
+    from bot.actions import execute_action
+    from app.db.models import HierarchyNode, Soldier, SwapRequest
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+
+    req = MagicMock(spec=SwapRequest)
+    req.requesting_soldier_id = uuid.uuid4()
+    requester = MagicMock(spec=Soldier)
+    requester.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    node.path_ids = [uuid.uuid4()]
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+    actor.role = "admin"
+
+    def _get(model, obj_id):
+        if model is SwapRequest:
+            return req
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return requester
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+
+    with patch("bot.actions.swap_svc.approve_manager_side") as mock_approve:
+        mock_approve.return_value = MagicMock()
+        execute_action(token, session)
+
+    _, kwargs = mock_approve.call_args
+    assert kwargs["is_authorized_override"]() is True  # admin is authorized
+
+
+def test_execute_action_swap_approve_requester_unauthorized_stranger_override_is_false():
+    from bot.actions import execute_action
+    from app.db.models import HierarchyNode, Soldier, SwapRequest
+    from app.services import swaps as swap_svc
+
+    session = MagicMock()
+    token = _make_token("swap:approve_requester")
+
+    req = MagicMock(spec=SwapRequest)
+    req.requesting_soldier_id = uuid.uuid4()
+    requester = MagicMock(spec=Soldier)
+    requester.hierarchy_node_id = uuid.uuid4()
+    node = MagicMock(spec=HierarchyNode)
+    node.path_ids = [uuid.uuid4()]
+    actor = MagicMock(spec=Soldier)
+    actor.id = token.soldier_id
+    actor.role = "soldier"
+    actor.rank = None
+
+    def _get(model, obj_id):
+        if model is SwapRequest:
+            return req
+        if model is Soldier and obj_id == token.soldier_id:
+            return actor
+        if model is Soldier:
+            return requester
+        if model is HierarchyNode:
+            return node
+        return None
+
+    session.get.side_effect = _get
+    session.execute.return_value.scalars.return_value.all.return_value = []
+    session.execute.return_value.first.return_value = None
+
+    with patch(
+        "bot.actions.swap_svc.approve_manager_side",
+        side_effect=lambda *a, is_authorized_override, **k: (_ for _ in ()).throw(
+            swap_svc.SwapError("forbidden")
+        ) if not is_authorized_override() else None,
+    ):
+        result = execute_action(token, session)
+
+    assert "forbidden" in result or "שגיאה" in result
+
+
 def test_execute_action_with_reason_constraint_reject():
     from bot.actions import execute_action_with_reason
 
