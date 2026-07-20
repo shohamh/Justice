@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
+import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
+import { queryKeys } from "../queryKeys";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
@@ -68,6 +71,13 @@ export default function RegisterPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [exemptionTypes, setExemptionTypes] = useState<PublicExemptionType[]>([]);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
+
+  const registrationSettingsQuery = useQuery({
+    queryKey: queryKeys.registrationPublicSettings(),
+    queryFn: getRegistrationPublicSettings,
+  });
+  const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
+  const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -181,7 +191,7 @@ export default function RegisterPage() {
                 value={form.phone} onChange={e => set("phone", e.target.value)} />
             </label>
             <label className="block text-sm">אימייל <span className="text-red-500">*</span>
-              <input type="email" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              <input type="email" placeholder={emailPlaceholder} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.email} onChange={e => set("email", e.target.value)} />
             </label>
             <label className="block text-sm">מגדר <span className="text-red-500">*</span>

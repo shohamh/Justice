@@ -75,4 +75,5 @@ export const queryKeys = {
   potentialModifiers: (nodeId: string) => ["potential", "modifiers", nodeId] as const,
   scoreAdjustments: (soldierId: string) => ["scoreAdjustments", soldierId] as const,
   soldierScore: (soldierId: string) => ["soldiers", "score", soldierId] as const,
+  registrationPublicSettings: () => ["registrationPublicSettings"] as const,
 };
