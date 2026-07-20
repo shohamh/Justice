@@ -154,6 +154,14 @@ def _enqueue_push(
     reference_id: uuid.UUID | None = None,
     soldier_gender: str | None = None,
 ) -> None:
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    try:
+        if not bool(get_setting(session, "telegram.enabled")):
+            return
+    except SettingNotFound:
+        pass  # default: enabled
+
     link = session.execute(
         select(TelegramLink).where(
             TelegramLink.soldier_id == soldier_id,

@@ -114,6 +114,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
+    label: "טלגרם",
+    settings: [
+      {
+        key: "telegram.enabled",
+        label: "טלגרם מופעל",
+        description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
+        type: "boolean",
+        defaultValue: true,
+      },
+    ],
+  },
+  {
     label: "דף הבית",
     settings: [
       { key: "home.mitvahim_validity_days", label: "תוקף מטווחים (ימים)", description: "מספר ימים שמטווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },

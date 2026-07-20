@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { SoldierModalProvider } from "./contexts/SoldierModalContext";
+import { usePublicSettings } from "./hooks/usePublicSettings";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ApprovalsPage from "./pages/ApprovalsPage";
@@ -52,6 +53,9 @@ function AppGate({ children }: { children: ReactElement }) {
 }
 
 export default function App() {
+  const settings = usePublicSettings();
+  const telegramEnabled = settings?.["telegram.enabled"] !== false;
+
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -65,7 +69,9 @@ export default function App() {
             <Route path="/action" element={<ActionPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/change-password" element={<ChangePasswordPage />} />
-              <Route path="/setup/telegram" element={<TelegramSetupPage />} />
+              {telegramEnabled && (
+                <Route path="/setup/telegram" element={<TelegramSetupPage />} />
+              )}
               <Route path="/" element={<AppGate><HomePage /></AppGate>} />
               <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
               <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />

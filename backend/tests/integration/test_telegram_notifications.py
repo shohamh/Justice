@@ -164,6 +164,30 @@ def test_cascade_depth_filtering_includes_within_depth(admin_session: Session):
     assert len(outbox) == 1
 
 
+def test_enqueue_push_skipped_when_telegram_disabled(admin_session: Session):
+    """No outbox row is created when the telegram.enabled system setting is off."""
+    from app.services.settings_loader import set_setting
+
+    set_setting(admin_session, key="telegram.enabled", value=False, actor_id=None)
+    admin_session.flush()
+
+    s = create_soldier(admin_session, personal_number="TN004")
+    _link_soldier(admin_session, s.id, 1004)
+
+    svc.create_notification(
+        admin_session,
+        soldier_id=s.id,
+        type=NotificationType.announcement,
+        title="הכרזה",
+    )
+    admin_session.flush()
+
+    row = admin_session.execute(
+        select(TelegramOutbox).where(TelegramOutbox.telegram_chat_id == 1004)
+    ).scalar_one_or_none()
+    assert row is None
+
+
 def test_constraint_submit_notifies_commanders(admin_session: Session):
     """Submitting a constraint creates a constraint_pending outbox row for commander."""
     from app.db.models import CommanderNotificationScope, TelegramLink

@@ -54,6 +54,10 @@ def update_settings(
     existing = {r.key: r.value for r in session.execute(select(SystemSetting)).scalars().all()}
     merged = {**existing, **body.settings}
 
+    if merged.get("telegram.enabled") is False:
+        merged["registration.telegram_required"] = False
+        body.settings["registration.telegram_required"] = False
+
     def _density(key: str) -> int:
         return int(merged.get(key, _DENSITY_DEFAULTS[key]))
 
