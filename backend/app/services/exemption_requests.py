@@ -157,6 +157,18 @@ def approve_commander_step(
     req.status = "pending_duty_manager"
     req.commander_approved_by = approved_by
     session.flush()
+
+    from app.services.notifications import notify_duty_managers_of_request
+    notify_duty_managers_of_request(
+        session,
+        soldier_id=req.soldier_id,
+        type=NotificationType.exemption_request_pending,
+        title="בקשת פטור ממתינה לאישור (אושרה ע\"י מפקד)",
+        body=req.reason,
+        reference_type="exemption_request",
+        reference_id=req.id,
+        actor_id=approved_by,
+    )
     return req
 
 

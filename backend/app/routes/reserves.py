@@ -298,6 +298,7 @@ def dismiss_and_reallocate(
     reserve_a = _load_assignment(session, body.covering_reserve_assignment_id)
     if reserve_a.duty_shift_id != shift_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="reserve_not_in_shift")
+    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=_node_of_assignment(session, reserve_a))
 
     try:
         # Step 1: dismiss the primary

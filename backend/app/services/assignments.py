@@ -241,6 +241,36 @@ def _day_busy(
     return session.execute(q).first() is not None
 
 
+def _notify_day_override_change(
+    session: Session,
+    *,
+    assignment: DutyAssignment,
+    date: date,
+    old_effective_id: uuid.UUID | None,
+    new_effective_id: uuid.UUID | None,
+    actor_id: uuid.UUID | None,
+) -> None:
+    if old_effective_id == new_effective_id:
+        return
+    date_str = date.isoformat()
+    if old_effective_id is not None:
+        create_notification(
+            session, soldier_id=old_effective_id,
+            type=NotificationType.assignment_removed,
+            title=f"בוטל שיבוץ יומי עבורך בתאריך {date_str}",
+            reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
+    if new_effective_id is not None:
+        create_notification(
+            session, soldier_id=new_effective_id,
+            type=NotificationType.assignment_created,
+            title=f"שובצת ליום {date_str} כתחליף",
+            reference_type="duty_assignment", reference_id=assignment.id,
+            actor_id=actor_id,
+        )
+
+
 def set_day_override(
     session: Session,
     *,
@@ -282,10 +312,9 @@ def set_day_override(
         "reason": reason,
     }
     if existing is not None:
+        old_effective_id = existing.effective_soldier_id
         before = {
-            "effective_soldier_id": str(existing.effective_soldier_id)
-            if existing.effective_soldier_id
-            else None,
+            "effective_soldier_id": str(old_effective_id) if old_effective_id else None,
             "reason": existing.reason,
         }
         existing.effective_soldier_id = effective_soldier_id
@@ -298,6 +327,11 @@ def set_day_override(
             entity_id=existing.id,
             before=before,
             after=after,
+        )
+        _notify_day_override_change(
+            session, assignment=assignment, date=date,
+            old_effective_id=old_effective_id, new_effective_id=effective_soldier_id,
+            actor_id=actor_id,
         )
         return existing
     ov = DutyDayOverride(
@@ -316,6 +350,11 @@ def set_day_override(
         entity_type="duty_day_override",
         entity_id=ov.id,
         after=after,
+    )
+    _notify_day_override_change(
+        session, assignment=assignment, date=date,
+        old_effective_id=None, new_effective_id=effective_soldier_id,
+        actor_id=actor_id,
     )
     return ov
 
@@ -341,6 +380,11 @@ def clear_day_override(
             if ov.effective_soldier_id
             else None
         },
+    )
+    _notify_day_override_change(
+        session, assignment=assignment, date=date,
+        old_effective_id=ov.effective_soldier_id, new_effective_id=None,
+        actor_id=actor_id,
     )
     session.delete(ov)
 

@@ -16,6 +16,7 @@ from app.db.models import (
 )
 from app.services import reserves as svc
 from app.services.reserves import ReserveError, check_reserve_cap, relink_reserve
+from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def _seed(session):
@@ -189,6 +190,71 @@ def test_delete_dismissal(admin_session):
 
     remaining = admin_session.execute(select(DutyDismissal)).scalars().all()
     assert len(remaining) == 0
+
+
+def test_call_up_reserve_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.call_up_reserve(
+        admin_session,
+        assignment=reserve,
+        from_date=date(2026, 6, 3),
+        to_date=date(2026, 6, 7),
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == reserve.soldier_id,
+            Notification.type == NotificationType.gimelim_reserve_called_up,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
+def test_dismiss_primary_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.dismiss_primary(
+        admin_session,
+        assignment=primary,
+        from_date=date(2026, 6, 5),
+        to_date=date(2026, 6, 7),
+        reason="test",
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == primary.soldier_id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
+def test_dismiss_reserve_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.dismiss_reserve(
+        admin_session,
+        assignment=reserve,
+        from_date=date(2026, 6, 3),
+        to_date=date(2026, 6, 5),
+        reason="test",
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == reserve.soldier_id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
 
 
 def test_get_shift_reserve_detail(admin_session):
@@ -412,3 +478,74 @@ def test_cap_respects_window_days_override(admin_session):
     )
     assert passes is True   # would exceed 14 in a 30-day window but not in a 10-day window
     assert current == 5     # peak is 5 (only one side fits per 10-day window)
+
+
+# --- Route-level authorization tests ---
+
+
+def test_dismiss_and_reallocate_rejects_out_of_scope_covering_reserve(client, admin_session):
+    """A duty manager scoped to unit A must not be able to pull in a covering
+    reserve from unit B via /shifts/{id}/dismissals — only the primary's node
+    was checked before this fix."""
+    unit_a = create_node(admin_session, level="unit", name="dismiss-scope-unit-a")
+    unit_b = create_node(admin_session, level="unit", name="dismiss-scope-unit-b")
+    dm = create_soldier(
+        admin_session, personal_number="dmscope01", role="duty_manager", hierarchy_node_id=unit_a.id
+    )
+
+    dt = DutyType(name="dismiss-scope-dt", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="dismiss-scope-loc")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+
+    primary_soldier = create_soldier(
+        admin_session, personal_number="dmscope-p", hierarchy_node_id=unit_a.id
+    )
+    reserve_soldier = create_soldier(
+        admin_session, personal_number="dmscope-r", hierarchy_node_id=unit_b.id
+    )
+
+    shift = DutyShift(
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 8),
+        required_count=1,
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+
+    primary = DutyAssignment(
+        soldier_id=primary_soldier.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 8),
+        status="published",
+        is_reserve=False,
+        duty_shift_id=shift.id,
+    )
+    reserve_b = DutyAssignment(
+        soldier_id=reserve_soldier.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 6, 8),
+        status="published",
+        is_reserve=True,
+        duty_shift_id=shift.id,
+    )
+    admin_session.add_all([primary, reserve_b])
+    admin_session.commit()
+
+    resp = client.post(
+        f"/api/shifts/{shift.id}/dismissals",
+        json={
+            "primary_assignment_id": str(primary.id),
+            "covering_reserve_assignment_id": str(reserve_b.id),
+            "from_date": "2026-06-03",
+            "to_date": "2026-06-05",
+        },
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 403

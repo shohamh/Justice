@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, PersonalConstraint, Soldier, SwapRequest, SystemSetting
+from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, Notification, NotificationType, PersonalConstraint, Soldier, SwapRequest, SystemSetting
 from app.services import swaps as svc
 from app.services.settings_loader import set_setting
 
@@ -129,6 +129,77 @@ def test_cancel_open_request(admin_session):
     admin_session.flush()
     svc.cancel_request(admin_session, request_id=req.id, actor_id=a.id)
     assert admin_session.get(SwapRequest, req.id).status == "cancelled"
+
+
+def test_claim_request_no_approval_notifies_both_sides(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", False, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+    for sid in (a.id, b.id):
+        notif = admin_session.query(Notification).filter_by(
+            soldier_id=sid, type=NotificationType.swap_accepted,
+        ).one_or_none()
+        assert notif is not None
+
+
+def test_cover_offer_no_approval_notifies_both_sides(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", False, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    svc.cover_offer(admin_session, swap_id=req.id, covering_soldier_id=b.id,
+                    offered_assignment_ids=[], actor_id=b.id)
+    admin_session.flush()
+    for sid in (a.id, b.id):
+        notif = admin_session.query(Notification).filter_by(
+            soldier_id=sid, type=NotificationType.swap_accepted,
+        ).one_or_none()
+        assert notif is not None
+
+
+def test_reject_request_notifies_covering_soldier(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+    svc.reject_request(admin_session, request_id=req.id, decision_note="no", actor_id=None)
+    admin_session.flush()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=b.id, type=NotificationType.swap_rejected,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_cancel_request_notifies_covering_soldier(admin_session):
+    a, b, assignment = _seed(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id,
+    )
+    admin_session.flush()
+    svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+    svc.cancel_request(admin_session, request_id=req.id, actor_id=a.id)
+    admin_session.flush()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=b.id, type=NotificationType.swap_rejected,
+    ).one_or_none()
+    assert notif is not None
 
 
 def _reserve_assignment(session, soldier_id, dt_id, loc_id, start, end, status="published"):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 
@@ -8,16 +9,20 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from sqlalchemy import delete as sa_delete, func
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, ShiftTemplate, Soldier, SwapRequest
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, DutyShift, DutyType, DutyLocation, HierarchyNode, NotificationType, ShiftTemplate, Soldier, SwapRequest
 from app.db.session import get_session
+from app.services.notifications import create_notification
 from app.services import shifts as svc
 from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inputs
 from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
 from app.services.shift_responsibility import auto_assign_responsibility
 from app.algorithm.reserve import link_reserves
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -377,6 +382,214 @@ def activate_shift(
     return _out(svc.get_shift_fill(session, shift_id=shift_id), session)
 
 
+class BulkDeletePreview(BaseModel):
+    shift_count: int
+    assignment_count: int
+    swap_count: int
+    dismissal_count: int
+    reserve_link_count: int
+    shifts: list[dict]
+
+
+def _shifts_in_range(session: Session, date_from: date, date_to: date) -> list[DutyShift]:
+    return session.execute(
+        select(DutyShift).where(
+            DutyShift.start_date >= date_from,
+            DutyShift.start_date <= date_to,
+        ).order_by(DutyShift.start_date)
+    ).scalars().all()
+
+
+def _assignment_ids_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    if not shift_ids:
+        return []
+    return list(session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.duty_shift_id.in_(shift_ids))
+    ).scalars().all())
+
+
+def _assignment_soldier_pairs_for_shifts(
+    session: Session, shift_ids: list[uuid.UUID]
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    if not shift_ids:
+        return []
+    return list(session.execute(
+        select(DutyAssignment.id, DutyAssignment.soldier_id).where(
+            DutyAssignment.duty_shift_id.in_(shift_ids)
+        )
+    ).all())
+
+
+@router.get("/bulk-delete/preview", response_model=BulkDeletePreview)
+def bulk_delete_preview(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BulkDeletePreview:
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    dt_map = {r.id: r.name for r in session.execute(select(DutyType)).scalars()}
+    loc_map = {r.id: r.name for r in session.execute(select(DutyLocation)).scalars()}
+
+    shifts = _shifts_in_range(session, date_from, date_to)
+    shift_ids = [s.id for s in shifts]
+    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
+
+    swap_count = session.execute(
+        select(func.count()).select_from(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids))
+    ).scalar_one() if assignment_ids else 0
+
+    dismissal_count = session.execute(
+        select(func.count()).select_from(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids))
+    ).scalar_one() if assignment_ids else 0
+
+    reserve_link_count = session.execute(
+        select(func.count()).select_from(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        )
+    ).scalar_one() if assignment_ids else 0
+
+    return BulkDeletePreview(
+        shift_count=len(shifts),
+        assignment_count=len(assignment_ids),
+        swap_count=swap_count,
+        dismissal_count=dismissal_count,
+        reserve_link_count=reserve_link_count,
+        shifts=[
+            {
+                "id": str(s.id),
+                "duty_type_name": dt_map.get(s.duty_type_id, ""),
+                "duty_location_name": loc_map.get(s.duty_location_id, ""),
+                "start_date": s.start_date.isoformat(),
+                "end_date": s.end_date.isoformat(),
+                "required_count": s.required_count,
+            }
+            for s in shifts
+        ],
+    )
+
+
+@router.delete("/bulk-delete", status_code=status.HTTP_200_OK)
+def bulk_delete_shifts(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    shifts = _shifts_in_range(session, date_from, date_to)
+    shift_ids = [s.id for s in shifts]
+    pairs = _assignment_soldier_pairs_for_shifts(session, shift_ids)
+    assignment_ids = [p[0] for p in pairs]
+
+    if assignment_ids:
+        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        ))
+        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    if shift_ids:
+        session.execute(sa_delete(DutyShift).where(DutyShift.id.in_(shift_ids)))
+
+    write_audit(
+        session, actor_id=user.id, action="shift.bulk_delete", entity_type="duty_shift",
+        after={"date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
+               "deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)},
+    )
+    session.commit()
+
+    # The bulk delete itself (shifts/assignments/audit row) already committed
+    # above. Each notification is sent — and committed — independently so
+    # that one bad item (e.g. one soldier out of many) doesn't prevent the
+    # rest of the batch from being attempted: a failure here must never turn
+    # a successful bulk delete into an unhandled 500 for the client, nor
+    # silently drop notifications for unrelated assignments.
+    for assignment_id, soldier_id in pairs:
+        try:
+            create_notification(
+                session, soldier_id=soldier_id,
+                type=NotificationType.assignment_removed,
+                title="שיבוץ בוטל (מחיקת משמרות גורפת)",
+                reference_type="duty_assignment", reference_id=assignment_id,
+                actor_id=user.id,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.error(
+                "Failed to send assignment_removed notification for assignment %s "
+                "after bulk shift delete",
+                assignment_id,
+                exc_info=True,
+            )
+
+    return {"deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)}
+
+
+@router.delete("/bulk-clear-assignments", status_code=status.HTTP_200_OK)
+def bulk_clear_assignments(
+    date_from: date,
+    date_to: date,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, int]:
+    """Delete all assignments (and their cascading data) for shifts in range, keeping the shifts."""
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    shift_ids = [s.id for s in _shifts_in_range(session, date_from, date_to)]
+    pairs = _assignment_soldier_pairs_for_shifts(session, shift_ids)
+    assignment_ids = [p[0] for p in pairs]
+
+    if assignment_ids:
+        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
+        session.execute(sa_delete(DutyReserveLink).where(
+            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
+            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
+        ))
+        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
+
+    write_audit(
+        session, actor_id=user.id, action="shift.bulk_clear_assignments", entity_type="duty_shift",
+        after={"date_from": date_from.isoformat(), "date_to": date_to.isoformat(),
+               "cleared_assignments": len(assignment_ids)},
+    )
+    session.commit()
+
+    # The bulk clear itself (assignments/audit row) already committed above.
+    # Each notification is sent — and committed — independently so that one
+    # bad item doesn't prevent the rest of the batch from being attempted: a
+    # failure here must never turn a successful bulk clear into an
+    # unhandled 500 for the client, nor silently drop notifications for
+    # unrelated assignments.
+    for assignment_id, soldier_id in pairs:
+        try:
+            create_notification(
+                session, soldier_id=soldier_id,
+                type=NotificationType.assignment_removed,
+                title="שיבוץ בוטל (ניקוי משמרות גורף)",
+                reference_type="duty_assignment", reference_id=assignment_id,
+                actor_id=user.id,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.error(
+                "Failed to send assignment_removed notification for assignment %s "
+                "after bulk shift assignment clear",
+                assignment_id,
+                exc_info=True,
+            )
+
+    return {"cleared_assignments": len(assignment_ids)}
+
+
 @router.delete("/{shift_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_shift(
     shift_id: uuid.UUID,
@@ -638,138 +851,6 @@ def assign_batch(
     )
 
 
-class BulkDeletePreview(BaseModel):
-    shift_count: int
-    assignment_count: int
-    swap_count: int
-    dismissal_count: int
-    reserve_link_count: int
-    shifts: list[dict]
-
-
-def _shifts_in_range(session: Session, date_from: date, date_to: date) -> list[DutyShift]:
-    return session.execute(
-        select(DutyShift).where(
-            DutyShift.start_date >= date_from,
-            DutyShift.start_date <= date_to,
-        ).order_by(DutyShift.start_date)
-    ).scalars().all()
-
-
-def _assignment_ids_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> list[uuid.UUID]:
-    if not shift_ids:
-        return []
-    return list(session.execute(
-        select(DutyAssignment.id).where(DutyAssignment.duty_shift_id.in_(shift_ids))
-    ).scalars().all())
-
-
-@router.get("/bulk-delete/preview", response_model=BulkDeletePreview)
-def bulk_delete_preview(
-    date_from: date,
-    date_to: date,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> BulkDeletePreview:
-    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
-
-    dt_map = {r.id: r.name for r in session.execute(select(DutyType)).scalars()}
-    loc_map = {r.id: r.name for r in session.execute(select(DutyLocation)).scalars()}
-
-    shifts = _shifts_in_range(session, date_from, date_to)
-    shift_ids = [s.id for s in shifts]
-    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
-
-    swap_count = session.execute(
-        select(func.count()).select_from(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids))
-    ).scalar_one() if assignment_ids else 0
-
-    dismissal_count = session.execute(
-        select(func.count()).select_from(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids))
-    ).scalar_one() if assignment_ids else 0
-
-    reserve_link_count = session.execute(
-        select(func.count()).select_from(DutyReserveLink).where(
-            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
-            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
-        )
-    ).scalar_one() if assignment_ids else 0
-
-    return BulkDeletePreview(
-        shift_count=len(shifts),
-        assignment_count=len(assignment_ids),
-        swap_count=swap_count,
-        dismissal_count=dismissal_count,
-        reserve_link_count=reserve_link_count,
-        shifts=[
-            {
-                "id": str(s.id),
-                "duty_type_name": dt_map.get(s.duty_type_id, ""),
-                "duty_location_name": loc_map.get(s.duty_location_id, ""),
-                "start_date": s.start_date.isoformat(),
-                "end_date": s.end_date.isoformat(),
-                "required_count": s.required_count,
-            }
-            for s in shifts
-        ],
-    )
-
-
-@router.delete("/bulk-delete", status_code=status.HTTP_200_OK)
-def bulk_delete_shifts(
-    date_from: date,
-    date_to: date,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> dict[str, int]:
-    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
-
-    shifts = _shifts_in_range(session, date_from, date_to)
-    shift_ids = [s.id for s in shifts]
-    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
-
-    if assignment_ids:
-        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
-        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
-        session.execute(sa_delete(DutyReserveLink).where(
-            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
-            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
-        ))
-        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
-
-    if shift_ids:
-        session.execute(sa_delete(DutyShift).where(DutyShift.id.in_(shift_ids)))
-
-    session.commit()
-    return {"deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)}
-
-
-@router.delete("/bulk-clear-assignments", status_code=status.HTTP_200_OK)
-def bulk_clear_assignments(
-    date_from: date,
-    date_to: date,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> dict[str, int]:
-    """Delete all assignments (and their cascading data) for shifts in range, keeping the shifts."""
-    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
-
-    shift_ids = [s.id for s in _shifts_in_range(session, date_from, date_to)]
-    assignment_ids = _assignment_ids_for_shifts(session, shift_ids)
-
-    if assignment_ids:
-        session.execute(sa_delete(SwapRequest).where(SwapRequest.duty_assignment_id.in_(assignment_ids)))
-        session.execute(sa_delete(DutyDismissal).where(DutyDismissal.duty_assignment_id.in_(assignment_ids)))
-        session.execute(sa_delete(DutyReserveLink).where(
-            DutyReserveLink.primary_assignment_id.in_(assignment_ids) |
-            DutyReserveLink.reserve_assignment_id.in_(assignment_ids)
-        ))
-        session.execute(sa_delete(DutyAssignment).where(DutyAssignment.id.in_(assignment_ids)))
-
-    session.commit()
-    return {"cleared_assignments": len(assignment_ids)}
-
-
 @router.delete("/{shift_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def remove_shift_assignment(
     shift_id: uuid.UUID,
@@ -792,7 +873,20 @@ def remove_shift_assignment(
             session.execute(
                 sa_delete(DutyReserveLink).where(DutyReserveLink.primary_assignment_id == assignment_id)
             )
+        before_status = a.status
         a.status = "cancelled"
+        write_audit(
+            session, actor_id=user.id, action="assignment.cancel", entity_type="duty_assignment",
+            entity_id=a.id, before={"status": before_status}, after={"status": "cancelled"},
+            context={"source": "shift_assignment_remove"},
+        )
+        create_notification(
+            session, soldier_id=a.soldier_id,
+            type=NotificationType.assignment_removed,
+            title="שיבוץ בוטל",
+            reference_type="duty_assignment", reference_id=a.id,
+            actor_id=user.id,
+        )
         session.commit()
 
 
@@ -812,5 +906,18 @@ def clear_shift_assignments(
         )
     ).scalars().all()
     for a in rows:
+        before_status = a.status
         a.status = "cancelled"
+        write_audit(
+            session, actor_id=user.id, action="assignment.cancel", entity_type="duty_assignment",
+            entity_id=a.id, before={"status": before_status}, after={"status": "cancelled"},
+            context={"source": "shift_assignments_clear"},
+        )
+        create_notification(
+            session, soldier_id=a.soldier_id,
+            type=NotificationType.assignment_removed,
+            title="שיבוץ בוטל",
+            reference_type="duty_assignment", reference_id=a.id,
+            actor_id=user.id,
+        )
     session.commit()

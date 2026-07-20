@@ -1127,6 +1127,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                         "reasons": ["כל המשמרות שנבחרו כבר מאוישות במלואן — אין מה לשבץ."],
                     })
                     job.finished_at = datetime.now(tz=UTC)
+                    if job.created_by:
+                        from app.db.models import NotificationType
+                        from app.services.notifications import create_notification
+                        create_notification(
+                            session, soldier_id=job.created_by,
+                            type=NotificationType.algorithm_job_done,
+                            title="הרצת האלגוריתם הסתיימה — אין מה לשבץ",
+                            reference_type="algorithm_job", reference_id=job.id,
+                        )
                     session.commit()
                     return
 
@@ -1184,6 +1193,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     job.status = "failed"
                     job.error_message = "no_soldiers_or_duties"
                     job.finished_at = datetime.now(tz=UTC)
+                    if job.created_by:
+                        from app.db.models import NotificationType
+                        from app.services.notifications import create_notification
+                        create_notification(
+                            session, soldier_id=job.created_by,
+                            type=NotificationType.algorithm_job_failed,
+                            title="הרצת האלגוריתם נכשלה — אין חיילים זמינים",
+                            reference_type="algorithm_job", reference_id=job.id,
+                        )
                     session.commit()
                     return
 
@@ -1293,6 +1311,16 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     processed = _postprocess_batch_results(result.batch_results, block_to_shift_map)
                     job.batch_results = [_br_to_dict(br) for br in processed]
                     job.finished_at = datetime.now(tz=UTC)
+                    if job.created_by:
+                        from app.db.models import NotificationType
+                        from app.services.notifications import create_notification
+                        create_notification(
+                            session, soldier_id=job.created_by,
+                            type=NotificationType.algorithm_job_failed,
+                            title="הרצת האלגוריתם נכשלה — לא נמצא פתרון אפשרי",
+                            body="; ".join(reasons[:3]) if reasons else None,
+                            reference_type="algorithm_job", reference_id=job.id,
+                        )
                     session.commit()
                     return
 

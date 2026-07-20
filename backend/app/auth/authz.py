@@ -203,3 +203,16 @@ def authorize(
         is_duty_manager=is_duty_manager(session, user.id),
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+
+def forbid_self_target(user: Soldier, target_soldier_id: uuid.UUID) -> None:
+    """Raise 403 if `user` is attempting to decide (approve/reject) their own request.
+
+    Approval-style actions rely on scope containment (`_node_in_scope`), which does
+    not by itself exclude the requester deciding their own request — a commander's
+    own hierarchy node is typically inside their own commanded subtree. This is an
+    explicit segregation-of-duties check layered on top of `authorize()`, and it
+    applies even to admins.
+    """
+    if user.id == target_soldier_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="cannot_act_on_own_request")

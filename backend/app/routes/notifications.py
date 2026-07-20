@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
 from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier, SwapRequest
 from app.db.session import get_session
@@ -270,7 +269,23 @@ def announce(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    from app.auth.authz import _node_in_scope, is_commander, is_duty_manager, scope_root_ids
+
+    if user.role != "admin":
+        if not body.hierarchy_node_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="org_wide_announcement_requires_admin"
+            )
+        if not (is_commander(session, user.id) or is_duty_manager(session, user.id)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+        roots = scope_root_ids(session, user)
+        for node_id in body.hierarchy_node_ids:
+            node = session.get(HierarchyNode, node_id)
+            if not _node_in_scope(node, roots):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="hierarchy_node_out_of_scope"
+                )
+
     count = svc.broadcast_announcement(session, title=body.title, body=body.body,
                                         hierarchy_node_ids=body.hierarchy_node_ids,
                                         actor_id=user.id)

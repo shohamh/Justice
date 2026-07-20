@@ -72,7 +72,7 @@ def test_apply_creates_soldier(client, admin_session):
                 "row": 2, "action": "new",
                 "personal_number": "ie_apply_003", "full_name": "טסט יחידה",
                 "rank": None, "gender": None, "is_officer": None,
-                "hierarchy_node_id": None, "enrolled_at": None,
+                "hierarchy_node_id": str(node.id), "enrolled_at": None,
                 "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
             }],
             "assignments": [],
@@ -82,6 +82,180 @@ def test_apply_creates_soldier(client, admin_session):
     assert resp.status_code == 200
     assert resp.json()["created"] == 1
     assert resp.json()["errors"] == []
+
+
+def test_apply_rejects_out_of_scope_hierarchy_node(client, admin_session):
+    """A duty manager scoped to unit A must not be able to import a soldier
+    into unit B via /import/apply."""
+    node_a = create_node(admin_session, level="branch", name="ie_node_scope_a")
+    node_b = create_node(admin_session, level="branch", name="ie_node_scope_b")
+    dm = create_soldier(admin_session, personal_number="ie_dm_scope", role="duty_manager", hierarchy_node_id=node_a.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "new",
+                "personal_number": "ie_apply_scope", "full_name": "טסט חריגה",
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": str(node_b.id), "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+    assert "out_of_scope_rows" in resp.json()["detail"]
+
+
+def test_apply_notifies_soldier_of_new_assignment(client, admin_session):
+    from app.db.models import Notification, NotificationType
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_notif", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [{
+                "row": 2, "action": "new",
+                "resolved_soldier_id": str(soldier.id),
+                "resolved_duty_type_id": str(dt.id),
+                "start_date": "2024-06-15", "end_date": "2024-06-16",
+                "is_reserve": False,
+            }],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    admin_session.expire_all()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_apply_succeeds_even_if_notification_fails(client, admin_session, monkeypatch):
+    """If sending the post-import notification raises, the import's own side
+    effects (soldiers/assignments/audit row) already committed successfully,
+    so the endpoint must still return 200 with the correct counts rather than
+    an unhandled 500."""
+    import app.routes.import_excel as import_excel_module
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated notification failure")
+
+    monkeypatch.setattr(import_excel_module, "create_notification", _boom)
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif_fail")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif_fail", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_notif_fail", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_fail_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_fail_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [{
+                "row": 2, "action": "new",
+                "resolved_soldier_id": str(soldier.id),
+                "resolved_duty_type_id": str(dt.id),
+                "start_date": "2024-06-15", "end_date": "2024-06-16",
+                "is_reserve": False,
+            }],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    # The assignment itself was durably committed despite the notification failure.
+    from app.db.models import DutyAssignment
+    admin_session.expire_all()
+    assignment = admin_session.query(DutyAssignment).filter_by(soldier_id=soldier.id).one_or_none()
+    assert assignment is not None
+
+
+def test_apply_notifies_remaining_assignments_when_one_notification_fails(client, admin_session, monkeypatch):
+    """A notification failure for one assignment in a multi-assignment batch
+    must not prevent the other assignments' notifications from being sent —
+    only the failing item should be skipped, not everything after it."""
+    from app.db.models import Notification, NotificationType
+    import app.routes.import_excel as import_excel_module
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif_partial")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif_partial", role="duty_manager", hierarchy_node_id=node.id)
+    soldier_bad = create_soldier(admin_session, personal_number="ie_soldier_notif_bad", hierarchy_node_id=node.id)
+    soldier_good = create_soldier(admin_session, personal_number="ie_soldier_notif_good", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_partial_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_partial_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    real_create_notification = import_excel_module.create_notification
+
+    def _flaky(*args, **kwargs):
+        if kwargs.get("soldier_id") == soldier_bad.id:
+            raise RuntimeError("simulated notification failure for one assignment")
+        return real_create_notification(*args, **kwargs)
+
+    monkeypatch.setattr(import_excel_module, "create_notification", _flaky)
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [
+                {
+                    "row": 2, "action": "new",
+                    "resolved_soldier_id": str(soldier_bad.id),
+                    "resolved_duty_type_id": str(dt.id),
+                    "start_date": "2024-06-15", "end_date": "2024-06-16",
+                    "is_reserve": False,
+                },
+                {
+                    "row": 3, "action": "new",
+                    "resolved_soldier_id": str(soldier_good.id),
+                    "resolved_duty_type_id": str(dt.id),
+                    "start_date": "2024-06-15", "end_date": "2024-06-16",
+                    "is_reserve": False,
+                },
+            ],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 2
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    notif_bad = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_bad.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif_bad is None
+
+    # The second assignment's notification must still have been attempted
+    # and succeeded, even though the first one raised.
+    notif_good = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_good.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif_good is not None
 
 
 def test_template_download(client, admin_session):

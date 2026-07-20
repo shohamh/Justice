@@ -102,7 +102,7 @@ def list_templates(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[TemplateOut]:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     return [_out(t) for t in svc.list_templates(session, include_inactive=include_inactive)]
 
 
@@ -112,7 +112,7 @@ def create_template(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> TemplateOut:
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     try:
         t = svc.create_template(
             session, name=body.name, duty_type_id=body.duty_type_id,
@@ -138,7 +138,7 @@ def update_template(
     user: Soldier = Depends(require_password_changed),
 ) -> TemplateOut:
     t = _load(session, template_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     extra: dict = {}
     if "notes" in body.model_fields_set:
         extra["notes"] = body.notes
@@ -168,7 +168,7 @@ def delete_template(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     t = _load(session, template_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     svc.delete_template(session, tpl=t, actor_id=user.id)
     session.commit()
 
@@ -181,7 +181,7 @@ def preview(
     user: Soldier = Depends(require_password_changed),
 ) -> list[PreviewRow]:
     t = _load(session, template_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     rows = svc.preview_generation(session, tpl=t, range_start=body.range_start, range_end=body.range_end)
     return [PreviewRow(date=r["date"], exists=r["exists"]) for r in rows]
 
@@ -194,7 +194,7 @@ def generate(
     user: Soldier = Depends(require_password_changed),
 ) -> GenerateResult:
     t = _load(session, template_id)
-    authorize(session, user, Action.ASSIGNMENT_MANAGE, target_node=None)
+    authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
     created = svc.generate_shifts(
         session, tpl=t, range_start=body.range_start, range_end=body.range_end, actor_id=user.id
     )
