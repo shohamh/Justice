@@ -32,6 +32,7 @@ class SoldierValidationError(SoldierError):
 
 def _check_soldier_dates(
     *,
+    rank: str | None = None,
     enlistment_date: date | None,
     discharge_date: date | None,
     mandatory_end_date: date | None,
@@ -43,10 +44,21 @@ def _check_soldier_dates(
         raise SoldierValidationError("mandatory_end_date must not be after discharge_date")
     if is_career and discharge_date is not None and discharge_date < date.today():
         raise SoldierValidationError("career soldier's discharge_date cannot be in the past")
+    from app.services.eligibility import CHOVAH_ONLY_RANKS
+    if (
+        rank in CHOVAH_ONLY_RANKS
+        and mandatory_end_date is not None
+        and date.today() > mandatory_end_date
+        and (discharge_date is None or discharge_date > mandatory_end_date)
+    ):
+        # Dates alone say מועד סיום חובה has passed with no discharge closing it out
+        # (i.e. the soldier would derive to קבע), but the rank held is חובה-only.
+        raise SoldierValidationError("rank is חובה-only and cannot be combined with קבע status")
 
 
 def validate_soldier_dates(soldier: Soldier) -> None:
     _check_soldier_dates(
+        rank=soldier.rank,
         enlistment_date=soldier.enlistment_date,
         discharge_date=soldier.discharge_date,
         mandatory_end_date=soldier.mandatory_end_date,
@@ -210,9 +222,11 @@ def update_soldier_profile(
     actor_id: uuid.UUID | None,
 ) -> Soldier:
     """DM/admin direct update of profile fields."""
+    from app.services.eligibility import derive_is_career
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
+    soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     validate_soldier_dates(soldier)
     write_audit(
         session,
@@ -288,6 +302,7 @@ def approve_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
+    from app.services.eligibility import derive_is_career
     if update.status != "pending":
         raise SoldierError("not_pending")
     soldier = session.get(Soldier, update.soldier_id)
@@ -314,6 +329,7 @@ def approve_field_update(
         soldier.has_military_driving_license = payload["has_license"]
         expiry = payload.get("expiry_date")
         soldier.military_driving_license_expiry = date.fromisoformat(expiry) if expiry else None
+    soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
     validate_soldier_dates(soldier)
     update.status = "approved"
     update.decided_by = actor_id
