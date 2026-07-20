@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
+from app.auth.authz import Action, _node_in_scope, authorize, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier, SwapRequest
 from app.db.session import get_session
@@ -269,8 +270,6 @@ def announce(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    from app.auth.authz import _node_in_scope, is_commander, is_duty_manager, scope_root_ids
-
     if user.role != "admin":
         if not body.hierarchy_node_ids:
             raise HTTPException(
