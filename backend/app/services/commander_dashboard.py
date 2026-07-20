@@ -111,7 +111,7 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         session.execute(
             select(func.count(SwapRequest.id)).where(
                 SwapRequest.requesting_soldier_id.in_(soldier_ids),
-                SwapRequest.status == "pending",
+                SwapRequest.status == "pending_approval",
             )
         ).scalar()
         or 0

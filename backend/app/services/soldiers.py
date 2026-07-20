@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone
 from typing import Any, NamedTuple
 
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -195,6 +196,28 @@ def soft_delete(
     session: Session, *, soldier: Soldier, actor_id: uuid.UUID | None = None
 ) -> Soldier:
     soldier.left_at = date.today()
+    from app.db.models import ExemptionRequest, PersonalConstraint, SwapRequest
+    session.execute(
+        sa_update(ExemptionRequest)
+        .where(
+            ExemptionRequest.soldier_id == soldier.id,
+            ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
+        )
+        .values(status="cancelled")
+    )
+    session.execute(
+        sa_update(PersonalConstraint)
+        .where(PersonalConstraint.soldier_id == soldier.id, PersonalConstraint.status == "pending")
+        .values(status="cancelled")
+    )
+    session.execute(
+        sa_update(SwapRequest)
+        .where(
+            SwapRequest.requesting_soldier_id == soldier.id,
+            SwapRequest.status.in_(("open", "pending_approval")),
+        )
+        .values(status="cancelled")
+    )
     write_audit(
         session,
         actor_id=actor_id,
