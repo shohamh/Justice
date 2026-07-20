@@ -10,6 +10,7 @@ import * as swapsApi from "../api/swaps";
 import * as enrollmentApi from "../api/enrollment";
 import * as hierarchyApi from "../api/hierarchy";
 import * as authApi from "../api/auth";
+import * as hierarchyTransfersApi from "../api/hierarchyTransfers";
 import { api } from "../api/client";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
@@ -25,6 +26,7 @@ vi.mock("../api/swaps");
 vi.mock("../api/enrollment");
 vi.mock("../api/hierarchy");
 vi.mock("../api/auth");
+vi.mock("../api/hierarchyTransfers");
 vi.mock("../api/client", () => ({
   api: { get: vi.fn() },
 }));
@@ -104,6 +106,7 @@ beforeEach(() => {
   vi.mocked(enrollmentApi.listPendingEnrollments).mockResolvedValue([]);
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(authApi.listPublicExemptionTypes).mockResolvedValue([]);
+  vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([]);
 });
 
 describe("ApprovalsPage - action error banner", () => {
@@ -150,6 +153,74 @@ describe("ApprovalsPage - action error banner", () => {
     fireEvent.click(approveBtn);
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ApprovalsPage - transfers tab", () => {
+  it("shows pending transfer requests with approve/reject actions", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
+      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+    ]);
+    vi.mocked(hierarchyTransfersApi.approveTransferRequest).mockResolvedValue(
+      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "approved" },
+    );
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const transfersTab = await screen.findByTestId("approvals-tab-transfers");
+    fireEvent.click(transfersTab);
+
+    const approveBtn = await screen.findByTestId("transfer-approve-tr1");
+    fireEvent.click(approveBtn);
+
+    await waitFor(() => {
+      expect(hierarchyTransfersApi.approveTransferRequest).toHaveBeenCalledWith("tr1");
+    });
+  });
+
+  it("rejects a pending transfer request with a decision note", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
+      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+    ]);
+    vi.mocked(hierarchyTransfersApi.rejectTransferRequest).mockResolvedValue(
+      { id: "tr1", soldier_id: "sol-9", from_node_id: "n1", to_node_id: "n2", status: "rejected" },
+    );
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const transfersTab = await screen.findByTestId("approvals-tab-transfers");
+    fireEvent.click(transfersTab);
+
+    const noteInput = await screen.findByTestId("transfer-reject-note-tr1");
+    fireEvent.change(noteInput, { target: { value: "לא רלוונטי" } });
+    const rejectBtn = screen.getByTestId("transfer-reject-tr1");
+    fireEvent.click(rejectBtn);
+
+    await waitFor(() => {
+      expect(hierarchyTransfersApi.rejectTransferRequest).toHaveBeenCalledWith("tr1", "לא רלוונטי");
     });
   });
 });

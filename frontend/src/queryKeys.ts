@@ -15,6 +15,7 @@ export const queryKeys = {
   pendingSwaps: () => ["swaps", "pending"] as const,
   swapBoard: (filters?: Record<string, unknown>) => ["swaps", "board", filters ?? {}] as const,
   pendingEnrollments: () => ["enrollment", "pending"] as const,
+  pendingHierarchyTransfers: () => ["hierarchyTransfers", "pending"] as const,
   systemSettings: () => ["systemSettings"] as const,
   transparency: () => ["scoring", "transparency"] as const,
   breakdown: (soldierId: string) => ["scoring", "breakdown", soldierId] as const,

@@ -124,8 +124,12 @@
     "decision_note": "הערה",
     "tab_constraints": "אילוצים אישיים",
     "tab_exemptions": "בקשות פטור",
+    "tab_transfers": "העברות",
     "exemption_none": "אין בקשות פטור ממתינות",
-    "field_update_new_value": "ערך חדש: "
+    "field_update_new_value": "ערך חדש: ",
+    "transfers_none": "אין בקשות העברה ממתינות",
+    "transfer_from": "מיחידה",
+    "transfer_to": "ליחידה"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
@@ -807,7 +811,7 @@
     "exemption_end": "תאריך סיום",
     "move_soldier": "העברת חייל",
     "target_node": "יחידת יעד",
-    "move_confirm": "העבר",
+    "move_confirm": "שלח בקשת העברה",
     "cancel": "ביטול"
   },
   "reserve_ratio": "יחס רזרבה",
