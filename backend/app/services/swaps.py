@@ -172,8 +172,10 @@ def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None
     for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
         if soldier_id is None:
             continue
-        for commander_id in commander_chain_for_soldier(session, soldier_id):
-            session.add(SwapManagerApproval(swap_request_id=req.id, side=side, commander_id=commander_id))
+        for idx, commander_id in enumerate(commander_chain_for_soldier(session, soldier_id)):
+            session.add(SwapManagerApproval(
+                swap_request_id=req.id, side=side, commander_id=commander_id, chain_order=idx,
+            ))
     session.flush()
 
 

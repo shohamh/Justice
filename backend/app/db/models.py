@@ -524,6 +524,11 @@ class SwapManagerApproval(Base):
     commander_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
     )
+    # Position of this commander within their side's chain, 0 = nearest
+    # commander (matches commander_chain_for_soldier's nearest-first order).
+    # created_at is NOT usable for this: all rows for a swap's approval chain
+    # are inserted in the same session.flush(), so they share one now().
+    chain_order: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
     approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # May differ from commander_id when an admin/duty-manager approves on the
     # required commander's behalf (broader-scope override).

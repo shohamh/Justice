@@ -147,6 +147,75 @@ def test_swap_out_includes_manager_approvals(client: TestClient, admin_session: 
     assert len(swap_out["covering_manager_approvals"]) == 1
 
 
+def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestClient, admin_session: Session):
+    """The requester's node sits under a two-level chain: mid commander (nearest)
+    and root commander (further). All rows for this side are created in a single
+    flush and share the same created_at, so only chain_order can guarantee that
+    requester_manager_approvals[0] is genuinely the nearest commander — the
+    thing DirectCommanderApproval.tsx on the frontend relies on. Checked via
+    both the single-swap path (/api/me/swaps, _manager_approvals_out) and the
+    bulk path (/api/swaps/pending, _manager_approvals_out_bulk)."""
+    root_node = create_node(admin_session, level="division", name=f"api_root_{_uid()}")
+    root_cmd = create_soldier(admin_session, personal_number=f"api_rootc_{_uid()}", role="commander")
+    root_node.commander_id = root_cmd.id
+    mid_node = create_node(admin_session, level="unit", name=f"api_mid_{_uid()}", parent=root_node)
+    mid_cmd = create_soldier(admin_session, personal_number=f"api_midc_{_uid()}", role="commander")
+    mid_node.commander_id = mid_cmd.id
+    admin_session.commit()
+
+    requester = create_soldier(admin_session, personal_number=f"api_chain_req_{_uid()}", hierarchy_node_id=mid_node.id)
+    covering = create_soldier(admin_session, personal_number=f"api_chain_cov_{_uid()}")
+
+    dt = DutyType(name=f"api_chain_dt_{_uid()}", score_per_day=1)
+    loc = DutyLocation(name=f"api_chain_loc_{_uid()}")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=requester.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    swap_req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="open",
+    )
+    admin_session.add(swap_req)
+    admin_session.commit()
+
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    # All rows for this side share one created_at (single flush inside
+    # _create_manager_approval_rows) — assert that precondition still holds,
+    # so this test would actually fail if chain_order were removed/ignored.
+    rows = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == swap_req.id,
+            SwapManagerApproval.side == "requester",
+        )
+    ).scalars().all()
+    assert len({row.created_at for row in rows}) == 1
+    assert len(rows) == 2
+
+    r = client.get("/api/me/swaps", headers=auth_headers(requester))
+    assert r.status_code == 200, r.text
+    swap_out = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    approvals = swap_out["requester_manager_approvals"]
+    assert len(approvals) == 2
+    assert approvals[0]["commander_id"] == str(mid_cmd.id)
+    assert approvals[1]["commander_id"] == str(root_cmd.id)
+
+    admin = create_soldier(admin_session, personal_number=f"api_chain_adm_{_uid()}", role="admin")
+    r = client.get("/api/swaps/pending", headers=auth_headers(admin))
+    assert r.status_code == 200, r.text
+    swap_out_bulk = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    approvals_bulk = swap_out_bulk["requester_manager_approvals"]
+    assert len(approvals_bulk) == 2
+    assert approvals_bulk[0]["commander_id"] == str(mid_cmd.id)
+    assert approvals_bulk[1]["commander_id"] == str(root_cmd.id)
+
+
 def test_soldier_reject_kills_swap(client: TestClient, admin_session: Session):
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})

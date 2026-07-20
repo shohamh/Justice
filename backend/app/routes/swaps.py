@@ -101,7 +101,7 @@ def _manager_approvals_out(session: Session, request_id: uuid.UUID, side: str) -
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == request_id,
             SwapManagerApproval.side == side,
-        ).order_by(SwapManagerApproval.created_at)
+        ).order_by(SwapManagerApproval.chain_order)
     ).scalars().all()
     out = []
     for row in rows:
@@ -495,7 +495,7 @@ def pending(
     request_ids = {r.id for r in all_pending}
     approval_rows = session.execute(
         select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id.in_(request_ids))
-        .order_by(SwapManagerApproval.created_at)
+        .order_by(SwapManagerApproval.chain_order)
     ).scalars().all()
     approvals_by_request: dict[tuple[uuid.UUID, str], list[SwapManagerApproval]] = {}
     approval_person_ids: set[uuid.UUID] = set()
