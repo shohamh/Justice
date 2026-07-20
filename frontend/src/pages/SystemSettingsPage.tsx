@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, Upload } from "lucide-react";
 import Layout from "../components/Layout";
-import { getSystemSettings, updateSystemSettings, SettingsMap } from "../api/systemSettings";
+import { getSystemSettings, updateSystemSettings, exportSystemSettings, importSystemSettings, SettingsMap } from "../api/systemSettings";
 import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
@@ -229,6 +230,8 @@ export function SystemSettingsContent() {
   // the query on every render (same pattern as ProfilePage's notification prefs).
   const [draft, setDraft] = useState<SettingsMap>({});
   const [saved, setSaved] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (settingsQuery.data) setDraft(settingsQuery.data);
@@ -242,6 +245,48 @@ export function SystemSettingsContent() {
       setSaved(true);
     },
   });
+
+  const importMutation = useMutation({
+    mutationFn: importSystemSettings,
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemSettings() });
+      setDraft(updated);
+      setSaved(true);
+      setImportError(null);
+    },
+    onError: () => {
+      setImportError("שגיאה בייבוא ההגדרות");
+    },
+  });
+
+  async function handleExport() {
+    const data = await exportSystemSettings();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "הגדרות-מערכת.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as SettingsMap;
+        importMutation.mutate(parsed);
+      } catch {
+        setImportError("קובץ לא תקין");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
 
   function setValue(key: string, value: string | number | boolean) {
     setDraft(prev => ({ ...prev, [key]: value }));
@@ -268,6 +313,30 @@ export function SystemSettingsContent() {
         <div className="flex items-center gap-3">
           {saved && <span className="text-sm text-green-600">נשמר ✓</span>}
           <button
+            type="button"
+            onClick={handleExport}
+            className="text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5"
+          >
+            <Download className="w-4 h-4" />
+            ייצוא הגדרות
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importMutation.isPending}
+            className="text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            {importMutation.isPending ? "מייבא..." : "ייבוא הגדרות"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={handleImportFileChange}
+          />
+          <button
             onClick={handleSave}
             disabled={saving || !isDirty}
             className="bg-indigo-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
@@ -278,6 +347,7 @@ export function SystemSettingsContent() {
       </div>
 
       {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
+      {importError && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{importError}</div>}
 
       {SETTING_GROUPS.map(group => (
         <div key={group.label} className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">

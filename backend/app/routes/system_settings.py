@@ -74,3 +74,21 @@ def update_settings(
     session.commit()
     rows = session.execute(select(SystemSetting)).scalars().all()
     return SettingsOut(settings={r.key: r.value for r in rows if r.key not in _HIDDEN_KEYS})
+
+
+@router.get("/export", response_model=SettingsOut)
+def export_settings(
+    session: Session = Depends(get_session),
+    user=Depends(require_roles("admin")),
+) -> SettingsOut:
+    rows = session.execute(select(SystemSetting)).scalars().all()
+    return SettingsOut(settings={r.key: r.value for r in rows if r.key not in _HIDDEN_KEYS})
+
+
+@router.post("/import", response_model=SettingsOut)
+def import_settings(
+    body: UpdateSettingsBody,
+    session: Session = Depends(get_session),
+    user=Depends(require_roles("admin")),
+) -> SettingsOut:
+    return update_settings(body, session, user)
