@@ -43,6 +43,27 @@ def create_request(
         )
         if not eligible:
             raise SwapError(f"cover_not_eligible:{reason}")
+        try:
+            level = get_setting(session, "swaps.restrict_to_hierarchy_level")
+        except SettingNotFound:
+            level = None
+        if level:
+            from app.services.hierarchy import ancestor_id_at_level
+
+            requester = session.get(Soldier, requesting_soldier_id)
+            target = session.get(Soldier, target_soldier_id)
+            req_ancestor = (
+                ancestor_id_at_level(session, requester.hierarchy_node_id, level)
+                if requester.hierarchy_node_id
+                else None
+            )
+            tgt_ancestor = (
+                ancestor_id_at_level(session, target.hierarchy_node_id, level)
+                if target.hierarchy_node_id
+                else None
+            )
+            if req_ancestor is None or req_ancestor != tgt_ancestor:
+                raise SwapError("hierarchy_level_mismatch")
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,

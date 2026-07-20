@@ -16,6 +16,10 @@ vi.mock("../api/systemSettings", async () => {
   };
 });
 
+vi.mock("../hooks/useLevelTypes", () => ({
+  useLevelTypes: () => ({ levelTypes: [{ id: "lt1", key: "branch", label: "חטיבה", rank: 1 }], loading: false, refresh: vi.fn() }),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -81,6 +85,15 @@ describe("SystemSettingsContent export/import", () => {
     expect(vi.mocked(systemSettingsApi.importSystemSettings).mock.calls[0][0]).toEqual({
       "eligibility.mitvahim_months": 9,
     });
+  });
+
+  it("renders the hierarchy-level restriction dropdown populated from level types", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());
+
+    expect(screen.getByText("הגבלת החלפות לרמת היררכיה")).toBeInTheDocument();
+    expect(screen.getByText("חטיבה")).toBeInTheDocument();
+    expect(screen.getByText("ללא הגבלה")).toBeInTheDocument();
   });
 
   it("shows an error banner when the selected file is not valid JSON", async () => {

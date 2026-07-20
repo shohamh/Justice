@@ -7,6 +7,7 @@ import { getSystemSettings, updateSystemSettings, exportSystemSettings, importSy
 import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
+import { useLevelTypes } from "../hooks/useLevelTypes";
 
 interface SettingDef {
   key: string;
@@ -29,6 +30,14 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "החלפות",
     settings: [
       { key: "swaps.require_manager_approval", label: "דורש אישור מפקד", description: "האם החלפות דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      {
+        key: "swaps.restrict_to_hierarchy_level",
+        label: "הגבלת החלפות לרמת היררכיה",
+        description: "מגביל בקשות החלפה לחיילים החולקים אב משותף ברמה זו (ריק = ללא הגבלה)",
+        type: "select" as const,
+        defaultValue: "",
+        options: [],
+      },
     ],
   },
   {
@@ -225,6 +234,11 @@ export function SystemSettingsContent() {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
   const settings = settingsQuery.data ?? {};
+  const { levelTypes } = useLevelTypes();
+  const hierarchyLevelOptions = [
+    { value: "", label: "ללא הגבלה" },
+    ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
+  ];
 
   // draft mirrors the query result but is then edited locally before saving,
   // so it stays a useState fed by an effect rather than reading straight from
@@ -378,7 +392,7 @@ export function SystemSettingsContent() {
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="rtl"
                     >
-                      {(def.options ?? []).map((opt) => (
+                      {(def.key === "swaps.restrict_to_hierarchy_level" ? hierarchyLevelOptions : def.options ?? []).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
