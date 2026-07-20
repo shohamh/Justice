@@ -397,6 +397,8 @@
     "pending": "ממתין לאישור",
     "approved": "אושר",
     "rejected": "נדחה",
+    "pending_commander": "ממתין לאישור מפקד",
+    "pending_duty_manager": "ממתין לאישור אחראי תורנויות",
     "none": "אין בקשות פטור",
     "my_requests": "הבקשות שלי לפטור",
     "upload_required": "נדרש צירוף מסמך רפואי",

@@ -462,7 +462,7 @@ export default function SwapsPage() {
                       onClick={d.shift_id ? () => handleShiftClick(d.shift_id!) : undefined}
                       className={`text-right flex-1 min-w-0 ${d.shift_id ? "hover:underline decoration-dotted underline-offset-2 cursor-pointer" : "cursor-default"}`}
                     >
-                      <span className="font-medium dark:text-gray-100">{dutyTypes[d.duty_type_id] ?? d.duty_type_id}</span>
+                      <span className="font-medium dark:text-gray-100">{d.duty_type_name}</span>
                       <span className="text-gray-500 mr-2 text-xs" dir="ltr">
                         {(() => {
                           const last = lastDutyDay(d.end_date);
@@ -608,7 +608,7 @@ export default function SwapsPage() {
       {askSwapDuty && (
         <AskSwapModal
           duty={askSwapDuty}
-          dutyTypeName={dutyTypes[askSwapDuty.duty_type_id] ?? askSwapDuty.duty_type_id}
+          dutyTypeName={askSwapDuty.duty_type_name}
           onClose={() => setAskSwapDuty(null)}
           onCreated={async () => { setAskSwapDuty(null); await refreshSwapData(); }}
         />
