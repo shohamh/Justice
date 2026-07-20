@@ -3,6 +3,8 @@
 ## 2026-07-20
 
 ### Features
+- **Swap chain-of-command approval** — swap requests now route through each side's full commander chain (nearest-first), with per-commander approval endpoints, a `swap_manager_approvals` table (backfilled for in-flight swaps), and chain-of-command status surfaced on both the Swaps page and the manager Approvals page; soldiers can self-approve their own side.
+- **Enrollment gate** — soldiers with a pending enrollment request are blocked from creating swaps/constraints/exemption-requests via a new `require_enrolled` dependency, see a pending-enrollment banner with forms disabled, and get notified when their enrollment is approved or rejected; `enrollment_pending` is now exposed on `/me`.
 - **Import review inline editing** — new `ImportRowFieldsModal` lets duty_types/exemption_types import rows have their eligible units, requirements, and applies-to lists edited directly in the review table, which now also shows full field detail for both sheet types.
 - **Shift-templates import/export** — a new `shift_templates` sheet is parsed, resolved against duty types/locations/eligible units, and creates/updates `ShiftTemplate` rows on import-session confirm; the export page now offers select-all and splits system data into 4 separate sheets, reconciled with the full-data round trip.
 - **Per-account login rate limit**, alongside the existing per-IP limit.
@@ -10,12 +12,14 @@
 - Exemption/constraint date ranges now show their span duration alongside the dates.
 
 ### Fixes
+- Swap manager approval now requires only a single chain commander to sign off, not all of them; commander chain order comes from an explicit `chain_order` column instead of relying on `created_at`.
 - `COOKIE_SECURE` now defaults to `false` in the env template, with a warning on http/secure-cookie mismatch (was breaking non-HTTPS deployments).
 - Exemption type name now shows on the exemption-request approval row; any authenticated soldier can list duty types (was over-restricted).
 - Fixed several react-query migration regressions: `TelegramSetupPage` polling and `SystemSettingsPage` cache invalidation, a `SwapsPage` hierarchy query-key collision with other `fetchFullTree` consumers, missing `lang=he` on date inputs in `PotentialPage`/`CommanderExemptionGrantForm`, and a test render missing its `QueryClientProvider` wrapper.
 
 ### Chores
 - Migrated nearly every page's data fetching from manual `useEffect`/state to react-query, backed by a new central query-key registry (`frontend/src/queryKeys.ts`).
+- Batch-loaded swap manager approvals in the pending() bulk listing to avoid N+1 queries.
 - Disabled fsync on the test Postgres container to speed up the test suite.
 
 ## 2026-07-08
