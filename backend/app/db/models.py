@@ -145,6 +145,30 @@ class HierarchyNode(Base):
     )
 
 
+class HierarchyTransferRequest(Base):
+    __tablename__ = "hierarchy_transfer_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    to_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id"))
+    requested_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"))
+    from_node_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id"), nullable=True, default=None
+    )
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=True, default=None
+    )
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class DutyType(Base):
     __tablename__ = "duty_types"
 
@@ -851,6 +875,8 @@ class NotificationType(str, _enum.Enum):
     gimelim_demoted_to_reserve = "gimelim_demoted_to_reserve"
     gimelim_reassigned = "gimelim_reassigned"
     exemption_revoked = "exemption_revoked"
+    transfer_request_pending = "transfer_request_pending"
+    transfer_request_rejected = "transfer_request_rejected"
 
 
 class Notification(Base):
