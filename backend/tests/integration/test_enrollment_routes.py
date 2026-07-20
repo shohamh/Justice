@@ -69,6 +69,29 @@ def test_admin_can_reject(client, admin_session):
     assert soldier.hierarchy_node_id == holding.id
 
 
+def test_admin_reject_notifies_soldier(client, admin_session):
+    from app.db.models import Notification, NotificationType
+    from sqlalchemy import select
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.post(f"/api/enrollment-requests/{req.id}/reject",
+                       json={"decision_note": "not eligible"}, headers=auth_headers(admin))
+    assert resp.status_code == 200
+
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id,
+            Notification.type == NotificationType.enrollment_rejected,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
 def test_reject_without_note_fails(client, admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)

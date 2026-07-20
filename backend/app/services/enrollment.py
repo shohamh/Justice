@@ -69,6 +69,9 @@ def reject_enrollment(
     decider_id: uuid.UUID,
     decision_note: str,
 ) -> SoldierEnrollmentRequest:
+    from app.db.models import NotificationType
+    from app.services.notifications import create_notification
+
     req = session.get(SoldierEnrollmentRequest, request_id)
     if req is None:
         raise EnrollmentError("enrollment request not found")
@@ -79,6 +82,11 @@ def reject_enrollment(
     req.decided_at = datetime.now(timezone.utc)
     req.decision_note = decision_note
     session.flush()
+    create_notification(session, soldier_id=req.soldier_id,
+                        type=NotificationType.enrollment_rejected,
+                        title="בקשת ההרשמה נדחתה",
+                        reference_type="soldier_enrollment_request", reference_id=req.id,
+                        actor_id=decider_id)
     write_audit(session, actor_id=decider_id, action="enrollment.reject",
                 entity_type="soldier_enrollment_request", entity_id=req.id,
                 after={"decision_note": decision_note})
