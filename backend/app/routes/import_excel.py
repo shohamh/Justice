@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
 from app.db.models import (
     DutyAssignment,
@@ -21,12 +22,15 @@ from app.db.models import (
     DutyShiftNodeQuota,
     DutyType,
     HierarchyNode,
+    NotificationType,
     ShiftTemplate,
     Soldier,
 )
 from app.db.session import get_session
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
+from app.services.import_scope import is_node_in_actor_scope
+from app.services.notifications import create_notification
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -235,16 +239,53 @@ def _parse_assignments_sheet(wb, soldiers_by_pn, duty_types_by_name) -> list[Ass
 
 # ── Apply endpoint ─────────────────────────────────────────────────────────────
 
+def _out_of_scope_rows(session: Session, actor: Soldier, req: ApplyRequest) -> list[str]:
+    """Return a list of human-readable row descriptions the actor may not import,
+    because they touch a hierarchy node outside the actor's DutyManagerScope.
+    Empty for admins."""
+    if actor.role == "admin":
+        return []
+    errors: list[str] = []
+    for row in req.soldiers:
+        if row.action == "skip":
+            continue
+        if row.action == "new":
+            if not is_node_in_actor_scope(session=session, actor=actor, node_id=row.hierarchy_node_id):
+                errors.append(f"soldier row {row.row}: hierarchy node out of your scope")
+        elif row.action == "update" and row.existing_id:
+            existing = session.get(Soldier, row.existing_id)
+            current_node_id = existing.hierarchy_node_id if existing else None
+            if not is_node_in_actor_scope(session=session, actor=actor, node_id=current_node_id):
+                errors.append(f"soldier row {row.row}: soldier's current node is out of your scope")
+            if row.hierarchy_node_id is not None and not is_node_in_actor_scope(
+                session=session, actor=actor, node_id=row.hierarchy_node_id
+            ):
+                errors.append(f"soldier row {row.row}: destination node out of your scope")
+    for row in req.assignments:
+        if row.action == "skip":
+            continue
+        soldier = session.get(Soldier, row.resolved_soldier_id)
+        node_id = soldier.hierarchy_node_id if soldier else None
+        if not is_node_in_actor_scope(session=session, actor=actor, node_id=node_id):
+            errors.append(f"assignment row {row.row}: soldier out of your scope")
+    return errors
+
+
 @router.post("/apply", response_model=ApplyResult)
 def apply(
     req: ApplyRequest,
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
+    out_of_scope = _out_of_scope_rows(session, actor, req)
+    if out_of_scope:
+        raise HTTPException(status_code=403, detail={"out_of_scope_rows": out_of_scope})
+
     from app.auth.password import hash_password
 
     created = updated = skipped = 0
     errors: list[str] = []
+    created_assignments: list[DutyAssignment] = []
 
     try:
         for row in req.soldiers:
@@ -313,12 +354,30 @@ def apply(
                 is_reserve=row.is_reserve,
             )
             session.add(assignment)
+            session.flush()
+            created_assignments.append(assignment)
             created += 1
 
+        write_audit(
+            session, actor_id=actor.id, action="import.excel_apply", entity_type="import_batch",
+            after={"created": created, "updated": updated, "skipped": skipped,
+                   "created_assignment_ids": [str(a.id) for a in created_assignments]},
+        )
         session.commit()
     except Exception as exc:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
+
+    for a in created_assignments:
+        create_notification(
+            session, soldier_id=a.soldier_id,
+            type=NotificationType.assignment_created,
+            title="שיבוץ חדש נוצר עבורך (ייבוא Excel)",
+            reference_type="duty_assignment", reference_id=a.id,
+            actor_id=actor.id,
+        )
+    if created_assignments:
+        session.commit()
 
     return ApplyResult(created=created, updated=updated, skipped=skipped, errors=errors)
 

@@ -72,7 +72,7 @@ def test_apply_creates_soldier(client, admin_session):
                 "row": 2, "action": "new",
                 "personal_number": "ie_apply_003", "full_name": "טסט יחידה",
                 "rank": None, "gender": None, "is_officer": None,
-                "hierarchy_node_id": None, "enrolled_at": None,
+                "hierarchy_node_id": str(node.id), "enrolled_at": None,
                 "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
             }],
             "assignments": [],
@@ -82,6 +82,68 @@ def test_apply_creates_soldier(client, admin_session):
     assert resp.status_code == 200
     assert resp.json()["created"] == 1
     assert resp.json()["errors"] == []
+
+
+def test_apply_rejects_out_of_scope_hierarchy_node(client, admin_session):
+    """A duty manager scoped to unit A must not be able to import a soldier
+    into unit B via /import/apply."""
+    node_a = create_node(admin_session, level="branch", name="ie_node_scope_a")
+    node_b = create_node(admin_session, level="branch", name="ie_node_scope_b")
+    dm = create_soldier(admin_session, personal_number="ie_dm_scope", role="duty_manager", hierarchy_node_id=node_a.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [{
+                "row": 2, "action": "new",
+                "personal_number": "ie_apply_scope", "full_name": "טסט חריגה",
+                "rank": None, "gender": None, "is_officer": None,
+                "hierarchy_node_id": str(node_b.id), "enrolled_at": None,
+                "enlistment_date": None, "phone": None, "email": None, "existing_id": None,
+            }],
+            "assignments": [],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+    assert "out_of_scope_rows" in resp.json()["detail"]
+
+
+def test_apply_notifies_soldier_of_new_assignment(client, admin_session):
+    from app.db.models import Notification, NotificationType
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_notif", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [{
+                "row": 2, "action": "new",
+                "resolved_soldier_id": str(soldier.id),
+                "resolved_duty_type_id": str(dt.id),
+                "start_date": "2024-06-15", "end_date": "2024-06-16",
+                "is_reserve": False,
+            }],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    admin_session.expire_all()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif is not None
 
 
 def test_template_download(client, admin_session):
