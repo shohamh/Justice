@@ -191,6 +191,73 @@ def test_apply_succeeds_even_if_notification_fails(client, admin_session, monkey
     assert assignment is not None
 
 
+def test_apply_notifies_remaining_assignments_when_one_notification_fails(client, admin_session, monkeypatch):
+    """A notification failure for one assignment in a multi-assignment batch
+    must not prevent the other assignments' notifications from being sent —
+    only the failing item should be skipped, not everything after it."""
+    from app.db.models import Notification, NotificationType
+    import app.routes.import_excel as import_excel_module
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif_partial")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif_partial", role="duty_manager", hierarchy_node_id=node.id)
+    soldier_bad = create_soldier(admin_session, personal_number="ie_soldier_notif_bad", hierarchy_node_id=node.id)
+    soldier_good = create_soldier(admin_session, personal_number="ie_soldier_notif_good", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_partial_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_partial_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    real_create_notification = import_excel_module.create_notification
+
+    def _flaky(*args, **kwargs):
+        if kwargs.get("soldier_id") == soldier_bad.id:
+            raise RuntimeError("simulated notification failure for one assignment")
+        return real_create_notification(*args, **kwargs)
+
+    monkeypatch.setattr(import_excel_module, "create_notification", _flaky)
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [
+                {
+                    "row": 2, "action": "new",
+                    "resolved_soldier_id": str(soldier_bad.id),
+                    "resolved_duty_type_id": str(dt.id),
+                    "start_date": "2024-06-15", "end_date": "2024-06-16",
+                    "is_reserve": False,
+                },
+                {
+                    "row": 3, "action": "new",
+                    "resolved_soldier_id": str(soldier_good.id),
+                    "resolved_duty_type_id": str(dt.id),
+                    "start_date": "2024-06-15", "end_date": "2024-06-16",
+                    "is_reserve": False,
+                },
+            ],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 2
+    assert resp.json()["errors"] == []
+
+    admin_session.expire_all()
+    notif_bad = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_bad.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif_bad is None
+
+    # The second assignment's notification must still have been attempted
+    # and succeeded, even though the first one raised.
+    notif_good = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_good.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert notif_good is not None
+
+
 def test_template_download(client, admin_session):
     node = create_node(admin_session, level="branch", name="ie_node_004")
     dm = create_soldier(admin_session, personal_number="ie_dm_004", role="duty_manager", hierarchy_node_id=node.id)

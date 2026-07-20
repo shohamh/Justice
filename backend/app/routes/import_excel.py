@@ -371,8 +371,14 @@ def apply(
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
 
-    try:
-        for a in created_assignments:
+    # The import itself (soldiers/assignments/audit row) already committed
+    # above. Each notification is sent — and committed — independently so
+    # that one bad row (e.g. row 2 of 10) doesn't prevent the rest of the
+    # batch from being attempted: a failure here must never turn a
+    # successful import into an unhandled 500 for the client, nor silently
+    # drop notifications for unrelated assignments.
+    for a in created_assignments:
+        try:
             create_notification(
                 session, soldier_id=a.soldier_id,
                 type=NotificationType.assignment_created,
@@ -380,17 +386,15 @@ def apply(
                 reference_type="duty_assignment", reference_id=a.id,
                 actor_id=actor.id,
             )
-        if created_assignments:
             session.commit()
-    except Exception:
-        # The import itself (soldiers/assignments/audit row) already committed
-        # above. A notification failure here must not turn a successful
-        # import into an unhandled 500 for the client.
-        session.rollback()
-        logger.warning(
-            "Failed to send assignment_created notifications after Excel import apply",
-            exc_info=True,
-        )
+        except Exception:
+            session.rollback()
+            logger.error(
+                "Failed to send assignment_created notification for assignment %s "
+                "after Excel import apply",
+                a.id,
+                exc_info=True,
+            )
 
     return ApplyResult(created=created, updated=updated, skipped=skipped, errors=errors)
 
