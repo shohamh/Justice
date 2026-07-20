@@ -140,3 +140,58 @@ def test_commander_scopes(client: TestClient, admin_session: Session):
     resp2 = client.get("/api/notifications/commander-scopes", headers=headers)
     assert resp2.status_code == 200
     assert len(resp2.json()) == 1
+
+
+def test_admin_can_broadcast_org_wide(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001013", role="admin")
+    headers = auth_headers(admin)
+    resp = client.post("/api/notifications/announce", headers=headers, json={"title": "hi"})
+    assert resp.status_code == 201
+
+
+def test_non_admin_cannot_broadcast_org_wide(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitA")
+    dm = create_soldier(admin_session, personal_number="9001014", role="duty_manager", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(dm)
+    resp = client.post("/api/notifications/announce", headers=headers, json={"title": "hi"})
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "org_wide_announcement_requires_admin"
+
+
+def test_dm_cannot_broadcast_to_out_of_scope_node(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitA2")
+    unit_b = create_node(admin_session, level="unit", name="UnitB2")
+    dm = create_soldier(admin_session, personal_number="9001015", role="duty_manager", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(dm)
+    resp = client.post(
+        "/api/notifications/announce",
+        headers=headers,
+        json={"title": "hi", "hierarchy_node_ids": [str(unit_b.id)]},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "hierarchy_node_out_of_scope"
+
+
+def test_dm_can_broadcast_to_own_scope(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitA3")
+    dm = create_soldier(admin_session, personal_number="9001016", role="duty_manager", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(dm)
+    resp = client.post(
+        "/api/notifications/announce",
+        headers=headers,
+        json={"title": "hi", "hierarchy_node_ids": [str(unit_a.id)]},
+    )
+    assert resp.status_code == 201
+
+
+def test_soldier_cannot_broadcast(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitA4")
+    s = create_soldier(admin_session, personal_number="9001017", role="soldier", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(s)
+    resp = client.post(
+        "/api/notifications/announce",
+        headers=headers,
+        json={"title": "hi", "hierarchy_node_ids": [str(unit_a.id)]},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "forbidden"
