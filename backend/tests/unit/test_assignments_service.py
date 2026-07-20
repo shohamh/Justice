@@ -3,7 +3,15 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
-from app.db.models import DutyDayOverride, DutyLocation, DutyType, ExemptionType, SoldierExemption
+from app.db.models import (
+    DutyDayOverride,
+    DutyLocation,
+    DutyType,
+    ExemptionType,
+    Notification,
+    NotificationType,
+    SoldierExemption,
+)
 from app.services.assignments import (
     AssignmentError,
     cancel_assignment,
@@ -352,6 +360,134 @@ def test_set_override_is_idempotent_upsert(admin_session):
     )
     assert len(rows) == 1
     assert rows[0].effective_soldier_id == r2.id
+
+
+def test_set_day_override_new_notifies_only_replacement(admin_session):
+    s = create_soldier(admin_session, personal_number="8200010")
+    repl = create_soldier(admin_session, personal_number="8200011")
+    dt = _dt(admin_session, "שמירה-n1")
+    loc = _loc(admin_session, "מוצב-n1")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 5),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    set_day_override(
+        admin_session,
+        assignment=a,
+        date=date(2026, 7, 3),
+        effective_soldier_id=repl.id,
+        reason="replacement",
+        actor_id=None,
+    )
+    admin_session.flush()
+    removed = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == s.id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).first()
+    created = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == repl.id,
+            Notification.type == NotificationType.assignment_created,
+        )
+    ).first()
+    assert removed is None
+    assert created is not None
+
+
+def test_set_day_override_change_notifies_both_old_and_new(admin_session):
+    s = create_soldier(admin_session, personal_number="8200012")
+    r1 = create_soldier(admin_session, personal_number="8200013")
+    r2 = create_soldier(admin_session, personal_number="8200014")
+    dt = _dt(admin_session, "שמירה-n2")
+    loc = _loc(admin_session, "מוצב-n2")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 5),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    set_day_override(
+        admin_session,
+        assignment=a,
+        date=date(2026, 7, 3),
+        effective_soldier_id=r1.id,
+        reason="replacement",
+        actor_id=None,
+    )
+    admin_session.flush()
+    set_day_override(
+        admin_session,
+        assignment=a,
+        date=date(2026, 7, 3),
+        effective_soldier_id=r2.id,
+        reason="replacement",
+        actor_id=None,
+    )
+    admin_session.flush()
+    removed = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == r1.id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).first()
+    created = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == r2.id,
+            Notification.type == NotificationType.assignment_created,
+        )
+    ).first()
+    assert removed is not None
+    assert created is not None
+
+
+def test_clear_day_override_notifies_old_soldier_as_removed(admin_session):
+    s = create_soldier(admin_session, personal_number="8200015")
+    repl = create_soldier(admin_session, personal_number="8200016")
+    dt = _dt(admin_session, "שמירה-n3")
+    loc = _loc(admin_session, "מוצב-n3")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 5),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    set_day_override(
+        admin_session,
+        assignment=a,
+        date=date(2026, 7, 3),
+        effective_soldier_id=repl.id,
+        reason="replacement",
+        actor_id=None,
+    )
+    admin_session.flush()
+    clear_day_override(admin_session, assignment=a, date=date(2026, 7, 3), actor_id=None)
+    admin_session.flush()
+    removed = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == repl.id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).first()
+    assert removed is not None
 
 
 def test_list_assignments_by_soldier_and_range(admin_session):
