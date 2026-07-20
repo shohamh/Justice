@@ -6,6 +6,7 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
+import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
@@ -17,6 +18,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { fetchTree } from "../api/hierarchy";
+import { SoldierDTO } from "../api/soldiers";
 import { lastDutyDay } from "../utils/formatDate";
 
 interface HierarchyNode {
@@ -158,7 +160,7 @@ function AskSwapModal({
 }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"open" | "soldier">("open");
-  const [targetSoldierId, setTargetSoldierId] = useState("");
+  const [targetSoldier, setTargetSoldier] = useState<SoldierDTO | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -169,7 +171,7 @@ function AskSwapModal({
       const input: CreateSwapInput = {
         duty_assignment_id: duty.assignment_id,
         reason: reason || null,
-        target_soldier_id: mode === "soldier" && targetSoldierId ? targetSoldierId : null,
+        target_soldier_id: mode === "soldier" ? targetSoldier?.id ?? null : null,
       };
       await createSwap(input);
       onCreated();
@@ -204,9 +206,10 @@ function AskSwapModal({
             </label>
           </div>
           {mode === "soldier" && (
-            <input type="text" placeholder="מספר אישי של חייל" value={targetSoldierId}
-              onChange={e => setTargetSoldierId(e.target.value)}
-              className="w-full border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <SoldierSearchAutocomplete
+              onSelect={setTargetSoldier}
+              onCreateNew={() => {}}
+            />
           )}
           <textarea placeholder={t("swaps.personal_message")} value={reason}
             onChange={e => setReason(e.target.value)} rows={3}
