@@ -13,7 +13,7 @@ from app.auth.authz import (
     Action, authorize, can_see_private, is_commander, is_duty_manager, scope_root_ids,
 )
 from app.rate_limit import limiter
-from app.auth.deps import require_password_changed
+from app.auth.deps import require_enrolled, require_password_changed
 from app.db.models import ExemptionRequest, ExemptionRequestFile, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
 from app.services.authority import (
@@ -108,7 +108,7 @@ def _out(
 def create_exemption_request(
     body: CreateExemptionRequest,
     session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
+    user: Soldier = Depends(require_enrolled),
 ) -> ExemptionRequestOut:
     try:
         req = submit_request(

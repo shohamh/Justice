@@ -10,6 +10,7 @@ interface AuthContextValue {
   mustChangePassword: boolean;
   telegramLinked: boolean;
   telegramRequired: boolean;
+  enrollmentPending: boolean;
   login: (personal_number: string, password: string, remember_me?: boolean) => Promise<void>;
   loginWithToken: (token: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -74,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mustChangePassword: user?.must_change_password ?? false,
       telegramLinked: user?.telegram_linked ?? false,
       telegramRequired: user?.telegram_required ?? false,
+      enrollmentPending: user?.enrollment_pending ?? false,
       login,
       loginWithToken,
       logout,

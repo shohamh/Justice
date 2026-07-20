@@ -97,10 +97,10 @@ def test_two_sided_approval_applies_only_after_both(admin_session):
     svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
     admin_session.flush()
 
-    svc.approve_side(admin_session, request_id=req.id, side="requester", actor_id=None)
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id)
     assert admin_session.get(SwapRequest, req.id).status == "pending_approval"  # still waiting
 
-    out = svc.approve_side(admin_session, request_id=req.id, side="covering", actor_id=None)
+    out = svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=b.id)
     assert out.status == "applied"
     assert out.resulting_override_id is not None
 

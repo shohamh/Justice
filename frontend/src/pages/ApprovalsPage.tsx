@@ -8,6 +8,7 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
+import DirectCommanderApproval, { isSideSatisfied } from "../components/DirectCommanderApproval";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import {
@@ -29,9 +30,9 @@ import {
   listPendingFieldUpdates,
 } from "../api/soldiers";
 import {
-  approveSwapSide,
+  managerApproveSwap,
   listPendingSwaps,
-  rejectSwap,
+  managerRejectSwap,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import { DaysBadge } from "../components/DaysBadge";
@@ -42,6 +43,12 @@ function describeError(err: unknown): string {
     if (resp?.data?.detail) return resp.data.detail;
   }
   return "שגיאה בביצוע הפעולה";
+}
+
+function ApprovalDotInline({ value }: { value: boolean | null }) {
+  if (value === true) return <span className="text-green-600 font-bold">✓</span>;
+  if (value === false) return <span className="text-red-500 font-bold">✗</span>;
+  return <span className="text-gray-400">—</span>;
 }
 
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
@@ -178,9 +185,9 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function onSwapApproveSide(id: string, side: "requester" | "covering") {
+  async function onSwapManagerApprove(id: string, side: "requester" | "covering") {
     try {
-      await approveSwapSide(id, side);
+      await managerApproveSwap(id, side);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
@@ -188,9 +195,9 @@ export default function ApprovalsPage() {
       setActionError(describeError(err));
     }
   }
-  async function onSwapReject(id: string) {
+  async function onSwapManagerReject(id: string) {
     try {
-      await rejectSwap(id, swapRejectNotes[id]);
+      await managerRejectSwap(id, swapRejectNotes[id]);
       const next = { ...swapRejectNotes };
       delete next[id];
       setSwapRejectNotes(next);
@@ -429,34 +436,48 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {swapItems.map(swap => {
+              const requesterManagersDone = isSideSatisfied(swap.requester_manager_approvals);
+              const coveringManagersDone = isSideSatisfied(swap.covering_manager_approvals);
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
                     <strong>{t("swaps.requester")}:</strong>
                     <span><SoldierLink id={swap.requesting_soldier_id} name={swap.requesting_soldier_name || swap.requesting_soldier_id.slice(0, 8)} /></span>
                     {swap.requesting_soldier_node_name && <span className="text-xs text-gray-400">{swap.requesting_soldier_node_name}</span>}
+                    <ApprovalDotInline value={swap.requester_side_approved} />
                   </div>
                   {swap.covering_soldier_id && (
                     <div className="flex items-center gap-2">
                       <strong>{t("swaps.covering")}:</strong>
                       <span><SoldierLink id={swap.covering_soldier_id} name={swap.covering_soldier_name || swap.covering_soldier_id.slice(0, 8)} /></span>
+                      <ApprovalDotInline value={swap.covering_side_approved} />
                     </div>
                   )}
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                  <div className="text-xs text-gray-500 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{t("swaps.requester_managers")}:</span>
+                      <DirectCommanderApproval approvals={swap.requester_manager_approvals} />
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{t("swaps.covering_managers")}:</span>
+                      <DirectCommanderApproval approvals={swap.covering_manager_approvals} />
+                    </div>
+                  </div>
                   <div className="flex gap-2 items-center flex-wrap">
                     <button
-                      onClick={() => onSwapApproveSide(swap.id, "requester")}
-                      disabled={!!swap.requester_side_approved}
+                      onClick={() => onSwapManagerApprove(swap.id, "requester")}
+                      disabled={requesterManagersDone}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
                     >
-                      {swap.requester_side_approved ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.requester")})
+                      {requesterManagersDone ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.requester")})
                     </button>
                     <button
-                      onClick={() => onSwapApproveSide(swap.id, "covering")}
-                      disabled={!!swap.covering_side_approved}
+                      onClick={() => onSwapManagerApprove(swap.id, "covering")}
+                      disabled={coveringManagersDone}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
                     >
-                      {swap.covering_side_approved ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.covering")})
+                      {coveringManagersDone ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.covering")})
                     </button>
                     <input
                       placeholder={t("approvals.decision_note")}
@@ -465,7 +486,7 @@ export default function ApprovalsPage() {
                       className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     />
                     <button
-                      onClick={() => onSwapReject(swap.id)}
+                      onClick={() => onSwapManagerReject(swap.id)}
                       className="bg-red-600 text-white px-2 py-1 rounded text-xs"
                     >
                       {t("approvals.reject")}

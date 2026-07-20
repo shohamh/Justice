@@ -6,11 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
 from app.db.models import (
     CommanderNotificationDepth,
     ExemptionRequest,
+    HierarchyNode,
     NotificationPreference,
     NotificationType,
+    Soldier,
+    SwapRequest,
     TelegramActionToken,
 )
 from app.services import constraints as constraint_svc
@@ -75,10 +79,35 @@ def execute_action(token_row: TelegramActionToken, session: Session) -> str:
             return f"שגיאה: {e}"
 
     if action == "swap:approve_requester":
+        def _override_authorized() -> bool:
+            req = session.get(SwapRequest, resource_id)
+            if req is None:
+                return False
+            actor = session.get(Soldier, soldier_id)
+            node: HierarchyNode | None = None
+            requester = session.get(Soldier, req.requesting_soldier_id) if req.requesting_soldier_id else None
+            if requester is not None and requester.hierarchy_node_id is not None:
+                node = session.get(HierarchyNode, requester.hierarchy_node_id)
+            if actor is None:
+                return False
+            return can(
+                actor, Action.SWAP_APPROVE, target_node=node,
+                roots=scope_root_ids(session, actor),
+                is_commander=is_commander(session, actor.id),
+                is_duty_manager=is_duty_manager(session, actor.id),
+            )
+
         try:
-            swap_svc.approve_side(session, request_id=resource_id, side="requester", actor_id=soldier_id)
+            if session.get(SwapRequest, resource_id) is None:
+                return "שגיאה: swap_not_found"
+            swap_svc.approve_manager_side(
+                session, request_id=resource_id, side="requester", actor_id=soldier_id,
+                is_authorized_override=_override_authorized,
+            )
             return "✅ ההחלפה אושרה מצידך."
         except swap_svc.SwapError as e:
+            if str(e) == "forbidden":
+                return "שגיאה: forbidden"
             return f"שגיאה: {e}"
 
     if action == "swap:approve_covering":

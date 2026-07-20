@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import is_commander, is_duty_manager
 from app.auth.deps import get_current_user, require_password_changed
-from app.db.models import HierarchyNode, Soldier, TelegramLink
+from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, TelegramLink
 from app.db.session import get_session
 from app.services import email_verification as ev_svc
 from app.services.settings_loader import get_setting
@@ -47,6 +47,7 @@ class MeResponse(BaseModel):
     direct_commander_name: str | None = None
     profile_picture_url: str | None = None
     is_career: bool = False
+    enrollment_pending: bool = False
 
 
 class SetEmailRequest(BaseModel):
@@ -90,6 +91,13 @@ def me(
 
     commander = _direct_commander(session, user)
 
+    enrollment_pending = session.execute(
+        select(SoldierEnrollmentRequest.id).where(
+            SoldierEnrollmentRequest.soldier_id == user.id,
+            SoldierEnrollmentRequest.status.in_(("pending", "commander_approved")),
+        ).limit(1)
+    ).first() is not None
+
     return MeResponse(
         id=user.id,
         personal_number=user.personal_number,
@@ -119,6 +127,7 @@ def me(
         direct_commander_name=commander.full_name if commander else None,
         profile_picture_url=user.profile_picture_url,
         is_career=user.is_career,
+        enrollment_pending=enrollment_pending,
     )
 
 
