@@ -38,18 +38,6 @@ import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, reject
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
 
-async function openExemptionFile(erId: string, fileId: string) {
-  const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
-  const url = URL.createObjectURL(resp.data as Blob);
-  const win = window.open(url, "_blank");
-  if (win) {
-    win.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
-  } else {
-    // popup blocked — revoke immediately, nothing to show
-    URL.revokeObjectURL(url);
-  }
-}
-
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
@@ -171,6 +159,22 @@ export default function ApprovalsPage() {
       setRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
+  async function openExemptionFile(erId: string, fileId: string) {
+    try {
+      const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
+      const url = URL.createObjectURL(resp.data as Blob);
+      const win = window.open(url, "_blank");
+      if (win) {
+        win.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
+      } else {
+        // popup blocked — revoke immediately, nothing to show
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
       setActionError(describeError(err));
     }

@@ -200,4 +200,33 @@ describe("ApprovalsPage - exemption file links", () => {
       openSpy.mockRestore();
     }
   });
+
+  it("shows an error message when the exemption file fetch fails", async () => {
+    vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
+    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
+    vi.mocked(api.get).mockRejectedValue({
+      response: { status: 404, data: { detail: "file_not_found" } },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const exemptionsTab = await screen.findByTestId("approvals-tab-exemptions");
+    fireEvent.click(exemptionsTab);
+    const fileLink = await screen.findByText(/note\.pdf/);
+    fireEvent.click(fileLink);
+
+    await waitFor(() => {
+      expect(screen.getByText(/file_not_found/)).toBeInTheDocument();
+    });
+  });
 });
