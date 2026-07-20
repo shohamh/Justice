@@ -28,6 +28,31 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+const swap = {
+  id: "s1",
+  duty_assignment_id: "da1",
+  duty_date: "2026-01-05",
+  requesting_soldier_id: "sol-2",
+  target_soldier_id: null,
+  covering_soldier_id: "sol-3",
+  status: "pending_approval",
+  reason: null,
+  requester_side_approved: false,
+  covering_side_approved: false,
+  decision_note: null,
+  offered_assignment_ids: [],
+  created_at: "2026-01-01",
+  duty_type_name: null,
+  duty_location_name: null,
+  duty_type_id: null,
+  duty_location_id: null,
+  duty_start_date: null,
+  duty_end_date: null,
+  duty_shift_id: null,
+  requesting_soldier_name: "B",
+  covering_soldier_name: "C",
+} as swapsApi.SwapRequest;
+
 const constraint = {
   id: "c1",
   soldier_id: "sol-1",
@@ -76,6 +101,32 @@ describe("ApprovalsPage - action error banner", () => {
     fireEvent.click(approveBtn);
     await waitFor(() => {
       expect(screen.getByText(/already_decided/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows the translated cover_blocked message when approving a swap fails", async () => {
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([swap]);
+    vi.mocked(swapsApi.approveSwapSide).mockRejectedValue({
+      response: { data: { detail: "cover_blocked:overlap" } },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const swapsTab = await screen.findByTestId("approvals-tab-swaps");
+    fireEvent.click(swapsTab);
+    const approveBtn = await screen.findByText("approvals.approve (swaps.requester)");
+    fireEvent.click(approveBtn);
+    await waitFor(() => {
+      expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
     });
   });
 });
