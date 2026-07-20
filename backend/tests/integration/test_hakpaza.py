@@ -163,6 +163,39 @@ def test_approve_hakpaza_sets_multiplier_no_score_adjustment(client, admin_sessi
     assert adjs == []
 
 
+def test_hakpaza_approve_notifies_both_soldiers(client, admin_session):
+    from app.db.models import Notification, NotificationType
+
+    dm, commander, pulled, replacement, assignment = _setup(admin_session, "hk006")
+
+    create_resp = client.post(
+        "/api/hakpaza",
+        json={
+            "pulled_assignment_id": str(assignment.id),
+            "pull_date": "2030-01-05",
+            "replacement_soldier_id": str(replacement.id),
+        },
+        headers=auth_headers(commander),
+    )
+    assert create_resp.status_code == 201
+    hakpaza_id = create_resp.json()["id"]
+
+    approve_resp = client.post(
+        f"/api/hakpaza/{hakpaza_id}/approve",
+        headers=auth_headers(dm),
+    )
+    assert approve_resp.status_code == 200
+
+    pulled_notif = admin_session.query(Notification).filter_by(
+        soldier_id=pulled.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    replacement_notif = admin_session.query(Notification).filter_by(
+        soldier_id=replacement.id, type=NotificationType.assignment_created,
+    ).one_or_none()
+    assert pulled_notif is not None
+    assert replacement_notif is not None
+
+
 def test_dual_role_commander_can_approve_hakpaza(client, admin_session):
     """A soldier who commands node A and is separately DM of node B (where the pulled
     soldier sits) must be able to approve hakpaza for B — real DM capability must be

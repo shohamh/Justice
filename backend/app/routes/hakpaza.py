@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, Soldier
+from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, NotificationType, Soldier
 from app.db.session import get_session
 from app.services import hakpaza as svc
+from app.services.notifications import create_notification
 from app.services.settings_loader import get_setting
 
 router = APIRouter(prefix="/hakpaza", tags=["hakpaza"])
@@ -229,6 +230,21 @@ def approve(
     h.approver_id = actor.id
     h.approved_at = datetime.now(timezone.utc)
     h.replacement_assignment_id = new_assignment.id
+
+    create_notification(
+        session, soldier_id=h.pulled_soldier_id,
+        type=NotificationType.assignment_removed,
+        title="שוחררת מתורנות עקב הקפצה פיקודית",
+        reference_type="duty_assignment", reference_id=original.id,
+        actor_id=actor.id,
+    )
+    create_notification(
+        session, soldier_id=h.replacement_soldier_id,
+        type=NotificationType.assignment_created,
+        title="שובצת לתורנות עקב הקפצה פיקודית",
+        reference_type="duty_assignment", reference_id=new_assignment.id,
+        actor_id=actor.id,
+    )
 
     session.commit()
     session.refresh(h)
