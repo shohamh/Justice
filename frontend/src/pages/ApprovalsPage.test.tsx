@@ -10,6 +10,7 @@ import * as swapsApi from "../api/swaps";
 import * as enrollmentApi from "../api/enrollment";
 import * as hierarchyApi from "../api/hierarchy";
 import * as authApi from "../api/auth";
+import { api } from "../api/client";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("react-i18next", () => ({
@@ -24,6 +25,9 @@ vi.mock("../api/swaps");
 vi.mock("../api/enrollment");
 vi.mock("../api/hierarchy");
 vi.mock("../api/auth");
+vi.mock("../api/client", () => ({
+  api: { get: vi.fn() },
+}));
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -67,6 +71,25 @@ const constraint = {
   decision_note: null,
   created_at: "2026-01-01",
 } as constraintsApi.PersonalConstraint;
+
+const exemptionRequestWithFile = {
+  id: "er1",
+  soldier_id: "sol-4",
+  soldier_name: "D",
+  node_name: null,
+  exemption_type_id: "et1",
+  start_date: "2026-01-01",
+  end_date: null,
+  reason: "x",
+  status: "pending_commander",
+  enrollment_request_id: null,
+  decided_by: null,
+  decision_note: null,
+  created_at: "2026-01-01",
+  files: [
+    { id: "f1", file_name: "note.pdf", content_type: "application/pdf", created_at: "2026-01-01" },
+  ],
+} as exemptionsApi.ExemptionRequest;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,5 +151,53 @@ describe("ApprovalsPage - action error banner", () => {
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ApprovalsPage - exemption file links", () => {
+  it("opens exemption files via an authenticated blob fetch, not a raw href", async () => {
+    vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
+    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
+    const blob = new Blob(["data"], { type: "application/pdf" });
+    vi.mocked(api.get).mockResolvedValue({ data: blob });
+
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+    URL.revokeObjectURL = vi.fn();
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({ addEventListener: vi.fn() } as unknown as Window);
+
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <SoldierModalProvider>
+              <ApprovalsPage />
+            </SoldierModalProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+      const exemptionsTab = await screen.findByTestId("approvals-tab-exemptions");
+      fireEvent.click(exemptionsTab);
+      const fileLink = await screen.findByText(/note\.pdf/);
+      expect(fileLink.tagName).toBe("BUTTON");
+      fireEvent.click(fileLink);
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/api/exemption-requests/er1/files/f1",
+          expect.objectContaining({ responseType: "blob" }),
+        );
+      });
+      expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
+      expect(openSpy).toHaveBeenCalledWith("blob:mock-url", "_blank");
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      openSpy.mockRestore();
+    }
   });
 });

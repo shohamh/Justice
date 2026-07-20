@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
+import { api } from "../api/client";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
@@ -36,6 +37,18 @@ import {
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
+
+async function openExemptionFile(erId: string, fileId: string) {
+  const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
+  const url = URL.createObjectURL(resp.data as Blob);
+  const win = window.open(url, "_blank");
+  if (win) {
+    win.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
+  } else {
+    // popup blocked — revoke immediately, nothing to show
+    URL.revokeObjectURL(url);
+  }
+}
 
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
@@ -355,15 +368,14 @@ export default function ApprovalsPage() {
                   {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {er.files.map(f => (
-                        <a
+                        <button
                           key={f.id}
-                          href={exemptionFileDownloadUrl(er.id, f.id)}
-                          target="_blank"
-                          rel="noreferrer"
+                          type="button"
+                          onClick={() => openExemptionFile(er.id, f.id)}
                           className="text-blue-600 dark:text-blue-400 text-xs hover:underline flex items-center gap-1"
                         >
                           📎 {f.file_name}
-                        </a>
+                        </button>
                       ))}
                     </div>
                   )}
