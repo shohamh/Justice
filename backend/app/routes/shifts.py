@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 
@@ -20,6 +21,8 @@ from app.services.algorithm_bridge import build_hierarchy_maps, load_soldier_inp
 from app.services.shift_quotas import ShiftQuotaError, compute_potential_split, compute_two_level_split, get_shift_quotas, set_shift_quotas
 from app.services.shift_responsibility import auto_assign_responsibility
 from app.algorithm.reserve import link_reserves
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -501,15 +504,30 @@ def bulk_delete_shifts(
     )
     session.commit()
 
+    # The bulk delete itself (shifts/assignments/audit row) already committed
+    # above. Each notification is sent — and committed — independently so
+    # that one bad item (e.g. one soldier out of many) doesn't prevent the
+    # rest of the batch from being attempted: a failure here must never turn
+    # a successful bulk delete into an unhandled 500 for the client, nor
+    # silently drop notifications for unrelated assignments.
     for assignment_id, soldier_id in pairs:
-        create_notification(
-            session, soldier_id=soldier_id,
-            type=NotificationType.assignment_removed,
-            title="שיבוץ בוטל (מחיקת משמרות גורפת)",
-            reference_type="duty_assignment", reference_id=assignment_id,
-            actor_id=user.id,
-        )
-    session.commit()
+        try:
+            create_notification(
+                session, soldier_id=soldier_id,
+                type=NotificationType.assignment_removed,
+                title="שיבוץ בוטל (מחיקת משמרות גורפת)",
+                reference_type="duty_assignment", reference_id=assignment_id,
+                actor_id=user.id,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.error(
+                "Failed to send assignment_removed notification for assignment %s "
+                "after bulk shift delete",
+                assignment_id,
+                exc_info=True,
+            )
 
     return {"deleted_shifts": len(shift_ids), "deleted_assignments": len(assignment_ids)}
 
@@ -544,15 +562,30 @@ def bulk_clear_assignments(
     )
     session.commit()
 
+    # The bulk clear itself (assignments/audit row) already committed above.
+    # Each notification is sent — and committed — independently so that one
+    # bad item doesn't prevent the rest of the batch from being attempted: a
+    # failure here must never turn a successful bulk clear into an
+    # unhandled 500 for the client, nor silently drop notifications for
+    # unrelated assignments.
     for assignment_id, soldier_id in pairs:
-        create_notification(
-            session, soldier_id=soldier_id,
-            type=NotificationType.assignment_removed,
-            title="שיבוץ בוטל (ניקוי משמרות גורף)",
-            reference_type="duty_assignment", reference_id=assignment_id,
-            actor_id=user.id,
-        )
-    session.commit()
+        try:
+            create_notification(
+                session, soldier_id=soldier_id,
+                type=NotificationType.assignment_removed,
+                title="שיבוץ בוטל (ניקוי משמרות גורף)",
+                reference_type="duty_assignment", reference_id=assignment_id,
+                actor_id=user.id,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.error(
+                "Failed to send assignment_removed notification for assignment %s "
+                "after bulk shift assignment clear",
+                assignment_id,
+                exc_info=True,
+            )
 
     return {"cleared_assignments": len(assignment_ids)}
 
@@ -873,10 +906,11 @@ def clear_shift_assignments(
         )
     ).scalars().all()
     for a in rows:
+        before_status = a.status
         a.status = "cancelled"
         write_audit(
             session, actor_id=user.id, action="assignment.cancel", entity_type="duty_assignment",
-            entity_id=a.id, before={"status": "published"}, after={"status": "cancelled"},
+            entity_id=a.id, before={"status": before_status}, after={"status": "cancelled"},
             context={"source": "shift_assignments_clear"},
         )
         create_notification(

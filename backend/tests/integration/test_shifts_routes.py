@@ -152,6 +152,177 @@ def test_bulk_delete_shifts_notifies_all_affected_soldiers(client, admin_session
         assert notif is not None
 
 
+def test_bulk_delete_notifies_remaining_soldiers_when_one_notification_fails(client, admin_session, monkeypatch):
+    """A notification failure for one assignment in a bulk-delete batch must
+    not prevent the other assignments' notifications from being sent — only
+    the failing item should be skipped, not everything after it, and the
+    delete itself (already committed) must not be rolled back."""
+    from app.db.models import Notification, NotificationType
+    import app.routes.shifts as shifts_module
+
+    dm, dt, loc = _setup(admin_session, "sh_rt_008")
+    soldier_bad = create_soldier(admin_session, personal_number="sh_rt_008a", hierarchy_node_id=dm.hierarchy_node_id)
+    soldier_good = create_soldier(admin_session, personal_number="sh_rt_008b", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+
+    shift1_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2027-01-01",
+        "end_date": "2027-01-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift2_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2027-01-05",
+        "end_date": "2027-01-06",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift1_id = shift1_resp.json()["id"]
+    shift2_id = shift2_resp.json()["id"]
+
+    assert client.post(f"/api/shifts/{shift1_id}/assign-batch", json={
+        "primaries": [str(soldier_bad.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+    assert client.post(f"/api/shifts/{shift2_id}/assign-batch", json={
+        "primaries": [str(soldier_good.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+
+    real_create_notification = shifts_module.create_notification
+
+    def _flaky(*args, **kwargs):
+        if kwargs.get("soldier_id") == soldier_bad.id:
+            raise RuntimeError("simulated notification failure for one assignment")
+        return real_create_notification(*args, **kwargs)
+
+    monkeypatch.setattr(shifts_module, "create_notification", _flaky)
+
+    resp = client.delete(
+        "/api/shifts/bulk-delete",
+        params={"date_from": "2027-01-01", "date_to": "2027-01-31"},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deleted_assignments"] == 2
+
+    admin_session.expire_all()
+    notif_bad = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_bad.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    assert notif_bad is None
+
+    notif_good = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_good.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    assert notif_good is not None
+
+
+def test_bulk_clear_notifies_remaining_soldiers_when_one_notification_fails(client, admin_session, monkeypatch):
+    """Same per-item isolation guarantee as bulk-delete, but for
+    bulk-clear-assignments (which keeps the shifts, only clears assignments)."""
+    from app.db.models import Notification, NotificationType
+    import app.routes.shifts as shifts_module
+
+    dm, dt, loc = _setup(admin_session, "sh_rt_009")
+    soldier_bad = create_soldier(admin_session, personal_number="sh_rt_009a", hierarchy_node_id=dm.hierarchy_node_id)
+    soldier_good = create_soldier(admin_session, personal_number="sh_rt_009b", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+
+    shift1_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2027-02-01",
+        "end_date": "2027-02-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift2_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2027-02-05",
+        "end_date": "2027-02-06",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift1_id = shift1_resp.json()["id"]
+    shift2_id = shift2_resp.json()["id"]
+
+    assert client.post(f"/api/shifts/{shift1_id}/assign-batch", json={
+        "primaries": [str(soldier_bad.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+    assert client.post(f"/api/shifts/{shift2_id}/assign-batch", json={
+        "primaries": [str(soldier_good.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+
+    real_create_notification = shifts_module.create_notification
+
+    def _flaky(*args, **kwargs):
+        if kwargs.get("soldier_id") == soldier_bad.id:
+            raise RuntimeError("simulated notification failure for one assignment")
+        return real_create_notification(*args, **kwargs)
+
+    monkeypatch.setattr(shifts_module, "create_notification", _flaky)
+
+    resp = client.delete(
+        "/api/shifts/bulk-clear-assignments",
+        params={"date_from": "2027-02-01", "date_to": "2027-02-28"},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["cleared_assignments"] == 2
+
+    admin_session.expire_all()
+    notif_bad = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_bad.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    assert notif_bad is None
+
+    notif_good = admin_session.query(Notification).filter_by(
+        soldier_id=soldier_good.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    assert notif_good is not None
+
+
+def test_clear_shift_assignments_audit_captures_real_prior_status(client, admin_session):
+    """The audit row for each cancelled assignment must record the
+    assignment's actual prior status, not a hardcoded 'published' value."""
+    from app.db.models import AuditLog, DutyAssignment
+
+    dm, dt, loc = _setup(admin_session, "sh_rt_010")
+    soldier = create_soldier(admin_session, personal_number="sh_rt_010s", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+
+    create_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2027-03-01",
+        "end_date": "2027-03-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift_id = create_resp.json()["id"]
+    assign_resp = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(soldier.id)], "reserves": [],
+    }, headers=auth_headers(dm))
+    assert assign_resp.status_code == 201, assign_resp.text
+    assignment_id = assign_resp.json()["primary_assignment_ids"][0]
+
+    # Force the assignment into a non-"published" status before clearing, to
+    # prove the audit "before" value reflects reality rather than a hardcoded
+    # "published" default.
+    assignment = admin_session.get(DutyAssignment, uuid.UUID(assignment_id))
+    assignment.status = "algorithm_draft"
+    admin_session.commit()
+
+    resp = client.delete(f"/api/shifts/{shift_id}/assignments", headers=auth_headers(dm))
+    assert resp.status_code == 204
+
+    admin_session.expire_all()
+    audit_row = admin_session.query(AuditLog).filter_by(
+        action="assignment.cancel", entity_id=uuid.UUID(assignment_id),
+    ).order_by(AuditLog.created_at.desc()).first()
+    assert audit_row is not None
+    assert audit_row.before == {"status": "algorithm_draft"}
+
+
 def test_update_shift(client, admin_session):
     dm, dt, loc = _setup(admin_session, "sh_rt_005")
     create_resp = client.post("/api/shifts", json={
