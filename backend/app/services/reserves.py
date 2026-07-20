@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.algorithm.reserve import _hierarchy_distance
 from app.audit.writer import write_audit
-from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink
+from app.db.models import DutyAssignment, DutyDismissal, DutyReserveLink, NotificationType
 from app.services.algorithm_bridge import build_hierarchy_maps
+from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
 
@@ -50,6 +51,14 @@ def call_up_reserve(
         entity_id=assignment.id,
         before=before,
         after={"called_up_from": from_date.isoformat(), "called_up_to": to_date.isoformat()},
+    )
+    create_notification(
+        session, soldier_id=assignment.soldier_id,
+        type=NotificationType.gimelim_reserve_called_up,
+        title="הוקפצת לכיסוי תורנות",
+        body=f"הוקפצת לתורנות בתאריכים {from_date} – {to_date}",
+        reference_type="duty_assignment", reference_id=assignment.id,
+        actor_id=actor_id,
     )
     return assignment
 
@@ -101,6 +110,14 @@ def dismiss_primary(
             "dismissed_to": to_date.isoformat(),
             "reason": reason,
         },
+    )
+    create_notification(
+        session, soldier_id=assignment.soldier_id,
+        type=NotificationType.assignment_removed,
+        title="שוחררת מתורנות",
+        body=f"שוחררת מתורנות בתאריכים {from_date} – {to_date}" + (f" — {reason}" if reason else ""),
+        reference_type="duty_assignment", reference_id=assignment.id,
+        actor_id=actor_id,
     )
     return dismissal
 
@@ -225,6 +242,14 @@ def dismiss_reserve(
             "dismissed_to": to_date.isoformat(),
             "reason": reason,
         },
+    )
+    create_notification(
+        session, soldier_id=assignment.soldier_id,
+        type=NotificationType.assignment_removed,
+        title="שוחררת מכוננות רזרבה",
+        body=f"שוחררת מכוננות בתאריכים {from_date} – {to_date}" + (f" — {reason}" if reason else ""),
+        reference_type="duty_assignment", reference_id=assignment.id,
+        actor_id=actor_id,
     )
     if covering_reserve_id is not None:
         link_rows = (

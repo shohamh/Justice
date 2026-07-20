@@ -192,6 +192,71 @@ def test_delete_dismissal(admin_session):
     assert len(remaining) == 0
 
 
+def test_call_up_reserve_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.call_up_reserve(
+        admin_session,
+        assignment=reserve,
+        from_date=date(2026, 6, 3),
+        to_date=date(2026, 6, 7),
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == reserve.soldier_id,
+            Notification.type == NotificationType.gimelim_reserve_called_up,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
+def test_dismiss_primary_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.dismiss_primary(
+        admin_session,
+        assignment=primary,
+        from_date=date(2026, 6, 5),
+        to_date=date(2026, 6, 7),
+        reason="test",
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == primary.soldier_id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
+def test_dismiss_reserve_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+
+    shift, primary, reserve, s, r = _seed(admin_session)
+    svc.dismiss_reserve(
+        admin_session,
+        assignment=reserve,
+        from_date=date(2026, 6, 3),
+        to_date=date(2026, 6, 5),
+        reason="test",
+        actor_id=None,
+    )
+    admin_session.flush()
+    notif = admin_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == reserve.soldier_id,
+            Notification.type == NotificationType.assignment_removed,
+        )
+    ).scalar_one_or_none()
+    assert notif is not None
+
+
 def test_get_shift_reserve_detail(admin_session):
     shift, primary, reserve, s, r = _seed(admin_session)
     detail = svc.get_shift_reserve_detail(admin_session, shift_id=shift.id)
