@@ -38,7 +38,16 @@ def test_login_with_wrong_password_returns_401(client: TestClient, admin_session
     _create_soldier(admin_session, "9000002", "right-password")
     r = client.post("/api/auth/login", json={"personal_number": "9000002", "password": "wrong"})
     assert r.status_code == 401
-    assert r.json()["detail"] == "invalid_credentials"
+    assert r.json()["detail"]["detail"] == "invalid_credentials"
+
+
+def test_login_401_reports_attempt_count(client: TestClient, admin_session: Session):
+    _create_soldier(admin_session, "7960001", "Correct123Pass")
+    r = client.post("/api/auth/login", json={"personal_number": "7960001", "password": "wrong"})
+    assert r.status_code == 401
+    body = r.json()["detail"]
+    assert body["attempts"] == 1
+    assert body["max_attempts"] == 10
 
 
 def test_login_with_unknown_user_returns_401(client: TestClient):

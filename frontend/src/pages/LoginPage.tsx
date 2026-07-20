@@ -21,18 +21,25 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<ErrKey>(null);
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<string | null>(null);
+  const [attempts, setAttempts] = useState<{ n: number; max: number } | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErrorKey(null);
+    setAttempts(null);
     setSubmitting(true);
     try {
       await login(personalNumber, password, rememberMe);
       navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof AxiosError) {
-        if (err.response?.status === 401) setErrorKey("invalid_credentials");
-        else if (err.response?.status === 429) {
+        if (err.response?.status === 401) {
+          setErrorKey("invalid_credentials");
+          const d = err.response.data?.detail;
+          if (d && typeof d === "object" && "attempts" in d) {
+            setAttempts({ n: d.attempts, max: d.max_attempts });
+          }
+        } else if (err.response?.status === 429) {
           setErrorKey("rate_limited");
           setRetryAfterSeconds(err.response.headers["retry-after"] ?? null);
         } else setErrorKey("network");
@@ -100,6 +107,9 @@ export default function LoginPage() {
             {errorKey === "rate_limited" && retryAfterSeconds
               ? t("login.errors.rate_limited", { seconds: retryAfterSeconds })
               : t(`login.errors.${errorKey}`)}
+            {errorKey === "invalid_credentials" && attempts && (
+              <div>{t("login.errors.attempts_remaining", { n: attempts.n, max: attempts.max })}</div>
+            )}
           </div>
         )}
 

@@ -14,6 +14,7 @@
     "remember_me": "זכור אותי",
     "errors": {
       "invalid_credentials": "מספר אישי או סיסמה שגויים",
+      "attempts_remaining": "ניסיון {{n}} מתוך {{max}}, לאחר מכן החשבון ייחסם זמנית",
       "network": "שגיאת רשת. נסה שוב.",
       "rate_limited": "יותר מדי ניסיונות. נסה שוב בעוד {{seconds}} שניות."
     }

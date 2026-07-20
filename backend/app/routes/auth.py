@@ -164,17 +164,18 @@ def login(
         )
 
     if not verify_password(body.password, soldier.password_hash):
-        new_count = Soldier.failed_login_count + 1
+        new_count = soldier.failed_login_count + 1
+        locked_now = new_count >= _LOCKOUT_THRESHOLD
         session.execute(
             sa_update(Soldier)
             .where(Soldier.id == soldier.id)
             .values(
                 failed_login_count=sa_case(
-                    (new_count >= _LOCKOUT_THRESHOLD, 0),
+                    (locked_now, 0),
                     else_=new_count,
                 ),
                 locked_until=sa_case(
-                    (new_count >= _LOCKOUT_THRESHOLD, _now_utc + _td(minutes=_LOCKOUT_MINUTES)),
+                    (locked_now, _now_utc + _td(minutes=_LOCKOUT_MINUTES)),
                     else_=Soldier.locked_until,
                 ),
             )
@@ -184,7 +185,16 @@ def login(
             entity_id=soldier.id, context={**_client_context(request), "personal_number": body.personal_number},
         )
         session.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
+        if locked_now:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="account_locked",
+                headers={"Retry-After": str(_LOCKOUT_MINUTES * 60)},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "invalid_credentials", "attempts": new_count, "max_attempts": _LOCKOUT_THRESHOLD},
+        )
 
     # Successful login — reset lockout state
     soldier.failed_login_count = 0
