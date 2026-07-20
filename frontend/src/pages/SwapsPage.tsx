@@ -5,7 +5,7 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
-import SoldierLink from "../components/SoldierLink";
+import DirectCommanderApproval from "../components/DirectCommanderApproval";
 import { useAuth } from "../auth/AuthContext";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
@@ -139,20 +139,6 @@ function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClic
   return <div className="text-sm">{inner}</div>;
 }
 
-function ChainList({ approvals, t }: { approvals: SwapRequest["requester_manager_approvals"]; t: (k: string) => string }) {
-  if (approvals.length === 0) return <span className="text-gray-400">{t("swaps.no_managers_required")}</span>;
-  return (
-    <span className="flex flex-wrap gap-2">
-      {approvals.map((a) => (
-        <span key={a.commander_id} className="inline-flex items-center gap-1">
-          <SoldierLink id={a.commander_id} name={a.commander_name ?? a.commander_id.slice(0, 8)} />
-          <ApprovalDot value={a.approved ? true : null} />
-        </span>
-      ))}
-    </span>
-  );
-}
-
 function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; requireManagerApproval: boolean }) {
   const { t } = useTranslation();
   if (!requireManagerApproval || swap.status !== "pending_approval") return null;
@@ -163,8 +149,8 @@ function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; r
         <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
       </div>
       <div className="flex flex-col gap-1">
-        <span>{t("swaps.requester_managers")}: <ChainList approvals={swap.requester_manager_approvals} t={t} /></span>
-        <span>{t("swaps.covering_managers")}: <ChainList approvals={swap.covering_manager_approvals} t={t} /></span>
+        <span>{t("swaps.requester_managers")}: <DirectCommanderApproval approvals={swap.requester_manager_approvals} /></span>
+        <span>{t("swaps.covering_managers")}: <DirectCommanderApproval approvals={swap.covering_manager_approvals} /></span>
       </div>
     </div>
   );

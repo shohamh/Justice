@@ -6,6 +6,7 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
+import DirectCommanderApproval, { isSideSatisfied } from "../components/DirectCommanderApproval";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import {
@@ -456,8 +457,8 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {swapItems.map(swap => {
-              const requesterManagersDone = swap.requester_manager_approvals.every(a => a.approved);
-              const coveringManagersDone = swap.covering_manager_approvals.every(a => a.approved);
+              const requesterManagersDone = isSideSatisfied(swap.requester_manager_approvals);
+              const coveringManagersDone = isSideSatisfied(swap.covering_manager_approvals);
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
@@ -477,21 +478,11 @@ export default function ApprovalsPage() {
                   <div className="text-xs text-gray-500 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>{t("swaps.requester_managers")}:</span>
-                      {swap.requester_manager_approvals.map(a => (
-                        <span key={a.commander_id} className="inline-flex items-center gap-1">
-                          <SoldierLink id={a.commander_id} name={a.commander_name ?? a.commander_id.slice(0, 8)} />
-                          <ApprovalDotInline value={a.approved} />
-                        </span>
-                      ))}
+                      <DirectCommanderApproval approvals={swap.requester_manager_approvals} />
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span>{t("swaps.covering_managers")}:</span>
-                      {swap.covering_manager_approvals.map(a => (
-                        <span key={a.commander_id} className="inline-flex items-center gap-1">
-                          <SoldierLink id={a.commander_id} name={a.commander_name ?? a.commander_id.slice(0, 8)} />
-                          <ApprovalDotInline value={a.approved} />
-                        </span>
-                      ))}
+                      <DirectCommanderApproval approvals={swap.covering_manager_approvals} />
                     </div>
                   </div>
                   <div className="flex gap-2 items-center flex-wrap">
