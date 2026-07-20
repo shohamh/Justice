@@ -1,39 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
-import { listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO } from "../api/notifications";
+import { listNotifications, markRead, markAllRead, deleteNotification } from "../api/notifications";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
-  const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
   const [offset, setOffset] = useState(0);
   const limit = 20;
 
-  useEffect(() => {
-    const params: Record<string, unknown> = { offset, limit };
-    if (filter === "unread") params.is_read = false;
-    listNotifications(params).then((r) => {
-      setNotifications(r.items);
-      setTotal(r.total);
-    }).catch(() => {});
-  }, [filter, offset]);
+  const notificationsQuery = useQuery({
+    queryKey: queryKeys.notifications(filter, offset),
+    queryFn: () => {
+      const params: Record<string, unknown> = { offset, limit };
+      if (filter === "unread") params.is_read = false;
+      return listNotifications(params);
+    },
+  });
+  const notifications = notificationsQuery.data?.items ?? [];
+  const total = notificationsQuery.data?.total ?? 0;
 
   async function handleMarkRead(id: string) {
     await markRead(id);
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
   }
 
   async function handleMarkAll() {
     await markAllRead();
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
   }
 
   async function handleDelete(id: string) {
     await deleteNotification(id);
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    setTotal((t) => t - 1);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
   }
 
   const typeLabels: Record<string, string> = {

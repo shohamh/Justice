@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import Layout from "../../components/Layout";
+import { queryKeys } from "../../queryKeys";
 import { TransparencyRow, getTransparency } from "../../api/scoring";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
 import { getAccessToken } from "../../api/client";
@@ -70,14 +72,29 @@ const CONFIG_SHEET_OPTIONS = [
   { key: "exemption_types", label: "פטורים" },
 ] as const;
 
+const DATA_SHEET_OPTIONS = [
+  { key: "soldiers", label: "חיילים" },
+  { key: "duty_shifts", label: "משמרות" },
+  { key: "assignments", label: "שיבוצים" },
+  { key: "shift_templates", label: "תבניות תורנות" },
+] as const;
+
+const ALL_KEYS = [
+  "transparency",
+  "sub_units",
+  ...CONFIG_SHEET_OPTIONS.map((o) => o.key),
+  ...DATA_SHEET_OPTIONS.map((o) => o.key),
+] as const;
+
 export default function ExportPage() {
   const { t } = useTranslation();
-  const [rows, setRows] = useState<TransparencyRow[]>([]);
-  const [treeNodes, setTreeNodes] = useState<NodeDTO[]>([]);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
-  useEffect(() => { void getTransparency().then((out) => setRows(out.rows)); }, []);
-  useEffect(() => { void fetchFullTree().then(setTreeNodes); }, []);
+  const transparencyQuery = useQuery({ queryKey: queryKeys.transparency(), queryFn: getTransparency });
+  const rows = useMemo<TransparencyRow[]>(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
+
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const treeNodes = useMemo<NodeDTO[]>(() => treeQuery.data ?? [], [treeQuery.data]);
 
   const flatNodes = useMemo(() => flattenTree(treeNodes), [treeNodes]);
   const nodesById = useMemo(() => new Map(flatNodes.map((n) => [n.id, n])), [flatNodes]);
@@ -152,6 +169,13 @@ export default function ExportPage() {
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  const allChecked = ALL_KEYS.every((key) => checked[key]);
+
+  function toggleAll() {
+    const next = !allChecked;
+    setChecked(Object.fromEntries(ALL_KEYS.map((key) => [key, next])));
+  }
+
   async function handleExport() {
     const wb = XLSX.utils.book_new();
 
@@ -178,6 +202,18 @@ export default function ExportPage() {
       }
     }
 
+    const dataSheets = DATA_SHEET_OPTIONS.filter((o) => checked[o.key]).map((o) => o.key);
+    if (dataSheets.length > 0) {
+      const resp = await fetch(`/api/import/export?sheets=${dataSheets.join(",")}`, {
+        headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+      });
+      const buf = await resp.arrayBuffer();
+      const dataWb = XLSX.read(buf, { type: "array" });
+      for (const name of dataWb.SheetNames) {
+        XLSX.utils.book_append_sheet(wb, dataWb.Sheets[name], name);
+      }
+    }
+
     if (wb.SheetNames.length > 0) {
       XLSX.writeFile(wb, "export.xlsx");
     }
@@ -188,6 +224,10 @@ export default function ExportPage() {
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
         <h2 className="text-xl font-semibold">{t("nav.planning_export")}</h2>
         <div className="space-y-2">
+          <label className="flex items-center gap-2 font-medium border-b pb-2 dark:border-gray-700">
+            <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+            בחר הכל
+          </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={!!checked.transparency} onChange={() => toggle("transparency")} />
             {t("export.transparency_title")}
@@ -197,6 +237,12 @@ export default function ExportPage() {
             {t("export.sub_units_title")}
           </label>
           {CONFIG_SHEET_OPTIONS.map((o) => (
+            <label key={o.key} className="flex items-center gap-2">
+              <input type="checkbox" checked={!!checked[o.key]} onChange={() => toggle(o.key)} />
+              {o.label}
+            </label>
+          ))}
+          {DATA_SHEET_OPTIONS.map((o) => (
             <label key={o.key} className="flex items-center gap-2">
               <input type="checkbox" checked={!!checked[o.key]} onChange={() => toggle(o.key)} />
               {o.label}

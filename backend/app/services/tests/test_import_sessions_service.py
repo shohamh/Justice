@@ -965,3 +965,492 @@ def test_confirm_session_assignment_matched_shift_skipped_errors_gracefully(admi
     assert len(result["errors"]) == 1
     assert result["errors"][0]["type"] == "assignments"
     assert sess.created_links["assignments"] == []
+
+
+def _wb_with_duty_types(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_types")
+    ws.append([
+        "name", "score_per_day", "description", "active", "reserve_ratio", "reserve_minimum",
+        "is_external", "contact_name", "contact_phone", "start_time", "end_time",
+        "instructions", "eligible_units", "requirements_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def _wb_with_exemption_types(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("exemption_types")
+    ws.append([
+        "name", "description", "is_global", "is_medical", "is_commander_exemption",
+        "applies_to_duty_types",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_duty_type_field_override_changes_resolved_score(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"score_per_day": "2.50"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["score_per_day"] == "2.50"
+
+
+def test_duty_type_field_override_invalid_value_produces_row_error(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"score_per_day": "not-a-number"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["action"] == "error"
+    assert any("ניקוד ליום לא תקין" in e for e in row["errors"])
+
+
+def test_exemption_type_field_override_changes_resolved_flag(admin_session):
+    wb = _wb_with_exemption_types([
+        ["פטור", "", "false", "false", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["exemption_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"exemption_types": {str(row_num): {"is_medical": True}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["exemption_types"][0]
+    assert row["is_medical"] is True
+
+
+def test_duty_type_field_override_bypasses_eligible_unit_resolution(admin_session):
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "לא קיים", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+    # Without the override, "לא קיים" fails to resolve and the row errors.
+    assert sess.parsed_state["duty_types"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"resolved_eligible_node_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_types"][0]
+    assert row["action"] == "new"
+    assert row["resolved_eligible_node_ids"] == []
+
+
+def test_exemption_type_field_override_bypasses_applies_to_resolution(admin_session):
+    wb = _wb_with_exemption_types([
+        ["פטור", "", "false", "false", "false", "לא קיים"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["exemption_types"][0]["row"]
+    assert sess.parsed_state["exemption_types"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"exemption_types": {str(row_num): {"resolved_duty_type_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["exemption_types"][0]
+    assert row["action"] == "new"
+    assert row["resolved_duty_type_ids"] == []
+
+
+def test_confirm_session_new_duty_type_preserves_requirements(admin_session):
+    from app.db.models import DutyType as DutyTypeModel
+
+    wb = _wb_with_duty_types([
+        ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_types"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_types": {str(row_num): {"requirements": {"officers_allowed": False}}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    created = admin_session.execute(
+        select(DutyTypeModel).where(DutyTypeModel.name == "שמירה")
+    ).scalar_one()
+    assert created.requirements == {"officers_allowed": False}
+
+
+def _wb_with_shift_templates(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("shift_templates")
+    ws.append([
+        "name", "duty_type_name", "duty_location_name", "recurrence_type", "weekdays",
+        "start_time", "end_time", "required_count", "auto_roll", "auto_roll_until",
+        "duration_days", "notes", "eligible_units",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_shift_template_resolves_duty_type_and_location(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "08:00", "17:00", 1, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "new"
+    assert row["resolved_duty_type_id"] == str(dt.id)
+    assert row["resolved_duty_location_id"] == str(loc.id)
+
+
+def test_shift_template_unresolved_duty_type_errors(admin_session):
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", "לא קיים", loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "error"
+    assert any("סוג תורנות לא מזוהה" in e for e in row["errors"])
+
+
+def test_shift_template_matches_existing_by_name_for_update(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_{_uid()}"
+    create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[],
+    )
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "", "", 2, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "update"
+    assert row["existing_id"] is not None
+
+
+def test_shift_template_eligible_unit_resolution(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", node.name],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["resolved_eligible_node_ids"] == [str(node.id)]
+
+
+def test_shift_template_field_override_changes_resolved_name(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["shift_templates"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"shift_templates": {str(row_num): {"required_count": 5}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["required_count"] == 5
+
+
+def test_shift_template_field_override_bypasses_eligible_unit_resolution(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", "לא קיים"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["shift_templates"][0]["row"]
+    # Without the override, the unresolvable "לא קיים" eligible unit errors the row.
+    assert sess.parsed_state["shift_templates"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"shift_templates": {str(row_num): {"resolved_eligible_node_ids": []}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "new"
+    assert row["resolved_eligible_node_ids"] == []
+
+
+def test_shift_template_field_override_none_value_still_bypasses_resolution(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [f"tpl_{_uid()}", dt.name, loc.name, "weekdays", "", "", "", 1, "false", "", 1, "", "לא קיים"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["shift_templates"][0]["row"]
+    assert sess.parsed_state["shift_templates"][0]["action"] == "error"
+
+    # Override value is explicitly None (key present, value None) — this is the input that
+    # discriminates key-presence detection (correctly skips resolution) from value-identity
+    # detection (would incorrectly re-run resolution, since a plain `is None` check on the
+    # resolved value can't tell "override explicitly set to None" apart from "no override at
+    # all", which also yields None).
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"shift_templates": {str(row_num): {"resolved_eligible_node_ids": None}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["shift_templates"][0]
+    assert row["action"] == "new"
+    assert row["resolved_eligible_node_ids"] == []
+
+
+def test_confirm_session_creates_shift_template(admin_session):
+    from app.db.models import ShiftTemplate as ShiftTemplateModel
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.commit()
+
+    tpl_name = f"tpl_{_uid()}"
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "08:00", "17:00", 2, "false", "", 1, "note", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["created"] == 1
+    assert len(sess.created_links["shift_templates"]) == 1
+    created = admin_session.get(ShiftTemplateModel, uuid.UUID(sess.created_links["shift_templates"][0]))
+    assert created is not None
+    assert created.name == tpl_name
+    assert created.duty_type_id == dt.id
+    assert created.required_count == 2
+    assert created.notes == "note"
+
+
+def test_confirm_session_updates_existing_shift_template(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_{_uid()}"
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[], required_count=1,
+    )
+    admin_session.commit()
+
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "", "", 3, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.required_count == 3
+
+
+def test_confirm_session_shift_template_update_preserves_unspecified_fields(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    tpl_name = f"tpl_{_uid()}"
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[], required_count=1,
+        notes="existing note", eligible_node_ids=[node.id],
+    )
+    admin_session.commit()
+
+    # Re-import the same template with notes/eligible_units left blank in the sheet,
+    # only changing required_count.
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "weekdays", "", "", "", 5, "false", "", 1, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.required_count == 5
+    assert tpl.notes == "existing note"  # not cleared
+    assert tpl.eligible_node_ids == [node.id]  # not cleared
+
+
+def test_confirm_session_shift_template_update_preserves_blank_recurrence_fields(admin_session):
+    from app.services.shift_templates import create_template
+
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_{_uid()}"
+    # recurrence_type must be "weekly" here: update_template forces duration_days
+    # back to 1 for any non-"weekly" recurrence (a separate, deliberate rule in
+    # update_template itself, unrelated to this blank-cell bug) — so only
+    # "weekly" lets duration_days > 1 survive an update to exercise the fix.
+    # weekdays is filled in the re-import row below (not left blank), since
+    # blank-cell preservation for `weekdays` itself is not part of this fix.
+    tpl = create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekly", weekdays=[1, 2, 3], required_count=7, duration_days=3, auto_roll=True,
+        auto_roll_until=None,
+    )
+    admin_session.commit()
+
+    # Re-import leaving recurrence_type/required_count/duration_days/auto_roll blank,
+    # only specifying notes (and weekdays, kept identical to the existing template).
+    # auto_roll is left as a genuinely-empty cell (None) rather than "" — parse_bool
+    # only treats a true None cell as "blank" (an empty *string* cell parses to
+    # False, same as a real openpyxl blank cell always yields None, never "").
+    wb = _wb_with_shift_templates([
+        [tpl_name, dt.name, loc.name, "", "1,2,3", "", "", "", None, "", "", "updated note", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    admin_session.commit()
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    admin_session.refresh(tpl)
+    assert tpl.notes == "updated note"
+    assert tpl.recurrence_type == "weekly"  # preserved, not reset to "weekdays"
+    assert tpl.required_count == 7  # preserved, not reset to 1
+    assert tpl.duration_days == 3  # preserved, not reset to 1
+    assert tpl.auto_roll is True  # preserved, not reset to False

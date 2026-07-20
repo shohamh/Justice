@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="http://localhost:5173", alias="ALLOWED_ORIGINS")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     login_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_RATE_LIMIT")
+    login_account_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_ACCOUNT_RATE_LIMIT")
     cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
 
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")

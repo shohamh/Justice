@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart,
   Bar,
@@ -12,9 +13,10 @@ import {
 
 import Layout from "../components/Layout";
 import { useAuth } from "../auth/AuthContext";
-import { listEffectiveDuties, EffectiveDuty } from "../api/assignments";
-import { getTransparency, getBreakdown, TransparencyRow, Breakdown } from "../api/scoring";
-import { getReserveStats, ReserveStats } from "../api/soldiers";
+import { listEffectiveDuties } from "../api/assignments";
+import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
+import { getReserveStats } from "../api/soldiers";
+import { queryKeys } from "../queryKeys";
 
 function avg(rows: TransparencyRow[], key: "normalised_score" | "active_days" | "shift_count"): number {
   if (rows.length === 0) return 0;
@@ -46,32 +48,37 @@ const dayCount = (d: { start_date: string; end_date: string }) => {
 
 export default function MyDutiesPage() {
   const { user } = useAuth();
-  const [allRows, setAllRows] = useState<TransparencyRow[]>([]);
-  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
-  const [pastCount, setPastCount] = useState(0);
-  const [pastDays, setPastDays] = useState(0);
-  const [reserveStats, setReserveStats] = useState<ReserveStats | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
-    const today = new Date().toISOString().split("T")[0];
-    void Promise.all([
-      getTransparency().then((out) => out.rows).catch(() => [] as TransparencyRow[]),
-      getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] }) as Breakdown),
-      listEffectiveDuties(user.id).catch(() => [] as EffectiveDuty[]),
-      getReserveStats().catch(() => null),
-    ]).then(([rows, bd, duties, stats]) => {
-      setAllRows(rows as TransparencyRow[]);
-      setBreakdown(bd as Breakdown);
-      // end_date is exclusive, so "over" means end_date is today or earlier.
-      const past = (duties as EffectiveDuty[]).filter((d) => d.end_date <= today);
-      setPastCount(past.length);
-      setPastDays(past.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0));
-      setReserveStats(stats as ReserveStats | null);
-      setLoading(false);
-    });
-  }, [user]);
+  const transparencyQuery = useQuery({
+    queryKey: queryKeys.transparency(),
+    queryFn: getTransparency,
+    select: (out) => out.rows,
+  });
+  const allRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
+
+  const breakdownQuery = useQuery({
+    queryKey: user ? queryKeys.breakdown(user.id) : ["breakdown", "anonymous"],
+    queryFn: () => getBreakdown(user!.id),
+    enabled: !!user,
+  });
+  const breakdown = breakdownQuery.data ?? null;
+
+  const dutiesQuery = useQuery({
+    queryKey: user ? queryKeys.effectiveDuties(user.id) : ["effectiveDuties", "anonymous"],
+    queryFn: () => listEffectiveDuties(user!.id),
+    enabled: !!user,
+  });
+
+  const reserveStatsQuery = useQuery({ queryKey: queryKeys.reserveStats(), queryFn: getReserveStats });
+  const reserveStats = reserveStatsQuery.data ?? null;
+
+  const today = new Date().toISOString().split("T")[0];
+  // end_date is exclusive, so "over" means end_date is today or earlier.
+  const pastDuties = (dutiesQuery.data ?? []).filter((d) => d.end_date <= today);
+  const pastCount = pastDuties.length;
+  const pastDays = pastDuties.reduce((s, d) => s + dayCount(d as { start_date: string; end_date: string }), 0);
+
+  const loading = transparencyQuery.isLoading || breakdownQuery.isLoading || dutiesQuery.isLoading;
 
   const myRow = useMemo(
     () => allRows.find((r) => r.soldier_id === user?.id) ?? null,

@@ -67,8 +67,26 @@ def test_rbac_duty_config_role_gate(client: TestClient, admin_session: Session):
         ).status_code
         == 201
     )
-    assert client.get("/api/duty-config/duty-types", headers=auth_headers(cmd)).status_code == 403
-    assert client.get("/api/duty-config/duty-types", headers=auth_headers(sol)).status_code == 403
+    # GET is reference data, open to any authenticated (password-changed) soldier.
+    assert client.get("/api/duty-config/duty-types", headers=auth_headers(cmd)).status_code == 200
+    assert client.get("/api/duty-config/duty-types", headers=auth_headers(sol)).status_code == 200
+    # Mutations remain gated to duty managers/admins.
+    assert (
+        client.post(
+            "/api/duty-config/duty-types",
+            headers=auth_headers(cmd),
+            json={"name": "rbac-dt3", "score_per_day": "1.00", "is_external": False},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            "/api/duty-config/duty-types",
+            headers=auth_headers(sol),
+            json={"name": "rbac-dt4", "score_per_day": "1.00", "is_external": False},
+        ).status_code
+        == 403
+    )
 
 
 def test_rbac_must_change_password_blocks_duty_config(client: TestClient, admin_session: Session):

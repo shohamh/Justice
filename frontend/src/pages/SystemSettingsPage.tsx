@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
 import { getSystemSettings, updateSystemSettings, SettingsMap } from "../api/systemSettings";
 import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
+import { queryKeys } from "../queryKeys";
 
 interface SettingDef {
   key: string;
@@ -218,38 +220,44 @@ function resolveValue(map: SettingsMap, def: SettingDef): string | number | bool
 
 export function SystemSettingsContent() {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState<SettingsMap>({});
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
+  const settings = settingsQuery.data ?? {};
+
+  // draft mirrors the query result but is then edited locally before saving,
+  // so it stays a useState fed by an effect rather than reading straight from
+  // the query on every render (same pattern as ProfilePage's notification prefs).
   const [draft, setDraft] = useState<SettingsMap>({});
-  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getSystemSettings().then(s => {
-      setSettings(s);
-      setDraft(s);
-    }).catch(() => setError("שגיאה בטעינת ההגדרות"));
-  }, []);
+    if (settingsQuery.data) setDraft(settingsQuery.data);
+  }, [settingsQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: updateSystemSettings,
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemSettings() });
+      setDraft(updated);
+      setSaved(true);
+    },
+  });
 
   function setValue(key: string, value: string | number | boolean) {
     setDraft(prev => ({ ...prev, [key]: value }));
     setSaved(false);
   }
 
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const updated = await updateSystemSettings(draft);
-      setSettings(updated);
-      setDraft(updated);
-      setSaved(true);
-    } catch {
-      setError("שגיאה בשמירת ההגדרות");
-    } finally {
-      setSaving(false);
-    }
+  function handleSave() {
+    saveMutation.mutate(draft);
   }
+
+  const saving = saveMutation.isPending;
+  const error = saveMutation.isError
+    ? "שגיאה בשמירת ההגדרות"
+    : settingsQuery.isError
+      ? "שגיאה בטעינת ההגדרות"
+      : null;
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
 

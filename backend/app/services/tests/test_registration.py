@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -68,6 +68,23 @@ def test_register_places_soldier_in_holding_node(admin_session):
     assert req.requested_node_id == node.id
 
 
+def test_register_rejects_discharge_before_enlistment(admin_session):
+    from app.services.registration import register, RegistrationError
+    from app.services.invite_codes import create_invite_code
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="discharge_date"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[], personal_constraints=[], is_career=False,
+            **_base(enlistment_date=date(2024, 1, 1), discharge_date=date(2023, 1, 1)),
+        )
+
+
 def test_register_decrements_invite_code(admin_session):
     _make_holding(admin_session)
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")
@@ -119,7 +136,8 @@ def test_register_stores_is_career(admin_session):
 
     soldier = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
-        exemption_requests=[], personal_constraints=[], is_career=True, **_base()
+        exemption_requests=[], personal_constraints=[], is_career=True,
+        **_base(discharge_date=date.today() + timedelta(days=365 * 5)),
     )
     admin_session.commit()
 

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
@@ -9,13 +11,11 @@ import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import {
-  PersonalConstraint,
   approveConstraint,
   listPendingApprovals,
   rejectConstraint,
 } from "../api/constraints";
 import {
-  ExemptionRequest,
   approveExemptionRequestCommanderStep,
   approveExemptionRequestDutyManagerStep,
   exemptionFileDownloadUrl,
@@ -29,12 +29,12 @@ import {
   listPendingFieldUpdates,
 } from "../api/soldiers";
 import {
-  SwapRequest,
   approveSwapSide,
   listPendingSwaps,
   rejectSwap,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
+import { DaysBadge } from "../components/DaysBadge";
 
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
@@ -42,25 +42,6 @@ function describeError(err: unknown): string {
     if (resp?.data?.detail) return resp.data.detail;
   }
   return "שגיאה בביצוע הפעולה";
-}
-
-function daysBetween(start: string, end: string | null | undefined): number | null {
-  if (!end) return null;
-  const a = new Date(start);
-  const b = new Date(end);
-  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-}
-
-function DaysBadge({ start, end }: { start: string; end: string | null | undefined }) {
-  const days = daysBetween(start, end);
-  if (days === null) return null;
-  const cls =
-    days > 90
-      ? "text-red-600 dark:text-red-400"
-      : days > 30
-      ? "text-yellow-600 dark:text-yellow-400"
-      : "text-gray-400 dark:text-gray-500";
-  return <span className={`text-xs ${cls}`}>({days} ימים)</span>;
 }
 
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
@@ -76,69 +57,54 @@ export default function ApprovalsPage() {
   function setTab(next: Tab) {
     setSearchParams((prev) => { prev.set("tab", next); return prev; }, { replace: true });
   }
-  const [items, setItems] = useState<PersonalConstraint[]>([]);
-  const [erItems, setErItems] = useState<ExemptionRequest[]>([]);
-  const [fuItems, setFuItems] = useState<FieldUpdateDTO[]>([]);
-  const [swapItems, setSwapItems] = useState<SwapRequest[]>([]);
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
-  const [enrollItems, setEnrollItems] = useState<EnrollmentRequestDTO[]>([]);
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
-  const [nodes, setNodes] = useState<{ id: string; name: string }[]>([]);
-  const [exemptionTypes, setExemptionTypes] = useState<{ id: string; name: string }[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments, tree, etypes] = await Promise.all([
-        listPendingApprovals(),
-        listPendingExemptionRequests(),
-        listPendingFieldUpdates(),
-        listPendingSwaps(),
-        listPendingEnrollments(),
-        fetchFullTree(),
-        listPublicExemptionTypes(),
-      ]);
-      setItems(constraints);
-      setErItems(exemptionReqs);
-      setFuItems(fieldUpdates);
-      setSwapItems(swaps);
-      setEnrollItems(enrollments);
-      // Flatten tree into id+name list
-      const flatNodes: { id: string; name: string }[] = [];
-      function flatten(nodes: NodeDTO[]) {
-        for (const n of nodes) {
-          flatNodes.push({ id: n.id, name: n.name });
-          if (n.children) flatten(n.children);
-        }
-      }
-      flatten(tree);
-      setNodes(flatNodes);
-      setExemptionTypes(etypes.map(et => ({ id: et.id, name: et.name })));
-    })();
-  }, []);
+  const queryClient = useQueryClient();
 
-  const refresh = useCallback(async () => {
-    const [constraints, exemptionReqs, fieldUpdates, swaps, enrollments] = await Promise.all([
-      listPendingApprovals(),
-      listPendingExemptionRequests(),
-      listPendingFieldUpdates(),
-      listPendingSwaps(),
-      listPendingEnrollments(),
-    ]);
-    setItems(constraints);
-    setErItems(exemptionReqs);
-    setFuItems(fieldUpdates);
-    setSwapItems(swaps);
-    setEnrollItems(enrollments);
-  }, []);
+  const constraintsQuery = useQuery({ queryKey: queryKeys.pendingConstraints(), queryFn: listPendingApprovals });
+  const items = constraintsQuery.data ?? [];
+
+  const erQuery = useQuery({ queryKey: queryKeys.pendingExemptionRequests(), queryFn: listPendingExemptionRequests });
+  const erItems = erQuery.data ?? [];
+
+  const fuQuery = useQuery({ queryKey: queryKeys.pendingFieldUpdates(), queryFn: listPendingFieldUpdates });
+  const fuItems = fuQuery.data ?? [];
+
+  const swapsQuery = useQuery({ queryKey: queryKeys.pendingSwaps(), queryFn: listPendingSwaps });
+  const swapItems = swapsQuery.data ?? [];
+
+  const enrollQuery = useQuery({ queryKey: queryKeys.pendingEnrollments(), queryFn: listPendingEnrollments });
+  const enrollItems = enrollQuery.data ?? [];
+
+  const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
+  const nodes = useMemo(() => {
+    const flatNodes: { id: string; name: string }[] = [];
+    function flatten(nodes: NodeDTO[]) {
+      for (const n of nodes) {
+        flatNodes.push({ id: n.id, name: n.name });
+        if (n.children) flatten(n.children);
+      }
+    }
+    flatten(treeQuery.data ?? []);
+    return flatNodes;
+  }, [treeQuery.data]);
+
+  const exemptionTypesQuery = useQuery({ queryKey: queryKeys.publicExemptionTypes(), queryFn: listPublicExemptionTypes });
+  const exemptionTypes = useMemo(
+    () => (exemptionTypesQuery.data ?? []).map(et => ({ id: et.id, name: et.name })),
+    [exemptionTypesQuery.data],
+  );
 
   async function onApprove(id: string) {
     try {
       await approveConstraint(id);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -151,7 +117,8 @@ export default function ApprovalsPage() {
       const next = { ...rejectNotes };
       delete next[id];
       setRejectNotes(next);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -160,7 +127,8 @@ export default function ApprovalsPage() {
   async function onErApproveCommander(id: string) {
     try {
       await approveExemptionRequestCommanderStep(id);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -168,7 +136,8 @@ export default function ApprovalsPage() {
   async function onErApproveDutyManager(id: string) {
     try {
       await approveExemptionRequestDutyManagerStep(id);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -181,7 +150,8 @@ export default function ApprovalsPage() {
       const next = { ...rejectNotes };
       delete next[`er-${id}`];
       setRejectNotes(next);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -190,7 +160,8 @@ export default function ApprovalsPage() {
   async function onFuApprove(item: FieldUpdateDTO) {
     try {
       await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -200,7 +171,8 @@ export default function ApprovalsPage() {
     if (!note) return;
     try {
       await rejectFieldUpdate(item.soldier_id, item.id, note);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -209,7 +181,9 @@ export default function ApprovalsPage() {
   async function onSwapApproveSide(id: string, side: "requester" | "covering") {
     try {
       await approveSwapSide(id, side);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -220,7 +194,9 @@ export default function ApprovalsPage() {
       const next = { ...swapRejectNotes };
       delete next[id];
       setSwapRejectNotes(next);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -230,7 +206,7 @@ export default function ApprovalsPage() {
     if (!window.confirm(t("enrollment.confirm_approve", { soldier: soldierName, node: nodeName }))) return;
     try {
       await approveEnrollment(id);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -243,7 +219,7 @@ export default function ApprovalsPage() {
       const next = { ...enrollRejectNotes };
       delete next[id];
       setEnrollRejectNotes(next);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -355,6 +331,9 @@ export default function ApprovalsPage() {
                     <strong className="text-sm"><SoldierLink id={er.soldier_id} name={er.soldier_name || er.soldier_id.slice(0, 8)} /></strong>
                     {er.node_name && <span className="text-xs text-gray-400">{er.node_name}</span>}
                   </div>
+                  <p className="text-sm font-medium mb-1">
+                    {exemptionTypes.find(et => et.id === er.exemption_type_id)?.name ?? t("exemptions.unknown_type")}
+                  </p>
                   <p className="text-xs text-gray-500 mb-1" data-testid={`er-stage-${er.id}`}>
                     {er.status === "pending_commander"
                       ? "ממתין לאישור מפקד"
@@ -538,7 +517,10 @@ export default function ApprovalsPage() {
           nodes={nodes}
           exemptionTypes={exemptionTypes}
           onClose={() => setSelectedEnrollment(null)}
-          onDone={async () => { setSelectedEnrollment(null); await refresh(); }}
+          onDone={async () => {
+            setSelectedEnrollment(null);
+            await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
+          }}
         />
       )}
     </Layout>

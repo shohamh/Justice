@@ -1,20 +1,30 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
-import { InviteCodeDTO, listInviteCodes, createInviteCode, revokeInviteCode } from "../api/inviteCodes";
+import { listInviteCodes, createInviteCode, revokeInviteCode } from "../api/inviteCodes";
+import { queryKeys } from "../queryKeys";
 
 export function AdminInviteCodesContent() {
   const { t } = useTranslation();
-  const [codes, setCodes] = useState<InviteCodeDTO[]>([]);
+  const queryClient = useQueryClient();
+  const codesQuery = useQuery({ queryKey: queryKeys.inviteCodes(), queryFn: listInviteCodes });
+  const codes = codesQuery.data ?? [];
   const [usesLeft, setUsesLeft] = useState(5);
-  const [creating, setCreating] = useState(false);
 
-  async function refresh() { setCodes(await listInviteCodes()); }
-  useEffect(() => { void refresh(); }, []);
+  const createMutation = useMutation({
+    mutationFn: createInviteCode,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.inviteCodes() }),
+  });
+  const revokeMutation = useMutation({
+    mutationFn: revokeInviteCode,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.inviteCodes() }),
+  });
 
-  async function handleCreate() {
-    setCreating(true);
-    try { await createInviteCode(usesLeft); await refresh(); } finally { setCreating(false); }
+  const creating = createMutation.isPending;
+
+  function handleCreate() {
+    createMutation.mutate(usesLeft);
   }
 
   return (
@@ -45,7 +55,7 @@ export function AdminInviteCodesContent() {
               <td className="py-2">{c.uses_left}</td>
               <td className="py-2">
                 <button className="text-red-600 text-xs hover:underline"
-                  onClick={async () => { await revokeInviteCode(c.id); await refresh(); }}>
+                  onClick={() => revokeMutation.mutate(c.id)}>
                   {t("invite_codes.revoke")}
                 </button>
               </td>

@@ -1,42 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../../components/Layout";
+import { queryKeys } from "../../queryKeys";
 import { ShiftsContent } from "../ShiftsPage";
 import { ShiftTemplatesContent } from "../ShiftTemplatesPage";
 import { AlgorithmContent } from "../AlgorithmPage";
 import { listJobs } from "../../api/algorithm";
-import { computeRunBadgeCounts, RunBadgeJob } from "../../utils/algorithmRunBadges";
+import { computeRunBadgeCounts } from "../../utils/algorithmRunBadges";
 import { useSeenJobs } from "../../contexts/AlgorithmSeenContext";
+
+const RUN_BADGES_LIMIT = 50;
+const RUN_BADGES_OFFSET = 0;
 
 export default function ShiftsManagementPage() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [runsOpen, setRunsOpen] = useState(false);
   const [latestJobId, setLatestJobId] = useState<string | null>(null);
   const runsRef = useRef<HTMLElement | null>(null);
   const { seenIds, seedSeenIds, markAllSeen } = useSeenJobs();
-  const [rawJobs, setRawJobs] = useState<RunBadgeJob[]>([]);
+
+  // Poll the job list every 30s to keep the run badges (running/draft/done/
+  // failed counts) fresh even while this collapsible section is closed.
+  const jobsQuery = useQuery({
+    queryKey: queryKeys.algorithmJobs(RUN_BADGES_LIMIT, RUN_BADGES_OFFSET),
+    queryFn: () => listJobs(RUN_BADGES_LIMIT, RUN_BADGES_OFFSET),
+    refetchInterval: 30_000,
+  });
+  const rawJobs = useMemo(() => jobsQuery.data?.items ?? [], [jobsQuery.data]);
   const runBadgeCounts = useMemo(() => computeRunBadgeCounts(rawJobs, seenIds), [rawJobs, seenIds]);
 
   useEffect(() => {
-    async function fetchRawJobs() {
-      try {
-        const result = await listJobs(50);
-        setRawJobs(result.items);
-        seedSeenIds(result.items);
-      } catch {
-        // ignore — leave last known data in place
-      }
-    }
-
-    void fetchRawJobs();
-    const interval = setInterval(() => void fetchRawJobs(), 30_000);
-    return () => clearInterval(interval);
-  }, [latestJobId, seedSeenIds]);
+    if (jobsQuery.data) seedSeenIds(jobsQuery.data.items);
+  }, [jobsQuery.data, seedSeenIds]);
 
   function handleJobSubmitted(jobId: string) {
     setLatestJobId(jobId);
     setRunsOpen(true);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(RUN_BADGES_LIMIT, RUN_BADGES_OFFSET) });
     setTimeout(() => runsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 

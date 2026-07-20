@@ -45,7 +45,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Default run is the fast suite, parallel across a fixed worker count (~2 min).
+# Default run is the fast suite, parallel across a fixed worker count (~1.5 min;
+# see pg_container in conftest.py for the fsync/full_page_writes tuning that
+# brought this down from ~8 min by making the per-test TRUNCATE nearly free).
 # Capped at 4 rather than `-n auto`: auto sizes off the host's logical CPU count,
 # but each worker boots its own testcontainers Postgres and loads ortools' ~70MB
 # of native DLLs, which overcommits memory/the Windows page file (and Docker

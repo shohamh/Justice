@@ -13,7 +13,8 @@ export interface NameMappings {
 
 export interface Selections {
   _name_mappings?: NameMappings;
-  [group: string]: Record<string, string> | NameMappings | undefined;
+  _field_overrides?: Record<string, Record<string, Record<string, unknown>>>;
+  [group: string]: Record<string, string> | NameMappings | Record<string, Record<string, Record<string, unknown>>> | undefined;
 }
 
 export interface RowBase {
@@ -63,9 +64,19 @@ export interface ShiftTemplateRow extends RowBase {
   name: string;
   duty_type_name: string;
   resolved_duty_type_id: string | null;
-  days_of_week: number[];
-  required_primary: number;
-  required_reserve: number;
+  duty_location_name: string;
+  resolved_duty_location_id: string | null;
+  recurrence_type: string;
+  weekdays: number[];
+  start_time: string | null;
+  end_time: string | null;
+  required_count: number;
+  auto_roll: boolean;
+  auto_roll_until: string | null;
+  duration_days: number;
+  notes: string | null;
+  resolved_eligible_node_ids: string[];
+  existing_id: string | null;
 }
 
 export interface AssignmentRow extends RowBase {
@@ -111,6 +122,16 @@ export interface HierarchyImportRow extends RowBase {
 export interface DutyTypeImportRow extends RowBase {
   name: string;
   score_per_day: string | null;
+  description: string | null;
+  active: boolean | null;
+  reserve_ratio: string | null;
+  reserve_minimum: number | null;
+  is_external: boolean | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  instructions: string | null;
   resolved_eligible_node_ids: string[];
   requirements: Record<string, unknown> | null;
   existing_id: string | null;
@@ -118,6 +139,10 @@ export interface DutyTypeImportRow extends RowBase {
 
 export interface ExemptionTypeImportRow extends RowBase {
   name: string;
+  description: string | null;
+  is_global: boolean;
+  is_medical: boolean;
+  is_commander_exemption: boolean;
   resolved_duty_type_ids: string[];
   existing_id: string | null;
 }

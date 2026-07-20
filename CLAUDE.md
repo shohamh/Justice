@@ -78,7 +78,7 @@ changelog commit lands on `master` as part of the same merge, with message
 
 ```bash
 # Backend — activate venv first: backend\.venv\Scripts\activate (Windows)
-pytest -q                          # fast suite, parallel by default (-n auto baked into addopts; ~2 min)
+pytest -q                          # fast suite, parallel by default (-n auto baked into addopts; ~1.5 min)
 pytest --slow -q                   # EVERYTHING incl. the 8 large-scale CP-SAT tests (~11 min added) — run before a release (CI skips slow)
 pytest -m algorithm -q             # just one system area: algorithm | auth | hierarchy | duty | scoring | notifications | soldiers | misc
 pytest -m "duty or scoring" -q     # combine areas

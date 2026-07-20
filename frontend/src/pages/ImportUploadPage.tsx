@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { uploadSession } from "../api/importSessions";
 
@@ -43,18 +43,22 @@ export default function ImportUploadPage() {
             העלה קובץ Excel עם גיליונות:{" "}
             <code>soldiers</code>, <code>duty_shifts</code>, <code>assignments</code>
           </p>
-          <a
-            href="/api/import/template"
-            className="text-indigo-600 hover:underline text-sm"
-          >
-            הורד תבנית לדוגמה ›
-          </a>
-          <a
-            href="/api/import/export"
-            className="text-indigo-600 hover:underline text-sm"
-          >
-            ייצוא המצב הנוכחי ›
-          </a>
+          <p>
+            <a
+              href="/api/import/template"
+              className="text-indigo-600 hover:underline text-sm"
+            >
+              הורד תבנית לדוגמה ›
+            </a>
+          </p>
+          <p>
+            <Link
+              to="/planning/export"
+              className="text-indigo-600 hover:underline text-sm"
+            >
+              ייצוא המצב הנוכחי ›
+            </Link>
+          </p>
           <div>
             <input
               ref={fileRef}

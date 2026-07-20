@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import AlertBanners from "../components/dashboard/AlertBanners";
 import DutyCalendarWidget from "../components/dashboard/DutyCalendarWidget";
@@ -16,11 +18,11 @@ import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 
 import { useAuth } from "../auth/AuthContext";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { DutyType, DutyLocation, listDutyTypes, listLocations } from "../api/dutyConfig";
-import { SwapRequest, listMySwaps, listPendingSwaps } from "../api/swaps";
-import { EnrollmentRequestDTO, listPendingEnrollments } from "../api/enrollment";
+import { listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listMySwaps, listPendingSwaps } from "../api/swaps";
+import { listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
-import { TransparencyRow, Breakdown, getTransparency, getBreakdown } from "../api/scoring";
+import { getTransparency, getBreakdown } from "../api/scoring";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
@@ -54,21 +56,77 @@ export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [duties, setDuties] = useState<EffectiveDuty[]>([]);
-  const [typeNames, setTypeNames] = useState<Record<string, string>>({});
-  const [locationNames, setLocationNames] = useState<Record<string, string>>({});
   const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
-  const [mySwaps, setMySwaps] = useState<SwapRequest[]>([]);
-  const [pendingEnrollments, setPendingEnrollments] = useState<EnrollmentRequestDTO[]>([]);
-  const [pendingSwaps, setPendingSwaps] = useState<SwapRequest[]>([]);
-  const [settings, setSettings] = useState<SettingsMap>({});
-  const [transparencyRows, setTransparencyRows] = useState<TransparencyRow[]>([]);
-  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
-  const [pendingConstraints, setPendingConstraints] = useState(0);
-  const [pendingExemptions, setPendingExemptions] = useState(0);
-  const [pendingFieldUpdates, setPendingFieldUpdates] = useState(0);
 
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+
+  const dutiesQuery = useQuery({
+    queryKey: user ? queryKeys.effectiveDuties(user.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }) : ["effectiveDuties", "anonymous"],
+    queryFn: () => listEffectiveDuties(user!.id, { date_from: offsetDate(-365), date_to: offsetDate(60) }),
+    enabled: !!user,
+  });
+  const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
+
+  const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const typeNames = Object.fromEntries((typesQuery.data ?? []).map((t) => [t.id, t.name]));
+
+  const locsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
+  const locationNames = Object.fromEntries((locsQuery.data ?? []).map((l) => [l.id, l.name]));
+
+  const mySwapsQuery = useQuery({ queryKey: queryKeys.mySwaps(), queryFn: listMySwaps });
+  const mySwaps = mySwapsQuery.data ?? [];
+
+  const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
+  const settings = settingsQuery.data ?? ({} as SettingsMap);
+
+  const transparencyQuery = useQuery({
+    queryKey: queryKeys.transparency(),
+    queryFn: getTransparency,
+    select: (out) => out.rows,
+  });
+  const transparencyRows = useMemo(() => transparencyQuery.data ?? [], [transparencyQuery.data]);
+
+  const breakdownQuery = useQuery({
+    queryKey: user ? queryKeys.breakdown(user.id) : ["breakdown", "anonymous"],
+    queryFn: () => getBreakdown(user!.id),
+    enabled: !!user,
+  });
+  const breakdown = breakdownQuery.data ?? null;
+
+  const enrollQuery = useQuery({
+    queryKey: queryKeys.pendingEnrollments(),
+    queryFn: listPendingEnrollments,
+    enabled: canApprove,
+  });
+  const pendingEnrollments = enrollQuery.data ?? [];
+
+  const pendingSwapsQuery = useQuery({
+    queryKey: queryKeys.pendingSwaps(),
+    queryFn: listPendingSwaps,
+    enabled: canApprove,
+  });
+  const pendingSwaps = pendingSwapsQuery.data ?? [];
+
+  const pendingConstraintsQuery = useQuery({
+    queryKey: queryKeys.pendingConstraintsCount(),
+    queryFn: getPendingCount,
+    enabled: canApprove,
+  });
+  const pendingConstraints = pendingConstraintsQuery.data ?? 0;
+
+  const pendingExemptionsQuery = useQuery({
+    queryKey: queryKeys.pendingExemptionsCount(),
+    queryFn: getPendingExemptionCount,
+    enabled: canApprove,
+  });
+  const pendingExemptions = pendingExemptionsQuery.data ?? 0;
+
+  const pendingFieldUpdatesQuery = useQuery({
+    queryKey: queryKeys.pendingFieldUpdatesCount(),
+    queryFn: getPendingFieldUpdateCount,
+    enabled: canApprove,
+  });
+  const pendingFieldUpdates = pendingFieldUpdatesQuery.data ?? 0;
 
   function handleOpenDuty(duty: EffectiveDuty) {
     setSelectedDuty(duty);
@@ -83,55 +141,6 @@ export default function HomePage() {
     () => transparencyRows.find((r) => r.soldier_id === user?.id) ?? null,
     [transparencyRows, user],
   );
-
-  useEffect(() => {
-    if (!user) return;
-
-    const dutyFetch = listEffectiveDuties(user.id, {
-      date_from: offsetDate(-365),
-      date_to: offsetDate(60),
-    }).catch(() => [] as EffectiveDuty[]);
-
-    const typesFetch = listDutyTypes().catch(() => [] as DutyType[]);
-    const locsFetch = listLocations().catch(() => [] as DutyLocation[]);
-    const swapsFetch = listMySwaps().catch(() => [] as SwapRequest[]);
-    const settingsFetch = getSystemSettings().catch(() => ({} as SettingsMap));
-    const transparencyFetch = getTransparency()
-      .then((out) => out.rows)
-      .catch(() => [] as TransparencyRow[]);
-    const breakdownFetch = getBreakdown(user.id).catch(() => ({ per_type: [], adjustments: [] } as Breakdown));
-
-    const enrollFetch = canApprove
-      ? listPendingEnrollments().catch(() => [] as EnrollmentRequestDTO[])
-      : Promise.resolve([] as EnrollmentRequestDTO[]);
-
-    const pendingSwapsFetch = canApprove
-      ? listPendingSwaps().catch(() => [] as SwapRequest[])
-      : Promise.resolve([] as SwapRequest[]);
-
-    const constraintsFetch = canApprove ? getPendingCount().catch(() => 0) : Promise.resolve(0);
-    const exemptionsFetch = canApprove ? getPendingExemptionCount().catch(() => 0) : Promise.resolve(0);
-    const fieldUpdatesFetch = canApprove ? getPendingFieldUpdateCount().catch(() => 0) : Promise.resolve(0);
-
-    void Promise.all([
-      dutyFetch, typesFetch, locsFetch, swapsFetch, settingsFetch,
-      enrollFetch, pendingSwapsFetch, transparencyFetch, breakdownFetch,
-      constraintsFetch, exemptionsFetch, fieldUpdatesFetch,
-    ]).then(([d, dts, locs, sw, sett, enr, psw, tr, bd, constraints, exemptions, fieldUpdates]) => {
-      setDuties(d);
-      setTypeNames(Object.fromEntries((dts as DutyType[]).map((t) => [t.id, t.name])));
-      setLocationNames(Object.fromEntries((locs as DutyLocation[]).map((l) => [l.id, l.name])));
-      setMySwaps(sw);
-      setSettings(sett);
-      setPendingEnrollments(enr as EnrollmentRequestDTO[]);
-      setPendingSwaps(psw as SwapRequest[]);
-      setTransparencyRows(tr as TransparencyRow[]);
-      setBreakdown(bd as Breakdown);
-      setPendingConstraints(constraints as number);
-      setPendingExemptions(exemptions as number);
-      setPendingFieldUpdates(fieldUpdates as number);
-    });
-  }, [user, canApprove]);
 
   const today = new Date().toISOString().split("T")[0];
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import HierarchyNode, NotificationType, PersonalConstraint, Soldier, SoldierEnrollmentRequest
+from app.services.date_validation import check_max_span
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -52,6 +53,7 @@ def submit_constraint(
         raise ConstraintError("soldier_not_found")
     if end_date < start_date:
         raise ConstraintError("bad_date_range")
+    check_max_span(start_date, end_date, ConstraintError)
     if start_date < date.today():
         raise ConstraintError("start_date_in_past")
 

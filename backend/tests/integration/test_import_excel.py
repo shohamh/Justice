@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import io
+import uuid
 from decimal import Decimal
 
 import openpyxl
 import pytest
 
 from app.db.models import DutyLocation, DutyType
+from app.services.duty_config import create_duty_type
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -93,10 +95,54 @@ def test_template_download(client, admin_session):
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     assert set(wb.sheetnames) == {
         "soldiers", "duty_shifts", "assignments",
-        "duty_locations", "hierarchy", "duty_types", "exemption_types",
+        "duty_locations", "hierarchy", "duty_types", "exemption_types", "shift_templates",
     }
     headers = [c.value for c in next(wb["assignments"].iter_rows(min_row=1, max_row=1))]
     assert headers == [
         "personal_number", "full_name", "duty_type_name", "duty_location_name",
         "start_date", "end_date", "start_time", "end_time", "is_reserve", "notes",
     ]
+
+
+def test_template_download_includes_shift_templates_sheet(client, admin_session):
+    node = create_node(admin_session, level="branch", name="ie_node_005")
+    dm = create_soldier(admin_session, personal_number="ie_dm_005", role="duty_manager", hierarchy_node_id=node.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+    resp = client.get("/api/import/template", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert "shift_templates" in wb.sheetnames
+    headers = [c.value for c in next(wb["shift_templates"].iter_rows(min_row=1, max_row=1))]
+    assert headers == [
+        "name", "duty_type_name", "duty_location_name", "recurrence_type", "weekdays",
+        "start_time", "end_time", "required_count", "auto_roll", "auto_roll_until",
+        "duration_days", "notes", "eligible_units",
+    ]
+
+
+def test_export_current_data_includes_shift_templates(client, admin_session):
+    from app.services.shift_templates import create_template
+    from app.db.models import DutyLocation
+
+    dt = create_duty_type(admin_session, name=f"dt_export_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_export_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.flush()
+    tpl_name = f"tpl_export_{uuid.uuid4().hex[:8]}"
+    create_template(
+        admin_session, name=tpl_name, duty_type_id=dt.id, duty_location_id=loc.id,
+        recurrence_type="weekdays", weekdays=[], required_count=1,
+    )
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number=f"adm_export_{uuid.uuid4().hex[:8]}", role="admin")
+    token = auth_headers(admin)["Authorization"].split(" ", 1)[1]
+    resp = client.get("/api/import/export", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert "shift_templates" in wb.sheetnames
+    rows = list(wb["shift_templates"].iter_rows(min_row=2, values_only=True))
+    names = [r[0] for r in rows]
+    assert tpl_name in names

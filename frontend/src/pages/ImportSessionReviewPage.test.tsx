@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportSessionReviewPage from "./ImportSessionReviewPage";
 import * as importSessionsApi from "../api/importSessions";
@@ -129,10 +130,15 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
 }
 
 function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
-    <MemoryRouter>
-      <ImportSessionReviewPage />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <ImportSessionReviewPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -417,6 +423,16 @@ describe("ImportSessionReviewPage", () => {
         errors: [],
         name: "שמירה",
         score_per_day: "1.50",
+        description: "שמירה בשער",
+        active: true,
+        reserve_ratio: "0.200",
+        reserve_minimum: 2,
+        is_external: false,
+        contact_name: "דני",
+        contact_phone: "050-1234567",
+        start_time: "20:00",
+        end_time: "06:00",
+        instructions: "הצטיידות במקלע",
         resolved_eligible_node_ids: [],
         requirements: null,
         existing_id: null,
@@ -428,6 +444,10 @@ describe("ImportSessionReviewPage", () => {
         action: "new",
         errors: [],
         name: "פטור",
+        description: "פטור רפואי",
+        is_global: false,
+        is_medical: true,
+        is_commander_exemption: false,
         resolved_duty_type_ids: [],
         existing_id: null,
       },
@@ -438,10 +458,267 @@ describe("ImportSessionReviewPage", () => {
     await screen.findByText("יוסי כהן");
 
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
-    expect(await screen.findByText("שמירה")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("שמירה")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("פטורים (1)"));
-    expect(await screen.findByText("פטור")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("פטור")).toBeInTheDocument();
+  });
+
+  it("shows full duty_type detail fields", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "שמירה",
+        score_per_day: "1.50",
+        description: "שמירה בשער",
+        active: true,
+        reserve_ratio: "0.200",
+        reserve_minimum: 2,
+        is_external: false,
+        contact_name: "דני",
+        contact_phone: "050-1234567",
+        start_time: "20:00",
+        end_time: "06:00",
+        instructions: "הצטיידות במקלע",
+        resolved_eligible_node_ids: [],
+        requirements: null,
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    expect(await screen.findByDisplayValue("שמירה בשער")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("דני")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("050-1234567")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("הצטיידות במקלע")).toBeInTheDocument();
+  });
+
+  it("shows full exemption_type detail fields", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2,
+        action: "new",
+        errors: [],
+        name: "פטור",
+        description: "פטור רפואי",
+        is_global: false,
+        is_medical: true,
+        is_commander_exemption: false,
+        resolved_duty_type_ids: [],
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    expect(await screen.findByDisplayValue("פטור רפואי")).toBeInTheDocument();
+  });
+
+  it("edits a duty_type field inline and saves it as a field override", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2, action: "new", errors: [], name: "שמירה", score_per_day: "1.50",
+        description: "ישן", active: true, reserve_ratio: null, reserve_minimum: null,
+        is_external: false, contact_name: null, contact_phone: null,
+        start_time: null, end_time: null, instructions: null,
+        resolved_eligible_node_ids: [], requirements: null, existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    const input = await screen.findByDisplayValue("ישן");
+    fireEvent.change(input, { target: { value: "חדש" } });
+    fireEvent.blur(input);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        _field_overrides: { duty_types: { "2": { description: "חדש" } } },
+      }),
+    );
+    vi.useRealTimers();
+  });
+
+  it("opens the fields modal and edits eligible units for a duty_type row", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.duty_types = [
+      {
+        row: 2, action: "new", errors: [], name: "שמירה", score_per_day: "1.50",
+        description: null, active: true, reserve_ratio: null, reserve_minimum: null,
+        is_external: false, contact_name: null, contact_phone: null,
+        start_time: null, end_time: null, instructions: null,
+        resolved_eligible_node_ids: [], requirements: null, existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("סוגי תורנות (1)"));
+
+    fireEvent.click(await screen.findByText("ערוך יחידות/דרישות"));
+    expect(await screen.findByText("יחידות זכאיות")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("resyncs an open exemption_type fields modal to fresh data after a background reparse", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([
+      { id: "dt-1", name: "שמירה" },
+    ]);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    // open the fields modal for the row
+    fireEvent.click(await screen.findByText("ערוך חל-על"));
+    const checkbox = (await screen.findByText("שמירה")).closest("label")!.querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    // simulate a background reparse (e.g. triggered by an inline edit elsewhere on the
+    // page) returning a fresh version of the same row (matched by `row`) with the
+    // duty-type association already resolved server-side
+    const reparsedDetail = makeDraftDetail();
+    reparsedDetail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: ["dt-1"], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(reparsedDetail);
+
+    // trigger handleReparse via the existing debounced field-override path: editing
+    // the name field on the same row saves and then reparses ~500ms later
+    const nameInput = screen.getByDisplayValue("פטור רפואי");
+    fireEvent.blur(nameInput);
+    await vi.advanceTimersByTimeAsync(600);
+
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    vi.useRealTimers();
+  });
+
+  it("does not revert the user's own edit inside an open exemption_type fields modal", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.exemption_types = [
+      {
+        row: 2, action: "new", errors: [], name: "פטור רפואי", description: null,
+        is_global: false, is_medical: true, is_commander_exemption: false,
+        resolved_duty_type_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([
+      { id: "dt-1", name: "שמירה" },
+    ]);
+    // the debounced save+reparse hasn't landed yet when we assert below, so this
+    // mock resolving is irrelevant to the assertion — it only matters that it
+    // resolves with the SAME (still-stale) data a real in-flight reparse would
+    // return before the user's edit has been persisted server-side.
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("פטורים (1)"));
+
+    // open the fields modal for the row
+    fireEvent.click(await screen.findByText("ערוך חל-על"));
+    const checkbox = (await screen.findByText("שמירה")).closest("label")!.querySelector(
+      "input[type=checkbox]",
+    ) as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+
+    // simulate the user checking the box inside the modal: this fires the modal's
+    // own onChange, which (1) queues a debounced field-override save+reparse and
+    // (2) optimistically echoes the edit into the local dutyTypeFieldsRow-style
+    // snapshot state. That local-state update must NOT be mistaken by the resync
+    // effect for a genuine background reparse and reverted back to the stale value.
+    fireEvent.click(checkbox);
+
+    // assert immediately after the state update commits (before the debounce timer
+    // has any chance to fire) that the edit is reflected and not reverted...
+    await waitFor(() => expect(checkbox.checked).toBe(true));
+    // ...and that it's still reflected after letting further render/effect cycles
+    // flush, as long as we stay below the debounce threshold so no real reparse
+    // has landed yet.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(checkbox.checked).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  it("renders full shift_template detail and allows inline edits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const detail = makeDraftDetail();
+    detail.parsed_state.shift_templates = [
+      {
+        row: 2, action: "new", errors: [],
+        name: "שמירה לילה", duty_type_name: "שמירה", resolved_duty_type_id: "dt-1",
+        duty_location_name: "שער ראשי", resolved_duty_location_id: "loc-1",
+        recurrence_type: "weekly", weekdays: [1, 3],
+        start_time: "20:00", end_time: "06:00", required_count: 2,
+        auto_roll: false, auto_roll_until: null, duration_days: 1,
+        notes: null, resolved_eligible_node_ids: [], existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+    vi.mocked(importSessionsApi.saveSelections).mockResolvedValue(undefined);
+    vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByText("יוסי כהן");
+    fireEvent.click(screen.getByText("תבניות (1)"));
+
+    const countInput = await screen.findByDisplayValue("2");
+    fireEvent.change(countInput, { target: { value: "5" } });
+    fireEvent.blur(countInput);
+    await vi.advanceTimersByTimeAsync(600);
+
+    expect(importSessionsApi.saveSelections).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        _field_overrides: { shift_templates: { "2": { required_count: 5 } } },
+      }),
+    );
+    vi.useRealTimers();
   });
 
   it("hides selects and confirm button when session is not in draft status", async () => {

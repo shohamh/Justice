@@ -1,19 +1,20 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import Combobox from "../components/Combobox";
+import { DaysBadge } from "../components/DaysBadge";
 import { useAuth } from "../auth/AuthContext";
-import { Exemption, listExemptions } from "../api/exemptions";
+import { listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import {
-  PersonalConstraint,
   cancelConstraint,
   listMyConstraints,
   submitConstraint,
 } from "../api/constraints";
 import {
-  ExemptionRequest,
   listMyExemptionRequests,
   submitExemptionRequest,
   uploadExemptionFile,
@@ -22,8 +23,6 @@ import {
 export default function MyRequestsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [items, setItems] = useState<PersonalConstraint[]>([]);
-  const [exemptions, setExemptions] = useState<Exemption[]>([]);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [reason, setReason] = useState("");
@@ -31,8 +30,6 @@ export default function MyRequestsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Exemption request state
-  const [exemptionRequests, setExemptionRequests] = useState<ExemptionRequest[]>([]);
-  const [exemptionTypes, setExemptionTypes] = useState<ExemptionType[]>([]);
   const [erTypeId, setErTypeId] = useState("");
   const [erStart, setErStart] = useState("");
   const [erEnd, setErEnd] = useState("");
@@ -42,7 +39,6 @@ export default function MyRequestsPage() {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
-  const [dutyTypeMap, setDutyTypeMap] = useState<Record<string, string[]>>({});
   const [expandedExemption, setExpandedExemption] = useState<Set<string>>(new Set());
 
   const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -53,32 +49,48 @@ export default function MyRequestsPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  const selectedExemptionType = exemptionTypes.find(et => et.id === erTypeId);
-  const isMedical = erMedical || (selectedExemptionType?.is_medical ?? false);
+  const queryClient = useQueryClient();
 
-  const refresh = useCallback(async () => {
-    setItems(await listMyConstraints());
-    setExemptionRequests(await listMyExemptionRequests());
-    const [etypes, maps, dtypes] = await Promise.all([
-      listExemptionTypes().catch(() => [] as ExemptionType[]),
-      getAllExemptionDutyTypeMaps().catch(() => ({} as Record<string, string[]>)),
-      listDutyTypes().catch(() => [] as { id: string; name: string }[]),
-    ]);
-    setExemptionTypes(etypes);
-    const nameById = Object.fromEntries(dtypes.map((d) => [d.id, d.name]));
+  const constraintsQuery = useQuery({ queryKey: queryKeys.myConstraints(), queryFn: listMyConstraints });
+  const items = constraintsQuery.data ?? [];
+
+  const exemptionRequestsQuery = useQuery({ queryKey: queryKeys.myExemptionRequests(), queryFn: listMyExemptionRequests });
+  const exemptionRequests = exemptionRequestsQuery.data ?? [];
+
+  const exemptionTypesQuery = useQuery({
+    queryKey: queryKeys.exemptionTypes(),
+    queryFn: () => listExemptionTypes().catch(() => [] as ExemptionType[]),
+  });
+  const exemptionTypes = exemptionTypesQuery.data ?? [];
+
+  const dutyTypeMapQuery = useQuery({
+    queryKey: queryKeys.exemptionDutyTypeMap(),
+    queryFn: () => getAllExemptionDutyTypeMaps().catch(() => ({} as Record<string, string[]>)),
+  });
+
+  const dutyTypesForMapQuery = useQuery({
+    queryKey: queryKeys.dutyTypes(),
+    queryFn: () => listDutyTypes().catch(() => [] as { id: string; name: string }[]),
+  });
+
+  const dutyTypeMap = useMemo(() => {
+    const nameById = Object.fromEntries((dutyTypesForMapQuery.data ?? []).map((d) => [d.id, d.name]));
     const named: Record<string, string[]> = {};
-    for (const [etId, dtIds] of Object.entries(maps)) {
+    for (const [etId, dtIds] of Object.entries(dutyTypeMapQuery.data ?? {})) {
       named[etId] = (dtIds as string[]).map((id) => nameById[id] ?? id);
     }
-    setDutyTypeMap(named);
-    if (user) {
-      setExemptions(await listExemptions(user.id));
-    }
-  }, [user]);
+    return named;
+  }, [dutyTypeMapQuery.data, dutyTypesForMapQuery.data]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const exemptionsQuery = useQuery({
+    queryKey: user ? queryKeys.myExemptions(user.id) : ["exemptions", "mine", "anonymous"],
+    queryFn: () => listExemptions(user!.id),
+    enabled: !!user,
+  });
+  const exemptions = exemptionsQuery.data ?? [];
+
+  const selectedExemptionType = exemptionTypes.find(et => et.id === erTypeId);
+  const isMedical = erMedical || (selectedExemptionType?.is_medical ?? false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -91,7 +103,7 @@ export default function MyRequestsPage() {
         reason,
       });
       setStart(""); setEnd(""); setReason("");
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -108,7 +120,7 @@ export default function MyRequestsPage() {
   async function onCancel(id: string) {
     if (!confirm(t("my_requests.cancel") + "?")) return;
     await cancelConstraint(id);
-    await refresh();
+    await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
   }
 
   async function onErSubmit(e: FormEvent) {
@@ -128,7 +140,7 @@ export default function MyRequestsPage() {
       }
       setErTypeId(""); setErStart(""); setErEnd(""); setErReason("");
       setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myExemptionRequests() });
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -179,6 +191,7 @@ export default function MyRequestsPage() {
               {items.filter((c) => c.status === "pending").map((c) => (
                 <li key={c.id} className="border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800 flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
                   <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                  <DaysBadge start={c.start_date} end={c.end_date} />
                   <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                   {statusBadge(c.status)}
                   <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
@@ -198,6 +211,7 @@ export default function MyRequestsPage() {
                 <li key={c.id} className="border border-green-200 dark:border-green-800 rounded-lg p-3 bg-green-50 dark:bg-green-950" data-testid={`constraint-row-${c.id}`}>
                   <div className="flex items-center gap-3">
                     <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <DaysBadge start={c.start_date} end={c.end_date} />
                     <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                     {statusBadge(c.status)}
                   </div>
@@ -215,6 +229,7 @@ export default function MyRequestsPage() {
                 <li key={c.id} className="border border-red-200 dark:border-red-800 rounded-lg p-3 bg-red-50 dark:bg-red-950" data-testid={`constraint-row-${c.id}`}>
                   <div className="flex items-center gap-3">
                     <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
+                    <DaysBadge start={c.start_date} end={c.end_date} />
                     <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                     {statusBadge(c.status)}
                   </div>
@@ -368,6 +383,7 @@ export default function MyRequestsPage() {
                 <div className="flex items-center gap-3">
                   <span>{exemptionTypes.find((et) => et.id === er.exemption_type_id)?.name ?? er.exemption_type_id}</span>
                   <span dir="ltr">{er.start_date} → {er.end_date ?? t("exemptions.forever")}</span>
+                  <DaysBadge start={er.start_date} end={er.end_date} />
                   {er.reason && <span className="text-gray-700 dark:text-gray-300">{er.reason}</span>}
                   <span className={`text-xs ${
                     er.status === "approved" ? "text-green-600 dark:text-green-400" :
@@ -402,8 +418,9 @@ export default function MyRequestsPage() {
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0" dir="ltr">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 flex items-center gap-1" dir="ltr">
                       {ex.start_date} → {ex.end_date ?? t("exemptions.forever")}
+                      <DaysBadge start={ex.start_date} end={ex.end_date} />
                     </span>
                   </div>
 

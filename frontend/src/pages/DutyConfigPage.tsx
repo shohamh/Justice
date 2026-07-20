@@ -1,6 +1,8 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import DutyTypeRequirementsEditor from "../components/DutyTypeRequirementsEditor";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
@@ -51,7 +53,6 @@ function summarizeReqs(r: Reqs | undefined, rankLists: RankLists): string {
   return parts.length > 0 ? parts.join(" | ") : "ללא הגבלה";
 }
 import {
-  DutyLocation,
   DutyType,
   ExemptionType,
   createExemptionType,
@@ -73,37 +74,41 @@ import { getRanks } from "../api/soldiers";
 
 export function DutyConfigContent() {
   const { t } = useTranslation();
-  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
-  const [locations, setLocations] = useState<DutyLocation[]>([]);
-  const [exTypes, setExTypes] = useState<ExemptionType[]>([]);
+  const queryClient = useQueryClient();
   const [locName, setLocName] = useState("");
   const [exName, setExName] = useState("");
   const [exGlobal, setExGlobal] = useState(false);
   const [exMedical, setExMedical] = useState(false);
   const [exCommanderExemption, setExCommanderExemption] = useState(false);
-  const [mapSel, setMapSel] = useState<Record<string, string[]>>({});
   const [dtModal, setDtModal] = useState<{ initial?: DutyType } | null>(null);
   const [eligModal, setEligModal] = useState<DutyType | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ dt: DutyType; usage: DutyTypeUsage | null; loading: boolean; error: string | null } | null>(null);
   const [etDisableModal, setEtDisableModal] = useState<{ et: ExemptionType } | null>(null);
   const [etDeleteError, setEtDeleteError] = useState<string | null>(null);
-  const [rankLists, setRankLists] = useState<RankLists>({ enlisted: [], officers: [] });
 
-  useEffect(() => { void getRanks().then(setRankLists).catch(() => {}); }, []);
+  const rankListsQuery = useQuery({ queryKey: queryKeys.ranks(), queryFn: getRanks });
+  const rankLists: RankLists = rankListsQuery.data ?? { enlisted: [], officers: [] };
+
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypes = dutyTypesQuery.data ?? [];
+
+  const locationsQuery = useQuery({ queryKey: queryKeys.dutyLocations(), queryFn: listLocations });
+  const locations = locationsQuery.data ?? [];
+
+  const exTypesQuery = useQuery({ queryKey: queryKeys.exemptionTypes(), queryFn: listExemptionTypes });
+  const exTypes = exTypesQuery.data ?? [];
+
+  const mapSelQuery = useQuery({ queryKey: queryKeys.exemptionDutyTypeMap(), queryFn: getAllExemptionDutyTypeMaps });
+  const mapSel = mapSelQuery.data ?? {};
 
   async function refresh() {
-    const [dts, locs, ets, sel] = await Promise.all([
-      listDutyTypes(),
-      listLocations(),
-      listExemptionTypes(),
-      getAllExemptionDutyTypeMaps(),
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.dutyTypes() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.dutyLocations() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.exemptionTypes() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyTypeMap() }),
     ]);
-    setDutyTypes(dts);
-    setLocations(locs);
-    setExTypes(ets);
-    setMapSel(sel);
   }
-  useEffect(() => { void refresh(); }, []);
 
   async function openDeleteModal(dt: DutyType) {
     setDeleteModal({ dt, usage: null, loading: true, error: null });
@@ -184,7 +189,7 @@ export function DutyConfigContent() {
     const current = mapSel[etId] ?? [];
     const next = current.includes(dtId) ? current.filter((x) => x !== dtId) : [...current, dtId];
     await setExemptionDutyTypes(etId, next);
-    setMapSel({ ...mapSel, [etId]: next });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyTypeMap() });
   }
 
   return (

@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { SoldierDTO, listSoldiers, getSoldier } from "../api/soldiers";
 import { Assignment, listAssignments } from "../api/assignments";
@@ -17,6 +19,7 @@ const DISTANCE_LABEL: Record<number, string> = {
 
 export default function HakpazaPage() {
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>(1);
   const [pulledSoldier, setPulledSoldier] = useState<SoldierDTO | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -27,91 +30,96 @@ export default function HakpazaPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [scopedSoldiers, setScopedSoldiers] = useState<SoldierDTO[]>([]);
   const [soldierSearch, setSoldierSearch] = useState("");
-  const [nextShiftBySoldier, setNextShiftBySoldier] = useState<Record<string, { date: string; typeName: string } | null>>({});
-  const [shiftsLoading, setShiftsLoading] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
-  useEffect(() => {
-    listSoldiers().then(setScopedSoldiers).catch(() => {});
-  }, []);
+  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
+  const scopedSoldiers = useMemo(() => soldiersQuery.data ?? [], [soldiersQuery.data]);
+
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypeNameById = useMemo(
+    () => Object.fromEntries((dutyTypesQuery.data ?? []).map((d: DutyType) => [d.id, d.name])),
+    [dutyTypesQuery.data],
+  );
+
+  // One upcoming-assignments query per visible soldier — a dynamic-by-id list
+  // that doesn't collapse into a single query key.
+  const upcomingAssignmentsQueries = useQueries({
+    queries: scopedSoldiers.map((s) => ({
+      queryKey: queryKeys.assignments(s.id, { date_from: today }),
+      queryFn: () => listAssignments(s.id, { date_from: today }),
+    })),
+  });
+
+  const shiftsLoading =
+    scopedSoldiers.length > 0 &&
+    (dutyTypesQuery.isPending || upcomingAssignmentsQueries.some((q) => q.isPending));
+
+  const nextShiftBySoldier = useMemo(() => {
+    const map: Record<string, { date: string; typeName: string } | null> = {};
+    scopedSoldiers.forEach((s, i) => {
+      const asgns = upcomingAssignmentsQueries[i]?.data ?? [];
+      const upcoming = asgns
+        .filter((a) => a.status === "published")
+        .sort((a, b) => a.start_date.localeCompare(b.start_date));
+      map[s.id] = upcoming.length > 0
+        ? { date: upcoming[0].start_date, typeName: dutyTypeNameById[upcoming[0].duty_type_id] ?? "תורנות" }
+        : null;
+    });
+    return map;
+  }, [scopedSoldiers, upcomingAssignmentsQueries, dutyTypeNameById]);
+
+  // Pre-fill from ?soldierId=&assignmentId= (deep link, e.g. a "הקפץ" button
+  // elsewhere in the app). Applied once, on mount — a soldier picked manually
+  // afterwards must not be overridden by a stale query-param re-application.
+  const soldierIdParam = searchParams.get("soldierId");
+  const assignmentIdParam = searchParams.get("assignmentId");
+  const hasPrefillParams = !!soldierIdParam && !!assignmentIdParam;
+  const prefillAppliedRef = useRef(false);
+
+  const prefillSoldierQuery = useQuery({
+    queryKey: queryKeys.soldierDetail(soldierIdParam ?? "none"),
+    queryFn: () => getSoldier(soldierIdParam!),
+    enabled: hasPrefillParams,
+  });
+  const prefillAssignmentsQuery = useQuery({
+    queryKey: queryKeys.assignments(soldierIdParam ?? "none", { date_from: today }),
+    queryFn: () => listAssignments(soldierIdParam!, { date_from: today }),
+    enabled: hasPrefillParams,
+  });
 
   useEffect(() => {
-    if (scopedSoldiers.length === 0) return;
-    let cancelled = false;
-    setShiftsLoading(true);
-    const todayStr = new Date().toISOString().split("T")[0];
+    if (!hasPrefillParams || prefillAppliedRef.current) return;
+    if (prefillSoldierQuery.isPending || prefillAssignmentsQuery.isPending) return;
+    prefillAppliedRef.current = true;
 
-    Promise.all([
-      listDutyTypes().catch(() => [] as DutyType[]),
-      Promise.all(
-        scopedSoldiers.map((s) =>
-          listAssignments(s.id, { date_from: todayStr })
-            .then((asgns) => ({
-              soldierId: s.id,
-              upcoming: asgns
-                .filter((a) => a.status === "published")
-                .sort((a, b) => a.start_date.localeCompare(b.start_date)),
-            }))
-            .catch(() => ({ soldierId: s.id, upcoming: [] }))
-        )
-      ),
-    ]).then(([dts, results]) => {
-      if (cancelled) return;
-      const typeNameById = Object.fromEntries((dts as DutyType[]).map((d) => [d.id, d.name]));
-      const map: Record<string, { date: string; typeName: string } | null> = {};
-      for (const { soldierId, upcoming } of results) {
-        if (upcoming.length > 0) {
-          const first = upcoming[0];
-          map[soldierId] = {
-            date: first.start_date,
-            typeName: typeNameById[first.duty_type_id] ?? "תורנות",
-          };
-        } else {
-          map[soldierId] = null;
-        }
-      }
-      setNextShiftBySoldier(map);
-      setShiftsLoading(false);
-    }).catch(() => { if (!cancelled) setShiftsLoading(false); });
-    return () => { cancelled = true; };
-  }, [scopedSoldiers]);
-
-  useEffect(() => {
-    const soldierId = searchParams.get("soldierId");
-    const assignmentId = searchParams.get("assignmentId");
-    if (!soldierId || !assignmentId) return;
-    let cancelled = false;
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    (async () => {
-      try {
-        const [soldier, asgns] = await Promise.all([
-          getSoldier(soldierId),
-          listAssignments(soldierId, { date_from: todayStr }),
-        ]);
-        if (cancelled) return;
-        const published = asgns.filter((a) => a.status === "published");
-        const match = published.find((a) => a.id === assignmentId);
-        setPulledSoldier(soldier);
-        setAssignments(published);
-        if (match) {
-          setSelectedAssignment(match);
-          setPullDate(match.start_date >= todayStr ? match.start_date : todayStr);
-          setStep(2);
-        } else {
-          setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
-        }
-      } catch {
-        if (!cancelled) setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
-      }
-    })();
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (prefillSoldierQuery.isError || prefillAssignmentsQuery.isError || !prefillSoldierQuery.data) {
+      setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
+      return;
+    }
+    const published = (prefillAssignmentsQuery.data ?? []).filter((a) => a.status === "published");
+    const match = published.find((a) => a.id === assignmentIdParam);
+    setPulledSoldier(prefillSoldierQuery.data);
+    setAssignments(published);
+    if (match) {
+      setSelectedAssignment(match);
+      setPullDate(match.start_date >= today ? match.start_date : today);
+      setStep(2);
+    } else {
+      setError("לא נמצאה התורנות המבוקשת — בחר חייל ידנית");
+    }
+  }, [
+    hasPrefillParams,
+    assignmentIdParam,
+    today,
+    prefillSoldierQuery.isPending,
+    prefillSoldierQuery.isError,
+    prefillSoldierQuery.data,
+    prefillAssignmentsQuery.isPending,
+    prefillAssignmentsQuery.isError,
+    prefillAssignmentsQuery.data,
+  ]);
 
   async function handleSoldierSelect(soldier: SoldierDTO | null) {
     if (!soldier) {
@@ -125,7 +133,10 @@ export default function HakpazaPage() {
     setLoading(true);
     setError(null);
     try {
-      const asgns = await listAssignments(soldier.id, { date_from: today });
+      const asgns = await queryClient.fetchQuery({
+        queryKey: queryKeys.assignments(soldier.id, { date_from: today }),
+        queryFn: () => listAssignments(soldier.id, { date_from: today }),
+      });
       setAssignments(asgns.filter((a) => a.status === "published"));
       setStep(2);
     } catch {
@@ -161,6 +172,9 @@ export default function HakpazaPage() {
         pullDate || selectedAssignment.start_date,
         selectedCandidate.soldier_id,
       );
+      if (pulledSoldier) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(pulledSoldier.id, { date_from: today }) });
+      }
       setDone(true);
       setStep(5);
     } catch {

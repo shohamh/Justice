@@ -22,6 +22,7 @@ from app.db.models import (
     HierarchyLevelType,
     HierarchyNode,
     ImportSession,
+    ShiftTemplate,
     Soldier,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
@@ -39,6 +40,7 @@ from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.shift_quotas import set_shift_quotas
+from app.services.shift_templates import create_template, update_template
 
 
 class ImportSessionError(Exception):
@@ -294,74 +296,88 @@ def _resolve_duty_types(
     data: ParsedImportData,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     existing_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
 
     out = []
     for row in data.duty_types:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        raw_score = field("score_per_day", row.score_per_day)
+        raw_reserve_ratio = field("reserve_ratio", row.reserve_ratio)
+        raw_requirements_json = field("requirements_json", row.requirements_json)
+        eligible_unit_names = field("eligible_unit_names", row.eligible_unit_names)
 
         score_per_day: Decimal | None = None
         try:
-            score_per_day = Decimal(row.score_per_day) if row.score_per_day else None
+            score_per_day = Decimal(raw_score) if raw_score else None
             if score_per_day is None:
                 errors.append("חסר ניקוד ליום")
         except Exception:
-            errors.append(f"ניקוד ליום לא תקין '{row.score_per_day}'")
+            errors.append(f"ניקוד ליום לא תקין '{raw_score}'")
 
         reserve_ratio: Decimal | None = None
-        if row.reserve_ratio is not None and row.reserve_ratio != "":
+        if raw_reserve_ratio is not None and raw_reserve_ratio != "":
             try:
-                reserve_ratio = Decimal(row.reserve_ratio)
+                reserve_ratio = Decimal(raw_reserve_ratio)
             except Exception:
-                errors.append(f"יחס רזרבה לא תקין '{row.reserve_ratio}'")
+                errors.append(f"יחס רזרבה לא תקין '{raw_reserve_ratio}'")
 
-        requirements: dict | None = None
-        if row.requirements_json:
+        requirements: dict | None = field("requirements", None)
+        if requirements is None and raw_requirements_json:
             try:
-                requirements = json.loads(row.requirements_json)
+                requirements = json.loads(raw_requirements_json)
             except Exception as exc:
                 errors.append(f"JSON לא תקין בעמודת requirements_json: {exc}")
 
-        resolved_eligible_node_ids: list[str] = []
-        for unit_name in row.eligible_unit_names:
-            row_key = f"duty_types:{row.source_row}:{unit_name}"
-            mapped_id = node_by_row.get(row_key) or node_by_name.get(unit_name)
-            node = None
-            if mapped_id:
-                try:
-                    node = session.get(HierarchyNode, uuid.UUID(mapped_id))
-                except ValueError:
-                    pass
-            if node is None:
-                node = nodes_by_name.get(unit_name)
-            if node is None:
-                errors.append(f"יחידה זכאית לא מזוהה '{unit_name}'")
-            else:
-                resolved_eligible_node_ids.append(str(node.id))
+        resolved_eligible_node_ids: list[str] = field("resolved_eligible_node_ids", None) or []
+        if "resolved_eligible_node_ids" not in override:
+            resolved_eligible_node_ids = []
+            for unit_name in eligible_unit_names:
+                row_key = f"duty_types:{row.source_row}:{unit_name}"
+                mapped_id = node_by_row.get(row_key) or node_by_name.get(unit_name)
+                node = None
+                if mapped_id:
+                    try:
+                        node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                    except ValueError:
+                        pass
+                if node is None:
+                    node = nodes_by_name.get(unit_name)
+                if node is None:
+                    errors.append(f"יחידה זכאית לא מזוהה '{unit_name}'")
+                else:
+                    resolved_eligible_node_ids.append(str(node.id))
 
-        existing = existing_by_name.get(row.name) if row.name else None
+        existing = existing_by_name.get(name) if name else None
         action = "error" if errors else ("update" if existing else "new")
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
+            "name": name,
             "score_per_day": str(score_per_day) if score_per_day is not None else None,
-            "description": row.description,
-            "active": row.active,
+            "description": field("description", row.description),
+            "active": field("active", row.active),
             "reserve_ratio": str(reserve_ratio) if reserve_ratio is not None else None,
-            "reserve_minimum": row.reserve_minimum,
-            "is_external": row.is_external,
-            "contact_name": row.contact_name,
-            "contact_phone": row.contact_phone,
-            "start_time": row.start_time,
-            "end_time": row.end_time,
-            "instructions": row.instructions,
+            "reserve_minimum": field("reserve_minimum", row.reserve_minimum),
+            "is_external": field("is_external", row.is_external),
+            "contact_name": field("contact_name", row.contact_name),
+            "contact_phone": field("contact_phone", row.contact_phone),
+            "start_time": field("start_time", row.start_time),
+            "end_time": field("end_time", row.end_time),
+            "instructions": field("instructions", row.instructions),
             "resolved_eligible_node_ids": resolved_eligible_node_ids,
             "requirements": requirements,
             "existing_id": str(existing.id) if existing is not None else None,
@@ -374,6 +390,7 @@ def _resolve_exemption_types(
     data: ParsedImportData,
     dt_by_name: dict[str, str] | None = None,
     dt_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Resolve exemption types from import data.
 
@@ -382,46 +399,56 @@ def _resolve_exemption_types(
     """
     dt_by_name = dt_by_name or {}
     dt_by_row = dt_by_row or {}
+    overrides = overrides or {}
     existing_by_name = {et.name: et for et in session.execute(select(ExemptionType)).scalars()}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
 
     out = []
     for row in data.exemption_types:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
 
-        # Resolve applies_to_duty_type_names to duty type IDs
-        resolved_duty_type_ids: list[str] = []
-        for duty_type_name in row.applies_to_duty_type_names:
-            # Try name mappings first (from import sheet), then DB
-            row_key = f"exemption_types:{row.source_row}:{duty_type_name}"
-            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
-            duty_type = None
-            if mapped_id:
-                try:
-                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
-                except ValueError:
-                    pass
-            if duty_type is None:
-                duty_type = duty_types_by_name.get(duty_type_name)
-            if duty_type is None:
-                errors.append(f"סוג חובה לא מזוהה '{duty_type_name}' (applies_to)")
-            else:
-                resolved_duty_type_ids.append(str(duty_type.id))
+        def field(name: str, default):
+            return override[name] if name in override else default
 
-        # Handle boolean fields - must check explicitly for None, not use truthiness
-        is_global = row.is_global if row.is_global is not None else False
-        is_medical = row.is_medical if row.is_medical is not None else False
-        is_commander_exemption = row.is_commander_exemption if row.is_commander_exemption is not None else False
+        name = field("name", row.name)
+        applies_to_duty_type_names = field("applies_to_duty_type_names", row.applies_to_duty_type_names)
 
-        existing = existing_by_name.get(row.name) if row.name else None
+        resolved_duty_type_ids: list[str] = field("resolved_duty_type_ids", None) or []
+        if "resolved_duty_type_ids" not in override:
+            resolved_duty_type_ids = []
+            for duty_type_name in applies_to_duty_type_names:
+                row_key = f"exemption_types:{row.source_row}:{duty_type_name}"
+                mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
+                duty_type = None
+                if mapped_id:
+                    try:
+                        duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                    except ValueError:
+                        pass
+                if duty_type is None:
+                    duty_type = duty_types_by_name.get(duty_type_name)
+                if duty_type is None:
+                    errors.append(f"סוג חובה לא מזוהה '{duty_type_name}' (applies_to)")
+                else:
+                    resolved_duty_type_ids.append(str(duty_type.id))
+
+        is_global_raw = field("is_global", row.is_global)
+        is_medical_raw = field("is_medical", row.is_medical)
+        is_commander_exemption_raw = field("is_commander_exemption", row.is_commander_exemption)
+        is_global = is_global_raw if is_global_raw is not None else False
+        is_medical = is_medical_raw if is_medical_raw is not None else False
+        is_commander_exemption = is_commander_exemption_raw if is_commander_exemption_raw is not None else False
+
+        existing = existing_by_name.get(name) if name else None
         action = "error" if errors else ("update" if existing else "new")
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "description": row.description,
+            "name": name,
+            "description": field("description", row.description),
             "is_global": is_global,
             "is_medical": is_medical,
             "is_commander_exemption": is_commander_exemption,
@@ -540,40 +567,101 @@ def _resolve_shift_templates(
     data: ParsedImportData,
     dt_by_name: dict[str, str] | None = None,
     dt_by_row: dict[str, str] | None = None,
+    node_by_name: dict[str, str] | None = None,
+    node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     dt_by_name = dt_by_name or {}
     dt_by_row = dt_by_row or {}
+    node_by_name = node_by_name or {}
+    node_by_row = node_by_row or {}
+    overrides = overrides or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
+    locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
+    nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    existing_by_name = {tpl.name: tpl for tpl in session.execute(select(ShiftTemplate)).scalars()}
 
     out = []
-    for row in getattr(data, "shift_templates", []):
+    for row in data.shift_templates:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        recurrence_type = field("recurrence_type", row.recurrence_type)
+        eligible_unit_names = field("eligible_unit_names", row.eligible_unit_names)
+
         duty_type = None
-        if row.duty_type_name:
+        if duty_type_name:
             row_key = f"shift_templates:{row.source_row}"
-            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
             if mapped_id:
                 try:
                     duty_type = session.get(DutyType, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if duty_type is None:
-                duty_type = duty_types_by_name.get(row.duty_type_name)
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
 
-        action = "error" if errors else "new"
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
+        if location is None:
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
+
+        if recurrence_type is not None and recurrence_type not in ("daily", "weekdays", "weekly"):
+            # A blank cell (None) means "leave unchanged" on an update row, or
+            # "apply the create-time default" on a new row (both handled where
+            # the resolved row is consumed) — only an explicit-but-invalid
+            # value is an error here.
+            errors.append(f"סוג חזרתיות לא תקין '{recurrence_type}'")
+
+        resolved_eligible_node_ids: list[str] = field("resolved_eligible_node_ids", None) or []
+        if "resolved_eligible_node_ids" not in override:
+            resolved_eligible_node_ids = []
+            for unit_name in eligible_unit_names:
+                row_key = f"shift_templates:{row.source_row}:{unit_name}"
+                mapped_id = node_by_row.get(row_key) or node_by_name.get(unit_name)
+                node = None
+                if mapped_id:
+                    try:
+                        node = session.get(HierarchyNode, uuid.UUID(mapped_id))
+                    except ValueError:
+                        pass
+                if node is None:
+                    node = nodes_by_name.get(unit_name)
+                if node is None:
+                    errors.append(f"יחידה זכאית לא מזוהה '{unit_name}'")
+                else:
+                    resolved_eligible_node_ids.append(str(node.id))
+
+        existing = existing_by_name.get(name) if name else None
+        action = "error" if errors else ("update" if existing else "new")
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "duty_type_name": row.duty_type_name,
+            "name": name,
+            "duty_type_name": duty_type_name,
             "resolved_duty_type_id": str(duty_type.id) if duty_type is not None else None,
-            "days_of_week": row.days_of_week,
-            "required_primary": row.required_primary,
-            "required_reserve": row.required_reserve,
+            "duty_location_name": duty_location_name,
+            "resolved_duty_location_id": str(location.id) if location is not None else None,
+            "recurrence_type": recurrence_type,
+            "weekdays": field("weekdays", row.weekdays),
+            "start_time": field("start_time", row.start_time),
+            "end_time": field("end_time", row.end_time),
+            "required_count": field("required_count", row.required_count),
+            "auto_roll": field("auto_roll", row.auto_roll),
+            "auto_roll_until": field("auto_roll_until", row.auto_roll_until),
+            "duration_days": field("duration_days", row.duration_days),
+            "notes": field("notes", row.notes),
+            "resolved_eligible_node_ids": resolved_eligible_node_ids,
+            "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
 
@@ -738,6 +826,7 @@ def _resolve_and_score(
     selections: dict | None = None,
 ) -> dict:
     nm = (selections or {}).get("_name_mappings", {})
+    fo = (selections or {}).get("_field_overrides", {})
     dt_by_name  = nm.get("duty_type", {}).get("by_name", {})
     dt_by_row   = nm.get("duty_type", {}).get("by_row", {})
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
@@ -746,12 +835,14 @@ def _resolve_and_score(
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
         "duty_shifts": duty_shifts,
-        "shift_templates": _resolve_shift_templates(session, data, dt_by_name, dt_by_row),
+        "shift_templates": _resolve_shift_templates(
+            session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
+        ),
         "assignments": _resolve_assignments(session, data, actor, duty_shifts),
         "duty_locations": _resolve_duty_locations(session, data),
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
-        "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row),
-        "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row),
+        "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
+        "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }
@@ -836,6 +927,7 @@ def confirm_session(
     created_soldiers: list[str] = []
     created_duty_shifts: list[str] = []
     created_assignments: list[str] = []
+    created_shift_templates: list[str] = []
     shift_row_to_id: dict[int, uuid.UUID] = {}
 
     # ── Soldiers ────────────────────────────────────────────────────────
@@ -1066,6 +1158,7 @@ def confirm_session(
                         instructions=row.get("instructions"),
                         is_external=bool(row.get("is_external")),
                         eligible_node_ids=eligible_ids,
+                        requirements=row.get("requirements"),
                         actor_id=actor.id,
                     )
                     if row.get("active") is not None:
@@ -1101,6 +1194,68 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "duty_types", "error": str(exc)})
+
+    # ── Shift templates ─────────────────────────────────────────────────
+    for row in state.get("shift_templates", []):
+        effective = _effective_action(selections, "shift_templates", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                eligible_ids = [uuid.UUID(nid) for nid in row.get("resolved_eligible_node_ids", [])] or None
+                if effective == "new":
+                    tpl = create_template(
+                        session,
+                        name=row["name"],
+                        duty_type_id=uuid.UUID(row["resolved_duty_type_id"]),
+                        duty_location_id=uuid.UUID(row["resolved_duty_location_id"]),
+                        recurrence_type=row.get("recurrence_type") or "weekdays",
+                        weekdays=row.get("weekdays") or [],
+                        duration_days=row.get("duration_days") or 1,
+                        start_time=row.get("start_time") or "00:00",
+                        end_time=row.get("end_time") or "23:59",
+                        required_count=row.get("required_count") or 1,
+                        auto_roll=bool(row.get("auto_roll")),
+                        auto_roll_until=(
+                            date_type.fromisoformat(row["auto_roll_until"])
+                            if row.get("auto_roll_until") else None
+                        ),
+                        notes=row.get("notes"),
+                        eligible_node_ids=eligible_ids,
+                        actor_id=actor.id,
+                    )
+                    created += 1
+                    created_shift_templates.append(str(tpl.id))
+                elif effective == "update" and row.get("existing_id"):
+                    tpl = session.get(ShiftTemplate, uuid.UUID(row["existing_id"]))
+                    if tpl is not None:
+                        update_template(
+                            session,
+                            tpl=tpl,
+                            recurrence_type=row.get("recurrence_type"),
+                            weekdays=row.get("weekdays"),
+                            duration_days=row.get("duration_days"),
+                            start_time=row.get("start_time"),
+                            end_time=row.get("end_time"),
+                            required_count=row.get("required_count"),
+                            auto_roll=row.get("auto_roll"),
+                            auto_roll_until=(
+                                date_type.fromisoformat(row["auto_roll_until"])
+                                if row.get("auto_roll_until") else ...
+                            ),
+                            notes=row.get("notes") if row.get("notes") else ...,
+                            eligible_node_ids=eligible_ids if row.get("resolved_eligible_node_ids") else ...,
+                            actor_id=actor.id,
+                        )
+                        updated += 1
+                        created_shift_templates.append(str(tpl.id))
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "shift_templates", "error": str(exc)})
 
     # ── Hierarchy ───────────────────────────────────────────────────────
     name_to_new_node_id: dict[str, uuid.UUID] = {}
@@ -1244,6 +1399,7 @@ def confirm_session(
         "soldiers": created_soldiers,
         "duty_shifts": created_duty_shifts,
         "assignments": created_assignments,
+        "shift_templates": created_shift_templates,
     }
     import_session.status = "confirmed"
     import_session.confirmed_at = datetime.now(tz=UTC)

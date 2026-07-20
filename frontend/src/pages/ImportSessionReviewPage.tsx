@@ -1,12 +1,14 @@
 import Fuse from "fuse.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Combobox, { type ComboboxItem } from "../components/Combobox";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
+import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
+import { queryKeys } from "../queryKeys";
 import {
-  type SessionDetail,
   type ConfirmSessionResult,
   type RowBase,
   type Selections,
@@ -126,6 +128,9 @@ function buildPickerItems(
   ];
 }
 
+const EMPTY_DUTY_TYPES: LookupItem[] = [];
+const EMPTY_NODES: LookupNode[] = [];
+
 interface PendingPick {
   pickedId: string;
   kind: "duty_type" | "hierarchy_node";
@@ -167,9 +172,8 @@ function PendingPickBanner({
 
 export default function ImportSessionReviewPage() {
   const { id } = useParams<{ id: string }>();
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("soldiers");
   const [selections, setSelections] = useState<Selections>({});
   const [confirming, setConfirming] = useState(false);
@@ -183,10 +187,21 @@ export default function ImportSessionReviewPage() {
   const [nodeCreateContext, setNodeCreateContext] = useState<{
     unresolvedName: string;
   } | null>(null);
+  const [dutyTypeFieldsRow, setDutyTypeFieldsRow] = useState<DutyTypeImportRow | null>(null);
+  const [exemptionTypeFieldsRow, setExemptionTypeFieldsRow] = useState<ExemptionTypeImportRow | null>(null);
+  const [shiftTemplateFieldsRow, setShiftTemplateFieldsRow] = useState<ShiftTemplateRow | null>(null);
 
   // lookup data
-  const [allDutyTypes, setAllDutyTypes] = useState<LookupItem[]>([]);
-  const [allNodes, setAllNodes] = useState<LookupNode[]>([]);
+  const dutyTypesQuery = useQuery({
+    queryKey: queryKeys.importDutyTypesForImport(),
+    queryFn: listDutyTypesForImport,
+  });
+  const nodesQuery = useQuery({
+    queryKey: queryKeys.importNodesForImport(),
+    queryFn: listNodesForImport,
+  });
+  const allDutyTypes: LookupItem[] = dutyTypesQuery.data ?? EMPTY_DUTY_TYPES;
+  const allNodes: LookupNode[] = nodesQuery.data ?? EMPTY_NODES;
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
 
   const sortedNodeItems = useMemo<ComboboxItem[]>(() => {
@@ -213,45 +228,82 @@ export default function ImportSessionReviewPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await getSession(id);
-      setDetail(result);
-      setSelections(result.user_selections ?? {});
-    } catch {
-      setError("שגיאה בטעינת פרטי הייבוא");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const sessionQuery = useQuery({
+    queryKey: queryKeys.importSessionDetail(id ?? ""),
+    queryFn: () => getSession(id as string),
+    enabled: !!id,
+  });
+  const detail = sessionQuery.data ?? null;
+  const loading = sessionQuery.isLoading;
 
+  // selections mirrors the query result but is then edited locally (row
+  // actions / field overrides) before the debounced save round-trip, so it
+  // stays a useState fed by an effect rather than reading straight from the
+  // query on every render (same pattern as SystemSettingsPage's draft).
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (detail) setSelections(detail.user_selections ?? {});
+  }, [detail]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [dts, nodes] = await Promise.all([
-          listDutyTypesForImport(),
-          listNodesForImport(),
-        ]);
-        setAllDutyTypes(dts);
-        setAllNodes(nodes);
-      } catch {
-        setError("שגיאה בטעינת נתוני בחירה");
-      }
-    })();
-  }, []);
+  const error = sessionQuery.isError
+    ? "שגיאה בטעינת פרטי הייבוא"
+    : dutyTypesQuery.isError || nodesQuery.isError
+      ? "שגיאה בטעינת נתוני בחירה"
+      : actionError;
 
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // Resync any open field-edit modal's captured row snapshot to the live
+  // parsed_state after a background reparse (e.g. triggered by an inline
+  // field edit on the same row while the modal is open), so the modal
+  // doesn't keep showing stale data. Matched by `row` (stable row identity).
+  const dutyTypesForSync = detail?.parsed_state.duty_types;
+  const prevDutyTypesForSyncRef = useRef(dutyTypesForSync);
+  useEffect(() => {
+    // Only resync when the live array itself has genuinely changed (a real
+    // background reparse), not merely because dutyTypeFieldsRow changed for
+    // its own reasons (e.g. the modal's own optimistic local edit echo) —
+    // otherwise this effect would revert the user's own in-progress edit
+    // before the debounced save/reparse round-trip completes.
+    if (prevDutyTypesForSyncRef.current === dutyTypesForSync) return;
+    prevDutyTypesForSyncRef.current = dutyTypesForSync;
+    if (!dutyTypeFieldsRow || !dutyTypesForSync) return;
+    const fresh = dutyTypesForSync.find((r) => r.row === dutyTypeFieldsRow.row);
+    if (fresh) {
+      setDutyTypeFieldsRow(fresh);
+    }
+  }, [dutyTypesForSync, dutyTypeFieldsRow]);
+
+  const exemptionTypesForSync = detail?.parsed_state.exemption_types;
+  const prevExemptionTypesForSyncRef = useRef(exemptionTypesForSync);
+  useEffect(() => {
+    // See comment above the duty_types resync effect for why this guards
+    // on the ref rather than resyncing on every dependency-array change.
+    if (prevExemptionTypesForSyncRef.current === exemptionTypesForSync) return;
+    prevExemptionTypesForSyncRef.current = exemptionTypesForSync;
+    if (!exemptionTypeFieldsRow || !exemptionTypesForSync) return;
+    const fresh = exemptionTypesForSync.find((r) => r.row === exemptionTypeFieldsRow.row);
+    if (fresh) {
+      setExemptionTypeFieldsRow(fresh);
+    }
+  }, [exemptionTypesForSync, exemptionTypeFieldsRow]);
+
+  const shiftTemplatesForSync = detail?.parsed_state.shift_templates;
+  const prevShiftTemplatesForSyncRef = useRef(shiftTemplatesForSync);
+  useEffect(() => {
+    // See comment above the duty_types resync effect for why this guards
+    // on the ref rather than resyncing on every dependency-array change.
+    if (prevShiftTemplatesForSyncRef.current === shiftTemplatesForSync) return;
+    prevShiftTemplatesForSyncRef.current = shiftTemplatesForSync;
+    if (!shiftTemplateFieldsRow || !shiftTemplatesForSync) return;
+    const fresh = shiftTemplatesForSync.find((r) => r.row === shiftTemplateFieldsRow.row);
+    if (fresh) {
+      setShiftTemplateFieldsRow(fresh);
+    }
+  }, [shiftTemplatesForSync, shiftTemplateFieldsRow]);
 
   const readOnly = detail ? detail.status !== "draft" : true;
 
@@ -270,14 +322,43 @@ export default function ImportSessionReviewPage() {
     });
   }
 
+  function setFieldOverride(
+    group: "duty_types" | "exemption_types" | "shift_templates",
+    row: number,
+    field: string,
+    value: unknown,
+  ) {
+    if (!id) return;
+    setSelections((prev) => {
+      const fo = prev._field_overrides ?? {};
+      const groupOverrides = (fo as Record<string, Record<string, Record<string, unknown>>>)[group] ?? {};
+      const rowOverrides = groupOverrides[String(row)] ?? {};
+      const next = {
+        ...prev,
+        _field_overrides: {
+          ...fo,
+          [group]: {
+            ...groupOverrides,
+            [String(row)]: { ...rowOverrides, [field]: value },
+          },
+        },
+      };
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        void saveSelections(id, next).then(() => handleReparse());
+      }, 500);
+      return next;
+    });
+  }
+
   async function handleReparse() {
     if (!id) return;
     try {
       const result = await reparseSession(id);
-      setDetail(result);
+      queryClient.setQueryData(queryKeys.importSessionDetail(id), result);
       setSelections(result.user_selections ?? {});
     } catch {
-      setError("שגיאה ברענון הנתונים");
+      setActionError("שגיאה ברענון הנתונים");
     }
   }
 
@@ -357,7 +438,8 @@ export default function ImportSessionReviewPage() {
     try {
       const result = await confirmSession(id);
       setConfirmResult(result);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionDetail(id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
       setConfirmError(extractDetail(err) ?? "שגיאה באישור הייבוא");
     } finally {
@@ -702,75 +784,181 @@ export default function ImportSessionReviewPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
-                  <th className="text-right p-3">סוג תורנות</th>
                   <th className="text-right p-3">שם</th>
-                  <th className="text-right p-3">ראשי</th>
-                  <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">סוג תורנות</th>
+                  <th className="text-right p-3">מיקום</th>
+                  <th className="text-right p-3">חזרתיות</th>
                   <th className="text-right p-3">ימים</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
+                  <th className="text-right p-3">נדרש</th>
+                  <th className="text-right p-3">גלגול אוטומטי</th>
+                  <th className="text-right p-3">עד תאריך</th>
+                  <th className="text-right p-3">משך (ימים)</th>
+                  <th className="text-right p-3">הערות</th>
+                  <th className="text-right p-3">יחידות זכאיות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
               </thead>
               <tbody>
                 {shift_templates.map((row: ShiftTemplateRow) => {
-                  const canToggle =
-                    row.action !== "error" && row.action !== "out_of_scope";
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   const unresolvedType = !row.resolved_duty_type_id;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
                         {unresolvedType ? (
                           <div className="flex flex-col gap-1">
-                            <span className="text-red-600 text-xs font-medium">
-                              {row.duty_type_name}
-                            </span>
+                            <span className="text-red-600 text-xs font-medium">{row.duty_type_name}</span>
                             {!readOnly && (
-                              <>
-                                <Combobox
-                                  items={buildPickerItems(
-                                    row.duty_type_name,
-                                    allDutyTypes,
-                                    sortedDutyTypeItems,
-                                  )}
-                                  value=""
-                                  onChange={(pickedId) => {
-                                    if (pickedId)
-                                      handlePick(
-                                        "duty_type",
-                                        row.duty_type_name,
-                                        `shift_templates:${row.row}`,
-                                        pickedId,
-                                      );
-                                  }}
-                                />
-                                <button
-                                  className="text-indigo-600 hover:underline text-xs self-start"
-                                  onClick={() =>
-                                    setDutyTypeContext({ unresolvedName: row.duty_type_name })
-                                  }
-                                >
-                                  צור סוג תורנות
-                                </button>
-                              </>
+                              <Combobox
+                                items={buildPickerItems(row.duty_type_name, allDutyTypes, sortedDutyTypeItems)}
+                                value=""
+                                onChange={(pickedId) => {
+                                  if (pickedId)
+                                    handlePick("duty_type", row.duty_type_name, `shift_templates:${row.row}`, pickedId);
+                                }}
+                              />
                             )}
-                            {pendingPick?.rowKey === `shift_templates:${row.row}` &&
-                              pendingPick.kind === "duty_type" && (
-                                <PendingPickBanner
-                                  pick={pendingPick}
-                                  onApplyAll={() => void applyMapping("all", pendingPick)}
-                                  onApplyRow={() => void applyMapping("row", pendingPick)}
-                                  onCancel={() => setPendingPick(null)}
-                                />
-                              )}
+                            {pendingPick?.rowKey === `shift_templates:${row.row}` && pendingPick.kind === "duty_type" && (
+                              <PendingPickBanner
+                                pick={pendingPick}
+                                onApplyAll={() => void applyMapping("all", pendingPick)}
+                                onApplyRow={() => void applyMapping("row", pendingPick)}
+                                onCancel={() => setPendingPick(null)}
+                              />
+                            )}
                           </div>
                         ) : (
                           row.duty_type_name
                         )}
                       </td>
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.required_primary}</td>
-                      <td className="p-3">{row.required_reserve}</td>
-                      <td className="p-3">{row.days_of_week?.join(", ")}</td>
+                      <td className="p-3">{row.duty_location_name}</td>
+                      <td className="p-3">
+                        {readOnly ? row.recurrence_type : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.recurrence_type}
+                            onChange={(e) => setFieldOverride("shift_templates", row.row, "recurrence_type", e.target.value)}
+                          >
+                            <option value="weekdays">א׳-ה׳</option>
+                            <option value="daily">יומי</option>
+                            <option value="weekly">שבועי (ימים נבחרים)</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.recurrence_type !== "weekly" ? "—" : readOnly ? row.weekdays.join(",") : (
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5, 6, 7].map((iso) => (
+                              <button
+                                key={iso}
+                                type="button"
+                                className={`w-6 h-6 rounded text-xs border ${
+                                  row.weekdays.includes(iso)
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                                }`}
+                                onClick={() => {
+                                  const next = row.weekdays.includes(iso)
+                                    ? row.weekdays.filter((d) => d !== iso)
+                                    : [...row.weekdays, iso].sort((a, b) => a - b);
+                                  setFieldOverride("shift_templates", row.row, "weekdays", next);
+                                }}
+                              >
+                                {iso}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.required_count : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.required_count}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "required_count", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.auto_roll ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.auto_roll}
+                            onChange={(e) => setFieldOverride("shift_templates", row.row, "auto_roll", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!row.auto_roll ? "—" : readOnly ? row.auto_roll_until ?? "—" : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.auto_roll_until ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "auto_roll_until", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.duration_days : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.duration_days}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "duration_days", Number(e.target.value))}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.notes ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.notes ?? ""}
+                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "notes", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setShiftTemplateFieldsRow(row)}
+                          >
+                            ערוך יחידות
+                          </button>
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
@@ -780,18 +968,10 @@ export default function ImportSessionReviewPage() {
                             <select
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("shift_templates", row)}
-                              onChange={(e) =>
-                                setRowAction(
-                                  "shift_templates",
-                                  row.row,
-                                  e.target.value,
-                                )
-                              }
+                              onChange={(e) => setRowAction("shift_templates", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
-                              {row.action !== "skip" && (
-                                <option value="skip">דלג</option>
-                              )}
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
                             </select>
                           )}
                         </td>
@@ -981,6 +1161,17 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">ניקוד ליום</th>
+                  <th className="text-right p-3">תיאור</th>
+                  <th className="text-right p-3">פעיל</th>
+                  <th className="text-right p-3">יחס רזרבה</th>
+                  <th className="text-right p-3">מינימום רזרבה</th>
+                  <th className="text-right p-3">חיצוני</th>
+                  <th className="text-right p-3">איש קשר</th>
+                  <th className="text-right p-3">טלפון</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
+                  <th className="text-right p-3">הוראות</th>
+                  <th className="text-right p-3">יחידות/דרישות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -990,8 +1181,126 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.score_per_day}</td>
+                      <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.score_per_day : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.score_per_day ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "score_per_day", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.description ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.description ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "description", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.active === null ? "—" : row.active ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.active ?? false}
+                            onChange={(e) => setFieldOverride("duty_types", row.row, "active", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reserve_ratio ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reserve_ratio ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "reserve_ratio", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reserve_minimum ?? "—" : (
+                          <input
+                            type="number"
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reserve_minimum ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "reserve_minimum", e.target.value ? Number(e.target.value) : null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_external === null ? "—" : row.is_external ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_external ?? false}
+                            onChange={(e) => setFieldOverride("duty_types", row.row, "is_external", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.contact_name ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.contact_name ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "contact_name", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.contact_phone ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.contact_phone ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "contact_phone", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.instructions ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.instructions ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_types", row.row, "instructions", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setDutyTypeFieldsRow(row)}
+                          >
+                            ערוך יחידות/דרישות
+                          </button>
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
@@ -1023,6 +1332,11 @@ export default function ImportSessionReviewPage() {
               <thead>
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
+                  <th className="text-right p-3">תיאור</th>
+                  <th className="text-right p-3">גלובלי</th>
+                  <th className="text-right p-3">רפואי</th>
+                  <th className="text-right p-3">פטור פיקודי</th>
+                  <th className="text-right p-3">חל על</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1032,7 +1346,62 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
+                      <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("exemption_types", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.description ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.description ?? ""}
+                            onBlur={(e) => setFieldOverride("exemption_types", row.row, "description", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_global ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_global}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_global", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_medical ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_medical}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_medical", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_commander_exemption ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_commander_exemption}
+                            onChange={(e) => setFieldOverride("exemption_types", row.row, "is_commander_exemption", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="text-indigo-600 hover:underline text-xs"
+                            onClick={() => setExemptionTypeFieldsRow(row)}
+                          >
+                            ערוך חל-על
+                          </button>
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
@@ -1115,6 +1484,54 @@ export default function ImportSessionReviewPage() {
             void handleReparse();
           }}
           onClose={() => setNodeCreateContext(null)}
+        />
+      )}
+
+      {dutyTypeFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setDutyTypeFieldsRow(null)}
+          eligibleUnits={{
+            value: dutyTypeFieldsRow.resolved_eligible_node_ids,
+            onChange: (next) => {
+              setFieldOverride("duty_types", dutyTypeFieldsRow.row, "resolved_eligible_node_ids", next);
+              setDutyTypeFieldsRow({ ...dutyTypeFieldsRow, resolved_eligible_node_ids: next });
+            },
+          }}
+          requirements={{
+            value: dutyTypeFieldsRow.requirements ?? {},
+            onChange: (next) => {
+              setFieldOverride("duty_types", dutyTypeFieldsRow.row, "requirements", next);
+              setDutyTypeFieldsRow({ ...dutyTypeFieldsRow, requirements: next });
+            },
+          }}
+        />
+      )}
+
+      {exemptionTypeFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setExemptionTypeFieldsRow(null)}
+          dutyTypeMultiSelect={{
+            label: "חל על סוגי תורנות",
+            options: allDutyTypes,
+            value: exemptionTypeFieldsRow.resolved_duty_type_ids,
+            onChange: (next) => {
+              setFieldOverride("exemption_types", exemptionTypeFieldsRow.row, "resolved_duty_type_ids", next);
+              setExemptionTypeFieldsRow({ ...exemptionTypeFieldsRow, resolved_duty_type_ids: next });
+            },
+          }}
+        />
+      )}
+
+      {shiftTemplateFieldsRow && (
+        <ImportRowFieldsModal
+          onClose={() => setShiftTemplateFieldsRow(null)}
+          eligibleUnits={{
+            value: shiftTemplateFieldsRow.resolved_eligible_node_ids,
+            onChange: (next) => {
+              setFieldOverride("shift_templates", shiftTemplateFieldsRow.row, "resolved_eligible_node_ids", next);
+              setShiftTemplateFieldsRow({ ...shiftTemplateFieldsRow, resolved_eligible_node_ids: next });
+            },
+          }}
         />
       )}
     </Layout>

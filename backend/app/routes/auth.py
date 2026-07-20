@@ -1,9 +1,12 @@
+import json
+import logging
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
 from pydantic import BaseModel, Field
+from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
@@ -23,6 +26,8 @@ from app.services.soldiers import PasswordPolicyError, bump_token_version, valid
 from app.settings import get_settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_logger = logging.getLogger("app.auth")
 
 _LOCKOUT_THRESHOLD = 10
 _LOCKOUT_MINUTES = 15
@@ -101,8 +106,33 @@ def _client_context(request: Request) -> dict[str, str]:
     }
 
 
+def _login_account_key(request: Request) -> str:
+    """Rate-limit key for /auth/login: the submitted personal_number, falling
+    back to client IP if the body is missing/malformed."""
+    try:
+        raw = getattr(request, "_body", b"") or b""
+        data = json.loads(raw)
+        pn = data.get("personal_number")
+        if pn:
+            return f"login-account:{pn}"
+    except Exception:
+        pass
+    return get_remote_address(request)
+
+
+def _warn_if_insecure_cookie_mismatch(request: Request, settings) -> None:
+    if settings.cookie_secure and request.url.scheme != "https":
+        _logger.warning(
+            "cookie_secure is enabled but this request arrived over %s — the "
+            "refresh_token cookie will be silently dropped by the browser. "
+            "Set COOKIE_SECURE=false for non-HTTPS environments.",
+            request.url.scheme,
+        )
+
+
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit(get_settings().login_rate_limit)
+@limiter.limit(lambda: get_settings().login_rate_limit)
+@limiter.limit(lambda: get_settings().login_account_rate_limit, key_func=_login_account_key)
 def login(
     body: Annotated[LoginRequest, Body()],
     request: Request,
@@ -110,6 +140,7 @@ def login(
     session: Session = Depends(get_session),
 ) -> LoginResponse:
     settings = get_settings()
+    _warn_if_insecure_cookie_mismatch(request, settings)
     stmt = select(Soldier).where(
         Soldier.personal_number == body.personal_number, Soldier.left_at.is_(None)
     )
@@ -212,6 +243,7 @@ def refresh(
         )
 
     settings = get_settings()
+    _warn_if_insecure_cookie_mismatch(request, settings)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(
@@ -219,7 +251,7 @@ def refresh(
         value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
         httponly=True,
-        secure=get_settings().cookie_secure,
+        secure=settings.cookie_secure,
         samesite="strict",
         path="/api/auth",
     )

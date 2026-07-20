@@ -1,6 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ShiftsManagementPage from "./ShiftsManagementPage";
 import { AlgorithmSeenProvider } from "../../contexts/AlgorithmSeenContext";
+
+function renderWithProviders(ui: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -40,7 +48,7 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
 
   test("renders no badges when there are no jobs", async () => {
     mockListJobs.mockResolvedValue({ items: [], total: 0 });
-    render(
+    renderWithProviders(
       <AlgorithmSeenProvider>
         <ShiftsManagementPage />
       </AlgorithmSeenProvider>
@@ -64,7 +72,7 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       ],
       total: 6,
     });
-    render(
+    renderWithProviders(
       <AlgorithmSeenProvider>
         <ShiftsManagementPage />
       </AlgorithmSeenProvider>
@@ -81,7 +89,7 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       items: [job("pending", "shadow")],
       total: 1,
     });
-    render(
+    renderWithProviders(
       <AlgorithmSeenProvider>
         <ShiftsManagementPage />
       </AlgorithmSeenProvider>
@@ -101,7 +109,7 @@ describe("ShiftsManagementPage — algorithm run badges", () => {
       ],
       total: 2,
     });
-    render(
+    renderWithProviders(
       <AlgorithmSeenProvider>
         <ShiftsManagementPage />
       </AlgorithmSeenProvider>
