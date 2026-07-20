@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import MyRequestsPage from "./MyRequestsPage";
 import * as constraintsApi from "../api/constraints";
@@ -61,15 +62,26 @@ beforeEach(() => {
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
 });
 
+function renderPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MyRequestsPage />
+    </QueryClientProvider>
+  );
+}
+
 describe("MyRequestsPage - day-count badges", () => {
   it("shows a day-count badge next to a pending constraint row", async () => {
-    render(<MyRequestsPage />);
+    renderPage();
     const row = await screen.findByTestId("constraint-row-c1");
     expect(within(row).getByText("(5 ימים)")).toBeTruthy();
   });
 
   it("shows a day-count badge next to an exemption-request row", async () => {
-    render(<MyRequestsPage />);
+    renderPage();
     await screen.findByText("y");
     expect(screen.getByText("(10 ימים)")).toBeTruthy();
   });
