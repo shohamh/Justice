@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import ExemptionRequest, HierarchyNode, Soldier, SoldierEnrollmentRequest
+from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
+from app.services.notifications import create_notification
 
 
 class EnrollmentError(Exception):
@@ -58,6 +59,14 @@ def approve_enrollment(
     write_audit(session, actor_id=decider_id, action="enrollment.approve",
                 entity_type="soldier_enrollment_request", entity_id=req.id,
                 after={"soldier_id": str(req.soldier_id), "node_id": str(req.requested_node_id)})
+    create_notification(
+        session, soldier_id=req.soldier_id,
+        type=NotificationType.enrollment_approved,
+        title="בקשת ההצטרפות אושרה",
+        body=decision_note,
+        reference_type="soldier_enrollment_request", reference_id=req.id,
+        actor_id=decider_id,
+    )
     try_activate(session, req.id)
     return req
 
@@ -82,6 +91,14 @@ def reject_enrollment(
     write_audit(session, actor_id=decider_id, action="enrollment.reject",
                 entity_type="soldier_enrollment_request", entity_id=req.id,
                 after={"decision_note": decision_note})
+    create_notification(
+        session, soldier_id=req.soldier_id,
+        type=NotificationType.enrollment_rejected,
+        title="בקשת ההצטרפות נדחתה",
+        body=decision_note,
+        reference_type="soldier_enrollment_request", reference_id=req.id,
+        actor_id=decider_id,
+    )
     return req
 
 

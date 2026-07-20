@@ -175,3 +175,39 @@ def test_list_pending_scoped_to_node_ids(admin_session):
     results = list_pending_for_node_ids(admin_session, {node_a.id})
     assert len(results) == 1
     assert results[0].soldier_id == s1.id
+
+
+def test_approve_enrollment_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+    from app.services.enrollment import approve_enrollment
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, node)
+
+    approve_enrollment(admin_session, request_id=req.id, decider_id=decider.id, decision_note=None)
+    admin_session.flush()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=req.soldier_id, type=NotificationType.enrollment_approved,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_reject_enrollment_notifies_soldier(admin_session):
+    from app.db.models import Notification, NotificationType
+    from app.services.enrollment import reject_enrollment
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}", role="admin")
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    req = _make_req(admin_session, soldier, node)
+
+    reject_enrollment(admin_session, request_id=req.id, decider_id=decider.id, decision_note="no")
+    admin_session.flush()
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=req.soldier_id, type=NotificationType.enrollment_rejected,
+    ).one_or_none()
+    assert notif is not None
