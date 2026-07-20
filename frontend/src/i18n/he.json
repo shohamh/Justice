@@ -681,6 +681,9 @@
     "preview_title": "תצוגה מקדימה",
     "total": "סה״כ"
   },
+  "cover_blocked": {
+    "overlap": "קיימת חפיפה עם תורנות אחרת"
+  },
   "swaps": {
     "title": "החלפות",
     "board": "לוח מחליפים",

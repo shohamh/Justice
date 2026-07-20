@@ -35,11 +35,17 @@ import {
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import { DaysBadge } from "../components/DaysBadge";
+import i18n from "../i18n";
 
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
-    if (resp?.data?.detail) return resp.data.detail;
+    const detail = resp?.data?.detail;
+    if (detail?.startsWith("cover_blocked:")) {
+      const reason = detail.slice("cover_blocked:".length);
+      return i18n.t(`cover_blocked.${reason}`, { defaultValue: reason });
+    }
+    if (detail) return detail;
   }
   return "שגיאה בביצוע הפעולה";
 }

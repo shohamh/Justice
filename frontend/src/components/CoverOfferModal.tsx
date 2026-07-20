@@ -40,6 +40,9 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (detail?.startsWith("cover_not_eligible:")) {
         setError(detail.slice("cover_not_eligible:".length));
+      } else if (detail?.startsWith("cover_blocked:")) {
+        const reason = detail.slice("cover_blocked:".length);
+        setError(t(`cover_blocked.${reason}`, { defaultValue: reason }));
       } else {
         setError(detail ?? "שגיאה");
       }
