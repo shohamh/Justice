@@ -50,6 +50,28 @@ def test_login_401_reports_attempt_count(client: TestClient, admin_session: Sess
     assert body["max_attempts"] == 10
 
 
+def test_login_locks_account_on_threshold_attempt(client: TestClient, admin_session: Session):
+    from app.routes.auth import _LOCKOUT_MINUTES, _LOCKOUT_THRESHOLD
+
+    _create_soldier(admin_session, "7960002", "Correct123Pass")
+
+    for attempt in range(1, _LOCKOUT_THRESHOLD):
+        r = client.post(
+            "/api/auth/login", json={"personal_number": "7960002", "password": "wrong"}
+        )
+        assert r.status_code == 401, f"attempt {attempt} should still be 401"
+        body = r.json()["detail"]
+        assert body["attempts"] == attempt
+        assert body["max_attempts"] == _LOCKOUT_THRESHOLD
+
+    # The attempt that reaches the threshold locks the account immediately —
+    # this request itself gets 429, not the one after it.
+    r = client.post("/api/auth/login", json={"personal_number": "7960002", "password": "wrong"})
+    assert r.status_code == 429
+    assert r.json()["detail"] == "account_locked"
+    assert r.headers["Retry-After"] == str(_LOCKOUT_MINUTES * 60)
+
+
 def test_login_with_unknown_user_returns_401(client: TestClient):
     r = client.post("/api/auth/login", json={"personal_number": "9999999", "password": "anything"})
     assert r.status_code == 401
