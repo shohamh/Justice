@@ -75,6 +75,83 @@ def test_delete_empty_shift(client, admin_session):
     assert del_resp.status_code == 204
 
 
+def test_remove_shift_assignment_notifies_soldier(client, admin_session):
+    from app.db.models import Notification, NotificationType
+
+    dm, dt, loc = _setup(admin_session, "sh_rt_006")
+    soldier = create_soldier(admin_session, personal_number="sh_rt_006s", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+    create_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2026-11-01",
+        "end_date": "2026-11-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift_id = create_resp.json()["id"]
+    assign_resp = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(soldier.id)],
+        "reserves": [],
+    }, headers=auth_headers(dm))
+    assert assign_resp.status_code == 201, assign_resp.text
+    assignment_id = assign_resp.json()["primary_assignment_ids"][0]
+
+    resp = client.delete(f"/api/shifts/{shift_id}/assignments/{assignment_id}", headers=auth_headers(dm))
+    assert resp.status_code == 204
+
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.assignment_removed,
+    ).one_or_none()
+    assert notif is not None
+
+
+def test_bulk_delete_shifts_notifies_all_affected_soldiers(client, admin_session):
+    from app.db.models import Notification, NotificationType
+
+    dm, dt, loc = _setup(admin_session, "sh_rt_007")
+    soldier1 = create_soldier(admin_session, personal_number="sh_rt_007a", hierarchy_node_id=dm.hierarchy_node_id)
+    soldier2 = create_soldier(admin_session, personal_number="sh_rt_007b", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+
+    shift1_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2026-12-01",
+        "end_date": "2026-12-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift2_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2026-12-05",
+        "end_date": "2026-12-06",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift1_id = shift1_resp.json()["id"]
+    shift2_id = shift2_resp.json()["id"]
+
+    assert client.post(f"/api/shifts/{shift1_id}/assign-batch", json={
+        "primaries": [str(soldier1.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+    assert client.post(f"/api/shifts/{shift2_id}/assign-batch", json={
+        "primaries": [str(soldier2.id)], "reserves": [],
+    }, headers=auth_headers(dm)).status_code == 201
+
+    resp = client.delete(
+        "/api/shifts/bulk-delete",
+        params={"date_from": "2026-12-01", "date_to": "2026-12-31"},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deleted_assignments"] == 2
+
+    for soldier_id in (soldier1.id, soldier2.id):
+        notif = admin_session.query(Notification).filter_by(
+            soldier_id=soldier_id, type=NotificationType.assignment_removed,
+        ).one_or_none()
+        assert notif is not None
+
+
 def test_update_shift(client, admin_session):
     dm, dt, loc = _setup(admin_session, "sh_rt_005")
     create_resp = client.post("/api/shifts", json={
