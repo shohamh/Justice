@@ -197,6 +197,16 @@ def claim_request(
         )
     else:
         _apply_cover(session, req=req, actor_id=actor_id)
+        create_notification(session, soldier_id=req.requesting_soldier_id,
+                            type=NotificationType.swap_accepted,
+                            title="בקשת ההחלפה בוצעה",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
+        create_notification(session, soldier_id=covering_soldier_id,
+                            type=NotificationType.swap_accepted,
+                            title="בקשת ההחלפה בוצעה",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
         write_audit(
             session, actor_id=actor_id, action="swap.claim", entity_type="swap_request",
             entity_id=req.id, before={"status": before_status},
@@ -269,6 +279,12 @@ def reject_request(
                         title="בקשת ההחלפה נדחתה",
                         reference_type="swap_request", reference_id=req.id,
                         actor_id=actor_id)
+    if req.covering_soldier_id is not None:
+        create_notification(session, soldier_id=req.covering_soldier_id,
+                            type=NotificationType.swap_rejected,
+                            title="בקשת ההחלפה נדחתה",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
     write_audit(
         session, actor_id=actor_id, action="swap.reject", entity_type="swap_request",
         entity_id=req.id, before=before, after={"status": "rejected", "decision_note": decision_note},
@@ -290,6 +306,12 @@ def cancel_request(
         raise SwapError("not_cancellable")
     before = {"status": req.status}
     req.status = "cancelled"
+    if req.covering_soldier_id is not None:
+        create_notification(session, soldier_id=req.covering_soldier_id,
+                            type=NotificationType.swap_rejected,
+                            title="בקשת ההחלפה בוטלה ע\"י המבקש",
+                            reference_type="swap_request", reference_id=req.id,
+                            actor_id=actor_id)
     write_audit(
         session, actor_id=actor_id, action="swap.cancel", entity_type="swap_request",
         entity_id=req.id, before=before, after={"status": "cancelled"},
@@ -429,6 +451,20 @@ def cover_offer(
         )
     else:
         _apply_cover(session, req=req, actor_id=actor_id)
+        create_notification(
+            session, soldier_id=req.requesting_soldier_id,
+            type=NotificationType.swap_accepted,
+            title="בקשת ההחלפה בוצעה",
+            reference_type="swap_request", reference_id=req.id,
+            actor_id=actor_id,
+        )
+        create_notification(
+            session, soldier_id=covering_soldier_id,
+            type=NotificationType.swap_accepted,
+            title="בקשת ההחלפה בוצעה",
+            reference_type="swap_request", reference_id=req.id,
+            actor_id=actor_id,
+        )
 
     write_audit(
         session,
