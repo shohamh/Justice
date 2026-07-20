@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import secrets
 import uuid
 from datetime import date as date_type
@@ -31,6 +32,8 @@ from app.services.import_parsers._shared_parsing import parse_bool as _parse_boo
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.notifications import create_notification
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -368,16 +371,26 @@ def apply(
         session.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
 
-    for a in created_assignments:
-        create_notification(
-            session, soldier_id=a.soldier_id,
-            type=NotificationType.assignment_created,
-            title="שיבוץ חדש נוצר עבורך (ייבוא Excel)",
-            reference_type="duty_assignment", reference_id=a.id,
-            actor_id=actor.id,
+    try:
+        for a in created_assignments:
+            create_notification(
+                session, soldier_id=a.soldier_id,
+                type=NotificationType.assignment_created,
+                title="שיבוץ חדש נוצר עבורך (ייבוא Excel)",
+                reference_type="duty_assignment", reference_id=a.id,
+                actor_id=actor.id,
+            )
+        if created_assignments:
+            session.commit()
+    except Exception:
+        # The import itself (soldiers/assignments/audit row) already committed
+        # above. A notification failure here must not turn a successful
+        # import into an unhandled 500 for the client.
+        session.rollback()
+        logger.warning(
+            "Failed to send assignment_created notifications after Excel import apply",
+            exc_info=True,
         )
-    if created_assignments:
-        session.commit()
 
     return ApplyResult(created=created, updated=updated, skipped=skipped, errors=errors)
 

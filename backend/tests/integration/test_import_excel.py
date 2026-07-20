@@ -146,6 +146,51 @@ def test_apply_notifies_soldier_of_new_assignment(client, admin_session):
     assert notif is not None
 
 
+def test_apply_succeeds_even_if_notification_fails(client, admin_session, monkeypatch):
+    """If sending the post-import notification raises, the import's own side
+    effects (soldiers/assignments/audit row) already committed successfully,
+    so the endpoint must still return 200 with the correct counts rather than
+    an unhandled 500."""
+    import app.routes.import_excel as import_excel_module
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated notification failure")
+
+    monkeypatch.setattr(import_excel_module, "create_notification", _boom)
+
+    node = create_node(admin_session, level="branch", name="ie_node_notif_fail")
+    dm = create_soldier(admin_session, personal_number="ie_dm_notif_fail", role="duty_manager", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="ie_soldier_notif_fail", hierarchy_node_id=node.id)
+    dt = create_duty_type(admin_session, name=f"dt_notif_fail_{uuid.uuid4().hex[:8]}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_notif_fail_{uuid.uuid4().hex[:8]}")
+    admin_session.add(loc)
+    admin_session.commit()
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+
+    resp = client.post(
+        "/api/import/apply",
+        json={
+            "soldiers": [],
+            "assignments": [{
+                "row": 2, "action": "new",
+                "resolved_soldier_id": str(soldier.id),
+                "resolved_duty_type_id": str(dt.id),
+                "start_date": "2024-06-15", "end_date": "2024-06-16",
+                "is_reserve": False,
+            }],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    # The assignment itself was durably committed despite the notification failure.
+    from app.db.models import DutyAssignment
+    admin_session.expire_all()
+    assignment = admin_session.query(DutyAssignment).filter_by(soldier_id=soldier.id).one_or_none()
+    assert assignment is not None
+
+
 def test_template_download(client, admin_session):
     node = create_node(admin_session, level="branch", name="ie_node_004")
     dm = create_soldier(admin_session, personal_number="ie_dm_004", role="duty_manager", hierarchy_node_id=node.id)
