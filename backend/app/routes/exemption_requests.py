@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
-    Action, authorize, can_see_private, is_commander, is_duty_manager, scope_root_ids,
+    Action, authorize, can_see_private, forbid_self_target, is_commander, is_duty_manager, scope_root_ids,
 )
 from app.rate_limit import limiter
 from app.auth.deps import require_password_changed
@@ -330,6 +330,7 @@ def approve_exemption_request_commander_step(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+    forbid_self_target(user, req.soldier_id)
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     try:
         result = approve_commander_step(session, request_id, approved_by=user.id)
@@ -351,6 +352,7 @@ def approve_exemption_request_duty_manager_step(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+    forbid_self_target(user, req.soldier_id)
 
     from app.auth.authz import is_duty_manager, scope_root_ids
     if user.role != "admin":
@@ -383,6 +385,7 @@ def reject_exemption_request(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="exemption_request_not_found")
     target_soldier = session.get(Soldier, req.soldier_id)
     target_node = session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier else None
+    forbid_self_target(user, req.soldier_id)
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=target_node)
     try:
         result = reject_request(session, request_id, decided_by=user.id, decision_note=body.decision_note)

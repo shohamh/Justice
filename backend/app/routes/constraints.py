@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, scope_root_ids, can_see_private
+from app.auth.authz import Action, authorize, scope_root_ids, can_see_private, forbid_self_target
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, PersonalConstraint, Soldier
 from app.db.session import get_session
@@ -242,6 +242,7 @@ def approve(
     if c is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     s = _load_soldier(session, c.soldier_id)
+    forbid_self_target(user, s.id)
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=_node_of(session, s))
     try:
         c = svc.approve_constraint(
@@ -265,6 +266,7 @@ def reject(
     if c is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     s = _load_soldier(session, c.soldier_id)
+    forbid_self_target(user, s.id)
     authorize(session, user, Action.CONSTRAINT_APPROVE, target_node=_node_of(session, s))
     try:
         c = svc.reject_constraint(
