@@ -36,9 +36,11 @@ def _base(**overrides):
         "is_officer": False,
         "rank": "טוראי",
         "bahad1_graduate": False,
-        "enlistment_date": date(2023, 1, 1),
-        "mandatory_end_date": date(2025, 1, 1),
-        "discharge_date": date(2026, 1, 1),
+        # Relative to today so a חובה-only rank never accidentally looks like it
+        # outlived its own mandatory-service window as the real calendar advances.
+        "enlistment_date": date.today() - timedelta(days=600),
+        "mandatory_end_date": date.today() + timedelta(days=200),
+        "discharge_date": date.today() + timedelta(days=600),
         "last_mitvahim_date": None,
         "last_alal_date": None,
         **overrides,
@@ -80,7 +82,7 @@ def test_register_rejects_discharge_before_enlistment(admin_session):
     with pytest.raises(RegistrationError, match="discharge_date"):
         register(
             admin_session, invite_code=invite.code, requested_node_id=node.id,
-            exemption_requests=[], personal_constraints=[], is_career=False,
+            exemption_requests=[], personal_constraints=[],
             **_base(enlistment_date=date(2024, 1, 1), discharge_date=date(2023, 1, 1)),
         )
 
@@ -125,8 +127,7 @@ def test_register_duplicate_personal_number_raises(admin_session):
                  exemption_requests=[], personal_constraints=[], **_base(personal_number=pn))
 
 
-def test_register_stores_is_career(admin_session):
-    import sqlalchemy as sa
+def test_register_always_starts_as_chovah(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     from app.services.invite_codes import create_invite_code
@@ -136,12 +137,12 @@ def test_register_stores_is_career(admin_session):
 
     soldier = register(
         admin_session, invite_code=invite.code, requested_node_id=node.id,
-        exemption_requests=[], personal_constraints=[], is_career=True,
+        exemption_requests=[], personal_constraints=[],
         **_base(discharge_date=date.today() + timedelta(days=365 * 5)),
     )
     admin_session.commit()
 
-    assert soldier.is_career is True
+    assert soldier.is_career is False
 
 
 def test_register_links_exemptions_to_enrollment(admin_session):

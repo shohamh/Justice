@@ -35,7 +35,6 @@ def register(
     email: str | None,
     gender: str | None,
     is_officer: bool | None,
-    is_career: bool = False,
     rank: str | None,
     bahad1_graduate: bool,
     enlistment_date: date | None,
@@ -67,8 +66,8 @@ def register(
 
     try:
         _check_soldier_dates(
-            enlistment_date=enlistment_date, discharge_date=discharge_date,
-            mandatory_end_date=mandatory_end_date, is_career=is_career,
+            rank=rank, enlistment_date=enlistment_date, discharge_date=discharge_date,
+            mandatory_end_date=mandatory_end_date, is_career=False,
         )
     except SoldierError as exc:
         raise RegistrationError(str(exc)) from exc
@@ -84,7 +83,6 @@ def register(
         must_change_password=False,
         gender=gender,
         is_officer=is_officer,
-        is_career=is_career,
         rank=rank,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
