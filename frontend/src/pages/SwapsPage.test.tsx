@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -80,5 +80,53 @@ describe("SwapsPage - AskSwapModal soldier search", () => {
 
     expect(await screen.findByTestId("soldier-search-input")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("מספר אישי של חייל")).not.toBeInTheDocument();
+  });
+
+  it("does not offer a dead create-new-soldier option in the swap target search", async () => {
+    vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([
+      {
+        id: "sol-2",
+        personal_number: "1234567",
+        full_name: "דני כהן",
+        role: "soldier",
+        hierarchy_node_id: null,
+        phone: null,
+        must_change_password: false,
+        left_at: null,
+      } as soldiersApi.SoldierDTO,
+    ]);
+    renderPage();
+
+    const askButton = await screen.findByText("swaps.ask_swap");
+    fireEvent.click(askButton);
+    fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
+
+    const input = await screen.findByTestId("soldier-search-input");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "דני" } });
+
+    await screen.findByTestId("soldier-search-dropdown");
+    expect(screen.queryByTestId("soldier-search-create-new")).not.toBeInTheDocument();
+
+    // Also true for a query that matches nothing in the directory.
+    fireEvent.change(input, { target: { value: "לא קיים בכלל" } });
+    await waitFor(() => {
+      expect(screen.queryByTestId("soldier-search-create-new")).not.toBeInTheDocument();
+    });
+  });
+
+  it("extracts a message from an array-shaped 422 validation error detail", async () => {
+    vi.mocked(swapsApi.createSwap).mockRejectedValue({
+      response: { data: { detail: [{ msg: "תאריך לא תקין", loc: ["body", "date"], type: "value_error" }] } },
+    });
+    renderPage();
+
+    const askButton = await screen.findByText("swaps.ask_swap");
+    fireEvent.click(askButton);
+
+    const saveButton = await screen.findByText("swaps.save");
+    fireEvent.click(saveButton);
+
+    expect(await screen.findByText("תאריך לא תקין")).toBeInTheDocument();
   });
 });

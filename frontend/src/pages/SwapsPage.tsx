@@ -45,6 +45,16 @@ function statusKey(status: string) {
   return map[status] ?? status;
 }
 
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const first = detail[0] as { msg?: unknown } | undefined;
+    if (first && typeof first.msg === "string") return first.msg;
+  }
+  return fallback;
+}
+
 function ApprovalDot({ value }: { value: boolean | null }) {
   if (value === true) return <span className="text-green-600 font-bold">✓</span>;
   if (value === false) return <span className="text-red-500 font-bold">✗</span>;
@@ -176,8 +186,7 @@ function AskSwapModal({
       await createSwap(input);
       onCreated();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(extractErrorMessage(err, "שגיאה"));
     }
   }
 
@@ -208,7 +217,6 @@ function AskSwapModal({
           {mode === "soldier" && (
             <SoldierSearchAutocomplete
               onSelect={setTargetSoldier}
-              onCreateNew={() => {}}
             />
           )}
           <textarea placeholder={t("swaps.personal_message")} value={reason}
