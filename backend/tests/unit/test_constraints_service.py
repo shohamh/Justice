@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import pytest
 
 from app.db.models import PersonalConstraint
+from app.services import constraints
 from app.services.constraints import (
     ConstraintError,
     approve_constraint,
@@ -235,4 +236,79 @@ def test_get_approved_dates(admin_session):
 def test_constraint_not_found(admin_session):
     with pytest.raises(ConstraintError, match="constraint_not_found"):
         approve_constraint(admin_session, constraint_id=uuid.uuid4(), actor_id=None)
+
+
+def test_period_bounds_quarter():
+    assert constraints.period_bounds("quarter", date(2026, 8, 15)) == (date(2026, 7, 1), date(2026, 10, 1))
+
+
+def test_period_bounds_half_year():
+    assert constraints.period_bounds("half_year", date(2026, 8, 15)) == (date(2026, 7, 1), date(2027, 1, 1))
+
+
+def test_period_bounds_year():
+    assert constraints.period_bounds("year", date(2026, 8, 15)) == (date(2026, 1, 1), date(2027, 1, 1))
+
+
+def test_period_bounds_quarter_first_month():
+    assert constraints.period_bounds("quarter", date(2026, 1, 15)) == (date(2026, 1, 1), date(2026, 4, 1))
+
+
+def test_period_bounds_half_year_first_half():
+    assert constraints.period_bounds("half_year", date(2026, 3, 1)) == (date(2026, 1, 1), date(2026, 7, 1))
+
+
+def test_remaining_days_counts_only_current_period(admin_session):
+    s = create_soldier(admin_session, personal_number=_pn(10))
+    # a constraint entirely inside a past quarter (relative to today=2026-08-01) must not count
+    past = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=date(2026, 1, 5),
+        end_date=date(2026, 1, 10),
+        reason="x",
+        status="approved",
+    )
+    admin_session.add(past)
+    admin_session.flush()
+
+    result = constraints.remaining_days(admin_session, soldier_id=s.id, today=date(2026, 8, 1))
+    assert result["used_days"] == 0
+    assert result["remaining_days"] == result["cap_days"]
+    assert result["period_start"] == date(2026, 7, 1)
+    assert result["period_end"] == date(2026, 10, 1)
+
+
+def test_remaining_days_counts_current_period_overlap(admin_session):
+    s = create_soldier(admin_session, personal_number=_pn(11))
+    # partially overlaps the start of the current quarter (2026-07-01 .. 2026-10-01)
+    overlapping = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=date(2026, 6, 28),
+        end_date=date(2026, 7, 3),
+        reason="x",
+        status="pending",
+    )
+    admin_session.add(overlapping)
+    admin_session.flush()
+
+    result = constraints.remaining_days(admin_session, soldier_id=s.id, today=date(2026, 8, 1))
+    # only 2026-07-01..2026-07-03 (3 days) falls within the current period
+    assert result["used_days"] == 3
+    assert result["remaining_days"] == result["cap_days"] - 3
+
+
+def test_remaining_days_ignores_rejected(admin_session):
+    s = create_soldier(admin_session, personal_number=_pn(12))
+    rejected = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=date(2026, 7, 5),
+        end_date=date(2026, 7, 10),
+        reason="x",
+        status="rejected",
+    )
+    admin_session.add(rejected)
+    admin_session.flush()
+
+    result = constraints.remaining_days(admin_session, soldier_id=s.id, today=date(2026, 8, 1))
+    assert result["used_days"] == 0
 

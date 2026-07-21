@@ -280,6 +280,64 @@ def pending_approval_count(session: Session, *, node_ids: set[uuid.UUID]) -> int
     )
 
 
+def period_bounds(reset_period: str, today: date) -> tuple[date, date]:
+    """Inclusive start / exclusive end of the reset period containing `today`.
+
+    `reset_period` is one of "quarter" (default), "half_year", "year" — plain
+    calendar boundaries relative to `today`, no configurable anchor.
+    """
+    if reset_period == "half_year":
+        start_month = 1 if today.month <= 6 else 7
+        start = date(today.year, start_month, 1)
+        end = date(today.year, 7, 1) if start_month == 1 else date(today.year + 1, 1, 1)
+        return start, end
+    if reset_period == "year":
+        return date(today.year, 1, 1), date(today.year + 1, 1, 1)
+    # default: quarter
+    q_start_month = ((today.month - 1) // 3) * 3 + 1
+    start = date(today.year, q_start_month, 1)
+    end_month = q_start_month + 3
+    end = date(today.year, end_month, 1) if end_month <= 12 else date(today.year + 1, 1, 1)
+    return start, end
+
+
+def remaining_days(session: Session, *, soldier_id: uuid.UUID, today: date | None = None) -> dict:
+    """Cap / used / remaining personal-constraint days for the reset period containing `today`.
+
+    Counts pending + approved constraints overlapping the current period (not
+    just future-dated ones — see `_future_cap_used` for that variant).
+    """
+    today = today or date.today()
+    reset_period = str(_get_setting_with_default(session, "constraints.reset_period", "quarter"))
+    period_start, period_end = period_bounds(reset_period, today)
+    cap_days = int(_get_setting_with_default(session, "constraints.personal_cap_days", 15))
+    rows = list(
+        session.execute(
+            select(PersonalConstraint).where(
+                PersonalConstraint.soldier_id == soldier_id,
+                PersonalConstraint.status.in_(["pending", "approved"]),
+                PersonalConstraint.start_date < period_end,
+                PersonalConstraint.end_date >= period_start,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    used = 0
+    period_last_day = date.fromordinal(period_end.toordinal() - 1)
+    for r in rows:
+        overlap_start = max(r.start_date, period_start)
+        overlap_end = min(r.end_date, period_last_day)
+        used += (overlap_end - overlap_start).days + 1
+    return {
+        "cap_days": cap_days,
+        "used_days": used,
+        "remaining_days": max(0, cap_days - used),
+        "period_start": period_start,
+        "period_end": period_end,
+    }
+
+
 def get_approved_constraint_dates(
     session: Session, *, soldier_id: uuid.UUID
 ) -> list[tuple[date, date]]:
