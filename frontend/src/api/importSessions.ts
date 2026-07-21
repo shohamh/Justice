@@ -43,6 +43,16 @@ export interface SoldierRow extends RowBase {
   enlistment_date: string | null;
   phone: string | null;
   email: string | null;
+  is_career: boolean | null;
+  next_rank_date: string | null;
+  bahad1_graduate: boolean | null;
+  has_military_driving_license: boolean | null;
+  military_driving_license_expiry: string | null;
+  mandatory_end_date: string | null;
+  discharge_date: string | null;
+  last_mitvahim_date: string | null;
+  last_alal_date: string | null;
+  left_at: string | null;
   existing_id: string | null;
 }
 
