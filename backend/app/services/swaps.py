@@ -233,30 +233,34 @@ def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None
 
 
 def _all_approved(session: Session, req: SwapRequest) -> bool:
-    """Both soldiers must have approved, and — for each side that has at least
-    one required chain-commander row — at least one of that side's rows must
-    be approved (any single chain commander suffices; a side with zero rows
-    has no commander in the chain and is trivially satisfied)."""
+    """Both soldiers must have approved, and — for each (side, approver_kind)
+    combination that has at least one required row — at least one of that
+    combination's rows must be approved (any single required approver of
+    that kind suffices; a combination with zero rows is trivially satisfied,
+    e.g. no duty manager exists, or a side has no commander in its chain)."""
     if not (req.requester_side_approved and req.covering_side_approved):
         return False
     for side in ("requester", "covering"):
-        has_rows = session.execute(
-            select(SwapManagerApproval.id).where(
-                SwapManagerApproval.swap_request_id == req.id,
-                SwapManagerApproval.side == side,
-            ).limit(1)
-        ).first()
-        if has_rows is None:
-            continue  # no commander in this side's chain — trivially satisfied
-        has_approved = session.execute(
-            select(SwapManagerApproval.id).where(
-                SwapManagerApproval.swap_request_id == req.id,
-                SwapManagerApproval.side == side,
-                SwapManagerApproval.approved == True,  # noqa: E712
-            ).limit(1)
-        ).first()
-        if has_approved is None:
-            return False
+        for kind in ("commander", "duty_manager"):
+            has_rows = session.execute(
+                select(SwapManagerApproval.id).where(
+                    SwapManagerApproval.swap_request_id == req.id,
+                    SwapManagerApproval.side == side,
+                    SwapManagerApproval.approver_kind == kind,
+                ).limit(1)
+            ).first()
+            if has_rows is None:
+                continue
+            has_approved = session.execute(
+                select(SwapManagerApproval.id).where(
+                    SwapManagerApproval.swap_request_id == req.id,
+                    SwapManagerApproval.side == side,
+                    SwapManagerApproval.approver_kind == kind,
+                    SwapManagerApproval.approved == True,  # noqa: E712
+                ).limit(1)
+            ).first()
+            if has_approved is None:
+                return False
     return True
 
 
@@ -355,6 +359,27 @@ def approve_manager_row(
             session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
             entity_id=req.id, after={"side": side, "commander_id": str(commander_id)},
         )
+        # Same person may be the required approver for both sides at once
+        # (one commander over both soldiers, or the org's one duty manager)
+        # — approving once should satisfy both sides instead of asking for
+        # a second click.
+        other_side = "covering" if side == "requester" else "requester"
+        other_row = session.execute(
+            select(SwapManagerApproval).where(
+                SwapManagerApproval.swap_request_id == request_id,
+                SwapManagerApproval.side == other_side,
+                SwapManagerApproval.commander_id == commander_id,
+                SwapManagerApproval.approved == False,  # noqa: E712
+            )
+        ).scalar_one_or_none()
+        if other_row is not None:
+            other_row.approved = True
+            other_row.approved_by = actor_id
+            other_row.approved_at = row.approved_at
+            write_audit(
+                session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
+                entity_id=req.id, after={"side": other_side, "commander_id": str(commander_id), "cascaded": True},
+            )
         session.flush()
     _try_finalize(session, req, actor_id)
     session.flush()
