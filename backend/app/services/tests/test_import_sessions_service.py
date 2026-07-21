@@ -1004,6 +1004,19 @@ def _wb_with_duty_locations(rows):
     return wb
 
 
+def _wb_with_hierarchy(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("hierarchy")
+    ws.append([
+        "name", "level", "parent_name", "commander_personal_number",
+        "commander_name", "duty_manager_refs",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
 def test_duty_type_field_override_changes_resolved_score(admin_session):
     wb = _wb_with_duty_types([
         ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
@@ -1484,3 +1497,23 @@ def test_confirm_session_shift_template_update_preserves_blank_recurrence_fields
     assert tpl.required_count == 7  # preserved, not reset to 1
     assert tpl.duration_days == 3  # preserved, not reset to 1
     assert tpl.auto_roll is True  # preserved, not reset to False
+
+
+def test_hierarchy_field_override_changes_level(admin_session):
+    wb = _wb_with_hierarchy([
+        [f"node_{_uid()}", "branch", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["hierarchy"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"hierarchy": {str(row_num): {"level": "team"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["hierarchy"][0]
+    assert row["level"] == "team"

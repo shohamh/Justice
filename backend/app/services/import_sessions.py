@@ -201,9 +201,11 @@ def _resolve_hierarchy(
     actor: Soldier,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     existing_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
     valid_levels = {
         lt.key for lt in session.execute(select(HierarchyLevelType)).scalars()
@@ -213,36 +215,44 @@ def _resolve_hierarchy(
     for s in by_pn.values():
         by_name.setdefault(s.full_name, []).append(s)
 
-    # Pass 1: figure out each row's own resolved-or-new identity (name -> row index),
-    # so pass 2 can resolve forward-referenced parents regardless of sheet order.
     row_by_name = {row.name: row for row in data.hierarchy}
 
     out = []
     for row in data.hierarchy:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
 
-        if row.level not in valid_levels:
-            errors.append(f"סוג יחידה לא מוכר '{row.level}'")
+        def field(name: str, default):
+            return override[name] if name in override else default
 
-        existing = existing_by_name.get(row.name)
+        name = field("name", row.name)
+        level = field("level", row.level)
+        parent_name = field("parent_name", row.parent_name)
+        commander_personal_number = field("commander_personal_number", row.commander_personal_number)
+        commander_name = field("commander_name", row.commander_name)
+
+        if level not in valid_levels:
+            errors.append(f"סוג יחידה לא מוכר '{level}'")
+
+        existing = existing_by_name.get(name)
 
         resolved_parent_id = None
-        if row.parent_name:
+        if parent_name:
             row_key = f"hierarchy:{row.source_row}"
-            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.parent_name)
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(parent_name)
             if mapped_id:
                 resolved_parent_id = mapped_id
-            elif row.parent_name in existing_by_name:
-                resolved_parent_id = str(existing_by_name[row.parent_name].id)
-            elif row.parent_name in row_by_name:
-                resolved_parent_id = None  # resolved to another *new* row by name at commit time
+            elif parent_name in existing_by_name:
+                resolved_parent_id = str(existing_by_name[parent_name].id)
+            elif parent_name in row_by_name:
+                resolved_parent_id = None
             else:
-                errors.append(f"יחידת אב לא מזוהה '{row.parent_name}'")
+                errors.append(f"יחידת אב לא מזוהה '{parent_name}'")
 
         resolved_commander_id = None
-        if row.commander_personal_number or row.commander_name:
+        if commander_personal_number or commander_name:
             soldier, err = _resolve_soldier_ref(
-                row.commander_personal_number, row.commander_name, by_pn, by_name
+                commander_personal_number, commander_name, by_pn, by_name
             )
             if soldier is not None:
                 resolved_commander_id = str(soldier.id)
@@ -251,8 +261,8 @@ def _resolve_hierarchy(
 
         dm_results = []
         for ref in row.duty_manager_refs:
-            pn, _, name = ref.partition(":")
-            soldier, err = _resolve_soldier_ref(pn.strip(), name.strip(), by_pn, by_name)
+            pn, _, ref_name = ref.partition(":")
+            soldier, err = _resolve_soldier_ref(pn.strip(), ref_name.strip(), by_pn, by_name)
             dm_results.append({
                 "ref": ref,
                 "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
@@ -280,24 +290,18 @@ def _resolve_hierarchy(
             except ValueError:
                 pass
         elif action == "new" and actor.role != "admin" and not resolved_parent_id:
-            # Either a brand-new root node, or a parent that only resolves to
-            # another *new* row later in this same sheet (forward reference,
-            # not yet a real node id) — in both cases scope cannot be verified
-            # against a real parent node at this point, so treat as out of
-            # scope for non-admins. Matches is_node_in_actor_scope's contract
-            # that a None node_id is never in scope for a non-admin actor.
             action = "out_of_scope"
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "level": row.level,
-            "parent_name": row.parent_name,
+            "name": name,
+            "level": level,
+            "parent_name": parent_name,
             "resolved_parent_id": resolved_parent_id,
-            "commander_personal_number": row.commander_personal_number,
-            "commander_name": row.commander_name,
+            "commander_personal_number": commander_personal_number,
+            "commander_name": commander_name,
             "resolved_commander_id": resolved_commander_id,
             "duty_manager_refs": dm_results,
             "existing_id": str(existing.id) if existing is not None else None,
@@ -854,7 +858,7 @@ def _resolve_and_score(
         ),
         "assignments": _resolve_assignments(session, data, actor, duty_shifts),
         "duty_locations": _resolve_duty_locations(session, data, fo.get("duty_locations", {})),
-        "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
+        "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
         "parser_id": data.parser_id,
