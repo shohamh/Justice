@@ -41,7 +41,7 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
       const color = dutyTypeColor(d.duty_type_id);
       return {
         id: d.assignment_id,
-        title: typeNames[d.duty_type_id] ?? "תורנות",
+        title: d.duty_type_name || typeNames[d.duty_type_id] || "תורנות",
         start: isFullDayDefault ? d.start_date : d.start_at,
         end: isFullDayDefault ? d.end_date : d.end_at,
         allDay: isFullDayDefault,

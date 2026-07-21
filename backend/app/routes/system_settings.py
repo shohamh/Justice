@@ -54,6 +54,10 @@ def update_settings(
     existing = {r.key: r.value for r in session.execute(select(SystemSetting)).scalars().all()}
     merged = {**existing, **body.settings}
 
+    if merged.get("telegram.enabled") is False:
+        merged["registration.telegram_required"] = False
+        body.settings["registration.telegram_required"] = False
+
     def _density(key: str) -> int:
         return int(merged.get(key, _DENSITY_DEFAULTS[key]))
 
@@ -74,3 +78,21 @@ def update_settings(
     session.commit()
     rows = session.execute(select(SystemSetting)).scalars().all()
     return SettingsOut(settings={r.key: r.value for r in rows if r.key not in _HIDDEN_KEYS})
+
+
+@router.get("/export", response_model=SettingsOut)
+def export_settings(
+    session: Session = Depends(get_session),
+    user=Depends(require_roles("admin")),
+) -> SettingsOut:
+    rows = session.execute(select(SystemSetting)).scalars().all()
+    return SettingsOut(settings={r.key: r.value for r in rows if r.key not in _HIDDEN_KEYS})
+
+
+@router.post("/import", response_model=SettingsOut)
+def import_settings(
+    body: UpdateSettingsBody,
+    session: Session = Depends(get_session),
+    user=Depends(require_roles("admin")),
+) -> SettingsOut:
+    return update_settings(body, session, user)

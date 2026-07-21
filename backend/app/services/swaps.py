@@ -22,6 +22,36 @@ class SwapError(Exception):
     """Raised on an invalid swap operation."""
 
 
+def _enforce_hierarchy_level_restriction(
+    session: Session, *, requesting_soldier_id: uuid.UUID, other_soldier_id: uuid.UUID
+) -> None:
+    """If swaps.restrict_to_hierarchy_level is set, ensure both soldiers share a common
+    ancestor at that level. Raises SwapError("hierarchy_level_mismatch") otherwise."""
+    try:
+        level = get_setting(session, "swaps.restrict_to_hierarchy_level")
+    except SettingNotFound:
+        level = None
+    if not level:
+        return
+
+    from app.services.hierarchy import ancestor_id_at_level
+
+    requester = session.get(Soldier, requesting_soldier_id)
+    other = session.get(Soldier, other_soldier_id)
+    req_ancestor = (
+        ancestor_id_at_level(session, requester.hierarchy_node_id, level)
+        if requester.hierarchy_node_id
+        else None
+    )
+    other_ancestor = (
+        ancestor_id_at_level(session, other.hierarchy_node_id, level)
+        if other.hierarchy_node_id
+        else None
+    )
+    if req_ancestor is None or req_ancestor != other_ancestor:
+        raise SwapError("hierarchy_level_mismatch")
+
+
 def create_request(
     session: Session,
     *,
@@ -46,6 +76,9 @@ def create_request(
         )
         if not eligible:
             raise SwapError(f"cover_not_eligible:{reason}")
+        _enforce_hierarchy_level_restriction(
+            session, requesting_soldier_id=requesting_soldier_id, other_soldier_id=target_soldier_id
+        )
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,
@@ -422,6 +455,11 @@ def claim_request(
     )
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
+    _enforce_hierarchy_level_restriction(
+        session,
+        requesting_soldier_id=req.requesting_soldier_id,
+        other_soldier_id=covering_soldier_id,
+    )
     req.covering_soldier_id = covering_soldier_id
     before_status = req.status
     if _require_approval(session):
@@ -576,6 +614,11 @@ def take_free(
     )
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
+    _enforce_hierarchy_level_restriction(
+        session,
+        requesting_soldier_id=assignment.soldier_id,
+        other_soldier_id=covering_soldier_id,
+    )
 
     req = SwapRequest(
         duty_assignment_id=assignment_id,
@@ -634,6 +677,11 @@ def cover_offer(
     )
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
+    _enforce_hierarchy_level_restriction(
+        session,
+        requesting_soldier_id=req.requesting_soldier_id,
+        other_soldier_id=covering_soldier_id,
+    )
     req.covering_soldier_id = covering_soldier_id
     req.offered_assignment_ids = [str(aid) for aid in offered_assignment_ids]
 

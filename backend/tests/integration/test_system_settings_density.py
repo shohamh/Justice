@@ -51,3 +51,25 @@ def test_put_accepts_valid_density_settings(client, admin_session):
     assert resp.status_code == 200
     body = resp.json()["settings"]
     assert body["algorithm.max_total_duties_per_window"] == 10
+
+
+def test_disabling_telegram_forces_telegram_required_off(client, admin_session):
+    admin = _admin(admin_session, "sysset_admin_4")
+    # Turn telegram_required on first.
+    resp = client.put(
+        "/api/admin/system-settings",
+        json={"settings": {"registration.telegram_required": True}},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["settings"]["registration.telegram_required"] is True
+
+    resp = client.put(
+        "/api/admin/system-settings",
+        json={"settings": {"telegram.enabled": False}},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    body = resp.json()["settings"]
+    assert body["telegram.enabled"] is False
+    assert body["registration.telegram_required"] is False

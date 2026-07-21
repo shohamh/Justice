@@ -62,7 +62,6 @@ class PatchEnrollmentBody(BaseModel):
     email: str | None = None
     rank: str | None = None
     is_officer: bool | None = None
-    is_career: bool | None = None
     gender: str | None = None
     enlistment_date: str | None = None
     mandatory_end_date: str | None = None
@@ -190,8 +189,6 @@ def patch_enrollment(
         s.rank = body.rank or None
     if body.is_officer is not None:
         s.is_officer = body.is_officer
-    if body.is_career is not None:
-        s.is_career = body.is_career
     if body.gender is not None:
         s.gender = body.gender or None
     if body.enlistment_date is not None:

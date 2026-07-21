@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timedelta
 
 from app.db.models import HierarchyNode, SoldierEnrollmentRequest, SystemSetting
 from app.services.invite_codes import create_invite_code
@@ -34,10 +35,12 @@ def _payload(invite_code, node_id, **overrides):
         "is_officer": False,
         "rank": "טוראי",
         "bahad1_graduate": False,
-        "enlistment_date": "2023-01-01",
-        "mandatory_end_date": "2025-01-01",
-        "discharge_date": "2026-01-01",
-        "last_mitvahim_date": "2024-01-01",
+        # Relative to today so a חובה-only rank never accidentally looks like it
+        # outlived its own mandatory-service window as the real calendar advances.
+        "enlistment_date": (date.today() - timedelta(days=600)).isoformat(),
+        "mandatory_end_date": (date.today() + timedelta(days=200)).isoformat(),
+        "discharge_date": (date.today() + timedelta(days=600)).isoformat(),
+        "last_mitvahim_date": (date.today() - timedelta(days=30)).isoformat(),
         "last_alal_date": None,
         "requested_node_id": str(node_id),
         "exemption_requests": [],

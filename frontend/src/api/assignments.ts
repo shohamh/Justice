@@ -15,6 +15,7 @@ export interface EffectiveDuty {
   assignment_id: string;
   soldier_id: string;
   duty_type_id: string;
+  duty_type_name: string;
   duty_location_id: string;
   start_date: string;
   end_date: string;

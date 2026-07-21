@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, HierarchyNode, Soldier
+from app.db.models import DutyAssignment, DutyType, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import assignments as svc
 from app.services import scoring as scoring_svc
@@ -55,6 +55,7 @@ class EffectiveDutyOut(BaseModel):
     assignment_id: uuid.UUID
     soldier_id: uuid.UUID
     duty_type_id: uuid.UUID
+    duty_type_name: str
     duty_location_id: uuid.UUID
     start_date: date
     end_date: date
@@ -134,7 +135,15 @@ def list_effective_duties(
     spans = scoring_svc.effective_duty_spans(
         session, soldier_ids={soldier_id}, date_from=date_from, date_to=date_to
     )
-    return [EffectiveDutyOut(**sp) for sp in spans]
+    type_ids = {sp["duty_type_id"] for sp in spans}
+    names = {
+        dt.id: dt.name
+        for dt in session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars()
+    } if type_ids else {}
+    return [
+        EffectiveDutyOut(**sp, duty_type_name=names.get(sp["duty_type_id"], ""))
+        for sp in spans
+    ]
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)

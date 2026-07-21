@@ -1,8 +1,13 @@
+import { usePublicSettings } from "../hooks/usePublicSettings";
+
 interface Props {
   linked: boolean;
 }
 
 export default function TelegramBadge({ linked }: Props) {
+  const settings = usePublicSettings();
+  if (settings?.["telegram.enabled"] === false) return null;
+
   return (
     <span
       className="inline-flex items-center gap-0.5"

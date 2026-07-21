@@ -4,6 +4,7 @@ from decimal import Decimal
 from app.db.models import DutyAssignment, DutyDayOverride, DutyLocation, DutyType, Notification, NotificationType, PersonalConstraint, Soldier, SwapRequest, SystemSetting
 from app.services import swaps as svc
 from app.services.settings_loader import set_setting
+from tests.helpers import create_node, create_soldier
 
 
 def _seed(session):
@@ -360,3 +361,139 @@ def test_create_direct_request_blocked_when_target_has_constraint(admin_session)
         assert False, "expected SwapError"
     except svc.SwapError as exc:
         assert str(exc).startswith("cover_not_eligible:")
+
+
+def _seed_cross_branch(session):
+    dt = DutyType(name="שמירה-hier-swap", score_per_day=1)
+    loc = DutyLocation(name="עמדה-hier-swap")
+    session.add_all([dt, loc])
+    session.flush()
+
+    branch_a = create_node(session, level="branch", name="branch_a")
+    branch_b = create_node(session, level="branch", name="branch_b")
+    unit_a = create_node(session, level="unit", name="unit_a", parent=branch_a)
+    unit_b = create_node(session, level="unit", name="unit_b", parent=branch_b)
+    requester = create_soldier(session, personal_number="7970001", hierarchy_node_id=unit_a.id)
+    target = create_soldier(session, personal_number="7970002", hierarchy_node_id=unit_b.id)
+
+    assignment = DutyAssignment(
+        soldier_id=requester.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+    )
+    session.add(assignment)
+    session.flush()
+    return requester, target, assignment
+
+
+def test_create_request_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+            target_soldier_id=target.id, reason=None, actor_id=requester.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_create_request_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=target.id, reason=None, actor_id=requester.id,
+    )
+    assert req.status == "open"
+
+
+def test_claim_open_board_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.claim_request(
+            admin_session, request_id=req.id, covering_soldier_id=target.id, actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_claim_open_board_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    out = svc.claim_request(
+        admin_session, request_id=req.id, covering_soldier_id=target.id, actor_id=target.id,
+    )
+    assert out.status in ("pending_approval", "applied")
+
+
+def test_cover_offer_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.cover_offer(
+            admin_session, swap_id=req.id, covering_soldier_id=target.id,
+            offered_assignment_ids=[], actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_cover_offer_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    out = svc.cover_offer(
+        admin_session, swap_id=req.id, covering_soldier_id=target.id,
+        offered_assignment_ids=[], actor_id=target.id,
+    )
+    assert out.status in ("pending_approval", "applied")
+
+
+def test_take_free_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.take_free(
+            admin_session, assignment_id=assignment.id,
+            covering_soldier_id=target.id, actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_take_free_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req, warnings = svc.take_free(
+        admin_session, assignment_id=assignment.id,
+        covering_soldier_id=target.id, actor_id=target.id,
+    )
+    assert req.status == "applied"

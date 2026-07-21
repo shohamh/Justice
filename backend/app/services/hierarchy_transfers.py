@@ -1,0 +1,120 @@
+"""Hierarchy transfer requests: move a soldier to a different hierarchy node,
+subject to approval by the destination node's commander/duty managers.
+"""
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.audit.writer import write_audit
+from app.db.models import HierarchyTransferRequest, NotificationType, Soldier
+from app.services.notifications import create_notification
+
+
+class HierarchyTransferError(Exception):
+    """Raised on an invalid hierarchy transfer operation."""
+
+
+def create_request(
+    session: Session, *, soldier_id: uuid.UUID, to_node_id: uuid.UUID,
+    requested_by: uuid.UUID,
+) -> HierarchyTransferRequest:
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        raise HierarchyTransferError("soldier_not_found")
+    req = HierarchyTransferRequest(
+        soldier_id=soldier_id, from_node_id=soldier.hierarchy_node_id,
+        to_node_id=to_node_id, requested_by=requested_by,
+    )
+    session.add(req)
+    session.flush()
+    _notify_destination_approvers(session, req)
+    write_audit(
+        session, actor_id=requested_by, action="hierarchy_transfer.request",
+        entity_type="hierarchy_transfer_request", entity_id=req.id,
+        after={"soldier_id": str(soldier_id), "to_node_id": str(to_node_id)},
+    )
+    return req
+
+
+def _notify_destination_approvers(session: Session, req: HierarchyTransferRequest) -> None:
+    from app.db.models import DutyManagerScope, HierarchyNode
+    node = session.get(HierarchyNode, req.to_node_id)
+    approver_ids: set[uuid.UUID] = set()
+    if node and node.commander_id:
+        approver_ids.add(node.commander_id)
+    dm_rows = session.execute(
+        select(DutyManagerScope.duty_manager_id).where(DutyManagerScope.hierarchy_node_id == req.to_node_id)
+    ).scalars().all()
+    approver_ids.update(dm_rows)
+    for approver_id in approver_ids:
+        create_notification(
+            session, soldier_id=approver_id, type=NotificationType.transfer_request_pending,
+            title="בקשת העברת חייל למסגרת שלך ממתינה לאישור",
+            reference_type="hierarchy_transfer_request", reference_id=req.id,
+        )
+
+
+def approve_request(
+    session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID,
+) -> HierarchyTransferRequest:
+    req = session.get(HierarchyTransferRequest, request_id)
+    if req is None:
+        raise HierarchyTransferError("request_not_found")
+    if req.status != "pending":
+        raise HierarchyTransferError("not_pending")
+    soldier = session.get(Soldier, req.soldier_id)
+    soldier.hierarchy_node_id = req.to_node_id
+    req.status = "approved"
+    req.decided_by = actor_id
+    write_audit(
+        session, actor_id=actor_id, action="hierarchy_transfer.approve",
+        entity_type="hierarchy_transfer_request", entity_id=req.id,
+        after={"to_node_id": str(req.to_node_id)},
+    )
+    return req
+
+
+def reject_request(
+    session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID, decision_note: str | None = None,
+) -> HierarchyTransferRequest:
+    req = session.get(HierarchyTransferRequest, request_id)
+    if req is None:
+        raise HierarchyTransferError("request_not_found")
+    if req.status != "pending":
+        raise HierarchyTransferError("not_pending")
+    req.status = "rejected"
+    req.decided_by = actor_id
+    req.decision_note = decision_note
+    create_notification(
+        session, soldier_id=req.requested_by, type=NotificationType.transfer_request_rejected,
+        title="בקשת העברת החייל נדחתה", reference_type="hierarchy_transfer_request",
+        reference_id=req.id, actor_id=actor_id,
+    )
+    write_audit(
+        session, actor_id=actor_id, action="hierarchy_transfer.reject",
+        entity_type="hierarchy_transfer_request", entity_id=req.id,
+        after={"decision_note": decision_note},
+    )
+    return req
+
+
+def list_pending_for_approver(session: Session, *, approver_id: uuid.UUID) -> list[HierarchyTransferRequest]:
+    from app.db.models import DutyManagerScope, HierarchyNode
+    commanded_nodes = session.execute(
+        select(HierarchyNode.id).where(HierarchyNode.commander_id == approver_id)
+    ).scalars().all()
+    dm_nodes = session.execute(
+        select(DutyManagerScope.hierarchy_node_id).where(DutyManagerScope.duty_manager_id == approver_id)
+    ).scalars().all()
+    node_ids = set(commanded_nodes) | set(dm_nodes)
+    if not node_ids:
+        return []
+    return list(session.execute(
+        select(HierarchyTransferRequest).where(
+            HierarchyTransferRequest.to_node_id.in_(node_ids),
+            HierarchyTransferRequest.status == "pending",
+        )
+    ).scalars())

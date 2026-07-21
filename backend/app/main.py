@@ -24,6 +24,7 @@ from app.routes import exemption_requests as exemption_request_routes
 from app.routes import exemptions as exemption_routes
 from app.routes import health as health_routes
 from app.routes import hierarchy as hierarchy_routes
+from app.routes import hierarchy_transfers as hierarchy_transfer_routes
 from app.routes import me as me_routes
 from app.routes import score_adjustments as score_adjustment_routes
 from app.routes import scoring as scoring_routes
@@ -144,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(hierarchy_routes.router, prefix="/api")
+    app.include_router(hierarchy_transfer_routes.router, prefix="/api")
     app.include_router(soldier_routes.router, prefix="/api")
     app.include_router(assignment_routes.router, prefix="/api")
     app.include_router(constraint_routes.router, prefix="/api")
