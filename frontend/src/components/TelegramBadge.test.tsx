@@ -31,4 +31,26 @@ describe("TelegramBadge", () => {
       expect(container.firstChild).toBeNull();
     });
   });
+
+  it("recovers after a failed fetch (e.g. unauthenticated at /login) and uses the next successful fetch's real data", async () => {
+    // Simulates: usePublicSettings is called once from /login before auth exists
+    // (rejects, e.g. 401), then again later from a logged-in TelegramBadge. The
+    // module-level cache/inflight state must not stay poisoned with {} forever.
+    mockGetPublicSettings.mockRejectedValueOnce(new Error("401"));
+    const { default: TelegramBadge } = await import("./TelegramBadge");
+
+    const first = render(<TelegramBadge linked={true} />);
+    await waitFor(() => {
+      // Failed fetch falls back to {} -> telegram.enabled is absent -> shown by default.
+      expect(screen.getByTitle("Telegram מקושר")).toBeInTheDocument();
+    });
+    first.unmount();
+
+    mockGetPublicSettings.mockResolvedValueOnce({ "telegram.enabled": false });
+    const second = render(<TelegramBadge linked={true} />);
+    await waitFor(() => {
+      // Real (second) fetch result must be observed, not the stale poisoned {}.
+      expect(second.container.firstChild).toBeNull();
+    });
+  });
 });

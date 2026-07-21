@@ -20,7 +20,13 @@ export function usePublicSettings(): SettingsMap | null {
           cache = s;
           return s;
         })
-        .catch(() => ({}) as SettingsMap);
+        .catch(() => {
+          // Don't poison the cache: a failure (e.g. unauthenticated fetch from
+          // the login page) shouldn't be remembered as "settings are {}" for the
+          // lifetime of the page. Reset inflight so the next caller retries.
+          inflight = null;
+          return {} as SettingsMap;
+        });
     }
     let cancelled = false;
     inflight.then((s) => {
