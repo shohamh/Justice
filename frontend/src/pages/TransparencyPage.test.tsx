@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import "../i18n";
 import TransparencyPage from "./TransparencyPage";
 import * as scoringApi from "../api/scoring";
 import * as hierarchyApi from "../api/hierarchy";
@@ -82,6 +83,23 @@ beforeEach(() => {
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(scoringApi.getFairnessComponents).mockRejectedValue(new Error("not needed"));
   vi.mocked(potentialApi.getEffortGap).mockResolvedValue([]);
+});
+
+describe("TransparencyPage 403 handling", () => {
+  it("shows a permission message instead of the table when the transparency endpoint returns 403", async () => {
+    const forbiddenError = Object.assign(new Error("Forbidden"), {
+      isAxiosError: true,
+      response: { status: 403, data: { detail: "transparency_hidden" } },
+    });
+    vi.mocked(scoringApi.getTransparency).mockRejectedValue(forbiddenError);
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText("אין לך הרשאה לצפות בדף זה")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("transparency-table")).not.toBeInTheDocument();
+  });
 });
 
 describe("TransparencyPage exemptions column", () => {

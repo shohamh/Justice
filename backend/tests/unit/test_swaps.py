@@ -497,3 +497,133 @@ def test_take_free_allowed_across_hierarchy_level_when_not_restricted(admin_sess
         covering_soldier_id=target.id, actor_id=target.id,
     )
     assert req.status == "applied"
+
+
+def _seed_multi_target(session, n=3):
+    dt = DutyType(name="dt_multi_target", score_per_day=1)
+    loc = DutyLocation(name="loc_multi_target")
+    requester = Soldier(personal_number="mt_req", full_name="Req", password_hash="x", role="soldier",
+                        enrolled_at=date(2026, 1, 1), must_change_password=False)
+    targets = [
+        Soldier(personal_number=f"mt_s{i}", full_name=f"S{i}", password_hash="x", role="soldier",
+                enrolled_at=date(2026, 1, 1), must_change_password=False)
+        for i in range(1, n + 1)
+    ]
+    session.add_all([dt, loc, requester, *targets])
+    session.flush()
+    assignment = DutyAssignment(
+        soldier_id=requester.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+    )
+    session.add(assignment)
+    session.flush()
+    return requester, targets, assignment
+
+
+def test_create_request_fans_out_to_multiple_targets_capped_at_setting(admin_session):
+    requester, (s1, s2, s3), assignment = _seed_multi_target(admin_session, n=3)
+    set_setting(admin_session, "swaps.max_specific_targets", 2, actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=[s1.id, s2.id, s3.id], reason=None,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "too_many_targets"
+
+    reqs = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[s1.id, s2.id], reason=None,
+    )
+    assert len(reqs) == 2
+    assert {r.target_soldier_id for r in reqs} == {s1.id, s2.id}
+    assert all(r.status == "open" for r in reqs)
+
+
+def test_claiming_one_targeted_request_cancels_siblings(admin_session):
+    requester, (s1, s2), assignment = _seed_multi_target(admin_session, n=2)
+    reqs = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[s1.id, s2.id], reason=None,
+    )
+    admin_session.flush()
+    req_for_s1 = next(r for r in reqs if r.target_soldier_id == s1.id)
+    req_for_s2 = next(r for r in reqs if r.target_soldier_id == s2.id)
+
+    svc.claim_request(admin_session, request_id=req_for_s1.id, covering_soldier_id=s1.id)
+    admin_session.flush()
+    admin_session.refresh(req_for_s2)
+    assert req_for_s2.status == "cancelled"
+
+
+def test_claiming_a_second_sibling_cancels_a_pending_approval_sibling(admin_session):
+    """Reproduces the double-cover risk from the final-review finding: a
+    pending_approval sibling (one that already had its own claim accepted
+    and is awaiting manager approval) must still be cancelled when another
+    live request for the same duty + requester gets claimed — otherwise two
+    parallel flows could both reach _apply_cover for the same assignment.
+
+    This isn't reachable via the original two-target fan-out alone (claiming
+    one of two fanned-out siblings already cancelled the other while it was
+    still "open", before it had a chance to also be claimed). The gap is a
+    *third*, independently-created request for the same duty_assignment_id +
+    requesting_soldier_id — e.g. a later open-board post — which the
+    per-(assignment, target) uniqueness check in _create_single_request does
+    not block, and which claim_request's old status == "open" filter could
+    never catch once the first sibling had already progressed past "open".
+    """
+    requester, (s1, s2), assignment = _seed_multi_target(admin_session, n=2)
+    set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
+
+    req1 = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=s1.id, reason=None,
+    )
+    admin_session.flush()
+    # s1 claims their targeted request -> it moves to pending_approval,
+    # awaiting manager sign-off (not yet applied).
+    svc.claim_request(admin_session, request_id=req1.id, covering_soldier_id=s1.id)
+    admin_session.flush()
+    assert admin_session.get(SwapRequest, req1.id).status == "pending_approval"
+
+    # A second, independent request for the same duty + requester (e.g. an
+    # open-board post) — not one of the original fan-out siblings, and not
+    # blocked by the uniqueness check since its target differs from req1's.
+    req2 = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None,
+    )
+    admin_session.flush()
+
+    # s2 claims req2 too -> without the fix, req1 (pending_approval, not
+    # "open") would survive, leaving two live flows for the same assignment.
+    svc.claim_request(admin_session, request_id=req2.id, covering_soldier_id=s2.id)
+    admin_session.flush()
+
+    admin_session.refresh(req1)
+    req2_reloaded = admin_session.get(SwapRequest, req2.id)
+    assert req1.status == "cancelled"
+    assert req2_reloaded.status == "pending_approval"
+
+    # And the previously-pending req1 can no longer be finalized into a
+    # second _apply_cover for the same assignment.
+    try:
+        svc.approve_soldier_side(admin_session, request_id=req1.id, soldier_id=requester.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "not_pending"
+
+
+def test_create_request_rejects_empty_target_list(admin_session):
+    a, b, assignment = _seed(admin_session)
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=[], reason=None,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "no_targets_specified"

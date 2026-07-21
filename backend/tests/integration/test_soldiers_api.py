@@ -78,6 +78,19 @@ def test_soft_delete_sets_left_at(client: TestClient, admin_session: Session):
     assert admin_session.get(type(target), target.id).left_at is not None
 
 
+def test_release_soldier_sets_left_at_to_given_date(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="4000009", role="admin")
+    target = create_soldier(admin_session, personal_number="4100008")
+    r = client.delete(
+        f"/api/soldiers/{target.id}",
+        params={"left_at": "2026-08-01"},
+        headers=auth_headers(admin),
+    )
+    assert r.status_code == 204
+    admin_session.expire_all()
+    assert admin_session.get(type(target), target.id).left_at == date(2026, 8, 1)
+
+
 def test_patch_enrolled_at(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="6200001", role="admin")
     target = create_soldier(admin_session, personal_number="6200002")

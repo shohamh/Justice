@@ -7,6 +7,7 @@ export interface SwapManagerApproval {
   approved_by: string | null;
   approved_by_name: string | null;
   approved_at: string | null;
+  approver_kind: "commander" | "duty_manager";
 }
 
 export interface SwapRequest {
@@ -44,6 +45,25 @@ export interface CreateSwapInput {
   duty_assignment_id: string;
   target_soldier_id?: string | null;
   reason?: string | null;
+}
+
+export interface EligibleTarget {
+  soldier_id: string;
+  full_name: string;
+  node_name: string | null;
+  hierarchy_distance: number;
+}
+
+export async function listEligibleTargets(dutyAssignmentId: string): Promise<EligibleTarget[]> {
+  return (await api.get<EligibleTarget[]>("/swaps/eligible-targets", {
+    params: { duty_assignment_id: dutyAssignmentId },
+  })).data;
+}
+
+export async function createBulkSwap(input: {
+  duty_assignment_id: string; target_soldier_ids: string[]; reason: string | null;
+}): Promise<SwapRequest[]> {
+  return (await api.post<SwapRequest[]>("/me/swaps/bulk", input)).data;
 }
 
 export async function listMySwaps(): Promise<SwapRequest[]> {
@@ -122,8 +142,16 @@ export async function takeDutyFree(dutyAssignmentId: string): Promise<SwapReques
   return res.data;
 }
 
-export async function getSwapConfig(): Promise<{ require_manager_approval: boolean }> {
-  return (await api.get<{ require_manager_approval: boolean }>("/swaps/config")).data;
+export async function getSwapConfig(): Promise<{
+  require_manager_approval: boolean;
+  require_duty_manager_approval: boolean;
+  max_specific_targets: number;
+}> {
+  return (await api.get<{
+    require_manager_approval: boolean;
+    require_duty_manager_approval: boolean;
+    max_specific_targets: number;
+  }>("/swaps/config")).data;
 }
 
 export interface EligibilityResult {

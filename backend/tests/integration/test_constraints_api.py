@@ -39,6 +39,17 @@ def test_soldier_cancel_own(client: TestClient, admin_session: Session):
     assert len(r2.json()) == 0
 
 
+def test_soldier_remaining_days(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7500005")
+    r = client.get("/api/me/constraints/remaining", headers=auth_headers(s))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cap_days"] == 15
+    assert body["used_days"] == 0
+    assert body["remaining_days"] == 15
+    assert "period_start" in body and "period_end" in body
+
+
 def test_commander_approves_in_subtree(client: TestClient, admin_session: Session):
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)

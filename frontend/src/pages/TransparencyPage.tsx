@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
@@ -296,6 +297,7 @@ export default function TransparencyPage() {
   });
   const rows = useMemo(() => transparencyQuery.data?.rows ?? [], [transparencyQuery.data]);
   const canSeeExemptionAggregates = transparencyQuery.data?.can_see_exemption_aggregates ?? false;
+  const transparencyForbidden = isAxiosError(transparencyQuery.error) && transparencyQuery.error.response?.status === 403;
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
@@ -864,6 +866,16 @@ export default function TransparencyPage() {
       exportValue: (r) => formatGap(r.global_gap),
     },
   ];
+
+  if (transparencyForbidden) {
+    return (
+      <Layout>
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6" data-testid="transparency-page">
+          <p className="text-sm text-red-500" dir="rtl">{t("transparency.no_permission")}</p>
+        </section>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

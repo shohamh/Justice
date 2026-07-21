@@ -12,6 +12,7 @@ export interface SoldierDTO {
   enrolled_at: string | null;
   gender: string | null;
   is_officer: boolean | null;
+  is_career: boolean;
   rank: string | null;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
@@ -65,8 +66,8 @@ export async function resetSoldierPassword(id: string): Promise<{ temp_password:
   return (await api.post<{ temp_password: string }>(`/soldiers/${id}/reset-password`)).data;
 }
 
-export async function softDeleteSoldier(id: string): Promise<void> {
-  await api.delete(`/soldiers/${id}`);
+export async function softDeleteSoldier(id: string, leftAt: string): Promise<void> {
+  await api.delete(`/soldiers/${id}`, { params: { left_at: leftAt } });
 }
 
 export async function updateSoldier(

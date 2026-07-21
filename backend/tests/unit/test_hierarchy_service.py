@@ -13,6 +13,7 @@ from app.services.hierarchy import (
     delete_level_type,
     delete_node,
     move_node,
+    node_distance,
     rename_node,
     reorder_level_types,
     set_commander,
@@ -223,6 +224,44 @@ def test_reorder_level_types_detects_tree_violation(admin_session):
     assert len(exc_info.value.violations) == 1
     assert exc_info.value.violations[0]["parent"] == "d (מרכז)"
     assert exc_info.value.violations[0]["child"] == "b (ענף)"
+
+
+def test_node_distance_self_is_zero(admin_session):
+    root = seed_node(admin_session, level="department", name="nd_root")
+    a = seed_node(admin_session, level="branch", name="nd_a", parent=root)
+    admin_session.commit()
+    assert node_distance(admin_session, a.id, a.id) == 0
+
+
+def test_node_distance_siblings(admin_session):
+    root = seed_node(admin_session, level="department", name="nd_root2")
+    a = seed_node(admin_session, level="branch", name="nd_sib_a", parent=root)
+    b = seed_node(admin_session, level="branch", name="nd_sib_b", parent=root)
+    admin_session.commit()
+    # ancestors(a) = {root, a}, ancestors(b) = {root, b} -> symmetric diff = {a, b} -> 2
+    assert node_distance(admin_session, a.id, b.id) == 2
+
+
+def test_node_distance_none_returns_sentinel(admin_session):
+    root = seed_node(admin_session, level="department", name="nd_root3")
+    a = seed_node(admin_session, level="branch", name="nd_a3", parent=root)
+    admin_session.commit()
+    assert node_distance(admin_session, a.id, None) >= 10**6
+    assert node_distance(admin_session, None, a.id) >= 10**6
+    assert node_distance(admin_session, None, None) >= 10**6
+
+
+def test_node_distance_unrelated_branches(admin_session):
+    root = seed_node(admin_session, level="department", name="nd_root4")
+    branch_x = seed_node(admin_session, level="branch", name="nd_x", parent=root)
+    branch_y = seed_node(admin_session, level="branch", name="nd_y", parent=root)
+    group_x = seed_node(admin_session, level="group", name="nd_gx", parent=branch_x)
+    group_y = seed_node(admin_session, level="group", name="nd_gy", parent=branch_y)
+    admin_session.commit()
+    # ancestors(group_x) = {root, branch_x, group_x}
+    # ancestors(group_y) = {root, branch_y, group_y}
+    # symmetric diff = {branch_x, group_x, branch_y, group_y} -> 4
+    assert node_distance(admin_session, group_x.id, group_y.id) == 4
 
 
 def test_reorder_level_types_detects_multiple_violations(admin_session):

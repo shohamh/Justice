@@ -23,6 +23,13 @@ class CoverEligibilityOut(BaseModel):
     reason: str | None
 
 
+class EligibleTargetOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str
+    node_name: str | None
+    hierarchy_distance: int
+
+
 class SwapManagerApprovalOut(BaseModel):
     commander_id: uuid.UUID
     commander_name: str | None = None
@@ -30,6 +37,7 @@ class SwapManagerApprovalOut(BaseModel):
     approved_by: uuid.UUID | None = None
     approved_by_name: str | None = None
     approved_at: datetime | None = None
+    approver_kind: str
 
 
 class SwapOut(BaseModel):
@@ -66,6 +74,7 @@ class SwapOut(BaseModel):
 class CreateSwapRequest(BaseModel):
     duty_assignment_id: uuid.UUID
     target_soldier_id: uuid.UUID | None = None
+    target_soldier_ids: list[uuid.UUID] | None = None
     reason: str | None = Field(default=None, max_length=1000)
 
 
@@ -114,6 +123,7 @@ def _manager_approvals_out(session: Session, request_id: uuid.UUID, side: str) -
             approved_by=row.approved_by,
             approved_by_name=approved_by.full_name if approved_by else None,
             approved_at=row.approved_at,
+            approver_kind=row.approver_kind,
         ))
     return out
 
@@ -136,6 +146,7 @@ def _manager_approvals_out_bulk(
             approved_by=row.approved_by,
             approved_by_name=approved_by_name,
             approved_at=row.approved_at,
+            approver_kind=row.approver_kind,
         ))
     return out
 
@@ -207,7 +218,11 @@ def swap_config(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    return {"require_manager_approval": svc._require_approval(session)}
+    return {
+        "require_manager_approval": svc._require_approval(session),
+        "require_duty_manager_approval": svc._require_duty_manager_approval(session),
+        "max_specific_targets": svc._max_specific_targets(session),
+    }
 
 
 @router.get("/swaps/{assignment_id}/cover-eligibility", response_model=CoverEligibilityOut)
@@ -221,6 +236,22 @@ def cover_eligibility(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
     eligible, reason = check_soldier_for_assignment(session, user.id, assignment_id)
     return CoverEligibilityOut(eligible=eligible, reason=reason)
+
+
+@router.get("/swaps/eligible-targets", response_model=list[EligibleTargetOut])
+def eligible_targets(
+    duty_assignment_id: uuid.UUID = Query(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[EligibleTargetOut]:
+    from app.services import swap_targets
+
+    return [
+        EligibleTargetOut(**r)
+        for r in swap_targets.list_eligible_targets(
+            session, requesting_soldier_id=user.id, duty_assignment_id=duty_assignment_id
+        )
+    ]
 
 
 @router.get("/me/swaps", response_model=list[SwapOut])
@@ -345,14 +376,39 @@ def create(
     try:
         r = svc.create_request(
             session, requesting_soldier_id=user.id, duty_assignment_id=body.duty_assignment_id,
-            target_soldier_id=body.target_soldier_id,
+            target_soldier_id=body.target_soldier_id, target_soldier_ids=body.target_soldier_ids,
             reason=body.reason, actor_id=user.id,
         )
     except svc.SwapError as exc:
         raise _err(exc) from exc
     session.commit()
-    session.refresh(r)
-    return _out(r, session)
+    # create_request returns a list when target_soldier_ids fans out to multiple
+    # targets; keep this route's response shape a single object for backward
+    # compatibility with existing (mobile/bot) callers — return the first one.
+    first = r[0] if isinstance(r, list) else r
+    session.refresh(first)
+    return _out(first, session)
+
+
+@router.post("/me/swaps/bulk", response_model=list[SwapOut], status_code=status.HTTP_201_CREATED)
+def create_bulk(
+    body: CreateSwapRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_enrolled),
+) -> list[SwapOut]:
+    try:
+        r = svc.create_request(
+            session, requesting_soldier_id=user.id, duty_assignment_id=body.duty_assignment_id,
+            target_soldier_id=body.target_soldier_id, target_soldier_ids=body.target_soldier_ids,
+            reason=body.reason, actor_id=user.id,
+        )
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    reqs = r if isinstance(r, list) else [r]
+    for req in reqs:
+        session.refresh(req)
+    return [_out(req, session) for req in reqs]
 
 
 class TakeFreeDutyRequest(BaseModel):
