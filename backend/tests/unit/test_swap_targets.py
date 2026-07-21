@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from app.db.models import DutyAssignment, DutyLocation, DutyType, ExemptionType, SoldierExemption
 from app.services import swap_targets
+from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
 
 
@@ -77,6 +78,47 @@ def test_list_eligible_targets_excludes_requester(admin_session):
         admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id
     )
     assert requester.id not in [r["soldier_id"] for r in results]
+
+
+def test_list_eligible_targets_excludes_soldiers_outside_hierarchy_level_restriction(admin_session):
+    dt = DutyType(name="dt_st_004", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="loc_st_004")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+
+    branch_a = create_node(admin_session, level="branch", name="n_st_branch_a_004")
+    branch_b = create_node(admin_session, level="branch", name="n_st_branch_b_004")
+    unit_a1 = create_node(admin_session, level="unit", name="n_st_unit_a1_004", parent=branch_a)
+    unit_a2 = create_node(admin_session, level="unit", name="n_st_unit_a2_004", parent=branch_a)
+    unit_b1 = create_node(admin_session, level="unit", name="n_st_unit_b1_004", parent=branch_b)
+    admin_session.commit()
+
+    requester = create_soldier(admin_session, personal_number="st_req_004", hierarchy_node_id=unit_a1.id)
+    assignment = DutyAssignment(
+        soldier_id=requester.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2030, 2, 10),
+        end_date=date(2030, 2, 10),
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    admin_session.commit()
+
+    same_branch = create_soldier(admin_session, personal_number="st_same_branch_004", hierarchy_node_id=unit_a2.id)
+    other_branch = create_soldier(admin_session, personal_number="st_other_branch_004", hierarchy_node_id=unit_b1.id)
+
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    results = swap_targets.list_eligible_targets(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id
+    )
+    ids = [r["soldier_id"] for r in results]
+    assert same_branch.id in ids
+    assert other_branch.id not in ids
 
 
 def test_list_eligible_targets_missing_assignment_returns_empty(admin_session):
