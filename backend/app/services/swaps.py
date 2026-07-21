@@ -164,6 +164,17 @@ def _require_approval(session: Session) -> bool:
         return True  # safe default: require approval
 
 
+def _require_duty_manager_approval(session: Session) -> bool:
+    try:
+        return bool(get_setting(session, "swaps.require_duty_manager_approval"))
+    except SettingNotFound:
+        return True  # safe default: require approval
+
+
+def duty_manager_ids(session: Session) -> list[uuid.UUID]:
+    return list(session.execute(select(Soldier.id).where(Soldier.role == "duty_manager")).scalars().all())
+
+
 def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
     """Every distinct commander from the soldier's own node up to the root of
     the hierarchy, excluding the soldier themself if they command their own node.
@@ -200,14 +211,23 @@ def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list
 
 
 def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None:
-    """Populate swap_manager_approvals for both sides. Called once, when a swap
-    enters pending_approval with a known covering soldier."""
+    """Populate swap_manager_approvals for both sides: one row per chain
+    commander, plus (if swaps.require_duty_manager_approval) one row per
+    duty manager. Called once, when a swap enters pending_approval with a
+    known covering soldier."""
+    dm_ids = duty_manager_ids(session) if _require_duty_manager_approval(session) else []
     for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
         if soldier_id is None:
             continue
         for idx, commander_id in enumerate(commander_chain_for_soldier(session, soldier_id)):
             session.add(SwapManagerApproval(
-                swap_request_id=req.id, side=side, commander_id=commander_id, chain_order=idx,
+                swap_request_id=req.id, side=side, commander_id=commander_id,
+                chain_order=idx, approver_kind="commander",
+            ))
+        for idx, dm_id in enumerate(dm_ids):
+            session.add(SwapManagerApproval(
+                swap_request_id=req.id, side=side, commander_id=dm_id,
+                chain_order=idx, approver_kind="duty_manager",
             ))
     session.flush()
 

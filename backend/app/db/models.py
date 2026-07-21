@@ -561,6 +561,8 @@ class SwapManagerApproval(Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # "commander" | "duty_manager" -- which approval requirement this row satisfies.
+    approver_kind: Mapped[str] = mapped_column(Text, server_default=text("'commander'"), default="commander")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

@@ -232,3 +232,23 @@ def test_manager_reject_kills_swap(client: TestClient, admin_session: Session):
     r = client.post(f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(req_cmd), json={"decision_note": "denied"})
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "rejected"
+
+
+def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
+    """Claiming a swap should create SwapManagerApproval rows for both the
+    chain-commander requirement and the duty-manager requirement, on each
+    side that has a soldier."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    create_soldier(admin_session, personal_number=f"api_dm_{_uid()}", role="duty_manager")
+    admin_session.commit()
+
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    rows = admin_session.execute(
+        select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == swap_req.id)
+    ).scalars().all()
+    kinds_by_side = {(r.side, r.approver_kind) for r in rows}
+    assert ("requester", "commander") in kinds_by_side
+    assert ("requester", "duty_manager") in kinds_by_side
+    assert ("covering", "commander") in kinds_by_side
+    assert ("covering", "duty_manager") in kinds_by_side
