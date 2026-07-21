@@ -18,6 +18,10 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
         changeOrigin: true,
+        // Without this, the backend sees every request as coming from the
+        // proxy's own loopback connection (127.0.0.1) instead of the real
+        // client, collapsing per-IP rate limiting across all users.
+        xfwd: true,
       },
     },
   },
@@ -28,6 +32,7 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
         changeOrigin: true,
+        xfwd: true,
       },
     },
   },

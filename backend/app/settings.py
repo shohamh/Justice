@@ -4,13 +4,20 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Repo-root .env, resolved by absolute path so it's found regardless of the
-# process working directory (backend/ for local runs, repo root for others).
-_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+# Repo-root env files, resolved by absolute path so they're found regardless
+# of the process working directory (backend/ for local runs, repo root for
+# others). .env.defaults holds the non-secret, committed dev defaults; .env
+# holds local secrets/overrides (gitignored) and is read second, so any value
+# it sets wins over .env.defaults.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULTS_FILE = _REPO_ROOT / ".env.defaults"
+_SECRETS_FILE = _REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(_DEFAULTS_FILE, _SECRETS_FILE), env_file_encoding="utf-8", extra="ignore"
+    )
 
     database_url: str = Field(alias="DATABASE_URL")
     db_admin_url: str = Field(alias="DB_ADMIN_URL")
