@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -527,6 +527,7 @@ def create_job(
     body: CreateJobRequest,
     background_tasks: BackgroundTasks,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, Any]:
@@ -550,6 +551,7 @@ def retry_job(
     job_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict[str, Any]:

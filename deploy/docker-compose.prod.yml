@@ -48,9 +48,15 @@ services:
         condition: service_healthy
     volumes:
       - /opt/justice/logs:/app/logs
+    # --forwarded-allow-ips=*: nginx is the only thing that can reach this
+    # container (no host port mapping below), but it connects over the
+    # Docker network rather than 127.0.0.1, so uvicorn's default trusted-proxy
+    # list (127.0.0.1 only) never trusts its X-Forwarded-For/-Proto headers.
+    # Without this, every request's client IP and https-ness collapse to
+    # nginx's own connection, breaking per-IP rate limiting for all users.
     command: >
       sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --forwarded-allow-ips='*'"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/live || exit 1"]
       interval: 10s
