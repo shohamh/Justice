@@ -53,6 +53,14 @@ class PendingCountOut(BaseModel):
     count: int
 
 
+class RemainingDaysOut(BaseModel):
+    cap_days: int
+    used_days: int
+    remaining_days: int
+    period_start: date
+    period_end: date
+
+
 # ── Helpers ──
 
 
@@ -93,6 +101,14 @@ def list_own(
     user: Soldier = Depends(require_password_changed),
 ) -> list[ConstraintOut]:
     return [_out(c) for c in svc.list_constraints(session, soldier_id=user.id)]
+
+
+@router.get("/me/constraints/remaining", response_model=RemainingDaysOut)
+def my_remaining_constraint_days(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RemainingDaysOut:
+    return RemainingDaysOut(**svc.remaining_days(session, soldier_id=user.id))
 
 
 @router.post("/me/constraints", response_model=ConstraintOut, status_code=status.HTTP_201_CREATED)

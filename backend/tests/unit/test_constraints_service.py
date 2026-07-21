@@ -10,7 +10,9 @@ from app.services.constraints import (
     cancel_constraint,
     get_approved_constraint_dates,
     list_constraints,
+    period_bounds,
     reject_constraint,
+    remaining_days,
     submit_constraint,
 )
 from tests.helpers import create_soldier
@@ -235,4 +237,50 @@ def test_get_approved_dates(admin_session):
 def test_constraint_not_found(admin_session):
     with pytest.raises(ConstraintError, match="constraint_not_found"):
         approve_constraint(admin_session, constraint_id=uuid.uuid4(), actor_id=None)
+
+
+# ── period_bounds / remaining_days (Task 5.1) ──
+
+
+def test_period_bounds_quarter():
+    assert period_bounds("quarter", date(2026, 8, 15)) == (date(2026, 7, 1), date(2026, 10, 1))
+
+
+def test_period_bounds_half_year():
+    assert period_bounds("half_year", date(2026, 8, 15)) == (date(2026, 7, 1), date(2027, 1, 1))
+
+
+def test_period_bounds_year():
+    assert period_bounds("year", date(2026, 8, 15)) == (date(2026, 1, 1), date(2027, 1, 1))
+
+
+def test_remaining_days_counts_only_current_period(admin_session):
+    # NOTE: this codebase has no freeze_time convention (confirmed via grep of
+    # backend/tests), and submit_constraint() rejects start_date in the past,
+    # so we use dates relative to the real date.today() instead of the brief's
+    # literal 2026 dates. A constraint ~200 days out is guaranteed to fall
+    # outside the current (default) quarterly reset period.
+    s = create_soldier(admin_session, personal_number=_pn(101))
+    start = date.today() + timedelta(days=200)
+    end = start + timedelta(days=5)
+    submit_constraint(
+        admin_session, soldier_id=s.id, start_date=start, end_date=end, reason="x", actor_id=None
+    )
+    admin_session.commit()
+    result = remaining_days(admin_session, soldier_id=s.id, today=date.today())
+    assert result["used_days"] == 0
+    assert result["remaining_days"] == result["cap_days"]
+
+
+def test_remaining_days_counts_overlapping_current_period(admin_session):
+    s = create_soldier(admin_session, personal_number=_pn(102))
+    start = date.today() + timedelta(days=3)
+    end = date.today() + timedelta(days=5)
+    submit_constraint(
+        admin_session, soldier_id=s.id, start_date=start, end_date=end, reason="x", actor_id=None
+    )
+    admin_session.commit()
+    result = remaining_days(admin_session, soldier_id=s.id, today=date.today())
+    assert result["used_days"] == 3
+    assert result["remaining_days"] == result["cap_days"] - 3
 
