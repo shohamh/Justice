@@ -63,15 +63,22 @@ beforeEach(() => {
   vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([duty]);
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
-  vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({ require_manager_approval: false, require_duty_manager_approval: true });
+  vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({
+    require_manager_approval: false, require_duty_manager_approval: true, max_specific_targets: 5,
+  });
   vi.mocked(swapsApi.listMySwaps).mockResolvedValue([]);
   vi.mocked(swapsApi.listBoard).mockResolvedValue([]);
   vi.mocked(swapsApi.listIncomingSwaps).mockResolvedValue([]);
   vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([]);
+  vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([]);
 });
 
-describe("SwapsPage - AskSwapModal soldier search", () => {
-  it("lets the requester pick a soldier via search instead of typing a raw id", async () => {
+describe("SwapsPage - AskSwapModal eligible-soldier picker", () => {
+  it("lists eligible soldiers with hierarchy distance and lets the requester check some", async () => {
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "sol-2", full_name: "דני כהן", node_name: "מחלקה א", hierarchy_distance: 0 },
+      { soldier_id: "sol-3", full_name: "יוסי לוי", node_name: "מחלקה ב", hierarchy_distance: 2 },
+    ]);
     renderPage();
 
     const askButton = await screen.findByText("swaps.ask_swap");
@@ -80,41 +87,69 @@ describe("SwapsPage - AskSwapModal soldier search", () => {
     const soldierModeRadio = await screen.findByText("swaps.send_to_soldier");
     fireEvent.click(soldierModeRadio);
 
-    expect(await screen.findByTestId("soldier-search-input")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("מספר אישי של חייל")).not.toBeInTheDocument();
+    expect(await screen.findByText("דני כהן — מחלקה א (0)")).toBeInTheDocument();
+    expect(await screen.findByText("יוסי לוי — מחלקה ב (2)")).toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    fireEvent.click(checkboxes[0]);
+    expect(checkboxes[0]).toBeChecked();
   });
 
-  it("does not offer a dead create-new-soldier option in the swap target search", async () => {
-    vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([
-      {
-        id: "sol-2",
-        personal_number: "1234567",
-        full_name: "דני כהן",
-        role: "soldier",
-        hierarchy_node_id: null,
-        phone: null,
-        must_change_password: false,
-        left_at: null,
-      } as soldiersApi.SoldierDTO,
+  it("disables further checkboxes once the max_specific_targets cap is reached", async () => {
+    vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({
+      require_manager_approval: false, require_duty_manager_approval: true, max_specific_targets: 1,
+    });
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "sol-2", full_name: "דני כהן", node_name: null, hierarchy_distance: 0 },
+      { soldier_id: "sol-3", full_name: "יוסי לוי", node_name: null, hierarchy_distance: 1 },
     ]);
     renderPage();
 
-    const askButton = await screen.findByText("swaps.ask_swap");
-    fireEvent.click(askButton);
+    fireEvent.click(await screen.findByText("swaps.ask_swap"));
     fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
 
-    const input = await screen.findByTestId("soldier-search-input");
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "דני" } });
+    const checkboxes = await screen.findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).toBeDisabled();
+  });
 
-    await screen.findByTestId("soldier-search-dropdown");
-    expect(screen.queryByTestId("soldier-search-create-new")).not.toBeInTheDocument();
+  it("shows the no-eligible-targets message when the list is empty", async () => {
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([]);
+    renderPage();
 
-    // Also true for a query that matches nothing in the directory.
-    fireEvent.change(input, { target: { value: "לא קיים בכלל" } });
+    fireEvent.click(await screen.findByText("swaps.ask_swap"));
+    fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
+
+    expect(await screen.findByText("swaps.no_eligible_targets")).toBeInTheDocument();
+  });
+
+  it("submits a bulk swap request with the selected target ids", async () => {
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "sol-2", full_name: "דני כהן", node_name: null, hierarchy_distance: 0 },
+      { soldier_id: "sol-3", full_name: "יוסי לוי", node_name: null, hierarchy_distance: 1 },
+    ]);
+    vi.mocked(swapsApi.createBulkSwap).mockResolvedValue([]);
+    renderPage();
+
+    fireEvent.click(await screen.findByText("swaps.ask_swap"));
+    fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
+
+    const checkboxes = await screen.findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+
+    fireEvent.click(await screen.findByText("swaps.save"));
+
     await waitFor(() => {
-      expect(screen.queryByTestId("soldier-search-create-new")).not.toBeInTheDocument();
+      expect(swapsApi.createBulkSwap).toHaveBeenCalledWith({
+        duty_assignment_id: "a1",
+        target_soldier_ids: ["sol-2", "sol-3"],
+        reason: null,
+      });
     });
+    expect(swapsApi.createSwap).not.toHaveBeenCalled();
   });
 
   it("extracts a message from an array-shaped 422 validation error detail", async () => {

@@ -156,7 +156,11 @@ def test_swap_config_reports_duty_manager_setting(client: TestClient, admin_sess
 
     r = client.get("/api/swaps/config", headers=auth_headers(admin))
     assert r.status_code == 200, r.text
-    assert r.json() == {"require_manager_approval": True, "require_duty_manager_approval": False}
+    assert r.json() == {
+        "require_manager_approval": True,
+        "require_duty_manager_approval": False,
+        "max_specific_targets": 5,
+    }
 
 
 def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestClient, admin_session: Session):

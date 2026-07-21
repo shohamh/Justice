@@ -221,6 +221,7 @@ def swap_config(
     return {
         "require_manager_approval": svc._require_approval(session),
         "require_duty_manager_approval": svc._require_duty_manager_approval(session),
+        "max_specific_targets": svc._max_specific_targets(session),
     }
 
 

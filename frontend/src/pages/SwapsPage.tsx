@@ -8,19 +8,18 @@ import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
 import DirectCommanderApproval, { groupByKind, DirectCommanderApprovalRow } from "../components/DirectCommanderApproval";
-import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
   SwapRequest, cancelSwap, createSwap, listBoard,
   listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
   CoverEligibilityResult, checkCoverEligibility, soldierApproveSwap, soldierRejectSwap,
+  listEligibleTargets, createBulkSwap,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { fetchTree } from "../api/hierarchy";
-import { SoldierDTO } from "../api/soldiers";
 import { lastDutyDay } from "../utils/formatDate";
 
 interface HierarchyNode {
@@ -202,20 +201,46 @@ function AskSwapModal({
   const { t } = useTranslation();
   const { enrollmentPending } = useAuth();
   const [mode, setMode] = useState<"open" | "soldier">("open");
-  const [targetSoldier, setTargetSoldier] = useState<SoldierDTO | null>(null);
+  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const eligibleQuery = useQuery({
+    queryKey: ["swaps", "eligible-targets", duty.assignment_id],
+    queryFn: () => listEligibleTargets(duty.assignment_id),
+    enabled: mode === "soldier",
+  });
+  const eligibleTargets = eligibleQuery.data ?? [];
+  const configQuery = useQuery({ queryKey: queryKeys.swapConfig(), queryFn: getSwapConfig });
+  const maxTargets = configQuery.data?.max_specific_targets ?? 5;
+
+  function toggleTarget(id: string) {
+    setSelectedTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < maxTargets) next.add(id);
+      return next;
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const input: CreateSwapInput = {
-        duty_assignment_id: duty.assignment_id,
-        reason: reason || null,
-        target_soldier_id: mode === "soldier" ? targetSoldier?.id ?? null : null,
-      };
-      await createSwap(input);
+      if (mode === "soldier" && selectedTargets.size > 0) {
+        await createBulkSwap({
+          duty_assignment_id: duty.assignment_id,
+          target_soldier_ids: Array.from(selectedTargets),
+          reason: reason || null,
+        });
+      } else {
+        const input: CreateSwapInput = {
+          duty_assignment_id: duty.assignment_id,
+          reason: reason || null,
+          target_soldier_id: null,
+        };
+        await createSwap(input);
+      }
       onCreated();
     } catch (err: unknown) {
       setError(extractErrorMessage(err, "שגיאה"));
@@ -252,9 +277,30 @@ function AskSwapModal({
             </label>
           </div>
           {mode === "soldier" && (
-            <SoldierSearchAutocomplete
-              onSelect={setTargetSoldier}
-            />
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t("swaps.select_up_to", { n: maxTargets })} ({selectedTargets.size}/{maxTargets})
+              </p>
+              <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
+                {eligibleTargets.length === 0 ? (
+                  <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
+                ) : (
+                  <ul>
+                    {eligibleTargets.map((s) => (
+                      <li key={s.soldier_id} className="flex items-center gap-2 px-2 py-1 border-b last:border-b-0 dark:border-gray-700 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedTargets.has(s.soldier_id)}
+                          disabled={!selectedTargets.has(s.soldier_id) && selectedTargets.size >= maxTargets}
+                          onChange={() => toggleTarget(s.soldier_id)}
+                        />
+                        <span>{s.full_name}{s.node_name ? ` — ${s.node_name}` : ""} ({s.hierarchy_distance})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           )}
           <textarea placeholder={t("swaps.personal_message")} value={reason}
             onChange={e => setReason(e.target.value)} rows={3}
@@ -316,7 +362,7 @@ export default function SwapsPage() {
 
   const configQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
-    queryFn: () => getSwapConfig().catch(() => ({ require_manager_approval: false, require_duty_manager_approval: true })),
+    queryFn: () => getSwapConfig().catch(() => ({ require_manager_approval: false, require_duty_manager_approval: true, max_specific_targets: 5 })),
   });
   const requireManagerApproval = configQuery.data?.require_manager_approval ?? false;
   const requireDutyManagerApproval = configQuery.data?.require_duty_manager_approval ?? true;
