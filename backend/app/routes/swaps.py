@@ -30,6 +30,7 @@ class SwapManagerApprovalOut(BaseModel):
     approved_by: uuid.UUID | None = None
     approved_by_name: str | None = None
     approved_at: datetime | None = None
+    approver_kind: str
 
 
 class SwapOut(BaseModel):
@@ -114,6 +115,7 @@ def _manager_approvals_out(session: Session, request_id: uuid.UUID, side: str) -
             approved_by=row.approved_by,
             approved_by_name=approved_by.full_name if approved_by else None,
             approved_at=row.approved_at,
+            approver_kind=row.approver_kind,
         ))
     return out
 
@@ -136,6 +138,7 @@ def _manager_approvals_out_bulk(
             approved_by=row.approved_by,
             approved_by_name=approved_by_name,
             approved_at=row.approved_at,
+            approver_kind=row.approver_kind,
         ))
     return out
 
@@ -207,7 +210,10 @@ def swap_config(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> dict:
-    return {"require_manager_approval": svc._require_approval(session)}
+    return {
+        "require_manager_approval": svc._require_approval(session),
+        "require_duty_manager_approval": svc._require_duty_manager_approval(session),
+    }
 
 
 @router.get("/swaps/{assignment_id}/cover-eligibility", response_model=CoverEligibilityOut)

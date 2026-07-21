@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DutyAssignment, DutyLocation, DutyType, SwapManagerApproval, SwapRequest
 from app.services import swaps as svc
+from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -146,6 +147,16 @@ def test_swap_out_includes_manager_approvals(client: TestClient, admin_session: 
     assert swap_out["requester_manager_approvals"][0]["commander_id"] == str(req_cmd.id)
     assert swap_out["requester_manager_approvals"][0]["approved"] is False
     assert len(swap_out["covering_manager_approvals"]) == 1
+
+
+def test_swap_config_reports_duty_manager_setting(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number=f"api_cfg_adm_{_uid()}", role="admin")
+    set_setting(admin_session, "swaps.require_duty_manager_approval", False, actor_id=None)
+    admin_session.commit()
+
+    r = client.get("/api/swaps/config", headers=auth_headers(admin))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"require_manager_approval": True, "require_duty_manager_approval": False}
 
 
 def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestClient, admin_session: Session):
