@@ -661,10 +661,11 @@ def reset_password(
 @router.delete("/{soldier_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete(
     soldier_id: uuid.UUID,
+    left_at: date_type | None = Query(default=None),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_DELETE, target_node=_node_of(session, s))
-    svc.soft_delete(session, soldier=s, actor_id=user.id)
+    svc.soft_delete(session, soldier=s, actor_id=user.id, left_at=left_at)
     session.commit()
