@@ -23,6 +23,13 @@ class CoverEligibilityOut(BaseModel):
     reason: str | None
 
 
+class EligibleTargetOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str
+    node_name: str | None
+    hierarchy_distance: int
+
+
 class SwapManagerApprovalOut(BaseModel):
     commander_id: uuid.UUID
     commander_name: str | None = None
@@ -227,6 +234,22 @@ def cover_eligibility(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
     eligible, reason = check_soldier_for_assignment(session, user.id, assignment_id)
     return CoverEligibilityOut(eligible=eligible, reason=reason)
+
+
+@router.get("/swaps/eligible-targets", response_model=list[EligibleTargetOut])
+def eligible_targets(
+    duty_assignment_id: uuid.UUID = Query(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[EligibleTargetOut]:
+    from app.services import swap_targets
+
+    return [
+        EligibleTargetOut(**r)
+        for r in swap_targets.list_eligible_targets(
+            session, requesting_soldier_id=user.id, duty_assignment_id=duty_assignment_id
+        )
+    ]
 
 
 @router.get("/me/swaps", response_model=list[SwapOut])
