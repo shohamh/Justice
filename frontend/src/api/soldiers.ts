@@ -65,8 +65,8 @@ export async function resetSoldierPassword(id: string): Promise<{ temp_password:
   return (await api.post<{ temp_password: string }>(`/soldiers/${id}/reset-password`)).data;
 }
 
-export async function softDeleteSoldier(id: string): Promise<void> {
-  await api.delete(`/soldiers/${id}`);
+export async function softDeleteSoldier(id: string, leftAt: string): Promise<void> {
+  await api.delete(`/soldiers/${id}`, { params: { left_at: leftAt } });
 }
 
 export async function updateSoldier(

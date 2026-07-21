@@ -28,14 +28,23 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
   const [moveTarget, setMoveTarget] = useState<SoldierWithStatus | null>(null);
   const [targetNodeId, setTargetNodeId] = useState("");
 
+  const [releaseTarget, setReleaseTarget] = useState<SoldierWithStatus | null>(null);
+  const [releaseDate, setReleaseDate] = useState("");
+
   useEffect(() => {
     listExemptionTypes().then(setExemptionTypes).catch(() => {});
     fetchTree().then(setNodes).catch(() => {});
   }, []);
 
-  async function handleRelease(soldierId: string) {
-    if (!confirm(t("command_dashboard.confirm_release"))) return;
-    await softDeleteSoldier(soldierId);
+  function openReleaseModal(s: SoldierWithStatus) {
+    setReleaseTarget(s);
+    setReleaseDate(new Date().toISOString().slice(0, 10));
+  }
+
+  async function handleConfirmRelease() {
+    if (!releaseTarget) return;
+    await softDeleteSoldier(releaseTarget.id, releaseDate);
+    setReleaseTarget(null);
     onRefresh();
   }
 
@@ -79,7 +88,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
               <td className="p-1 space-x-2 space-x-reverse">
                 <button onClick={() => setExemptTarget(s)} className="text-indigo-600 dark:text-indigo-300 text-xs">{t("command_dashboard.exempt")}</button>
                 <button onClick={() => setMoveTarget(s)} className="text-indigo-600 dark:text-indigo-300 text-xs">{t("command_dashboard.move")}</button>
-                <button onClick={() => handleRelease(s.id)} className="text-red-600 text-xs">{t("command_dashboard.release")}</button>
+                <button onClick={() => openReleaseModal(s)} className="text-red-600 text-xs">{t("command_dashboard.release")}</button>
               </td>
             </tr>
           ))}
@@ -126,6 +135,22 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setMoveTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleMove} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.move_confirm")}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {releaseTarget && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setReleaseTarget(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-4">{t("command_dashboard.release")} - {releaseTarget.full_name}</h3>
+            <div className="space-y-3">
+              <label className="block text-sm">{t("command_dashboard.release_date")}</label>
+              <input type="date" lang="he" data-testid="release-date-input" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} autoFocus />
+              <div className="flex gap-2 justify-end pt-2">
+                <button onClick={() => setReleaseTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
+                <button onClick={handleConfirmRelease} className="px-3 py-1 bg-red-600 text-white rounded text-sm">{t("command_dashboard.confirm_release")}</button>
               </div>
             </div>
           </div>

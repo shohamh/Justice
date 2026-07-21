@@ -71,7 +71,7 @@ export default function TeamHierarchyPage() {
       return;
     }
     if (!confirm(t("team.remove") + "?")) return;
-    await softDeleteSoldier(id);
+    await softDeleteSoldier(id, new Date().toISOString().slice(0, 10));
     await refresh();
   }
 
