@@ -164,7 +164,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           locales={[heLocale]}
           locale="he"
           height="auto"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,timeGridThreeDay" }}
+          headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridThreeDay,timeGridWeek,dayGridMonth" }}
           buttonText={{
             today: t("unit_calendar.today") || "היום",
             month: t("unit_calendar.view_month") || "חודש",

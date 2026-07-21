@@ -53,6 +53,14 @@ class PendingCountOut(BaseModel):
     count: int
 
 
+class RemainingDaysOut(BaseModel):
+    cap_days: int
+    used_days: int
+    remaining_days: int
+    period_start: date
+    period_end: date
+
+
 # ── Helpers ──
 
 
@@ -115,6 +123,14 @@ def submit(
     session.commit()
     session.refresh(c)
     return _out(c)
+
+
+@router.get("/me/constraints/remaining", response_model=RemainingDaysOut)
+def my_remaining_constraint_days(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RemainingDaysOut:
+    return RemainingDaysOut(**svc.remaining_days(session, soldier_id=user.id))
 
 
 @router.delete("/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

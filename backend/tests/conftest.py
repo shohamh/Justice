@@ -71,6 +71,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_shifts_routes": "duty",
     "test_shifts_service": "duty",
     "test_swap_eligibility": "duty",
+    "test_swap_targets": "duty",
     "test_swaps": "duty",
     "test_swaps_eligibility": "duty",
     "test_system_settings_density": "duty",

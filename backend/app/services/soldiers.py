@@ -193,9 +193,13 @@ def reset_password(session: Session, *, soldier: Soldier, actor_id: uuid.UUID | 
 
 
 def soft_delete(
-    session: Session, *, soldier: Soldier, actor_id: uuid.UUID | None = None
+    session: Session,
+    *,
+    soldier: Soldier,
+    actor_id: uuid.UUID | None = None,
+    left_at: date | None = None,
 ) -> Soldier:
-    soldier.left_at = date.today()
+    soldier.left_at = left_at or date.today()
     from app.db.models import ExemptionRequest, PersonalConstraint, SwapRequest
     session.execute(
         sa_update(ExemptionRequest)

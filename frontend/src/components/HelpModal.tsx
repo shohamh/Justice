@@ -6,6 +6,7 @@ import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 interface Props {
   onClose: () => void;
   gimelimEnabled?: boolean;
+  initialTab?: string;
 }
 
 function buildTabs(gimelimEnabled: boolean) {
@@ -76,14 +77,15 @@ function SwapsTab() {
         <Arrow />
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <div className="text-center text-xs text-gray-400">נדרש אישור מפקד</div>
-            <FlowStep icon="👮" text="המפקד מאשר" color="amber" />
+            <div className="text-center text-xs text-gray-400">נדרש אישור</div>
+            <FlowStep icon="👮" text="מפקד אחד מהשרשרת מאשר" color="amber" />
+            <FlowStep icon="🗂️" text="אחראי תורנויות מאשר" color="amber" />
             <Arrow />
             <FlowStep icon="✅" text="ההחלפה בוצעה!" color="green" />
           </div>
           <div className="space-y-1">
             <div className="text-center text-xs text-gray-400">ללא אישור</div>
-            <div className="h-8" />
+            <div className="h-16" />
             <Arrow />
             <FlowStep icon="✅" text="ההחלפה בוצעה!" color="green" />
           </div>
@@ -104,6 +106,7 @@ function SwapsTab() {
           <ul className="text-amber-700 dark:text-amber-300 space-y-1 list-disc list-inside">
             <li>החלפה אינה משפיעה על הניקוד — הניקוד נשאר על מי שסיפק את התורנות בפועל.</li>
             <li>המפקד רשאי לדחות גם אם שני הצדדים הסכימו.</li>
+            <li>אם אותו מפקד או אותו אחראי תורנויות אחראים על שני הצדדים, אישור אחד שלו מספיק לשניהם.</li>
           </ul>
         </div>
       </div>
@@ -1005,8 +1008,8 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
   );
 }
 
-export default function HelpModal({ onClose, gimelimEnabled = false }: Props) {
-  const [activeTab, setActiveTab] = useState("swaps");
+export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
+  const [activeTab, setActiveTab] = useState(initialTab ?? "swaps");
   const TABS = buildTabs(gimelimEnabled);
 
   return (

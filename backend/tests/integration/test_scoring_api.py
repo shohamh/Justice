@@ -16,6 +16,51 @@ def test_transparency_open_to_any_authed_user(client: TestClient, admin_session:
     assert "can_see_exemption_aggregates" in body
 
 
+def test_transparency_denied_for_commander_at_excluded_level(client: TestClient, admin_session: Session):
+    from tests.helpers import create_node
+    from app.services.settings_loader import set_setting
+
+    cmd = create_soldier(admin_session, personal_number="5600030", role="soldier")
+    create_node(admin_session, level="team", name="team-excl", commander_id=cmd.id)
+    set_setting(admin_session, "transparency.visible_commander_levels", ["brigade"], actor_id=None)
+    admin_session.commit()
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(cmd))
+    assert r.status_code == 403
+
+
+def test_transparency_allowed_for_commander_at_included_level(client: TestClient, admin_session: Session):
+    from tests.helpers import create_node
+    from app.services.settings_loader import set_setting
+
+    cmd = create_soldier(admin_session, personal_number="5600031", role="soldier")
+    create_node(admin_session, level="team", name="team-incl", commander_id=cmd.id)
+    set_setting(admin_session, "transparency.visible_commander_levels", ["team", "branch"], actor_id=None)
+    admin_session.commit()
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(cmd))
+    assert r.status_code == 200
+
+
+def test_transparency_allowed_for_duty_manager_regardless_of_level(
+    client: TestClient, admin_session: Session
+):
+    from app.services.settings_loader import set_setting
+
+    dm = create_soldier(admin_session, personal_number="5600032", role="duty_manager")
+    set_setting(admin_session, "transparency.visible_commander_levels", ["team"], actor_id=None)
+    admin_session.commit()
+
+    r = client.get("/api/scoring/transparency", headers=auth_headers(dm))
+    assert r.status_code == 200
+
+
+def test_transparency_allowed_by_default(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="5600033", role="soldier")
+    r = client.get("/api/scoring/transparency", headers=auth_headers(s))
+    assert r.status_code == 200
+
+
 def test_transparency_reflects_assignment(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="5600002", role="admin")
     s = create_soldier(admin_session, personal_number="5600003", role="soldier")

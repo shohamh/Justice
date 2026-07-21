@@ -13,6 +13,28 @@ class HierarchyError(Exception):
     """Raised on an invalid hierarchy operation (cycle, guard)."""
 
 
+_UNREACHABLE_DISTANCE = 10**6
+
+
+def node_distance(session: Session, node_a: uuid.UUID | None, node_b: uuid.UUID | None) -> int:
+    """Symmetric-difference distance between two nodes' ancestor chains
+    (self included), mirroring app.algorithm.reserve._hierarchy_distance but
+    reading HierarchyNode.path_ids directly instead of a pre-built parent map.
+
+    Returns _UNREACHABLE_DISTANCE if either node is None or doesn't exist, so
+    unassigned soldiers sort last in distance-ordered listings."""
+    if node_a is None or node_b is None:
+        return _UNREACHABLE_DISTANCE
+    if node_a == node_b:
+        return 0
+    a = session.get(HierarchyNode, node_a)
+    b = session.get(HierarchyNode, node_b)
+    if a is None or b is None:
+        return _UNREACHABLE_DISTANCE
+    set_a, set_b = set(a.path_ids), set(b.path_ids)
+    return len(set_a.symmetric_difference(set_b))
+
+
 def get_level_rank(session: Session, level_key: str) -> int | None:
     return session.execute(
         select(HierarchyLevelType.rank).where(HierarchyLevelType.key == level_key)

@@ -13,7 +13,7 @@ from app.db.models import (
 )
 from app.services import assignments as assignments_svc
 from app.services.notifications import create_notification
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 from app.services.reserves import check_reserve_cap
 from app.services.eligibility import check_soldier_for_assignment
 
@@ -52,7 +52,51 @@ def _enforce_hierarchy_level_restriction(
         raise SwapError("hierarchy_level_mismatch")
 
 
+def _max_specific_targets(session: Session) -> int:
+    return get_setting_int(session, "swaps.max_specific_targets", 5)
+
+
 def create_request(
+    session: Session,
+    *,
+    requesting_soldier_id: uuid.UUID,
+    duty_assignment_id: uuid.UUID,
+    target_soldier_id: uuid.UUID | None,
+    reason: str | None,
+    target_soldier_ids: list[uuid.UUID] | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> SwapRequest | list[SwapRequest]:
+    """Create one or more targeted swap requests for the same duty assignment.
+
+    `target_soldier_ids`, when given, takes precedence over `target_soldier_id`
+    and fans out into one SwapRequest row per target (capped by the
+    swaps.max_specific_targets setting). Single-target/open-board callers keep
+    using `target_soldier_id` unmodified and get a single SwapRequest back.
+    """
+    if target_soldier_ids is not None and len(target_soldier_ids) == 0:
+        raise SwapError("no_targets_specified")
+    targets = target_soldier_ids if target_soldier_ids is not None else (
+        [target_soldier_id] if target_soldier_id is not None else [None]
+    )
+    if len(targets) > _max_specific_targets(session):
+        raise SwapError("too_many_targets")
+    if len(targets) > 1:
+        return [
+            _create_single_request(
+                session, requesting_soldier_id=requesting_soldier_id,
+                duty_assignment_id=duty_assignment_id, target_soldier_id=t,
+                reason=reason, actor_id=actor_id,
+            )
+            for t in targets
+        ]
+    return _create_single_request(
+        session, requesting_soldier_id=requesting_soldier_id,
+        duty_assignment_id=duty_assignment_id, target_soldier_id=targets[0],
+        reason=reason, actor_id=actor_id,
+    )
+
+
+def _create_single_request(
     session: Session,
     *,
     requesting_soldier_id: uuid.UUID,
@@ -82,6 +126,7 @@ def create_request(
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,
+            SwapRequest.target_soldier_id == target_soldier_id,
             SwapRequest.status.in_(["open", "pending_approval"]),
         )
     ).scalar_one_or_none()
@@ -164,6 +209,17 @@ def _require_approval(session: Session) -> bool:
         return True  # safe default: require approval
 
 
+def _require_duty_manager_approval(session: Session) -> bool:
+    try:
+        return bool(get_setting(session, "swaps.require_duty_manager_approval"))
+    except SettingNotFound:
+        return True  # safe default: require approval
+
+
+def duty_manager_ids(session: Session) -> list[uuid.UUID]:
+    return list(session.execute(select(Soldier.id).where(Soldier.role == "duty_manager")).scalars().all())
+
+
 def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
     """Every distinct commander from the soldier's own node up to the root of
     the hierarchy, excluding the soldier themself if they command their own node.
@@ -200,43 +256,56 @@ def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list
 
 
 def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None:
-    """Populate swap_manager_approvals for both sides. Called once, when a swap
-    enters pending_approval with a known covering soldier."""
+    """Populate swap_manager_approvals for both sides: one row per chain
+    commander, plus (if swaps.require_duty_manager_approval) one row per
+    duty manager. Called once, when a swap enters pending_approval with a
+    known covering soldier."""
+    dm_ids = duty_manager_ids(session) if _require_duty_manager_approval(session) else []
     for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
         if soldier_id is None:
             continue
         for idx, commander_id in enumerate(commander_chain_for_soldier(session, soldier_id)):
             session.add(SwapManagerApproval(
-                swap_request_id=req.id, side=side, commander_id=commander_id, chain_order=idx,
+                swap_request_id=req.id, side=side, commander_id=commander_id,
+                chain_order=idx, approver_kind="commander",
+            ))
+        for idx, dm_id in enumerate(dm_ids):
+            session.add(SwapManagerApproval(
+                swap_request_id=req.id, side=side, commander_id=dm_id,
+                chain_order=idx, approver_kind="duty_manager",
             ))
     session.flush()
 
 
 def _all_approved(session: Session, req: SwapRequest) -> bool:
-    """Both soldiers must have approved, and — for each side that has at least
-    one required chain-commander row — at least one of that side's rows must
-    be approved (any single chain commander suffices; a side with zero rows
-    has no commander in the chain and is trivially satisfied)."""
+    """Both soldiers must have approved, and — for each (side, approver_kind)
+    combination that has at least one required row — at least one of that
+    combination's rows must be approved (any single required approver of
+    that kind suffices; a combination with zero rows is trivially satisfied,
+    e.g. no duty manager exists, or a side has no commander in its chain)."""
     if not (req.requester_side_approved and req.covering_side_approved):
         return False
     for side in ("requester", "covering"):
-        has_rows = session.execute(
-            select(SwapManagerApproval.id).where(
-                SwapManagerApproval.swap_request_id == req.id,
-                SwapManagerApproval.side == side,
-            ).limit(1)
-        ).first()
-        if has_rows is None:
-            continue  # no commander in this side's chain — trivially satisfied
-        has_approved = session.execute(
-            select(SwapManagerApproval.id).where(
-                SwapManagerApproval.swap_request_id == req.id,
-                SwapManagerApproval.side == side,
-                SwapManagerApproval.approved == True,  # noqa: E712
-            ).limit(1)
-        ).first()
-        if has_approved is None:
-            return False
+        for kind in ("commander", "duty_manager"):
+            has_rows = session.execute(
+                select(SwapManagerApproval.id).where(
+                    SwapManagerApproval.swap_request_id == req.id,
+                    SwapManagerApproval.side == side,
+                    SwapManagerApproval.approver_kind == kind,
+                ).limit(1)
+            ).first()
+            if has_rows is None:
+                continue
+            has_approved = session.execute(
+                select(SwapManagerApproval.id).where(
+                    SwapManagerApproval.swap_request_id == req.id,
+                    SwapManagerApproval.side == side,
+                    SwapManagerApproval.approver_kind == kind,
+                    SwapManagerApproval.approved == True,  # noqa: E712
+                ).limit(1)
+            ).first()
+            if has_approved is None:
+                return False
     return True
 
 
@@ -312,7 +381,19 @@ def approve_manager_row(
     _try_finalize still runs in case the swap wasn't finalized yet for some
     other reason (e.g. the other side just approved). Raises
     SwapError("not_required_approver") only if there is no row at all for
-    (request_id, side, commander_id) — i.e. this person isn't in the chain."""
+    (request_id, side, commander_id) — i.e. this person isn't in the chain.
+
+    This lookup does not filter by approver_kind, so it would raise
+    MultipleResultsFound if the same person ever held both a "commander" row
+    and a "duty_manager" row for the same (request_id, side). That can't
+    happen today: _create_manager_approval_rows sources commander rows from
+    commander_chain_for_soldier (HierarchyNode.commander_id) and duty_manager
+    rows from duty_manager_ids (Soldier.role == "duty_manager"), and
+    recompute_role() (app/services/dm_scope.py) gives commander priority over
+    duty_manager — is_commander() being true forces role="commander", which
+    duty_manager_ids() excludes. So the two ID sets are always disjoint as
+    long as role stays in sync, which recompute_role is called to maintain
+    whenever chain/scope assignments change."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
@@ -335,6 +416,34 @@ def approve_manager_row(
             session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
             entity_id=req.id, after={"side": side, "commander_id": str(commander_id)},
         )
+        # Same person may be the required approver for both sides at once
+        # (one commander over both soldiers, or the org's one duty manager)
+        # — approving once should satisfy both sides instead of asking for
+        # a second click. Filtered by approver_kind == row.approver_kind:
+        # same reasoning as the primary `row` lookup above (commander vs.
+        # duty_manager ID sets are disjoint via role priority, so this is
+        # not reachable today either) — but `row.approver_kind` is already
+        # in hand here for free, so filtering by it costs nothing and keeps
+        # this cascade explicitly scoped to "same kind of requirement" by
+        # construction rather than by an invariant living elsewhere.
+        other_side = "covering" if side == "requester" else "requester"
+        other_row = session.execute(
+            select(SwapManagerApproval).where(
+                SwapManagerApproval.swap_request_id == request_id,
+                SwapManagerApproval.side == other_side,
+                SwapManagerApproval.commander_id == commander_id,
+                SwapManagerApproval.approver_kind == row.approver_kind,
+                SwapManagerApproval.approved == False,  # noqa: E712
+            )
+        ).scalar_one_or_none()
+        if other_row is not None:
+            other_row.approved = True
+            other_row.approved_by = actor_id
+            other_row.approved_at = row.approved_at
+            write_audit(
+                session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
+                entity_id=req.id, after={"side": other_side, "commander_id": str(commander_id), "cascaded": True},
+            )
         session.flush()
     _try_finalize(session, req, actor_id)
     session.flush()
@@ -494,6 +603,35 @@ def claim_request(
             entity_id=req.id, before={"status": before_status},
             after={"status": "applied", "covering_soldier_id": str(covering_soldier_id)},
         )
+    session.flush()
+    # This request is now claimed (targeted at a specific covering soldier).
+    # If it was one of several parallel requests for the same duty +
+    # requester — whether fanned out together by create_request or created
+    # separately afterward — cancel the still-live siblings: the requester
+    # only needs one cover, not N. "Still-live" mirrors cancel_request's own
+    # notion of cancellable statuses (open or pending_approval) rather than
+    # just "open", otherwise a sibling that already reached pending_approval
+    # (its own claim in progress, awaiting manager approval) would never get
+    # cancelled here, leaving two parallel flows able to both reach
+    # _apply_cover for the same assignment.
+    siblings = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.duty_assignment_id == req.duty_assignment_id,
+            SwapRequest.requesting_soldier_id == req.requesting_soldier_id,
+            SwapRequest.id != req.id,
+            SwapRequest.status.in_(["open", "pending_approval"]),
+        )
+    ).scalars().all()
+    for sib in siblings:
+        sib.status = "cancelled"
+        if sib.covering_soldier_id is not None:
+            create_notification(
+                session, soldier_id=sib.covering_soldier_id,
+                type=NotificationType.swap_rejected,
+                title="בקשת ההחלפה בוטלה — כבר נמצא מחליף אחר",
+                reference_type="swap_request", reference_id=sib.id,
+                actor_id=actor_id,
+            )
     session.flush()
     return req
 

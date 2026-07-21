@@ -88,6 +88,9 @@
     "sub_units_title": "ייצוא תתי-יחידות",
     "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel."
   },
+  "constraints": {
+    "remaining_summary": "נותרו {{remaining}} מתוך {{cap}} ימי אילוץ (עד {{until}})"
+  },
   "my_requests": {
     "title": "אילוצים ופטורים",
     "section_constraints": "אילוצים אישיים",
@@ -335,7 +338,8 @@
     "subunit_avg_effort": "ממוצע עומס",
     "subunit_cv_effort": "פיזור (CV)",
     "subunit_sibling_gap": "פער מול אחים (יחס)",
-    "subunit_global_gap": "פער מול הארגון (יחס)"
+    "subunit_global_gap": "פער מול הארגון (יחס)",
+    "no_permission": "אין לך הרשאה לצפות בדף זה"
   },
   "my_duties": {
     "title": "היומן שלי",
@@ -519,6 +523,10 @@
     "service_type_hobah": "חובה",
     "service_type_keva": "קבע",
     "service_type_unknown": "לא ידוע",
+    "career": "קבע",
+    "mandatory": "חובה",
+    "has_driving_license": "רישיון נהיגה צבאי",
+    "driving_license_expiry": "תוקף רישיון נהיגה צבאי",
     "submit_update": "שלח בקשת עדכון",
     "update_pending": "ממתין לאישור",
     "update_approved": "אושר",
@@ -691,6 +699,7 @@
   },
   "swaps": {
     "title": "החלפות",
+    "help_aria": "עזרה על החלפות",
     "board": "לוח מחליפים",
     "mine": "הבקשות שלי",
     "cover": "אני מכסה",
@@ -722,6 +731,9 @@
     "ask_swap": "בקש החלפה",
     "post_open": "פרסם בלוח הפתוח",
     "send_to_soldier": "שלח לחייל ספציפי",
+    "select_up_to": "בחר עד {{n}} חיילים לבקש מהם",
+    "select_at_least_one": "יש לבחור לפחות חייל אחד",
+    "no_eligible_targets": "אין חיילים זמינים וכשירים לתורנות זו",
     "personal_message": "הודעה אישית (לעורר אמפתיה...)",
     "cover_free": "כסה בחינם (מוסיף לניקוד שלך)",
     "offer_trade": "הצע שיבוץ בתמורה",
@@ -743,6 +755,8 @@
     "requester_managers": "מפקדי המבקש",
     "covering_managers": "מפקדי המחליף",
     "no_managers_required": "לא נדרש אישור מפקד",
+    "approver_kind_commander": "מפקד",
+    "approver_kind_duty_manager": "אחראי תורנויות",
     "approved_by_other": "(אושר ע\"י {{name}})",
     "has_cover_candidate": "יש מועמד לכיסוי",
     "decision_note": "הערת החלטה",
@@ -809,6 +823,7 @@
     "exempt": "פטור",
     "move": "העבר",
     "release": "שחרר",
+    "release_date": "תאריך שחרור",
     "grant_exemption": "הענקת פטור",
     "exemption_type": "סוג פטור",
     "exemption_start": "תאריך התחלה",
@@ -1006,6 +1021,11 @@
   "system_settings": {
     "title": "הגדרות מערכת",
     "save": "שמור שינויים"
+  },
+  "admin_settings": {
+    "transparency_visible_levels": "אילו רמות פיקוד רשאיות לצפות בדף השקיפות (בנוסף לאחראי תורנויות ומנהל)",
+    "transparency_no_level_types": "אין רמות היררכיה מוגדרות",
+    "constraints_reset_period": "תקופת איפוס ימי אילוץ"
   },
   "enrollment": {
     "tab": "הצטרפות",
