@@ -7,6 +7,7 @@ import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
 import DirectCommanderApproval from "../components/DirectCommanderApproval";
+import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
@@ -18,6 +19,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { fetchTree } from "../api/hierarchy";
+import { SoldierDTO } from "../api/soldiers";
 import { lastDutyDay } from "../utils/formatDate";
 
 interface HierarchyNode {
@@ -42,6 +44,16 @@ function statusKey(status: string) {
     cancelled: "swaps.status_cancelled",
   };
   return map[status] ?? status;
+}
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const first = detail[0] as { msg?: unknown } | undefined;
+    if (first && typeof first.msg === "string") return first.msg;
+  }
+  return fallback;
 }
 
 function ApprovalDot({ value }: { value: boolean | null }) {
@@ -166,7 +178,7 @@ function AskSwapModal({
   const { t } = useTranslation();
   const { enrollmentPending } = useAuth();
   const [mode, setMode] = useState<"open" | "soldier">("open");
-  const [targetSoldierId, setTargetSoldierId] = useState("");
+  const [targetSoldier, setTargetSoldier] = useState<SoldierDTO | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -177,13 +189,12 @@ function AskSwapModal({
       const input: CreateSwapInput = {
         duty_assignment_id: duty.assignment_id,
         reason: reason || null,
-        target_soldier_id: mode === "soldier" && targetSoldierId ? targetSoldierId : null,
+        target_soldier_id: mode === "soldier" ? targetSoldier?.id ?? null : null,
       };
       await createSwap(input);
       onCreated();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(extractErrorMessage(err, "שגיאה"));
     }
   }
 
@@ -217,9 +228,9 @@ function AskSwapModal({
             </label>
           </div>
           {mode === "soldier" && (
-            <input type="text" placeholder="מספר אישי של חייל" value={targetSoldierId}
-              onChange={e => setTargetSoldierId(e.target.value)}
-              className="w-full border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <SoldierSearchAutocomplete
+              onSelect={setTargetSoldier}
+            />
           )}
           <textarea placeholder={t("swaps.personal_message")} value={reason}
             onChange={e => setReason(e.target.value)} rows={3}
@@ -529,7 +540,7 @@ export default function SwapsPage() {
                       onClick={d.shift_id ? () => handleShiftClick(d.shift_id!) : undefined}
                       className={`text-right flex-1 min-w-0 ${d.shift_id ? "hover:underline decoration-dotted underline-offset-2 cursor-pointer" : "cursor-default"}`}
                     >
-                      <span className="font-medium dark:text-gray-100">{dutyTypes[d.duty_type_id] ?? d.duty_type_id}</span>
+                      <span className="font-medium dark:text-gray-100">{d.duty_type_name}</span>
                       <span className="text-gray-500 mr-2 text-xs" dir="ltr">
                         {(() => {
                           const last = lastDutyDay(d.end_date);
@@ -675,7 +686,7 @@ export default function SwapsPage() {
       {askSwapDuty && (
         <AskSwapModal
           duty={askSwapDuty}
-          dutyTypeName={dutyTypes[askSwapDuty.duty_type_id] ?? askSwapDuty.duty_type_id}
+          dutyTypeName={askSwapDuty.duty_type_name}
           onClose={() => setAskSwapDuty(null)}
           onCreated={async () => { setAskSwapDuty(null); await refreshSwapData(); }}
         />

@@ -5,7 +5,7 @@ import { listSoldiers, SoldierDTO } from "../api/soldiers";
 
 interface Props {
   onSelect: (soldier: SoldierDTO | null) => void;
-  onCreateNew: (personalNumber: string, fullName: string) => void;
+  onCreateNew?: (personalNumber: string, fullName: string) => void;
 }
 
 export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Props) {
@@ -69,7 +69,7 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
   }
 
   function handleSubmitNew() {
-    onCreateNew(newPn || query, newName || query);
+    onCreateNew?.(newPn || query, newName || query);
     setShowCreateForm(false);
     setNewPn("");
     setNewName("");
@@ -102,13 +102,15 @@ export default function SoldierSearchAutocomplete({ onSelect, onCreateNew }: Pro
                   {s.full_name} ({s.personal_number})
                 </li>
               ))}
-              <li
-                className="px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm text-indigo-600 dark:text-indigo-300 border-t dark:border-gray-700"
-                onClick={handleCreateNew}
-                data-testid="soldier-search-create-new"
-              >
-                {t("team.create_new_soldier")}
-              </li>
+              {onCreateNew && (
+                <li
+                  className="px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-sm text-indigo-600 dark:text-indigo-300 border-t dark:border-gray-700"
+                  onClick={handleCreateNew}
+                  data-testid="soldier-search-create-new"
+                >
+                  {t("team.create_new_soldier")}
+                </li>
+              )}
             </ul>
           )}
           {selected && (

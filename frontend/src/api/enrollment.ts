@@ -56,7 +56,6 @@ export async function patchEnrollment(
     email?: string | null;
     rank?: string | null;
     is_officer?: boolean | null;
-    is_career?: boolean;
     gender?: string | null;
     enlistment_date?: string | null;
     mandatory_end_date?: string | null;

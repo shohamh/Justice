@@ -16,6 +16,7 @@ _PUBLIC_KEYS = {
     "gimalim.default_rest_days",
     "gimalim.reserve_fate",
     "shifts.auto_split_node_quotas",
+    "telegram.enabled",
 }
 
 
@@ -30,3 +31,13 @@ def get_public_settings(
 ) -> PublicSettingsOut:
     rows = session.execute(select(SystemSetting)).scalars().all()
     return PublicSettingsOut(settings={r.key: r.value for r in rows if r.key in _PUBLIC_KEYS})
+
+
+class RegistrationPublicSettingsOut(BaseModel):
+    email_domain_hint: str | None = None
+
+
+@router.get("/registration", response_model=RegistrationPublicSettingsOut)
+def get_registration_public_settings(session: Session = Depends(get_session)) -> RegistrationPublicSettingsOut:
+    row = session.get(SystemSetting, "registration.email_domain_hint")
+    return RegistrationPublicSettingsOut(email_domain_hint=row.value if row else None)

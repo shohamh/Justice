@@ -14,6 +14,7 @@
     "remember_me": "זכור אותי",
     "errors": {
       "invalid_credentials": "מספר אישי או סיסמה שגויים",
+      "attempts_remaining": "ניסיון {{n}} מתוך {{max}}, לאחר מכן החשבון ייחסם זמנית",
       "network": "שגיאת רשת. נסה שוב.",
       "rate_limited": "יותר מדי ניסיונות. נסה שוב בעוד {{seconds}} שניות."
     }
@@ -123,8 +124,12 @@
     "decision_note": "הערה",
     "tab_constraints": "אילוצים אישיים",
     "tab_exemptions": "בקשות פטור",
+    "tab_transfers": "העברות",
     "exemption_none": "אין בקשות פטור ממתינות",
-    "field_update_new_value": "ערך חדש: "
+    "field_update_new_value": "ערך חדש: ",
+    "transfers_none": "אין בקשות העברה ממתינות",
+    "transfer_from": "מיחידה",
+    "transfer_to": "ליחידה"
   },
   "duty_config": {
     "title": "הגדרות תורנויות",
@@ -397,6 +402,8 @@
     "pending": "ממתין לאישור",
     "approved": "אושר",
     "rejected": "נדחה",
+    "pending_commander": "ממתין לאישור מפקד",
+    "pending_duty_manager": "ממתין לאישור אחראי תורנויות",
     "none": "אין בקשות פטור",
     "my_requests": "הבקשות שלי לפטור",
     "upload_required": "נדרש צירוף מסמך רפואי",
@@ -679,6 +686,9 @@
     "preview_title": "תצוגה מקדימה",
     "total": "סה״כ"
   },
+  "cover_blocked": {
+    "overlap": "קיימת חפיפה עם תורנות אחרת"
+  },
   "swaps": {
     "title": "החלפות",
     "board": "לוח מחליפים",
@@ -805,7 +815,7 @@
     "exemption_end": "תאריך סיום",
     "move_soldier": "העברת חייל",
     "target_node": "יחידת יעד",
-    "move_confirm": "העבר",
+    "move_confirm": "שלח בקשת העברה",
     "cancel": "ביטול"
   },
   "reserve_ratio": "יחס רזרבה",

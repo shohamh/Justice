@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
+import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
+import { queryKeys } from "../queryKeys";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
@@ -40,7 +43,7 @@ interface ConstraintRow { start_date: string; end_date: string; reason: string; 
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
-  gender: string; is_officer: boolean; is_career: boolean; rank: string; bahad1_graduate: boolean;
+  gender: string; is_officer: boolean; rank: string; bahad1_graduate: boolean;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   requested_node_id: string;
@@ -50,7 +53,7 @@ interface FormData {
 
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
-  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, is_career: false, rank: "",
+  confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
   bahad1_graduate: false, enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
@@ -68,6 +71,13 @@ export default function RegisterPage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [exemptionTypes, setExemptionTypes] = useState<PublicExemptionType[]>([]);
   const [codeValid, setCodeValid] = useState<boolean | null>(null);
+
+  const registrationSettingsQuery = useQuery({
+    queryKey: queryKeys.registrationPublicSettings(),
+    queryFn: getRegistrationPublicSettings,
+  });
+  const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
+  const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : undefined;
 
   useEffect(() => {
     listPublicExemptionTypes().then(setExemptionTypes).catch(() => {});
@@ -106,7 +116,6 @@ export default function RegisterPage() {
         email: form.email || null,
         gender: form.gender || null,
         is_officer: form.is_officer,
-        is_career: form.is_career,
         rank: form.rank || null,
         bahad1_graduate: form.bahad1_graduate,
         enlistment_date: form.enlistment_date || null,
@@ -182,7 +191,7 @@ export default function RegisterPage() {
                 value={form.phone} onChange={e => set("phone", e.target.value)} />
             </label>
             <label className="block text-sm">אימייל <span className="text-red-500">*</span>
-              <input type="email" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              <input type="email" placeholder={emailPlaceholder} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.email} onChange={e => set("email", e.target.value)} />
             </label>
             <label className="block text-sm">מגדר <span className="text-red-500">*</span>
@@ -210,19 +219,13 @@ export default function RegisterPage() {
                 {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
             )}
-            {!form.is_officer && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.is_career} onChange={e => setForm(prev => ({ ...prev, is_career: e.target.checked, last_alal_date: e.target.checked ? prev.last_alal_date : "" }))} />
-                שירות קבע
-              </label>
-            )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={e => set(key, e.target.value)} />
               </label>
             ))}
-            {(form.is_officer || form.is_career) && (
+            {form.is_officer && (
               <label className="block text-sm">אל&quot;ל אחרון
                 <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form.last_alal_date} onChange={e => set("last_alal_date", e.target.value)} />

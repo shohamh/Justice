@@ -23,6 +23,8 @@ OFFICER_RANKS = [
 ]
 ALL_RANKS = ENLISTED_RANKS + OFFICER_RANKS
 
+CHOVAH_ONLY_RANKS = ["טוראי", "רבט", "סמל", "סגמ", "קמא"]
+
 RANKS_RASAN_AND_ABOVE = OFFICER_RANKS[OFFICER_RANKS.index("רסן"):]
 # ["רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף"]
 
@@ -54,6 +56,25 @@ def inferred_service_type(soldier: Soldier, today: date | None = None) -> str | 
     if soldier.discharge_date is None or soldier.discharge_date > soldier.mandatory_end_date:
         return "קבע"
     return "חובה"
+
+
+def derive_is_career(
+    rank: str | None,
+    mandatory_end_date: date | None,
+    discharge_date: date | None,
+    today: date | None = None,
+) -> bool:
+    """A soldier is קבע once their mandatory (חובה) service has ended and no
+    discharge closed it out first — mirrors inferred_service_type's rule.
+    Never true while holding a חובה-only rank, regardless of dates."""
+    if rank in CHOVAH_ONLY_RANKS:
+        return False
+    if mandatory_end_date is None:
+        return False
+    ref = today or date.today()
+    if ref <= mandatory_end_date:
+        return False
+    return discharge_date is None or discharge_date > mandatory_end_date
 
 
 def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date) -> bool:

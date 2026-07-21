@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.auth.authz import Action, authorize
+from app.auth.deps import require_password_changed
+from app.db.models import HierarchyNode, HierarchyTransferRequest, Soldier
+from app.db.session import get_session
+from app.services import hierarchy_transfers as svc
+
+router = APIRouter(prefix="/hierarchy-transfers", tags=["hierarchy_transfers"])
+
+
+class CreateTransferBody(BaseModel):
+    soldier_id: uuid.UUID
+    to_node_id: uuid.UUID
+
+
+class DecisionBody(BaseModel):
+    decision_note: str | None = None
+
+
+class TransferOut(BaseModel):
+    id: uuid.UUID
+    soldier_id: uuid.UUID
+    from_node_id: uuid.UUID | None
+    to_node_id: uuid.UUID
+    status: str
+
+
+def _out(req: HierarchyTransferRequest) -> TransferOut:
+    return TransferOut(
+        id=req.id, soldier_id=req.soldier_id, from_node_id=req.from_node_id,
+        to_node_id=req.to_node_id, status=req.status,
+    )
+
+
+@router.post("", response_model=TransferOut)
+def create_transfer(
+    body: CreateTransferBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> TransferOut:
+    soldier = session.get(Soldier, body.soldier_id)
+    if soldier is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier_not_found")
+    source_node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=source_node)
+    try:
+        req = svc.create_request(session, soldier_id=body.soldier_id, to_node_id=body.to_node_id, requested_by=user.id)
+    except svc.HierarchyTransferError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    session.commit()
+    return _out(req)
+
+
+@router.post("/{request_id}/approve", response_model=TransferOut)
+def approve_transfer(
+    request_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> TransferOut:
+    req = session.get(HierarchyTransferRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    dest_node = session.get(HierarchyNode, req.to_node_id)
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
+    try:
+        req = svc.approve_request(session, request_id=request_id, actor_id=user.id)
+    except svc.HierarchyTransferError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    session.commit()
+    return _out(req)
+
+
+@router.post("/{request_id}/reject", response_model=TransferOut)
+def reject_transfer(
+    request_id: uuid.UUID,
+    body: DecisionBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> TransferOut:
+    req = session.get(HierarchyTransferRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    dest_node = session.get(HierarchyNode, req.to_node_id)
+    authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
+    try:
+        req = svc.reject_request(session, request_id=request_id, actor_id=user.id, decision_note=body.decision_note)
+    except svc.HierarchyTransferError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    session.commit()
+    return _out(req)
+
+
+@router.get("/pending", response_model=list[TransferOut])
+def list_pending(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[TransferOut]:
+    return [_out(r) for r in svc.list_pending_for_approver(session, approver_id=user.id)]

@@ -19,6 +19,20 @@ def get_level_rank(session: Session, level_key: str) -> int | None:
     ).scalar_one_or_none()
 
 
+def ancestor_id_at_level(session: Session, node_id: uuid.UUID, level: str) -> uuid.UUID | None:
+    """Return the id of the ancestor (or the node itself) whose level matches `level`,
+    or None if the node doesn't exist or has no ancestor at that level."""
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        return None
+    candidate_ids = [*node.path_ids, node.id]
+    rows = session.execute(
+        select(HierarchyNode.id, HierarchyNode.level).where(HierarchyNode.id.in_(candidate_ids))
+    ).all()
+    by_level = {lvl: nid for nid, lvl in rows}
+    return by_level.get(level)
+
+
 def create_node(
     session: Session,
     *,

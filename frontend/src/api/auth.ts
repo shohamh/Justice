@@ -56,7 +56,6 @@ export interface RegisterPayload {
   email?: string | null;
   gender: string | null;
   is_officer: boolean | null;
-  is_career: boolean;
   rank: string | null;
   bahad1_graduate: boolean;
   enlistment_date: string | null;

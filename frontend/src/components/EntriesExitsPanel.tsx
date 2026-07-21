@@ -7,7 +7,7 @@ import { grantExemption } from "../api/exemptions";
 import { listExemptionTypes, type ExemptionType } from "../api/dutyConfig";
 import { fetchTree, type NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
-import { updateSoldier } from "../api/soldiers";
+import { createTransferRequest } from "../api/hierarchyTransfers";
 import Combobox from "./Combobox";
 
 interface Props {
@@ -55,7 +55,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
 
   async function handleMove() {
     if (!moveTarget || !targetNodeId) return;
-    await updateSoldier(moveTarget.id, { hierarchy_node_id: targetNodeId });
+    await createTransferRequest(moveTarget.id, targetNodeId);
     setMoveTarget(null);
     setTargetNodeId("");
     onRefresh();

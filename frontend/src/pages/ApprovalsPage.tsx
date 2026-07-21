@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
+import { api } from "../api/client";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
@@ -35,12 +36,24 @@ import {
   managerRejectSwap,
 } from "../api/swaps";
 import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
+import {
+  TransferRequest,
+  listPendingTransferRequests,
+  approveTransferRequest,
+  rejectTransferRequest,
+} from "../api/hierarchyTransfers";
 import { DaysBadge } from "../components/DaysBadge";
+import i18n from "../i18n";
 
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
-    if (resp?.data?.detail) return resp.data.detail;
+    const detail = resp?.data?.detail;
+    if (detail?.startsWith("cover_blocked:")) {
+      const reason = detail.slice("cover_blocked:".length);
+      return i18n.t(`cover_blocked.${reason}`, { defaultValue: reason });
+    }
+    if (detail) return detail;
   }
   return "שגיאה בביצוע הפעולה";
 }
@@ -51,9 +64,9 @@ function ApprovalDotInline({ value }: { value: boolean | null }) {
   return <span className="text-gray-400">—</span>;
 }
 
-type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment";
+type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment" | "transfers";
 
-const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment"];
+const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment", "transfers"];
 
 export default function ApprovalsPage() {
   const { t } = useTranslation();
@@ -68,6 +81,7 @@ export default function ApprovalsPage() {
   const [fuNotes, setFuNotes] = useState<Record<string, string>>({});
   const [swapRejectNotes, setSwapRejectNotes] = useState<Record<string, string>>({});
   const [enrollRejectNotes, setEnrollRejectNotes] = useState<Record<string, string>>({});
+  const [transferRejectNotes, setTransferRejectNotes] = useState<Record<string, string>>({});
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -87,6 +101,9 @@ export default function ApprovalsPage() {
 
   const enrollQuery = useQuery({ queryKey: queryKeys.pendingEnrollments(), queryFn: listPendingEnrollments });
   const enrollItems = enrollQuery.data ?? [];
+
+  const transfersQuery = useQuery({ queryKey: queryKeys.pendingHierarchyTransfers(), queryFn: listPendingTransferRequests });
+  const transferItems = transfersQuery.data ?? [];
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const nodes = useMemo(() => {
@@ -164,6 +181,22 @@ export default function ApprovalsPage() {
     }
   }
 
+  async function openExemptionFile(erId: string, fileId: string) {
+    try {
+      const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
+      const url = URL.createObjectURL(resp.data as Blob);
+      const win = window.open(url, "_blank");
+      if (win) {
+        win.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
+      } else {
+        // popup blocked — revoke immediately, nothing to show
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
   async function onFuApprove(item: FieldUpdateDTO) {
     try {
       await approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]);
@@ -232,7 +265,29 @@ export default function ApprovalsPage() {
     }
   }
 
-  const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length;
+  async function onTransferApprove(id: string) {
+    try {
+      await approveTransferRequest(id);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+  async function onTransferReject(id: string) {
+    const note = transferRejectNotes[id];
+    if (!note) return;
+    try {
+      await rejectTransferRequest(id, note);
+      const next = { ...transferRejectNotes };
+      delete next[id];
+      setTransferRejectNotes(next);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
+  const total = items.length + erItems.length + fuItems.length + swapItems.length + enrollItems.length + transferItems.length;
 
   return (
     <Layout>
@@ -281,6 +336,13 @@ export default function ApprovalsPage() {
             data-testid="approvals-tab-enrollment"
           >
             {t("enrollment.tab")}{enrollItems.length > 0 ? ` (${enrollItems.length})` : ""}
+          </button>
+          <button
+            className={`pb-2 text-sm ${tab === "transfers" ? "font-semibold border-b-2 border-indigo-600" : "text-gray-500"}`}
+            onClick={() => setTab("transfers")}
+            data-testid="approvals-tab-transfers"
+          >
+            {t("approvals.tab_transfers")}{transferItems.length > 0 ? ` (${transferItems.length})` : ""}
           </button>
         </div>
 
@@ -356,15 +418,14 @@ export default function ApprovalsPage() {
                   {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {er.files.map(f => (
-                        <a
+                        <button
                           key={f.id}
-                          href={exemptionFileDownloadUrl(er.id, f.id)}
-                          target="_blank"
-                          rel="noreferrer"
+                          type="button"
+                          onClick={() => openExemptionFile(er.id, f.id)}
                           className="text-blue-600 dark:text-blue-400 text-xs hover:underline flex items-center gap-1"
                         >
                           📎 {f.file_name}
-                        </a>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -524,6 +585,47 @@ export default function ApprovalsPage() {
                       disabled={!enrollRejectNotes[req.id]}
                       className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50">
                       {t("enrollment.reject")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab === "transfers" && (
+          <div className="space-y-3" dir="rtl">
+            {transferItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.transfers_none")}</p>}
+            {transferItems.map((req: TransferRequest) => {
+              const fromNodeName = req.from_node_id ? nodes.find(n => n.id === req.from_node_id)?.name ?? req.from_node_id.slice(0, 8) : "—";
+              const toNodeName = nodes.find(n => n.id === req.to_node_id)?.name ?? req.to_node_id.slice(0, 8);
+              return (
+                <div key={req.id} className="border rounded p-3 text-sm space-y-2">
+                  <div className="flex items-center gap-2">
+                    <strong><SoldierLink id={req.soldier_id} name={req.soldier_id.slice(0, 8)} /></strong>
+                  </div>
+                  <p className="text-gray-500">{t("approvals.transfer_from")}: <strong>{fromNodeName}</strong> ← {t("approvals.transfer_to")}: <strong>{toNodeName}</strong></p>
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <button
+                      onClick={() => onTransferApprove(req.id)}
+                      className="bg-green-600 text-white px-2 py-1 rounded text-xs"
+                      data-testid={`transfer-approve-${req.id}`}
+                    >
+                      {t("approvals.approve")}
+                    </button>
+                    <input
+                      placeholder={t("approvals.decision_note")}
+                      value={transferRejectNotes[req.id] ?? ""}
+                      onChange={e => setTransferRejectNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
+                      className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                      data-testid={`transfer-reject-note-${req.id}`}
+                    />
+                    <button
+                      onClick={() => onTransferReject(req.id)}
+                      disabled={!transferRejectNotes[req.id]}
+                      className="bg-red-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
+                      data-testid={`transfer-reject-${req.id}`}
+                    >
+                      {t("approvals.reject")}
                     </button>
                   </div>
                 </div>

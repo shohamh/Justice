@@ -16,6 +16,7 @@ import {
   getRanks,
 } from "../api/soldiers";
 import { setEmail } from "../api/auth";
+import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { generateTelegramCode, getTelegramStatus, unlinkTelegram } from "../api/telegram";
 import { getPreferences, updatePreferences, listCommanderScopes, addCommanderScope, removeCommanderScope, NotificationPref } from "../api/notifications";
 import { fetchTree, NodeDTO } from "../api/hierarchy";
@@ -39,6 +40,12 @@ export default function ProfilePage() {
   const [emailReq, setEmailReq] = useState(user?.email ?? "");
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMsg, setEmailMsg] = useState<string | null>(null);
+  const registrationSettingsQuery = useQuery({
+    queryKey: queryKeys.registrationPublicSettings(),
+    queryFn: getRegistrationPublicSettings,
+  });
+  const emailDomainHint = registrationSettingsQuery.data?.email_domain_hint;
+  const emailPlaceholder = emailDomainHint ? `שם@${emailDomainHint}` : "כתובת אימייל";
   const [tgCode, setTgCode] = useState<string | null>(null);
   const [tgBotUsername, setTgBotUsername] = useState<string | null>(null);
   const [tgPolling, setTgPolling] = useState(false);
@@ -351,7 +358,7 @@ export default function ProfilePage() {
           <div className="space-y-1">
             <div className="flex gap-2 items-center">
               <label className="w-40">{t("profile.email")}</label>
-              <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="כתובת אימייל" />
+              <input type="email" value={emailReq} onChange={e => { setEmailReq(e.target.value); setEmailMsg(null); }} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder={emailPlaceholder} />
               <button type="button" disabled={emailSaving} onClick={async () => {
                 setEmailSaving(true); setEmailMsg(null);
                 try {

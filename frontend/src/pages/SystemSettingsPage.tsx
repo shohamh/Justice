@@ -1,17 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Download, Upload } from "lucide-react";
 import Layout from "../components/Layout";
-import { getSystemSettings, updateSystemSettings, SettingsMap } from "../api/systemSettings";
+import { getSystemSettings, updateSystemSettings, exportSystemSettings, importSystemSettings, SettingsMap } from "../api/systemSettings";
 import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
+import { useLevelTypes } from "../hooks/useLevelTypes";
 
 interface SettingDef {
   key: string;
   label: string;
   description?: string;
-  type: "boolean" | "number" | "decimal" | "select" | "date";
+  type: "boolean" | "number" | "decimal" | "select" | "date" | "text";
   defaultValue: string | number | boolean;
   options?: { value: string; label: string }[];
 }
@@ -28,12 +30,21 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "החלפות",
     settings: [
       { key: "swaps.require_manager_approval", label: "דורש אישור מפקד", description: "האם החלפות דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      {
+        key: "swaps.restrict_to_hierarchy_level",
+        label: "הגבלת החלפות לרמת היררכיה",
+        description: "מגביל בקשות החלפה לחיילים החולקים אב משותף ברמה זו (ריק = ללא הגבלה)",
+        type: "select" as const,
+        defaultValue: "",
+        options: [],
+      },
     ],
   },
   {
     label: "הרשמה",
     settings: [
       { key: "registration.telegram_required", label: "טלגרם חובה", description: "האם חיילים חדשים חייבים לקשר חשבון טלגרם לאחר ההרשמה", type: "boolean", defaultValue: false },
+      { key: "registration.email_domain_hint", label: "רמז לדומיין אימייל", description: "דומיין ברירת מחדל המוצג כרמז בשדה האימייל, למשל gmail.com (ריק = ללא רמז)", type: "text", defaultValue: "" },
     ],
   },
   {
@@ -99,6 +110,18 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         description: "כשמופעל, מכסות ליחידות-בת מחושבות אוטומטית לפי פוטנציאל (סה\"כ חיילים) בכל פעם שנבחרת יחידת-אב יחידה ונקבע מספר נדרש בטופס משמרת",
         type: "boolean" as const,
         defaultValue: false,
+      },
+    ],
+  },
+  {
+    label: "טלגרם",
+    settings: [
+      {
+        key: "telegram.enabled",
+        label: "טלגרם מופעל",
+        description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
+        type: "boolean",
+        defaultValue: true,
       },
     ],
   },
@@ -223,12 +246,19 @@ export function SystemSettingsContent() {
   const queryClient = useQueryClient();
   const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
   const settings = settingsQuery.data ?? {};
+  const { levelTypes } = useLevelTypes();
+  const hierarchyLevelOptions = [
+    { value: "", label: "ללא הגבלה" },
+    ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
+  ];
 
   // draft mirrors the query result but is then edited locally before saving,
   // so it stays a useState fed by an effect rather than reading straight from
   // the query on every render (same pattern as ProfilePage's notification prefs).
   const [draft, setDraft] = useState<SettingsMap>({});
   const [saved, setSaved] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (settingsQuery.data) setDraft(settingsQuery.data);
@@ -242,6 +272,48 @@ export function SystemSettingsContent() {
       setSaved(true);
     },
   });
+
+  const importMutation = useMutation({
+    mutationFn: importSystemSettings,
+    onSuccess: (updated) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemSettings() });
+      setDraft(updated);
+      setSaved(true);
+      setImportError(null);
+    },
+    onError: () => {
+      setImportError("שגיאה בייבוא ההגדרות");
+    },
+  });
+
+  async function handleExport() {
+    const data = await exportSystemSettings();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "הגדרות-מערכת.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as SettingsMap;
+        importMutation.mutate(parsed);
+      } catch {
+        setImportError("קובץ לא תקין");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
 
   function setValue(key: string, value: string | number | boolean) {
     setDraft(prev => ({ ...prev, [key]: value }));
@@ -268,6 +340,30 @@ export function SystemSettingsContent() {
         <div className="flex items-center gap-3">
           {saved && <span className="text-sm text-green-600">נשמר ✓</span>}
           <button
+            type="button"
+            onClick={handleExport}
+            className="text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5"
+          >
+            <Download className="w-4 h-4" />
+            ייצוא הגדרות
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importMutation.isPending}
+            className="text-sm text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            {importMutation.isPending ? "מייבא..." : "ייבוא הגדרות"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={handleImportFileChange}
+          />
+          <button
             onClick={handleSave}
             disabled={saving || !isDirty}
             className="bg-indigo-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
@@ -278,6 +374,7 @@ export function SystemSettingsContent() {
       </div>
 
       {error && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{error}</div>}
+      {importError && <div className="text-red-600 text-sm bg-red-50 rounded p-3">{importError}</div>}
 
       {SETTING_GROUPS.map(group => (
         <div key={group.label} className="bg-white rounded-lg shadow p-5 space-y-4 dark:bg-gray-800">
@@ -307,7 +404,7 @@ export function SystemSettingsContent() {
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="rtl"
                     >
-                      {(def.options ?? []).map((opt) => (
+                      {(def.key === "swaps.restrict_to_hierarchy_level" ? hierarchyLevelOptions : def.options ?? []).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
@@ -317,6 +414,14 @@ export function SystemSettingsContent() {
                       value={String(value ?? "")}
                       onChange={e => setValue(def.key, e.target.value)}
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
+                      dir="ltr"
+                    />
+                  ) : def.type === "text" ? (
+                    <input
+                      type="text"
+                      value={String(value ?? "")}
+                      onChange={e => setValue(def.key, e.target.value)}
+                      className="w-40 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="ltr"
                     />
                   ) : (

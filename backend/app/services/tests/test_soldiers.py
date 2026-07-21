@@ -41,7 +41,9 @@ def test_update_soldier_profile_rejects_career_discharge_in_past(admin_session):
     from tests.helpers import create_soldier
 
     soldier = create_soldier(admin_session, personal_number="7920003")
-    soldier.is_career = True
+    # mandatory_end_date in the past -> is_career derives to True on the update below,
+    # so the cross-field check has something real to reject.
+    soldier.mandatory_end_date = date(2020, 6, 1)
     soldier.enlistment_date = date(2020, 1, 1)
     admin_session.commit()
 
@@ -60,12 +62,98 @@ def test_update_soldier_profile_allows_valid_dates(admin_session):
     soldier.enlistment_date = date(2024, 1, 1)
     admin_session.commit()
 
+    # Both dates in the future -> is_career derives to False, so this exercises pure
+    # date-ordering validation without tripping the "career + past discharge" check.
+    mandatory_end = date.today() + timedelta(days=30)
+    discharge = date.today() + timedelta(days=400)
     update_soldier_profile(
         admin_session, soldier=soldier,
-        fields={"discharge_date": date(2026, 1, 1), "mandatory_end_date": date(2025, 12, 1)},
+        fields={"discharge_date": discharge, "mandatory_end_date": mandatory_end},
         actor_id=None,
     )
-    assert soldier.discharge_date == date(2026, 1, 1)
+    assert soldier.discharge_date == discharge
+
+
+def test_update_soldier_profile_rejects_chovah_only_rank_while_career(admin_session):
+    from app.services.soldiers import update_soldier_profile, SoldierValidationError
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920010")
+    soldier.mandatory_end_date = date(2020, 1, 1)  # long past -> derives to קבע
+    admin_session.commit()
+
+    with pytest.raises(SoldierValidationError, match="rank"):
+        update_soldier_profile(
+            admin_session, soldier=soldier,
+            fields={"rank": "טוראי"}, actor_id=None,
+        )
+
+
+def test_update_soldier_profile_derives_is_career_from_dates(admin_session):
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920011")
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"rank": "רסן", "mandatory_end_date": date(2020, 1, 1)}, actor_id=None,
+    )
+    assert soldier.is_career is True
+
+
+def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admin_session):
+    from decimal import Decimal
+
+    from app.db.models import (
+        DutyLocation, DutyType, ExemptionRequest, ExemptionType,
+        PersonalConstraint, SwapRequest,
+    )
+    from app.services import assignments as assignments_svc
+    from app.services.soldiers import soft_delete
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7930002")
+
+    et = ExemptionType(name="soft_delete_test_exemption_type")
+    admin_session.add(et)
+    admin_session.flush()
+    er = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id, start_date=date(2026, 8, 1),
+        end_date=None, status="pending_commander",
+    )
+    admin_session.add(er)
+
+    pc = PersonalConstraint(
+        soldier_id=soldier.id, start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
+        reason="soft_delete_test_constraint", status="pending",
+    )
+    admin_session.add(pc)
+
+    dt = DutyType(name="dt_soft_delete_test", score_per_day=Decimal("1"))
+    loc = DutyLocation(name="loc_soft_delete_test")
+    admin_session.add(dt)
+    admin_session.add(loc)
+    admin_session.flush()
+    assignment = assignments_svc.create_assignment(
+        admin_session, soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
+    )
+    admin_session.flush()
+    sr = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=date(2026, 8, 1),
+        requesting_soldier_id=soldier.id, status="pending_approval",
+    )
+    admin_session.add(sr)
+    admin_session.commit()
+
+    soft_delete(admin_session, soldier=soldier, actor_id=None)
+    admin_session.commit()
+    admin_session.refresh(er)
+    admin_session.refresh(pc)
+    admin_session.refresh(sr)
+    assert er.status == "cancelled"
+    assert pc.status == "cancelled"
+    assert sr.status == "cancelled"
 
 
 def test_approve_field_update_rejects_discharge_before_enlistment(admin_session):

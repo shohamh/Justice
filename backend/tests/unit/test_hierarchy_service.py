@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from sqlalchemy import select, text
 
@@ -5,6 +7,7 @@ from app.db.models import HierarchyLevelType, HierarchyNode
 from app.services.hierarchy import (
     HierarchyError,
     ReorderViolation,
+    ancestor_id_at_level,
     create_level_type,
     create_node,
     delete_level_type,
@@ -77,6 +80,20 @@ def test_create_child_rejects_rank_not_below_parent(admin_session):
 def test_create_node_rejects_unknown_level(admin_session):
     with pytest.raises(HierarchyError):
         create_node(admin_session, level="not_a_real_level", name="x", parent_id=None, actor_id=None)
+
+
+def test_ancestor_id_at_level_finds_matching_ancestor(admin_session):
+    root = seed_node(admin_session, level="division", name="div_test")
+    branch = seed_node(admin_session, level="branch", name="branch_test", parent=root)
+    unit = seed_node(admin_session, level="unit", name="unit_test", parent=branch)
+
+    assert ancestor_id_at_level(admin_session, unit.id, "branch") == branch.id
+    assert ancestor_id_at_level(admin_session, unit.id, "division") == root.id
+    assert ancestor_id_at_level(admin_session, unit.id, "nonexistent_level") is None
+
+
+def test_ancestor_id_at_level_returns_none_for_missing_node(admin_session):
+    assert ancestor_id_at_level(admin_session, uuid.uuid4(), "division") is None
 
 
 def test_create_child_allows_any_level_below(admin_session):

@@ -33,7 +33,6 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   const [email, setEmail] = useState(req.email ?? "");
   const [rank, setRank] = useState(req.rank ?? "");
   const [isOfficer, setIsOfficer] = useState(req.is_officer ?? false);
-  const [isCareer, setIsCareer] = useState(req.is_career);
   const [gender, setGender] = useState(req.gender ?? "");
   const [enlistmentDate, setEnlistmentDate] = useState(req.enlistment_date ?? "");
   const [mandatoryEndDate, setMandatoryEndDate] = useState(req.mandatory_end_date ?? "");
@@ -59,7 +58,6 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
         email: email || null,
         rank: rank || null,
         is_officer: isOfficer,
-        is_career: isCareer,
         gender: gender || null,
         enlistment_date: enlistmentDate || null,
         mandatory_end_date: mandatoryEndDate || null,
@@ -159,16 +157,6 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               />
               <span className="text-xs">קצין</span>
             </label>
-            {!isOfficer && (
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={isCareer}
-                  onChange={e => setIsCareer(e.target.checked)}
-                />
-                <span className="text-xs">קבע</span>
-              </label>
-            )}
           </div>
           <label className="block">
             <span className="text-xs text-gray-500">מגדר</span>
@@ -218,7 +206,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
               />
             </label>
           ))}
-          {(isOfficer || isCareer) && (
+          {isOfficer && (
             <label className="block">
               <span className="text-xs text-gray-500">אל&quot;ל אחרון</span>
               <input

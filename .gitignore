@@ -47,3 +47,6 @@ frontend/tests/e2e/storageState.json
 nul
 backend/vendor/
 .superpowers/
+
+# Ad-hoc data exports from manual testing
+*.xlsx
