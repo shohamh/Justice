@@ -559,6 +559,64 @@ def test_claiming_one_targeted_request_cancels_siblings(admin_session):
     assert req_for_s2.status == "cancelled"
 
 
+def test_claiming_a_second_sibling_cancels_a_pending_approval_sibling(admin_session):
+    """Reproduces the double-cover risk from the final-review finding: a
+    pending_approval sibling (one that already had its own claim accepted
+    and is awaiting manager approval) must still be cancelled when another
+    live request for the same duty + requester gets claimed — otherwise two
+    parallel flows could both reach _apply_cover for the same assignment.
+
+    This isn't reachable via the original two-target fan-out alone (claiming
+    one of two fanned-out siblings already cancelled the other while it was
+    still "open", before it had a chance to also be claimed). The gap is a
+    *third*, independently-created request for the same duty_assignment_id +
+    requesting_soldier_id — e.g. a later open-board post — which the
+    per-(assignment, target) uniqueness check in _create_single_request does
+    not block, and which claim_request's old status == "open" filter could
+    never catch once the first sibling had already progressed past "open".
+    """
+    requester, (s1, s2), assignment = _seed_multi_target(admin_session, n=2)
+    set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
+
+    req1 = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=s1.id, reason=None,
+    )
+    admin_session.flush()
+    # s1 claims their targeted request -> it moves to pending_approval,
+    # awaiting manager sign-off (not yet applied).
+    svc.claim_request(admin_session, request_id=req1.id, covering_soldier_id=s1.id)
+    admin_session.flush()
+    assert admin_session.get(SwapRequest, req1.id).status == "pending_approval"
+
+    # A second, independent request for the same duty + requester (e.g. an
+    # open-board post) — not one of the original fan-out siblings, and not
+    # blocked by the uniqueness check since its target differs from req1's.
+    req2 = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None,
+    )
+    admin_session.flush()
+
+    # s2 claims req2 too -> without the fix, req1 (pending_approval, not
+    # "open") would survive, leaving two live flows for the same assignment.
+    svc.claim_request(admin_session, request_id=req2.id, covering_soldier_id=s2.id)
+    admin_session.flush()
+
+    admin_session.refresh(req1)
+    req2_reloaded = admin_session.get(SwapRequest, req2.id)
+    assert req1.status == "cancelled"
+    assert req2_reloaded.status == "pending_approval"
+
+    # And the previously-pending req1 can no longer be finalized into a
+    # second _apply_cover for the same assignment.
+    try:
+        svc.approve_soldier_side(admin_session, request_id=req1.id, soldier_id=requester.id)
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "not_pending"
+
+
 def test_create_request_rejects_empty_target_list(admin_session):
     a, b, assignment = _seed(admin_session)
     try:

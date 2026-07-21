@@ -605,19 +605,33 @@ def claim_request(
         )
     session.flush()
     # This request is now claimed (targeted at a specific covering soldier).
-    # If it was one of several parallel targeted requests fanned out by
-    # create_request for the same duty + requester, cancel the still-open
-    # siblings — the requester only needs one cover, not N.
+    # If it was one of several parallel requests for the same duty +
+    # requester — whether fanned out together by create_request or created
+    # separately afterward — cancel the still-live siblings: the requester
+    # only needs one cover, not N. "Still-live" mirrors cancel_request's own
+    # notion of cancellable statuses (open or pending_approval) rather than
+    # just "open", otherwise a sibling that already reached pending_approval
+    # (its own claim in progress, awaiting manager approval) would never get
+    # cancelled here, leaving two parallel flows able to both reach
+    # _apply_cover for the same assignment.
     siblings = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == req.duty_assignment_id,
             SwapRequest.requesting_soldier_id == req.requesting_soldier_id,
             SwapRequest.id != req.id,
-            SwapRequest.status == "open",
+            SwapRequest.status.in_(["open", "pending_approval"]),
         )
     ).scalars().all()
     for sib in siblings:
         sib.status = "cancelled"
+        if sib.covering_soldier_id is not None:
+            create_notification(
+                session, soldier_id=sib.covering_soldier_id,
+                type=NotificationType.swap_rejected,
+                title="בקשת ההחלפה בוטלה — כבר נמצא מחליף אחר",
+                reference_type="swap_request", reference_id=sib.id,
+                actor_id=actor_id,
+            )
     session.flush()
     return req
 
