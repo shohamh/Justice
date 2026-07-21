@@ -1130,8 +1130,24 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.level}</td>
+                      <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("hierarchy", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.level : (
+                          <input
+                            className="border rounded p-1 text-sm w-24 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.level}
+                            onBlur={(e) => setFieldOverride("hierarchy", row.row, "level", e.target.value)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">{row.parent_name ?? "—"}</td>
                       <td className="p-3">
                         {row.commander_personal_number || row.commander_name ? (
