@@ -73,6 +73,8 @@ def create_request(
     swaps.max_specific_targets setting). Single-target/open-board callers keep
     using `target_soldier_id` unmodified and get a single SwapRequest back.
     """
+    if target_soldier_ids is not None and len(target_soldier_ids) == 0:
+        raise SwapError("no_targets_specified")
     targets = target_soldier_ids if target_soldier_ids is not None else (
         [target_soldier_id] if target_soldier_id is not None else [None]
     )

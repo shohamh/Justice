@@ -557,3 +557,15 @@ def test_claiming_one_targeted_request_cancels_siblings(admin_session):
     admin_session.flush()
     admin_session.refresh(req_for_s2)
     assert req_for_s2.status == "cancelled"
+
+
+def test_create_request_rejects_empty_target_list(admin_session):
+    a, b, assignment = _seed(admin_session)
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=[], reason=None,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "no_targets_specified"
