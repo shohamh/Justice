@@ -24,22 +24,6 @@ def _get_setting_with_default(session: Session, key: str, default):
         return default
 
 
-def _future_cap_used(session: Session, soldier_id: uuid.UUID) -> int:
-    today = date.today()
-    rows = list(
-        session.execute(
-            select(PersonalConstraint).where(
-                PersonalConstraint.soldier_id == soldier_id,
-                PersonalConstraint.end_date >= today,
-                PersonalConstraint.status.in_(["pending", "approved"]),
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return sum((r.end_date - r.start_date).days + 1 for r in rows)
-
-
 def submit_constraint(
     session: Session,
     *,
@@ -57,10 +41,15 @@ def submit_constraint(
     if start_date < date.today():
         raise ConstraintError("start_date_in_past")
 
-    cap_days = int(_get_setting_with_default(session, "constraints.personal_cap_days", 15))
-    used = _future_cap_used(session, soldier_id)
-    requested = (end_date - start_date).days + 1
-    if used + requested > cap_days:
+    rd = remaining_days(session, soldier_id=soldier_id)
+    cap_days = rd["cap_days"]
+    used = rd["used_days"]
+    period_start, period_end = rd["period_start"], rd["period_end"]
+    period_last_day = date.fromordinal(period_end.toordinal() - 1)
+    overlap_start = max(start_date, period_start)
+    overlap_end = min(end_date, period_last_day)
+    requested_in_period = max(0, (overlap_end - overlap_start).days + 1)
+    if used + requested_in_period > cap_days:
         raise ConstraintError("cap_exceeded")
 
     require_approval = bool(
@@ -304,8 +293,10 @@ def period_bounds(reset_period: str, today: date) -> tuple[date, date]:
 def remaining_days(session: Session, *, soldier_id: uuid.UUID, today: date | None = None) -> dict:
     """Cap / used / remaining personal-constraint days for the reset period containing `today`.
 
-    Counts pending + approved constraints overlapping the current period (not
-    just future-dated ones — see `_future_cap_used` for that variant).
+    Counts pending + approved constraints overlapping the current period,
+    clipped to the period's boundaries. `submit_constraint` uses this same
+    logic (via this function) for its cap-exceeded check, so the "remaining"
+    number shown in the UI stays consistent with what gets enforced.
     """
     today = today or date.today()
     reset_period = str(_get_setting_with_default(session, "constraints.reset_period", "quarter"))

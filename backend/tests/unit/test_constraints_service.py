@@ -78,6 +78,53 @@ def test_submit_cap_enforced(admin_session):
         )
 
 
+def test_submit_cap_check_is_period_scoped_not_full_future_span(admin_session):
+    """Regression test for the display/enforcement mismatch: submit_constraint's
+    cap check must use the same period-clipped `used_days` that `remaining_days`
+    (and thus the UI) reports, not a full-future-span sum.
+
+    Sets up an approved constraint entirely inside the NEXT reset period (10
+    days). Under the old `_future_cap_used` helper (no period clipping, counts
+    any row with end_date >= today), that constraint alone would count as 10
+    "used" days against the CURRENT period's cap — even though it doesn't
+    overlap the current period at all. A subsequent 12-day request entirely
+    within the current period would then be wrongly rejected (10 + 12 = 22 >
+    cap 15), even though `remaining_days` would report the full cap as
+    available. The fixed enforcement must accept it.
+    """
+    s = create_soldier(admin_session, personal_number=_pn(13))
+    today = date.today()
+    period_start, period_end = constraints.period_bounds("quarter", today)
+
+    future_only = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=period_end,
+        end_date=period_end + timedelta(days=9),
+        reason="next period only",
+        status="approved",
+    )
+    admin_session.add(future_only)
+    admin_session.flush()
+
+    # The display (remaining_days) must show the current period as untouched.
+    rd = constraints.remaining_days(admin_session, soldier_id=s.id)
+    assert rd["used_days"] == 0
+    assert rd["remaining_days"] == rd["cap_days"]
+
+    # Enforcement must agree with the display: a 12-day request inside the
+    # current period should be accepted, not rejected as cap-exceeded.
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=today + timedelta(days=1),
+        end_date=today + timedelta(days=12),
+        reason="within current period",
+        actor_id=None,
+    )
+    admin_session.commit()
+    assert c.status == "pending"
+
+
 def test_submit_bad_date_range(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(4))
     with pytest.raises(ConstraintError, match="bad_date_range"):
