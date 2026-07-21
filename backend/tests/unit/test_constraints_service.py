@@ -273,14 +273,56 @@ def test_remaining_days_counts_only_current_period(admin_session):
 
 
 def test_remaining_days_counts_overlapping_current_period(admin_session):
+    # Anchor the constraint window to the *start* of the current reset period
+    # (via period_bounds) rather than to date.today() with a fixed offset. A
+    # fixed offset like "today + 3..today + 5" silently breaks whenever today
+    # is within ~5 days of a calendar quarter's end (Mar 31 / Jun 30 / Sep 30 /
+    # Dec 31), since the window could then fall in the *next* period instead
+    # of the current one. Anchoring to period_start guarantees the window
+    # stays inside the period regardless of where in the quarter today falls.
+    # Inserted directly via the session (rather than submit_constraint())
+    # because period_start can itself be in the past relative to today once
+    # the quarter is already underway, which submit_constraint()'s
+    # start-date-in-past check would reject.
     s = create_soldier(admin_session, personal_number=_pn(102))
-    start = date.today() + timedelta(days=3)
-    end = date.today() + timedelta(days=5)
-    submit_constraint(
-        admin_session, soldier_id=s.id, start_date=start, end_date=end, reason="x", actor_id=None
+    period_start, _period_end = period_bounds("quarter", date.today())
+    start = period_start + timedelta(days=2)
+    end = period_start + timedelta(days=4)
+    c = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=start,
+        end_date=end,
+        reason="x",
+        status="approved",
     )
+    admin_session.add(c)
     admin_session.commit()
     result = remaining_days(admin_session, soldier_id=s.id, today=date.today())
     assert result["used_days"] == 3
     assert result["remaining_days"] == result["cap_days"] - 3
+
+
+def test_remaining_days_clips_constraint_straddling_period_start(admin_session):
+    # Exercise the min/max clamping in remaining_days(): a constraint that
+    # starts before period_start but ends inside the period should only have
+    # the in-period portion (period_start..end_date) counted, not its full
+    # span. submit_constraint() rejects past start dates, so the row is
+    # inserted directly via the session to bypass that validation.
+    s = create_soldier(admin_session, personal_number=_pn(103))
+    period_start, _period_end = period_bounds("quarter", date.today())
+    start = period_start - timedelta(days=10)
+    end = period_start + timedelta(days=2)
+    c = PersonalConstraint(
+        soldier_id=s.id,
+        start_date=start,
+        end_date=end,
+        reason="straddles period boundary",
+        status="approved",
+    )
+    admin_session.add(c)
+    admin_session.commit()
+    result = remaining_days(admin_session, soldier_id=s.id, today=date.today())
+    expected_used = (end - period_start).days + 1
+    assert result["used_days"] == expected_used
+    assert result["remaining_days"] == result["cap_days"] - expected_used
 
