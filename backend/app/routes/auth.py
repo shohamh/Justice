@@ -379,6 +379,7 @@ def register_nodes(
 def validate_invite_code(
     code: str,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict:
     return {"valid": validate_code(session, code=code)}
@@ -389,6 +390,7 @@ def validate_invite_code(
 def forgot_password_check(
     body: Annotated[ForgotPasswordCheckRequest, Body()],
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> ForgotPasswordChannelsResponse:
     # Always return the same response to prevent user enumeration.
@@ -402,6 +404,7 @@ def forgot_password_check(
 def forgot_password_send(
     body: Annotated[ForgotPasswordSendRequest, Body()],
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict:
     # Always call available_channels (same DB work as the check endpoint) so
@@ -452,6 +455,7 @@ class PublicExemptionTypeOut(BaseModel):
 @limiter.limit("60/minute")
 def list_public_exemption_types(
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> list[PublicExemptionTypeOut]:
     types = session.execute(

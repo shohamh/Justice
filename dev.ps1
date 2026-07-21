@@ -15,11 +15,15 @@ param([switch]$NoBot)
 
 $root = $PSScriptRoot
 
-# ── Parse .env, replacing Docker-internal 'db' hostname with localhost ────────
+# ── Parse .env.defaults + .env (secrets/overrides win), replacing
+#    Docker-internal 'db' hostname with localhost ─────────────────────────────
 $envVars = @{}
-Get-Content "$root\.env" | Where-Object { $_ -match '^[A-Z_]+=.+$' } | ForEach-Object {
-    $parts = $_ -split '=', 2
-    $envVars[$parts[0]] = $parts[1]
+foreach ($envFile in @("$root\.env.defaults", "$root\.env")) {
+    if (-not (Test-Path $envFile)) { continue }
+    Get-Content $envFile | Where-Object { $_ -match '^[A-Z_]+=.+$' } | ForEach-Object {
+        $parts = $_ -split '=', 2
+        $envVars[$parts[0]] = $parts[1]
+    }
 }
 $localDbUrl    = $envVars['DATABASE_URL'] -replace '@db:', '@localhost:'
 $localAdminUrl = $envVars['DB_ADMIN_URL']  -replace '@db:', '@localhost:'

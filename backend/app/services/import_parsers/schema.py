@@ -20,6 +20,16 @@ class ImportSoldierRow(BaseModel):
     enlistment_date: str | None = None
     phone: str | None = None
     email: str | None = None
+    is_career: bool | None = None
+    next_rank_date: str | None = None
+    bahad1_graduate: bool | None = None
+    has_military_driving_license: bool | None = None
+    military_driving_license_expiry: str | None = None
+    mandatory_end_date: str | None = None
+    discharge_date: str | None = None
+    last_mitvahim_date: str | None = None
+    last_alal_date: str | None = None
+    left_at: str | None = None
 
 
 class ImportDutyShiftRow(BaseModel):

@@ -53,9 +53,11 @@ def _resolve_soldiers(
     actor: Soldier,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     existing_by_pn = {
         s.personal_number: s for s in session.execute(select(Soldier)).scalars()
     }
@@ -68,36 +70,62 @@ def _resolve_soldiers(
     for row in data.soldiers:
         errors: list[str] = []
         warnings: list[str] = []
-        if not row.personal_number:
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        rank = field("rank", row.rank)
+        gender = field("gender", row.gender)
+        is_officer = field("is_officer", row.is_officer)
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        enrolled_at = field("enrolled_at", row.enrolled_at)
+        enlistment_date = field("enlistment_date", row.enlistment_date)
+        phone = field("phone", row.phone)
+        email = field("email", row.email)
+        is_career = field("is_career", row.is_career)
+        next_rank_date = field("next_rank_date", row.next_rank_date)
+        bahad1_graduate = field("bahad1_graduate", row.bahad1_graduate)
+        has_military_driving_license = field("has_military_driving_license", row.has_military_driving_license)
+        military_driving_license_expiry = field("military_driving_license_expiry", row.military_driving_license_expiry)
+        mandatory_end_date = field("mandatory_end_date", row.mandatory_end_date)
+        discharge_date = field("discharge_date", row.discharge_date)
+        last_mitvahim_date = field("last_mitvahim_date", row.last_mitvahim_date)
+        last_alal_date = field("last_alal_date", row.last_alal_date)
+        left_at = field("left_at", row.left_at)
+
+        if not personal_number:
             errors.append("חסר מספר אישי")
-        if not row.full_name:
+        if not full_name:
             errors.append("חסר שם מלא")
 
         node = None
-        if row.hierarchy_node_name:
+        if hierarchy_node_name:
             row_key = f"soldiers:{row.source_row}"
-            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.hierarchy_node_name)
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
             if mapped_id:
                 try:
                     node = session.get(HierarchyNode, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if node is None:
-                node = nodes_by_name.get(row.hierarchy_node_name)
+                node = nodes_by_name.get(hierarchy_node_name)
             if node is None:
-                errors.append(f"יחידה לא מזוהה '{row.hierarchy_node_name}'")
+                errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
 
-        existing = existing_by_pn.get(row.personal_number) if row.personal_number else None
-        if existing is None and row.personal_number and row.full_name:
-            candidates = existing_by_full_name.get(row.full_name, [])
+        existing = existing_by_pn.get(personal_number) if personal_number else None
+        if existing is None and personal_number and full_name:
+            candidates = existing_by_full_name.get(full_name, [])
             if len(candidates) == 1:
                 existing = candidates[0]
                 warnings.append(
-                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{row.personal_number}'"
+                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{personal_number}'"
                 )
             elif len(candidates) > 1:
                 errors.append(
-                    f"שם '{row.full_name}' אינו חד משמעי (מספר אישי '{row.personal_number}' לא נמצא)"
+                    f"שם '{full_name}' אינו חד משמעי (מספר אישי '{personal_number}' לא נמצא)"
                 )
 
         if errors:
@@ -108,11 +136,6 @@ def _resolve_soldiers(
             action = "new"
 
         if action != "error" and node is not None:
-            # Per-row scope check: re-runs scope_root_ids(session, actor) on every
-            # iteration instead of hoisting it out of the loop. Fine for typical
-            # single-Excel-import row counts; if import volumes grow significantly,
-            # this is the first place to optimize (precompute scope_root_ids once
-            # and inline the subtree check).
             if actor.role != "admin" and not is_node_in_actor_scope(
                 session=session, actor=actor, node_id=node.id
             ):
@@ -123,40 +146,64 @@ def _resolve_soldiers(
             "action": action,
             "errors": errors,
             "warnings": warnings,
-            "personal_number": row.personal_number,
-            "full_name": row.full_name,
-            "rank": row.rank,
-            "gender": row.gender,
-            "is_officer": row.is_officer,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "rank": rank,
+            "gender": gender,
+            "is_officer": is_officer,
             "hierarchy_node_id": str(node.id) if node is not None else None,
-            "hierarchy_node_name": row.hierarchy_node_name,
-            "enrolled_at": row.enrolled_at,
-            "enlistment_date": row.enlistment_date,
-            "phone": row.phone,
-            "email": row.email,
+            "hierarchy_node_name": hierarchy_node_name,
+            "enrolled_at": enrolled_at,
+            "enlistment_date": enlistment_date,
+            "phone": phone,
+            "email": email,
+            "is_career": is_career,
+            "next_rank_date": next_rank_date,
+            "bahad1_graduate": bahad1_graduate,
+            "has_military_driving_license": has_military_driving_license,
+            "military_driving_license_expiry": military_driving_license_expiry,
+            "mandatory_end_date": mandatory_end_date,
+            "discharge_date": discharge_date,
+            "last_mitvahim_date": last_mitvahim_date,
+            "last_alal_date": last_alal_date,
+            "left_at": left_at,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
 
 
-def _resolve_duty_locations(session: Session, data: ParsedImportData) -> list[dict]:
+def _resolve_duty_locations(
+    session: Session,
+    data: ParsedImportData,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    overrides = overrides or {}
     existing_by_name = {
         loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()
     }
     out = []
     for row in data.duty_locations:
         errors: list[str] = []
-        if not row.name:
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        base = field("base", row.base)
+        active = field("active", row.active)
+
+        if not name:
             errors.append("חסר שם מיקום")
-        existing = existing_by_name.get(row.name) if row.name else None
+        existing = existing_by_name.get(name) if name else None
         action = "error" if errors else ("update" if existing else "new")
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "base": row.base,
-            "active": row.active,
+            "name": name,
+            "base": base,
+            "active": active,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
@@ -187,9 +234,11 @@ def _resolve_hierarchy(
     actor: Soldier,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     existing_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
     valid_levels = {
         lt.key for lt in session.execute(select(HierarchyLevelType)).scalars()
@@ -199,36 +248,44 @@ def _resolve_hierarchy(
     for s in by_pn.values():
         by_name.setdefault(s.full_name, []).append(s)
 
-    # Pass 1: figure out each row's own resolved-or-new identity (name -> row index),
-    # so pass 2 can resolve forward-referenced parents regardless of sheet order.
     row_by_name = {row.name: row for row in data.hierarchy}
 
     out = []
     for row in data.hierarchy:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
 
-        if row.level not in valid_levels:
-            errors.append(f"סוג יחידה לא מוכר '{row.level}'")
+        def field(name: str, default):
+            return override[name] if name in override else default
 
-        existing = existing_by_name.get(row.name)
+        name = field("name", row.name)
+        level = field("level", row.level)
+        parent_name = field("parent_name", row.parent_name)
+        commander_personal_number = field("commander_personal_number", row.commander_personal_number)
+        commander_name = field("commander_name", row.commander_name)
+
+        if level not in valid_levels:
+            errors.append(f"סוג יחידה לא מוכר '{level}'")
+
+        existing = existing_by_name.get(name)
 
         resolved_parent_id = None
-        if row.parent_name:
+        if parent_name:
             row_key = f"hierarchy:{row.source_row}"
-            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.parent_name)
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(parent_name)
             if mapped_id:
                 resolved_parent_id = mapped_id
-            elif row.parent_name in existing_by_name:
-                resolved_parent_id = str(existing_by_name[row.parent_name].id)
-            elif row.parent_name in row_by_name:
-                resolved_parent_id = None  # resolved to another *new* row by name at commit time
+            elif parent_name in existing_by_name:
+                resolved_parent_id = str(existing_by_name[parent_name].id)
+            elif parent_name in row_by_name:
+                resolved_parent_id = None
             else:
-                errors.append(f"יחידת אב לא מזוהה '{row.parent_name}'")
+                errors.append(f"יחידת אב לא מזוהה '{parent_name}'")
 
         resolved_commander_id = None
-        if row.commander_personal_number or row.commander_name:
+        if commander_personal_number or commander_name:
             soldier, err = _resolve_soldier_ref(
-                row.commander_personal_number, row.commander_name, by_pn, by_name
+                commander_personal_number, commander_name, by_pn, by_name
             )
             if soldier is not None:
                 resolved_commander_id = str(soldier.id)
@@ -237,8 +294,8 @@ def _resolve_hierarchy(
 
         dm_results = []
         for ref in row.duty_manager_refs:
-            pn, _, name = ref.partition(":")
-            soldier, err = _resolve_soldier_ref(pn.strip(), name.strip(), by_pn, by_name)
+            pn, _, ref_name = ref.partition(":")
+            soldier, err = _resolve_soldier_ref(pn.strip(), ref_name.strip(), by_pn, by_name)
             dm_results.append({
                 "ref": ref,
                 "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
@@ -266,24 +323,18 @@ def _resolve_hierarchy(
             except ValueError:
                 pass
         elif action == "new" and actor.role != "admin" and not resolved_parent_id:
-            # Either a brand-new root node, or a parent that only resolves to
-            # another *new* row later in this same sheet (forward reference,
-            # not yet a real node id) — in both cases scope cannot be verified
-            # against a real parent node at this point, so treat as out of
-            # scope for non-admins. Matches is_node_in_actor_scope's contract
-            # that a None node_id is never in scope for a non-admin actor.
             action = "out_of_scope"
 
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "level": row.level,
-            "parent_name": row.parent_name,
+            "name": name,
+            "level": level,
+            "parent_name": parent_name,
             "resolved_parent_id": resolved_parent_id,
-            "commander_personal_number": row.commander_personal_number,
-            "commander_name": row.commander_name,
+            "commander_personal_number": commander_personal_number,
+            "commander_name": commander_name,
             "resolved_commander_id": resolved_commander_id,
             "duty_manager_refs": dm_results,
             "existing_id": str(existing.id) if existing is not None else None,
@@ -466,11 +517,13 @@ def _resolve_duty_shifts(
     dt_by_row: dict[str, str] | None = None,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     dt_by_name = dt_by_name or {}
     dt_by_row = dt_by_row or {}
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
     locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
@@ -478,28 +531,41 @@ def _resolve_duty_shifts(
     out = []
     for row in data.duty_shifts:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        start_date = field("start_date", row.start_date)
+        end_date = field("end_date", row.end_date)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        required_count = field("required_count", row.required_count)
+        notes = field("notes", row.notes)
 
         duty_type = None
-        if row.duty_type_name:
+        if duty_type_name:
             row_key = f"duty_shifts:{row.source_row}"
-            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
             if mapped_id:
                 try:
                     duty_type = session.get(DutyType, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if duty_type is None:
-                duty_type = duty_types_by_name.get(row.duty_type_name)
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
 
-        location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
         if location is None:
-            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
-        if not row.start_date:
+        if not start_date:
             errors.append("חסר תאריך התחלה")
-        if not row.end_date:
+        if not end_date:
             errors.append("חסר תאריך סיום")
 
         quota_dicts = []
@@ -523,9 +589,9 @@ def _resolve_duty_shifts(
             })
             quota_total += q.count
 
-        if quota_total > row.required_count:
+        if quota_total > required_count:
             errors.append(
-                f"סה\"כ מכסות ({quota_total}) גדול מהכמות הנדרשת ({row.required_count})"
+                f"סה\"כ מכסות ({quota_total}) גדול מהכמות הנדרשת ({required_count})"
             )
 
         action = "error" if errors else "new"
@@ -547,17 +613,17 @@ def _resolve_duty_shifts(
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "duty_type_name": row.duty_type_name,
+            "duty_type_name": duty_type_name,
             "resolved_duty_type_id": str(duty_type.id) if duty_type is not None else None,
-            "duty_location_name": row.duty_location_name,
+            "duty_location_name": duty_location_name,
             "resolved_duty_location_id": str(location.id) if location is not None else None,
-            "start_date": row.start_date,
-            "end_date": row.end_date,
-            "start_time": row.start_time,
-            "end_time": row.end_time,
-            "required_count": row.required_count,
+            "start_date": start_date,
+            "end_date": end_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "required_count": required_count,
             "node_quotas": quota_dicts,
-            "notes": row.notes,
+            "notes": notes,
         })
     return out
 
@@ -671,7 +737,14 @@ def _resolve_assignments(
     data: ParsedImportData,
     actor: Soldier,
     resolved_duty_shifts: list[dict],
+    dt_by_name: dict[str, str] | None = None,
+    dt_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
+    dt_by_name = dt_by_name or {}
+    dt_by_row = dt_by_row or {}
+    overrides = overrides or {}
+
     def _default_time(value: str | None, default: str) -> str:
         return value if value else default
 
@@ -723,44 +796,70 @@ def _resolve_assignments(
     for row in data.assignments:
         errors: list[str] = []
         warnings: list[str] = []
+        override = overrides.get(str(row.source_row), {})
 
-        soldier = soldiers_by_pn.get(row.personal_number) if row.personal_number else None
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        start_date = field("start_date", row.start_date)
+        end_date = field("end_date", row.end_date)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        is_reserve = field("is_reserve", row.is_reserve)
+        notes = field("notes", row.notes)
+
+        soldier = soldiers_by_pn.get(personal_number) if personal_number else None
         if soldier is not None:
-            if soldier.full_name != row.full_name:
+            if soldier.full_name != full_name:
                 errors.append(
-                    f"שם מלא '{row.full_name}' אינו תואם לחייל עם מספר אישי "
-                    f"'{row.personal_number}' ('{soldier.full_name}')"
+                    f"שם מלא '{full_name}' אינו תואם לחייל עם מספר אישי "
+                    f"'{personal_number}' ('{soldier.full_name}')"
                 )
         else:
-            candidates = soldiers_by_full_name.get(row.full_name, []) if row.full_name else []
+            candidates = soldiers_by_full_name.get(full_name, []) if full_name else []
             if len(candidates) == 1:
                 soldier = candidates[0]
-                warnings.append(f"נמצא לפי שם — מספר אישי '{row.personal_number}' לא נמצא")
+                warnings.append(f"נמצא לפי שם — מספר אישי '{personal_number}' לא נמצא")
             elif len(candidates) > 1:
                 errors.append(
-                    f"מספר אישי '{row.personal_number}' לא נמצא ושם '{row.full_name}' אינו חד משמעי"
+                    f"מספר אישי '{personal_number}' לא נמצא ושם '{full_name}' אינו חד משמעי"
                 )
             else:
                 errors.append(
-                    f"לא נמצא חייל עם מספר אישי '{row.personal_number}' או שם '{row.full_name}'"
+                    f"לא נמצא חייל עם מספר אישי '{personal_number}' או שם '{full_name}'"
                 )
 
-        duty_type = duty_types_by_name.get(row.duty_type_name) if row.duty_type_name else None
+        duty_type = None
+        if duty_type_name:
+            row_key = f"assignments:{row.source_row}"
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
+            if mapped_id:
+                try:
+                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if duty_type is None:
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
-        location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
+
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
         if location is None:
-            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
         resolved_duty_shift_id: str | None = None
         matched_session_row: int | None = None
         shift_key_str: str | None = None
         required_count: int | None = None
-        if duty_type is not None and location is not None and row.start_date and row.end_date:
+        if duty_type is not None and location is not None and start_date and end_date:
             key = (
-                duty_type.id, location.id, row.start_date, row.end_date,
-                _default_time(row.start_time, "00:00"),
-                _default_time(row.end_time, "23:59"),
+                duty_type.id, location.id, start_date, end_date,
+                _default_time(start_time, "00:00"),
+                _default_time(end_time, "23:59"),
             )
             existing_match = existing_shift_by_key.get(key)
             session_match = session_shift_by_key.get(key)
@@ -802,16 +901,16 @@ def _resolve_assignments(
             "action": action,
             "errors": errors,
             "warnings": warnings,
-            "personal_number": row.personal_number,
-            "full_name": row.full_name,
-            "duty_type_name": row.duty_type_name,
-            "duty_location_name": row.duty_location_name,
-            "start_date": row.start_date,
-            "end_date": row.end_date,
-            "start_time": row.start_time,
-            "end_time": row.end_time,
-            "is_reserve": row.is_reserve,
-            "notes": row.notes,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "duty_type_name": duty_type_name,
+            "duty_location_name": duty_location_name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "is_reserve": is_reserve,
+            "notes": notes,
             "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
             "resolved_duty_shift_id": resolved_duty_shift_id,
             "matched_session_row": matched_session_row,
@@ -831,16 +930,16 @@ def _resolve_and_score(
     dt_by_row   = nm.get("duty_type", {}).get("by_row", {})
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
-    duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row)
+    duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("duty_shifts", {}))
     return {
-        "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
+        "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row, fo.get("soldiers", {})),
         "duty_shifts": duty_shifts,
         "shift_templates": _resolve_shift_templates(
             session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
         ),
-        "assignments": _resolve_assignments(session, data, actor, duty_shifts),
-        "duty_locations": _resolve_duty_locations(session, data),
-        "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
+        "assignments": _resolve_assignments(session, data, actor, duty_shifts, dt_by_name, dt_by_row, fo.get("assignments", {})),
+        "duty_locations": _resolve_duty_locations(session, data, fo.get("duty_locations", {})),
+        "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
         "parser_id": data.parser_id,
@@ -953,11 +1052,30 @@ def confirm_session(
                     ),
                     phone=row.get("phone"),
                     email=row.get("email"),
+                    is_career=row.get("is_career") or False,
+                    bahad1_graduate=row.get("bahad1_graduate") or False,
+                    has_military_driving_license=row.get("has_military_driving_license"),
                 )
                 if row.get("enrolled_at"):
                     new_soldier.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                 if row.get("enlistment_date"):
                     new_soldier.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                if row.get("next_rank_date"):
+                    new_soldier.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
+                if row.get("military_driving_license_expiry"):
+                    new_soldier.military_driving_license_expiry = date_type.fromisoformat(
+                        row["military_driving_license_expiry"]
+                    )
+                if row.get("mandatory_end_date"):
+                    new_soldier.mandatory_end_date = date_type.fromisoformat(row["mandatory_end_date"])
+                if row.get("discharge_date"):
+                    new_soldier.discharge_date = date_type.fromisoformat(row["discharge_date"])
+                if row.get("last_mitvahim_date"):
+                    new_soldier.last_mitvahim_date = date_type.fromisoformat(row["last_mitvahim_date"])
+                if row.get("last_alal_date"):
+                    new_soldier.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
+                if row.get("left_at"):
+                    new_soldier.left_at = date_type.fromisoformat(row["left_at"])
                 session.add(new_soldier)
                 session.flush()
                 created += 1
@@ -979,10 +1097,32 @@ def confirm_session(
                         s.phone = row["phone"]
                     if row.get("email") is not None:
                         s.email = row["email"]
+                    if row.get("is_career") is not None:
+                        s.is_career = row["is_career"]
+                    if row.get("bahad1_graduate") is not None:
+                        s.bahad1_graduate = row["bahad1_graduate"]
+                    if row.get("has_military_driving_license") is not None:
+                        s.has_military_driving_license = row["has_military_driving_license"]
                     if row.get("enrolled_at"):
                         s.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                     if row.get("enlistment_date"):
                         s.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                    if row.get("next_rank_date"):
+                        s.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
+                    if row.get("military_driving_license_expiry"):
+                        s.military_driving_license_expiry = date_type.fromisoformat(
+                            row["military_driving_license_expiry"]
+                        )
+                    if row.get("mandatory_end_date"):
+                        s.mandatory_end_date = date_type.fromisoformat(row["mandatory_end_date"])
+                    if row.get("discharge_date"):
+                        s.discharge_date = date_type.fromisoformat(row["discharge_date"])
+                    if row.get("last_mitvahim_date"):
+                        s.last_mitvahim_date = date_type.fromisoformat(row["last_mitvahim_date"])
+                    if row.get("last_alal_date"):
+                        s.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
+                    if row.get("left_at"):
+                        s.left_at = date_type.fromisoformat(row["left_at"])
                     session.flush()
                     updated += 1
                     created_soldiers.append(str(s.id))

@@ -165,15 +165,15 @@ describe("ImportSessionReviewPage", () => {
     expect(screen.getByText("חיילים (2)")).toBeInTheDocument();
     expect(screen.getByText("משמרות (1)")).toBeInTheDocument();
 
-    expect(screen.getByText("יוסי כהן")).toBeInTheDocument();
-    expect(screen.getByText("דני לוי")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("יוסי כהן")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("דני לוי")).toBeInTheDocument();
   });
 
   it("renders an unresolved hierarchy node in red with a create button and picker combobox", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
-    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    const row = screen.getByDisplayValue("יוסי כהן").closest("tr")!;
     expect(within(row).getByText("פלוגה א")).toBeInTheDocument();
     expect(within(row).getByText("צור יחידה")).toBeInTheDocument();
     expect(row.querySelector('input[role="combobox"]')).toBeInTheDocument();
@@ -181,9 +181,9 @@ describe("ImportSessionReviewPage", () => {
 
   it("calls saveSelections when a row action select is changed to skip", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
-    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    const row = screen.getByDisplayValue("יוסי כהן").closest("tr")!;
     const select = row.querySelector("select")!;
     fireEvent.change(select, { target: { value: "skip" } });
 
@@ -199,7 +199,7 @@ describe("ImportSessionReviewPage", () => {
 
   it("confirms a session and displays result counts", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("אשר וייבא"));
 
@@ -221,9 +221,9 @@ describe("ImportSessionReviewPage", () => {
     ]);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
-    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    const row = screen.getByDisplayValue("יוסי כהן").closest("tr")!;
     const input = row.querySelector('input[role="combobox"]') as HTMLInputElement;
     // The node lookup for the picker loads asynchronously in a separate effect;
     // retry focusing until its items have arrived and the option renders.
@@ -258,7 +258,7 @@ describe("ImportSessionReviewPage", () => {
     ]);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("משמרות (1)"));
     await screen.findByText("שמירה");
@@ -310,9 +310,9 @@ describe("ImportSessionReviewPage", () => {
 
   it("pre-fills the create-node dialog with the unresolved soldier row name", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
-    const row = screen.getByText("יוסי כהן").closest("tr")!;
+    const row = screen.getByDisplayValue("יוסי כהן").closest("tr")!;
     fireEvent.click(within(row).getByText("צור יחידה"));
 
     const dialog = await screen.findByTestId("add-root-node-dialog");
@@ -321,7 +321,7 @@ describe("ImportSessionReviewPage", () => {
 
   it("pre-fills the create-node dialog with the unresolved duty-shift quota name", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("משמרות (1)"));
     await screen.findByText("שמירה");
@@ -335,7 +335,7 @@ describe("ImportSessionReviewPage", () => {
 
   it("pre-fills the create-duty-type dialog with the unresolved duty-shift duty_type_name", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("משמרות (1)"));
     await screen.findByText("שמירה");
@@ -348,7 +348,7 @@ describe("ImportSessionReviewPage", () => {
 
   it("reparses after creating a duty type from the duty-shifts tab", async () => {
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("משמרות (1)"));
     await screen.findByText("שמירה");
@@ -379,10 +379,10 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("מיקומי תורנות (1)"));
-    const row = (await screen.findByText("שער חדש")).closest("tr")!;
+    const row = (await screen.findByDisplayValue("שער חדש")).closest("tr")!;
     expect(within(row).getByText("אישור")).toBeInTheDocument();
   });
 
@@ -407,10 +407,10 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("היררכיה (1)"));
-    expect(await screen.findByText("מדור א")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("מדור א")).toBeInTheDocument();
     expect(screen.getByText("ישראל ישראלי")).toBeInTheDocument();
   });
 
@@ -455,7 +455,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
 
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
     expect(await screen.findByDisplayValue("שמירה")).toBeInTheDocument();
@@ -491,7 +491,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
 
     expect(await screen.findByDisplayValue("שמירה בשער")).toBeInTheDocument();
@@ -519,7 +519,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("פטורים (1)"));
 
     expect(await screen.findByDisplayValue("פטור רפואי")).toBeInTheDocument();
@@ -542,7 +542,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
 
     const input = await screen.findByDisplayValue("ישן");
@@ -576,7 +576,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("סוגי תורנות (1)"));
 
     fireEvent.click(await screen.findByText("ערוך יחידות/דרישות"));
@@ -601,7 +601,7 @@ describe("ImportSessionReviewPage", () => {
     ]);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("פטורים (1)"));
 
     // open the fields modal for the row
@@ -656,7 +656,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("פטורים (1)"));
 
     // open the fields modal for the row
@@ -704,7 +704,7 @@ describe("ImportSessionReviewPage", () => {
     vi.mocked(importSessionsApi.reparseSession).mockResolvedValue(detail);
 
     renderPage();
-    await screen.findByText("יוסי כהן");
+    await screen.findByDisplayValue("יוסי כהן");
     fireEvent.click(screen.getByText("תבניות (1)"));
 
     const countInput = await screen.findByDisplayValue("2");

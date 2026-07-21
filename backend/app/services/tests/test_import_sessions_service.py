@@ -54,6 +54,126 @@ def _wb_with_soldiers(rows):
     return wb
 
 
+def _wb_with_soldiers_full_profile(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("soldiers")
+    ws.append([
+        "personal_number", "full_name", "rank", "gender", "is_officer",
+        "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email",
+        "is_career", "next_rank_date", "bahad1_graduate",
+        "has_military_driving_license", "military_driving_license_expiry",
+        "mandatory_end_date", "discharge_date", "last_mitvahim_date",
+        "last_alal_date", "left_at",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_soldier_import_round_trips_full_profile_fields(admin_session):
+    wb = _wb_with_soldiers_full_profile([
+        [
+            "1234567", "Some Soldier", "", "", "",
+            "", "", "", "", "",
+            "true", "01.01.2027", "true",
+            "true", "01.01.2028",
+            "01.01.2026", "15.02.2026", "01.03.2026",
+            "01.04.2026", "01.05.2026",
+        ],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row = sess.parsed_state["soldiers"][0]
+    assert row["is_career"] is True
+    assert row["next_rank_date"] == "2027-01-01"
+    assert row["bahad1_graduate"] is True
+    assert row["has_military_driving_license"] is True
+    assert row["military_driving_license_expiry"] == "2028-01-01"
+    assert row["mandatory_end_date"] == "2026-01-01"
+    assert row["discharge_date"] == "2026-02-15"
+    assert row["last_mitvahim_date"] == "2026-03-01"
+    assert row["last_alal_date"] == "2026-04-01"
+    assert row["left_at"] == "2026-05-01"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    created = admin_session.execute(
+        select(Soldier).where(Soldier.personal_number == "1234567")
+    ).scalar_one()
+    assert created.is_career is True
+    assert created.next_rank_date == date_type(2027, 1, 1)
+    assert created.bahad1_graduate is True
+    assert created.has_military_driving_license is True
+    assert created.military_driving_license_expiry == date_type(2028, 1, 1)
+    assert created.mandatory_end_date == date_type(2026, 1, 1)
+    assert created.discharge_date == date_type(2026, 2, 15)
+    assert created.last_mitvahim_date == date_type(2026, 3, 1)
+    assert created.last_alal_date == date_type(2026, 4, 1)
+    assert created.left_at == date_type(2026, 5, 1)
+
+
+def test_soldier_import_update_branch_persists_full_profile_fields_without_clobbering_booleans(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    existing = create_soldier(admin_session, personal_number="7654321", role="soldier")
+    existing.is_career = True
+    existing.bahad1_graduate = True
+    admin_session.add(existing)
+    admin_session.commit()
+    admin_session.refresh(existing)
+    assert existing.is_career is True
+    assert existing.bahad1_graduate is True
+
+    # Second import for the same soldier (matched by personal_number). is_career and
+    # bahad1_graduate are left blank/not overridden — the existing True values must
+    # survive (boolean-guard: `if row.get(field) is not None` must not coerce to False).
+    wb = _wb_with_soldiers_full_profile([
+        [
+            "7654321", existing.full_name, "", "", "",
+            "", "", "", "", "",
+            "", "01.06.2027", "",
+            "true", "01.06.2028",
+            "01.06.2026", "15.07.2026", "01.08.2026",
+            "01.09.2026", "01.10.2026",
+        ],
+    ])
+    sess = create_session(
+        admin_session, filename="f2.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row = sess.parsed_state["soldiers"][0]
+    assert row["action"] == "update"
+    assert row["existing_id"] == str(existing.id)
+    # not overridden in this row -> should be None in parsed_state, and the guard in
+    # confirm_session must leave the existing DB value alone rather than clobbering it.
+    assert row["is_career"] is None
+    assert row["bahad1_graduate"] is None
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    updated = admin_session.execute(
+        select(Soldier).where(Soldier.personal_number == "7654321")
+    ).scalar_one()
+    # Boolean guard: previously-True flags must not be clobbered by an absent override.
+    assert updated.is_career is True
+    assert updated.bahad1_graduate is True
+    # has_military_driving_license was explicitly set to True in this import.
+    assert updated.has_military_driving_license is True
+    assert updated.next_rank_date == date_type(2027, 6, 1)
+    assert updated.military_driving_license_expiry == date_type(2028, 6, 1)
+    assert updated.mandatory_end_date == date_type(2026, 6, 1)
+    assert updated.discharge_date == date_type(2026, 7, 15)
+    assert updated.last_mitvahim_date == date_type(2026, 8, 1)
+    assert updated.last_alal_date == date_type(2026, 9, 1)
+    assert updated.left_at == date_type(2026, 10, 1)
+
+
 def _to_bytes(wb) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
@@ -994,6 +1114,29 @@ def _wb_with_exemption_types(rows):
     return wb
 
 
+def _wb_with_duty_locations(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_locations")
+    ws.append(["name", "base", "active"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def _wb_with_hierarchy(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("hierarchy")
+    ws.append([
+        "name", "level", "parent_name", "commander_personal_number",
+        "commander_name", "duty_manager_refs",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
 def test_duty_type_field_override_changes_resolved_score(admin_session):
     wb = _wb_with_duty_types([
         ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
@@ -1098,6 +1241,26 @@ def test_exemption_type_field_override_bypasses_applies_to_resolution(admin_sess
     row = sess.parsed_state["exemption_types"][0]
     assert row["action"] == "new"
     assert row["resolved_duty_type_ids"] == []
+
+
+def test_duty_location_field_override_changes_base(admin_session):
+    wb = _wb_with_duty_locations([
+        [f"loc_{_uid()}", "Original Base", "true"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_locations"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_locations": {str(row_num): {"base": "Overridden Base"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_locations"][0]
+    assert row["base"] == "Overridden Base"
 
 
 def test_confirm_session_new_duty_type_preserves_requirements(admin_session):
@@ -1454,3 +1617,144 @@ def test_confirm_session_shift_template_update_preserves_blank_recurrence_fields
     assert tpl.required_count == 7  # preserved, not reset to 1
     assert tpl.duration_days == 3  # preserved, not reset to 1
     assert tpl.auto_roll is True  # preserved, not reset to False
+
+
+def test_hierarchy_field_override_changes_level(admin_session):
+    wb = _wb_with_hierarchy([
+        [f"node_{_uid()}", "branch", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["hierarchy"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"hierarchy": {str(row_num): {"level": "team"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["hierarchy"][0]
+    assert row["level"] == "team"
+
+
+def test_soldier_field_override_changes_rank(admin_session):
+    wb = _wb_with_soldiers([
+        ["1234567", "Some Soldier", "rank1", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["soldiers"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"soldiers": {str(row_num): {"rank": "rank2"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["soldiers"][0]
+    assert row["rank"] == "rank2"
+
+
+def test_duty_shift_field_override_changes_required_count(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_shifts"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_shifts": {str(row_num): {"required_count": 9}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_shifts"][0]
+    assert row["required_count"] == 9
+
+
+def test_assignment_field_override_changes_notes(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    admin_session.commit()
+
+    from app.db.models import DutyShift
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        required_count=5,
+    )
+    admin_session.add(shift)
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["assignments"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"assignments": {str(row_num): {"notes": "overridden note"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["assignments"][0]
+    assert row["notes"] == "overridden note"
+
+
+def test_assignment_duty_type_resolved_via_by_row_mapping(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    admin_session.commit()
+
+    from app.db.models import DutyShift
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        required_count=5,
+    )
+    admin_session.add(shift)
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, "no_such_duty_type", loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["assignments"][0]["row"]
+    assert sess.parsed_state["assignments"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {"duty_type": {"by_row": {f"assignments:{row_num}": str(dt.id)}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["assignments"][0]
+    assert row["action"] == "new"
