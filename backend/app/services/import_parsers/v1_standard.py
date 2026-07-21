@@ -160,6 +160,16 @@ class V1StandardParser:
                 enlistment_date=_parse_date(r.get("enlistment_date")),
                 phone=str(r.get("phone") or "").strip() or None,
                 email=str(r.get("email") or "").strip() or None,
+                is_career=_parse_bool(r.get("is_career")),
+                next_rank_date=_parse_date(r.get("next_rank_date")),
+                bahad1_graduate=_parse_bool(r.get("bahad1_graduate")),
+                has_military_driving_license=_parse_bool(r.get("has_military_driving_license")),
+                military_driving_license_expiry=_parse_date(r.get("military_driving_license_expiry")),
+                mandatory_end_date=_parse_date(r.get("mandatory_end_date")),
+                discharge_date=_parse_date(r.get("discharge_date")),
+                last_mitvahim_date=_parse_date(r.get("last_mitvahim_date")),
+                last_alal_date=_parse_date(r.get("last_alal_date")),
+                left_at=_parse_date(r.get("left_at")),
             )
             for r in _sheet_rows(wb, "soldiers")
         ]
