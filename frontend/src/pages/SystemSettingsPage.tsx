@@ -13,8 +13,8 @@ interface SettingDef {
   key: string;
   label: string;
   description?: string;
-  type: "boolean" | "number" | "decimal" | "select" | "date" | "text";
-  defaultValue: string | number | boolean;
+  type: "boolean" | "number" | "decimal" | "select" | "date" | "text" | "multiselect";
+  defaultValue: string | number | boolean | string[];
   options?: { value: string; label: string }[];
 }
 
@@ -37,6 +37,17 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         type: "select" as const,
         defaultValue: "",
         options: [],
+      },
+    ],
+  },
+  {
+    label: "שקיפות",
+    settings: [
+      {
+        key: "transparency.visible_commander_levels",
+        label: "",
+        type: "multiselect" as const,
+        defaultValue: [],
       },
     ],
   },
@@ -233,11 +244,12 @@ export function ChangelogContent() {
   );
 }
 
-function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean {
+function resolveValue(map: SettingsMap, def: SettingDef): string | number | boolean | string[] {
   const raw = map[def.key];
   if (raw === undefined || raw === null) return def.defaultValue;
   if (def.type === "boolean") return Boolean(raw);
   if (def.type === "number") return Number(raw);
+  if (def.type === "multiselect") return Array.isArray(raw) ? raw : [];
   return String(raw);
 }
 
@@ -315,7 +327,7 @@ export function SystemSettingsContent() {
     e.target.value = "";
   }
 
-  function setValue(key: string, value: string | number | boolean) {
+  function setValue(key: string, value: string | number | boolean | string[]) {
     setDraft(prev => ({ ...prev, [key]: value }));
     setSaved(false);
   }
@@ -384,11 +396,38 @@ export function SystemSettingsContent() {
             return (
               <div key={def.key} className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <div className="text-sm font-medium text-gray-800 dark:text-gray-100">{def.label}</div>
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                    {def.key === "transparency.visible_commander_levels" ? t("admin_settings.transparency_visible_levels") : def.label}
+                  </div>
                   {def.description && <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{def.description}</div>}
                 </div>
                 <div className="flex-shrink-0">
-                  {def.type === "boolean" ? (
+                  {def.type === "multiselect" ? (
+                    <div className="flex flex-col gap-1 max-h-40 overflow-y-auto" dir="rtl">
+                      {levelTypes.map((lt) => {
+                        const selected = Array.isArray(value) && value.includes(lt.key);
+                        return (
+                          <label key={lt.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(e) => {
+                                const current = Array.isArray(value) ? value : [];
+                                const next = e.target.checked
+                                  ? [...current, lt.key]
+                                  : current.filter((k) => k !== lt.key);
+                                setValue(def.key, next);
+                              }}
+                            />
+                            {lt.label}
+                          </label>
+                        );
+                      })}
+                      {levelTypes.length === 0 && (
+                        <span className="text-xs text-gray-400">אין רמות היררכיה מוגדרות</span>
+                      )}
+                    </div>
+                  ) : def.type === "boolean" ? (
                     <button
                       dir="ltr"
                       onClick={() => setValue(def.key, !value)}

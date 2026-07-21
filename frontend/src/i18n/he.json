@@ -335,7 +335,8 @@
     "subunit_avg_effort": "ממוצע עומס",
     "subunit_cv_effort": "פיזור (CV)",
     "subunit_sibling_gap": "פער מול אחים (יחס)",
-    "subunit_global_gap": "פער מול הארגון (יחס)"
+    "subunit_global_gap": "פער מול הארגון (יחס)",
+    "no_permission": "אין לך הרשאה לצפות בדף זה"
   },
   "my_duties": {
     "title": "היומן שלי",
@@ -1009,6 +1010,9 @@
   "system_settings": {
     "title": "הגדרות מערכת",
     "save": "שמור שינויים"
+  },
+  "admin_settings": {
+    "transparency_visible_levels": "אילו רמות פיקוד רשאיות לצפות בדף השקיפות (בנוסף לאחראי תורנויות ומנהל)"
   },
   "enrollment": {
     "tab": "הצטרפות",
