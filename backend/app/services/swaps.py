@@ -336,7 +336,19 @@ def approve_manager_row(
     _try_finalize still runs in case the swap wasn't finalized yet for some
     other reason (e.g. the other side just approved). Raises
     SwapError("not_required_approver") only if there is no row at all for
-    (request_id, side, commander_id) — i.e. this person isn't in the chain."""
+    (request_id, side, commander_id) — i.e. this person isn't in the chain.
+
+    This lookup does not filter by approver_kind, so it would raise
+    MultipleResultsFound if the same person ever held both a "commander" row
+    and a "duty_manager" row for the same (request_id, side). That can't
+    happen today: _create_manager_approval_rows sources commander rows from
+    commander_chain_for_soldier (HierarchyNode.commander_id) and duty_manager
+    rows from duty_manager_ids (Soldier.role == "duty_manager"), and
+    recompute_role() (app/services/dm_scope.py) gives commander priority over
+    duty_manager — is_commander() being true forces role="commander", which
+    duty_manager_ids() excludes. So the two ID sets are always disjoint as
+    long as role stays in sync, which recompute_role is called to maintain
+    whenever chain/scope assignments change."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
@@ -362,13 +374,20 @@ def approve_manager_row(
         # Same person may be the required approver for both sides at once
         # (one commander over both soldiers, or the org's one duty manager)
         # — approving once should satisfy both sides instead of asking for
-        # a second click.
+        # a second click. Filtered by approver_kind == row.approver_kind:
+        # same reasoning as the primary `row` lookup above (commander vs.
+        # duty_manager ID sets are disjoint via role priority, so this is
+        # not reachable today either) — but `row.approver_kind` is already
+        # in hand here for free, so filtering by it costs nothing and keeps
+        # this cascade explicitly scoped to "same kind of requirement" by
+        # construction rather than by an invariant living elsewhere.
         other_side = "covering" if side == "requester" else "requester"
         other_row = session.execute(
             select(SwapManagerApproval).where(
                 SwapManagerApproval.swap_request_id == request_id,
                 SwapManagerApproval.side == other_side,
                 SwapManagerApproval.commander_id == commander_id,
+                SwapManagerApproval.approver_kind == row.approver_kind,
                 SwapManagerApproval.approved == False,  # noqa: E712
             )
         ).scalar_one_or_none()
