@@ -78,8 +78,8 @@ def test_soldier_import_round_trips_full_profile_fields(admin_session):
             "", "", "", "", "",
             "true", "01.01.2027", "true",
             "true", "01.01.2028",
-            "01.01.2026", "", "",
-            "", "",
+            "01.01.2026", "15.02.2026", "01.03.2026",
+            "01.04.2026", "01.05.2026",
         ],
     ])
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
@@ -94,6 +94,10 @@ def test_soldier_import_round_trips_full_profile_fields(admin_session):
     assert row["has_military_driving_license"] is True
     assert row["military_driving_license_expiry"] == "2028-01-01"
     assert row["mandatory_end_date"] == "2026-01-01"
+    assert row["discharge_date"] == "2026-02-15"
+    assert row["last_mitvahim_date"] == "2026-03-01"
+    assert row["last_alal_date"] == "2026-04-01"
+    assert row["left_at"] == "2026-05-01"
 
     confirm_session(admin_session, session_id=sess.id, actor=admin)
     admin_session.commit()
@@ -107,6 +111,67 @@ def test_soldier_import_round_trips_full_profile_fields(admin_session):
     assert created.has_military_driving_license is True
     assert created.military_driving_license_expiry == date_type(2028, 1, 1)
     assert created.mandatory_end_date == date_type(2026, 1, 1)
+    assert created.discharge_date == date_type(2026, 2, 15)
+    assert created.last_mitvahim_date == date_type(2026, 3, 1)
+    assert created.last_alal_date == date_type(2026, 4, 1)
+    assert created.left_at == date_type(2026, 5, 1)
+
+
+def test_soldier_import_update_branch_persists_full_profile_fields_without_clobbering_booleans(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    existing = create_soldier(admin_session, personal_number="7654321", role="soldier")
+    existing.is_career = True
+    existing.bahad1_graduate = True
+    admin_session.add(existing)
+    admin_session.commit()
+    admin_session.refresh(existing)
+    assert existing.is_career is True
+    assert existing.bahad1_graduate is True
+
+    # Second import for the same soldier (matched by personal_number). is_career and
+    # bahad1_graduate are left blank/not overridden — the existing True values must
+    # survive (boolean-guard: `if row.get(field) is not None` must not coerce to False).
+    wb = _wb_with_soldiers_full_profile([
+        [
+            "7654321", existing.full_name, "", "", "",
+            "", "", "", "", "",
+            "", "01.06.2027", "",
+            "true", "01.06.2028",
+            "01.06.2026", "15.07.2026", "01.08.2026",
+            "01.09.2026", "01.10.2026",
+        ],
+    ])
+    sess = create_session(
+        admin_session, filename="f2.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row = sess.parsed_state["soldiers"][0]
+    assert row["action"] == "update"
+    assert row["existing_id"] == str(existing.id)
+    # not overridden in this row -> should be None in parsed_state, and the guard in
+    # confirm_session must leave the existing DB value alone rather than clobbering it.
+    assert row["is_career"] is None
+    assert row["bahad1_graduate"] is None
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    updated = admin_session.execute(
+        select(Soldier).where(Soldier.personal_number == "7654321")
+    ).scalar_one()
+    # Boolean guard: previously-True flags must not be clobbered by an absent override.
+    assert updated.is_career is True
+    assert updated.bahad1_graduate is True
+    # has_military_driving_license was explicitly set to True in this import.
+    assert updated.has_military_driving_license is True
+    assert updated.next_rank_date == date_type(2027, 6, 1)
+    assert updated.military_driving_license_expiry == date_type(2028, 6, 1)
+    assert updated.mandatory_end_date == date_type(2026, 6, 1)
+    assert updated.discharge_date == date_type(2026, 7, 15)
+    assert updated.last_mitvahim_date == date_type(2026, 8, 1)
+    assert updated.last_alal_date == date_type(2026, 9, 1)
+    assert updated.left_at == date_type(2026, 10, 1)
 
 
 def _to_bytes(wb) -> bytes:
