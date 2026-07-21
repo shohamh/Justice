@@ -336,3 +336,93 @@ def test_create_request_allowed_across_hierarchy_level_when_not_restricted(admin
         target_soldier_id=target.id, reason=None, actor_id=requester.id,
     )
     assert req.status == "open"
+
+
+def test_claim_open_board_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.claim_request(
+            admin_session, request_id=req.id, covering_soldier_id=target.id, actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_claim_open_board_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    out = svc.claim_request(
+        admin_session, request_id=req.id, covering_soldier_id=target.id, actor_id=target.id,
+    )
+    assert out.status in ("pending_approval", "applied")
+
+
+def test_cover_offer_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.cover_offer(
+            admin_session, swap_id=req.id, covering_soldier_id=target.id,
+            offered_assignment_ids=[], actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_cover_offer_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason=None, actor_id=requester.id,
+    )
+    admin_session.flush()
+    out = svc.cover_offer(
+        admin_session, swap_id=req.id, covering_soldier_id=target.id,
+        offered_assignment_ids=[], actor_id=target.id,
+    )
+    assert out.status in ("pending_approval", "applied")
+
+
+def test_take_free_blocked_across_hierarchy_level_when_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    set_setting(admin_session, "swaps.restrict_to_hierarchy_level", "branch", actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.take_free(
+            admin_session, assignment_id=assignment.id,
+            covering_soldier_id=target.id, actor_id=target.id,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "hierarchy_level_mismatch"
+
+
+def test_take_free_allowed_across_hierarchy_level_when_not_restricted(admin_session):
+    requester, target, assignment = _seed_cross_branch(admin_session)
+    req, warnings = svc.take_free(
+        admin_session, assignment_id=assignment.id,
+        covering_soldier_id=target.id, actor_id=target.id,
+    )
+    assert req.status == "applied"
