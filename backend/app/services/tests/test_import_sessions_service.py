@@ -994,6 +994,16 @@ def _wb_with_exemption_types(rows):
     return wb
 
 
+def _wb_with_duty_locations(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("duty_locations")
+    ws.append(["name", "base", "active"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
 def test_duty_type_field_override_changes_resolved_score(admin_session):
     wb = _wb_with_duty_types([
         ["שמירה", "1.00", "", "true", "", "", "false", "", "", "", "", "", "", ""],
@@ -1098,6 +1108,26 @@ def test_exemption_type_field_override_bypasses_applies_to_resolution(admin_sess
     row = sess.parsed_state["exemption_types"][0]
     assert row["action"] == "new"
     assert row["resolved_duty_type_ids"] == []
+
+
+def test_duty_location_field_override_changes_base(admin_session):
+    wb = _wb_with_duty_locations([
+        [f"loc_{_uid()}", "Original Base", "true"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_locations"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_locations": {str(row_num): {"base": "Overridden Base"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_locations"][0]
+    assert row["base"] == "Overridden Base"
 
 
 def test_confirm_session_new_duty_type_preserves_requirements(admin_session):

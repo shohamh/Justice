@@ -139,24 +139,38 @@ def _resolve_soldiers(
     return out
 
 
-def _resolve_duty_locations(session: Session, data: ParsedImportData) -> list[dict]:
+def _resolve_duty_locations(
+    session: Session,
+    data: ParsedImportData,
+    overrides: dict[str, dict] | None = None,
+) -> list[dict]:
+    overrides = overrides or {}
     existing_by_name = {
         loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()
     }
     out = []
     for row in data.duty_locations:
         errors: list[str] = []
-        if not row.name:
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        name = field("name", row.name)
+        base = field("base", row.base)
+        active = field("active", row.active)
+
+        if not name:
             errors.append("חסר שם מיקום")
-        existing = existing_by_name.get(row.name) if row.name else None
+        existing = existing_by_name.get(name) if name else None
         action = "error" if errors else ("update" if existing else "new")
         out.append({
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "name": row.name,
-            "base": row.base,
-            "active": row.active,
+            "name": name,
+            "base": base,
+            "active": active,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
@@ -839,7 +853,7 @@ def _resolve_and_score(
             session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
         ),
         "assignments": _resolve_assignments(session, data, actor, duty_shifts),
-        "duty_locations": _resolve_duty_locations(session, data),
+        "duty_locations": _resolve_duty_locations(session, data, fo.get("duty_locations", {})),
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
