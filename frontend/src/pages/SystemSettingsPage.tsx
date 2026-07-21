@@ -424,7 +424,7 @@ export function SystemSettingsContent() {
                         );
                       })}
                       {levelTypes.length === 0 && (
-                        <span className="text-xs text-gray-400">אין רמות היררכיה מוגדרות</span>
+                        <span className="text-xs text-gray-400">{t("admin_settings.transparency_no_level_types")}</span>
                       )}
                     </div>
                   ) : def.type === "boolean" ? (
