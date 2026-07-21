@@ -166,4 +166,19 @@ describe("SwapsPage - AskSwapModal eligible-soldier picker", () => {
 
     expect(await screen.findByText("תאריך לא תקין")).toBeInTheDocument();
   });
+
+  it("strips the cover_not_eligible prefix from error messages", async () => {
+    vi.mocked(swapsApi.createSwap).mockRejectedValue({
+      response: { data: { detail: "cover_not_eligible:פטור מסוג תורנות זו" } },
+    });
+    renderPage();
+
+    const askButton = await screen.findByText("swaps.ask_swap");
+    fireEvent.click(askButton);
+
+    const saveButton = await screen.findByText("swaps.save");
+    fireEvent.click(saveButton);
+
+    expect(await screen.findByText("פטור מסוג תורנות זו")).toBeInTheDocument();
+  });
 });

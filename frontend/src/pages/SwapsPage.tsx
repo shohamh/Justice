@@ -48,7 +48,12 @@ function statusKey(status: string) {
 
 function extractErrorMessage(err: unknown, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === "string" && detail) return detail;
+  if (typeof detail === "string" && detail) {
+    if (detail.startsWith("cover_not_eligible:")) {
+      return detail.slice("cover_not_eligible:".length) || fallback;
+    }
+    return detail;
+  }
   if (Array.isArray(detail)) {
     const first = detail[0] as { msg?: unknown } | undefined;
     if (first && typeof first.msg === "string") return first.msg;
