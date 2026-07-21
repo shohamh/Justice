@@ -1,7 +1,7 @@
 """add hierarchy transfer requests
 
 Revision ID: 4376e408d4e3
-Revises: 3dd30881eefd
+Revises: ee2f4db01671
 Create Date: 2026-07-20 21:13:05.568036
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '4376e408d4e3'
-down_revision: Union[str, Sequence[str], None] = '3dd30881eefd'
+down_revision: Union[str, Sequence[str], None] = 'ee2f4db01671'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
