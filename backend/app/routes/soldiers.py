@@ -52,6 +52,7 @@ class SoldierOut(BaseModel):
     # Profile fields
     gender: str | None = None
     is_officer: bool | None = None
+    is_career: bool = False
     rank: str | None = None
     bahad1_graduate: bool = False
     has_military_driving_license: bool | None = None
@@ -182,6 +183,7 @@ def _out(
         enrolled_at=s.enrolled_at,
         gender=s.gender if include_private else None,
         is_officer=s.is_officer,
+        is_career=s.is_career,
         rank=s.rank,
         bahad1_graduate=s.bahad1_graduate,
         has_military_driving_license=s.has_military_driving_license,

@@ -360,6 +360,20 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
             {soldierData.discharge_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.discharge_date")}</span><span>{formatDate(soldierData.discharge_date)}</span></div>}
             {soldierData.last_mitvahim_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_mitvahim_date")}</span><span>{formatDate(soldierData.last_mitvahim_date)}</span></div>}
             {soldierData.is_officer && soldierData.last_alal_date && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.last_alal_date")}</span><span>{formatDate(soldierData.last_alal_date)}</span></div>}
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.service_type")}</span>
+              <span>{soldierData.is_career ? t("soldier_profile.career") : t("soldier_profile.mandatory")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.has_driving_license")}</span>
+              <span>{soldierData.has_military_driving_license ? t("common.yes") : t("common.no")}</span>
+            </div>
+            {soldierData.has_military_driving_license && soldierData.military_driving_license_expiry && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">{t("soldier_profile.driving_license_expiry")}</span>
+                <span>{formatDate(soldierData.military_driving_license_expiry)}</span>
+              </div>
+            )}
           </div>
         )}
 

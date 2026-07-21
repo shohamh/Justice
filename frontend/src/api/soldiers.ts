@@ -12,6 +12,7 @@ export interface SoldierDTO {
   enrolled_at: string | null;
   gender: string | null;
   is_officer: boolean | null;
+  is_career: boolean;
   rank: string | null;
   bahad1_graduate: boolean;
   has_military_driving_license: boolean | null;
