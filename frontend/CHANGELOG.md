@@ -5,6 +5,13 @@
 ### Features
 - Affected soldiers are now notified across more workflows: enrollment-request approval/rejection, hakpaza call-up approval (both pulled and replacement soldiers), duty-day override substitutions, and reserve call-up/dismissal (primary and reserve).
 - Job creators are now notified on all algorithm-run terminal states, not just success/exception.
+- `is_career` (קבע) is now derived automatically from rank and service dates instead of being set manually; חובה-only ranks can no longer be combined with קבע status, and registration always starts as חובה.
+- New system setting restricting swaps to soldiers sharing a common hierarchy ancestor at a configurable level, enforced on both directed and open-board swap requests.
+- New `telegram.enabled` kill-switch: disables Telegram notification delivery and hides all Telegram UI when off.
+- Moving a soldier between hierarchy units now creates a transfer request requiring the destination commander's/duty manager's approval instead of an immediate move, with a new "transfers" tab on the Approvals page.
+- System settings can now be exported/imported as JSON from the admin settings page.
+- Configurable email-domain hint shown as a placeholder on the registration and profile email fields.
+- Login page now shows the failed-attempt count against the lockout threshold; the attempt that reaches the threshold now locks the account immediately (429) instead of on the following attempt.
 
 ### Fixes
 - Self-approval of a soldier's own constraint/exemption requests is now blocked; commander-exemption grants must go through the dedicated endpoint (not the generic one), with notifications on direct grants, and duty managers are notified when a commander approves their exemption-request step.
@@ -14,6 +21,12 @@
 - Single/bulk shift-assignment removal is now audit-logged and notifies affected soldiers, with per-item exceptions isolated so one failure doesn't block the rest of a bulk operation.
 - Excel import apply now enforces duty-manager scope and adds audit-logging/notifications, with per-row notification failures made non-fatal to the response.
 - `announce()` no longer reuses the `ALGORITHM_RUN` action, and non-admin broadcasts now enforce scope.
+- Missing exemption-status translations and untranslated `cover_blocked:*` swap errors now show proper Hebrew messages.
+- Duty type name is now embedded directly in the effective-duty/swap APIs, fixing a generic "תורנות" label showing on the dashboard and swap pages when a lookup failed.
+- Exemption-request attachment files now download with the auth token, fixing a "missing token" error when viewing them from the Approvals page.
+- Commander-dashboard pending-swap count used the wrong status literal; soft-deleting a soldier now cancels their pending exemption/constraint/swap requests instead of leaving phantom approvals behind.
+- Requesting a swap now uses soldier search instead of a raw personal-number field, fixing a crash on invalid input; added an app-level error boundary as a general safety net.
+- Soldier is now notified when their enrollment request is rejected.
 
 ## 2026-07-20
 
