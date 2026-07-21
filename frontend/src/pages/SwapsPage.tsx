@@ -6,7 +6,7 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
-import DirectCommanderApproval from "../components/DirectCommanderApproval";
+import DirectCommanderApproval, { groupByKind, DirectCommanderApprovalRow } from "../components/DirectCommanderApproval";
 import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
@@ -71,11 +71,14 @@ function ApprovalBadge({ value, t }: { value: boolean | null; t: (k: string) => 
 }
 
 function PendingSide({
-  label, name, commanderName, approved, showCommander, t,
+  label, name, commanderName, approved, showCommander, managerApprovals, showDutyManager, t,
 }: {
   label: string; name: string | null | undefined; commanderName: string | null | undefined;
-  approved: boolean | null; showCommander: boolean; t: (k: string) => string;
+  approved: boolean | null; showCommander: boolean;
+  managerApprovals: (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[];
+  showDutyManager: boolean; t: (k: string) => string;
 }) {
+  const dutyManagerApprovals = groupByKind(managerApprovals).duty_manager;
   return (
     <div className="flex-1 border rounded p-3 space-y-1.5 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 min-w-0">
       <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</p>
@@ -85,15 +88,21 @@ function PendingSide({
           {t("swaps.commander_label")}: {commanderName}
         </p>
       )}
+      {showDutyManager && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={dutyManagerApprovals} />
+        </p>
+      )}
       <ApprovalBadge value={approved} t={t} />
     </div>
   );
 }
 
 function PendingApprovalCard({
-  swap, requireManagerApproval, onShiftClick, t,
+  swap, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
 }: {
-  swap: SwapRequest; requireManagerApproval: boolean; onShiftClick?: () => void; t: (k: string) => string;
+  swap: SwapRequest; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
+  onShiftClick?: () => void; t: (k: string) => string;
 }) {
   return (
     <li className="border rounded-lg p-4 space-y-3 dark:border-gray-600">
@@ -105,6 +114,8 @@ function PendingApprovalCard({
           commanderName={swap.requesting_commander_name}
           approved={swap.requester_side_approved}
           showCommander={requireManagerApproval}
+          managerApprovals={swap.requester_manager_approvals}
+          showDutyManager={requireManagerApproval && requireDutyManagerApproval}
           t={t}
         />
         <div className="flex items-center text-gray-400 text-lg select-none">⇄</div>
@@ -114,6 +125,8 @@ function PendingApprovalCard({
           commanderName={swap.covering_commander_name}
           approved={swap.covering_side_approved}
           showCommander={requireManagerApproval}
+          managerApprovals={swap.covering_manager_approvals}
+          showDutyManager={requireManagerApproval && requireDutyManagerApproval}
           t={t}
         />
       </div>
@@ -153,9 +166,13 @@ function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClic
   return <div className="text-sm">{inner}</div>;
 }
 
-function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; requireManagerApproval: boolean }) {
+function ApprovalStatus({ swap, requireManagerApproval, requireDutyManagerApproval }: {
+  swap: SwapRequest; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
+}) {
   const { t } = useTranslation();
   if (!requireManagerApproval || swap.status !== "pending_approval") return null;
+  const reqGroups = groupByKind(swap.requester_manager_approvals);
+  const covGroups = groupByKind(swap.covering_manager_approvals);
   return (
     <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 mt-1">
       <div className="flex flex-wrap gap-3">
@@ -163,8 +180,14 @@ function ApprovalStatus({ swap, requireManagerApproval }: { swap: SwapRequest; r
         <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
       </div>
       <div className="flex flex-col gap-1">
-        <span>{t("swaps.requester_managers")}: <DirectCommanderApproval approvals={swap.requester_manager_approvals} /></span>
-        <span>{t("swaps.covering_managers")}: <DirectCommanderApproval approvals={swap.covering_manager_approvals} /></span>
+        <span>{t("swaps.requester_managers")} ({t("swaps.approver_kind_commander")}): <DirectCommanderApproval approvals={reqGroups.commander} /></span>
+        {requireDutyManagerApproval && (
+          <span>{t("swaps.requester_managers")} ({t("swaps.approver_kind_duty_manager")}): <DirectCommanderApproval approvals={reqGroups.duty_manager} /></span>
+        )}
+        <span>{t("swaps.covering_managers")} ({t("swaps.approver_kind_commander")}): <DirectCommanderApproval approvals={covGroups.commander} /></span>
+        {requireDutyManagerApproval && (
+          <span>{t("swaps.covering_managers")} ({t("swaps.approver_kind_duty_manager")}): <DirectCommanderApproval approvals={covGroups.duty_manager} /></span>
+        )}
       </div>
     </div>
   );
@@ -292,9 +315,10 @@ export default function SwapsPage() {
 
   const configQuery = useQuery({
     queryKey: queryKeys.swapConfig(),
-    queryFn: () => getSwapConfig().catch(() => ({ require_manager_approval: false })),
+    queryFn: () => getSwapConfig().catch(() => ({ require_manager_approval: false, require_duty_manager_approval: true })),
   });
   const requireManagerApproval = configQuery.data?.require_manager_approval ?? false;
+  const requireDutyManagerApproval = configQuery.data?.require_duty_manager_approval ?? true;
 
   const mySwapsQuery = useQuery({ queryKey: queryKeys.mySwaps(), queryFn: listMySwaps });
   const mySwaps = mySwapsQuery.data ?? [];
@@ -404,7 +428,7 @@ export default function SwapsPage() {
           {t(statusKey(swap.status))}
         </span>
       </div>
-      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} />
       {swap.status === "pending_approval" && swap.requester_side_approved !== true && (
         <div className="flex gap-2 items-center">
           <button type="button" onClick={() => handleSoldierApprove(swap.id)}
@@ -485,7 +509,7 @@ export default function SwapsPage() {
             {t(statusKey(swap.status))}
           </span>
         </div>
-        <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} />
+        <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} />
         {swap.status === "pending_approval" && swap.covering_side_approved !== true && (
           <div className="flex gap-2 items-center">
             <button type="button" onClick={() => handleSoldierApprove(swap.id)}
@@ -674,6 +698,7 @@ export default function SwapsPage() {
                   key={swap.id}
                   swap={swap}
                   requireManagerApproval={requireManagerApproval}
+                  requireDutyManagerApproval={requireDutyManagerApproval}
                   onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined}
                   t={t}
                 />

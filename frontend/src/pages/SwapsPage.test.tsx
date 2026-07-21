@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([duty]);
   vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
   vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
-  vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({ require_manager_approval: false });
+  vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({ require_manager_approval: false, require_duty_manager_approval: true });
   vi.mocked(swapsApi.listMySwaps).mockResolvedValue([]);
   vi.mocked(swapsApi.listBoard).mockResolvedValue([]);
   vi.mocked(swapsApi.listIncomingSwaps).mockResolvedValue([]);

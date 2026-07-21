@@ -9,6 +9,16 @@ export interface DirectCommanderApprovalRow {
   commander_name?: string | null;
   approved: boolean;
   approved_by_name?: string | null;
+  approver_kind?: "commander" | "duty_manager";
+}
+
+/** Splits a flat list of approval rows into per-kind groups so callers can
+ * render commander and duty-manager approval status as separate rows. */
+export function groupByKind(approvals: (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]) {
+  return {
+    commander: approvals.filter((a) => a.approver_kind === "commander"),
+    duty_manager: approvals.filter((a) => a.approver_kind === "duty_manager"),
+  };
 }
 
 /** A side (requester/covering) is satisfied if it has no required chain

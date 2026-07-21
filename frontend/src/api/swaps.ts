@@ -7,6 +7,7 @@ export interface SwapManagerApproval {
   approved_by: string | null;
   approved_by_name: string | null;
   approved_at: string | null;
+  approver_kind: "commander" | "duty_manager";
 }
 
 export interface SwapRequest {
@@ -122,8 +123,8 @@ export async function takeDutyFree(dutyAssignmentId: string): Promise<SwapReques
   return res.data;
 }
 
-export async function getSwapConfig(): Promise<{ require_manager_approval: boolean }> {
-  return (await api.get<{ require_manager_approval: boolean }>("/swaps/config")).data;
+export async function getSwapConfig(): Promise<{ require_manager_approval: boolean; require_duty_manager_approval: boolean }> {
+  return (await api.get<{ require_manager_approval: boolean; require_duty_manager_approval: boolean }>("/swaps/config")).data;
 }
 
 export interface EligibilityResult {
