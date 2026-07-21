@@ -7,6 +7,7 @@ import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
+import ImportRowDetailModal, { type DetailField } from "../components/ImportRowDetailModal";
 import { queryKeys } from "../queryKeys";
 import {
   type ConfirmSessionResult,
@@ -190,6 +191,7 @@ export default function ImportSessionReviewPage() {
   const [dutyTypeFieldsRow, setDutyTypeFieldsRow] = useState<DutyTypeImportRow | null>(null);
   const [exemptionTypeFieldsRow, setExemptionTypeFieldsRow] = useState<ExemptionTypeImportRow | null>(null);
   const [shiftTemplateFieldsRow, setShiftTemplateFieldsRow] = useState<ShiftTemplateRow | null>(null);
+  const [detailModal, setDetailModal] = useState<{ title: string; fields: DetailField[] } | null>(null);
 
   // lookup data
   const dutyTypesQuery = useQuery({
@@ -529,6 +531,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">אימייל</th>
                   <th className="text-right p-3">תאריך גיוס</th>
                   <th className="text-right p-3">יחידה</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -658,6 +661,34 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "personal_number", label: "מספר אישי", value: row.personal_number },
+                                { key: "full_name", label: "שם מלא", value: row.full_name, editable: { type: "text", onChange: (v) => setFieldOverride("soldiers", row.row, "full_name", v) } },
+                                { key: "rank", label: "דרגה", value: row.rank, editable: { type: "text", onChange: (v) => setFieldOverride("soldiers", row.row, "rank", v) } },
+                                { key: "gender", label: "מגדר", value: row.gender, editable: { type: "text", onChange: (v) => setFieldOverride("soldiers", row.row, "gender", v) } },
+                                { key: "is_officer", label: "קצין", value: row.is_officer, editable: { type: "checkbox", onChange: (v) => setFieldOverride("soldiers", row.row, "is_officer", v) } },
+                                { key: "phone", label: "טלפון", value: row.phone, editable: { type: "text", onChange: (v) => setFieldOverride("soldiers", row.row, "phone", v) } },
+                                { key: "email", label: "אימייל", value: row.email, editable: { type: "text", onChange: (v) => setFieldOverride("soldiers", row.row, "email", v) } },
+                                { key: "hierarchy_node_name", label: "יחידה", value: row.hierarchy_node_name },
+                                { key: "enrolled_at", label: "תאריך שיבוץ", value: row.enrolled_at, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "enrolled_at", v) } },
+                                { key: "enlistment_date", label: "תאריך גיוס", value: row.enlistment_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldiers", row.row, "enlistment_date", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                                { key: "warnings", label: "אזהרות", value: row.warnings },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
                       </td>
                       {!readOnly && (
@@ -700,6 +731,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">נדרש</th>
                   <th className="text-right p-3">הערות</th>
                   <th className="text-right p-3">מכסות יחידה</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -873,6 +905,34 @@ export default function ImportSessionReviewPage() {
                         </div>
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "duty_type_name", label: "סוג תורנות", value: row.duty_type_name },
+                                { key: "resolved_duty_type_id", label: "מזהה סוג תורנות", value: row.resolved_duty_type_id },
+                                { key: "duty_location_name", label: "מיקום", value: row.duty_location_name },
+                                { key: "resolved_duty_location_id", label: "מזהה מיקום", value: row.resolved_duty_location_id },
+                                { key: "start_date", label: "תאריך התחלה", value: row.start_date, editable: { type: "date", onChange: (v) => setFieldOverride("duty_shifts", row.row, "start_date", v) } },
+                                { key: "end_date", label: "תאריך סיום", value: row.end_date, editable: { type: "date", onChange: (v) => setFieldOverride("duty_shifts", row.row, "end_date", v) } },
+                                { key: "start_time", label: "שעת התחלה", value: row.start_time, editable: { type: "text", onChange: (v) => setFieldOverride("duty_shifts", row.row, "start_time", v) } },
+                                { key: "end_time", label: "שעת סיום", value: row.end_time, editable: { type: "text", onChange: (v) => setFieldOverride("duty_shifts", row.row, "end_time", v) } },
+                                { key: "required_count", label: "נדרש", value: row.required_count, editable: { type: "number", onChange: (v) => setFieldOverride("duty_shifts", row.row, "required_count", v) } },
+                                { key: "notes", label: "הערות", value: row.notes, editable: { type: "textarea", onChange: (v) => setFieldOverride("duty_shifts", row.row, "notes", v) } },
+                                { key: "node_quotas", label: "מכסות יחידה", value: row.node_quotas.map((q) => `${q.node_name}:${q.count}`) },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                                { key: "warnings", label: "אזהרות", value: row.warnings },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -923,6 +983,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">משך (ימים)</th>
                   <th className="text-right p-3">הערות</th>
                   <th className="text-right p-3">יחידות זכאיות</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1086,6 +1147,39 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "name", label: "שם", value: row.name, editable: { type: "text", onChange: (v) => setFieldOverride("shift_templates", row.row, "name", v) } },
+                                { key: "duty_type_name", label: "סוג תורנות", value: row.duty_type_name },
+                                { key: "resolved_duty_type_id", label: "מזהה סוג תורנות", value: row.resolved_duty_type_id },
+                                { key: "duty_location_name", label: "מיקום", value: row.duty_location_name },
+                                { key: "resolved_duty_location_id", label: "מזהה מיקום", value: row.resolved_duty_location_id },
+                                { key: "recurrence_type", label: "חזרתיות", value: row.recurrence_type, editable: { type: "text", onChange: (v) => setFieldOverride("shift_templates", row.row, "recurrence_type", v) } },
+                                { key: "weekdays", label: "ימים", value: row.weekdays },
+                                { key: "start_time", label: "שעת התחלה", value: row.start_time, editable: { type: "text", onChange: (v) => setFieldOverride("shift_templates", row.row, "start_time", v) } },
+                                { key: "end_time", label: "שעת סיום", value: row.end_time, editable: { type: "text", onChange: (v) => setFieldOverride("shift_templates", row.row, "end_time", v) } },
+                                { key: "required_count", label: "נדרש", value: row.required_count, editable: { type: "number", onChange: (v) => setFieldOverride("shift_templates", row.row, "required_count", v) } },
+                                { key: "auto_roll", label: "גלגול אוטומטי", value: row.auto_roll, editable: { type: "checkbox", onChange: (v) => setFieldOverride("shift_templates", row.row, "auto_roll", v) } },
+                                { key: "auto_roll_until", label: "עד תאריך", value: row.auto_roll_until, editable: { type: "date", onChange: (v) => setFieldOverride("shift_templates", row.row, "auto_roll_until", v) } },
+                                { key: "duration_days", label: "משך (ימים)", value: row.duration_days, editable: { type: "number", onChange: (v) => setFieldOverride("shift_templates", row.row, "duration_days", v) } },
+                                { key: "notes", label: "הערות", value: row.notes, editable: { type: "textarea", onChange: (v) => setFieldOverride("shift_templates", row.row, "notes", v) } },
+                                { key: "resolved_eligible_node_ids", label: "יחידות זכאיות", value: row.resolved_eligible_node_ids },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                                { key: "warnings", label: "אזהרות", value: row.warnings },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -1125,6 +1219,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">שעת סיום</th>
                   <th className="text-right p-3">רזרבה</th>
                   <th className="text-right p-3">הערות</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1223,6 +1318,36 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "personal_number", label: "מ\"א", value: row.personal_number },
+                                { key: "full_name", label: "שם", value: row.full_name },
+                                { key: "duty_type_name", label: "סוג תורנות", value: row.duty_type_name },
+                                { key: "duty_location_name", label: "מיקום", value: row.duty_location_name },
+                                { key: "start_date", label: "תאריך התחלה", value: row.start_date, editable: { type: "date", onChange: (v) => setFieldOverride("assignments", row.row, "start_date", v) } },
+                                { key: "end_date", label: "תאריך סיום", value: row.end_date, editable: { type: "date", onChange: (v) => setFieldOverride("assignments", row.row, "end_date", v) } },
+                                { key: "start_time", label: "שעת התחלה", value: row.start_time, editable: { type: "text", onChange: (v) => setFieldOverride("assignments", row.row, "start_time", v) } },
+                                { key: "end_time", label: "שעת סיום", value: row.end_time, editable: { type: "text", onChange: (v) => setFieldOverride("assignments", row.row, "end_time", v) } },
+                                { key: "is_reserve", label: "רזרבה", value: row.is_reserve, editable: { type: "checkbox", onChange: (v) => setFieldOverride("assignments", row.row, "is_reserve", v) } },
+                                { key: "notes", label: "הערות", value: row.notes, editable: { type: "textarea", onChange: (v) => setFieldOverride("assignments", row.row, "notes", v) } },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "resolved_duty_shift_id", label: "מזהה משמרת", value: row.resolved_duty_shift_id },
+                                { key: "matched_session_row", label: "שורה תואמת", value: row.matched_session_row },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                                { key: "warnings", label: "אזהרות", value: row.warnings },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
                       </td>
                       {!readOnly && (
@@ -1259,6 +1384,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">בסיס</th>
                   <th className="text-right p-3">פעיל</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1296,6 +1422,26 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "name", label: "שם", value: row.name, editable: { type: "text", onChange: (v) => setFieldOverride("duty_locations", row.row, "name", v) } },
+                                { key: "base", label: "בסיס", value: row.base, editable: { type: "text", onChange: (v) => setFieldOverride("duty_locations", row.row, "base", v) } },
+                                { key: "active", label: "פעיל", value: row.active, editable: { type: "checkbox", onChange: (v) => setFieldOverride("duty_locations", row.row, "active", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -1330,6 +1476,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">יחידת אב</th>
                   <th className="text-right p-3">מפקד</th>
                   <th className="text-right p-3">אחראי תורנות</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1381,6 +1528,31 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "name", label: "שם", value: row.name, editable: { type: "text", onChange: (v) => setFieldOverride("hierarchy", row.row, "name", v) } },
+                                { key: "level", label: "סוג", value: row.level, editable: { type: "text", onChange: (v) => setFieldOverride("hierarchy", row.row, "level", v) } },
+                                { key: "parent_name", label: "יחידת אב", value: row.parent_name },
+                                { key: "resolved_parent_id", label: "מזהה יחידת אב", value: row.resolved_parent_id },
+                                { key: "commander_personal_number", label: "מ\"א מפקד", value: row.commander_personal_number },
+                                { key: "commander_name", label: "שם מפקד", value: row.commander_name },
+                                { key: "resolved_commander_id", label: "מזהה מפקד", value: row.resolved_commander_id },
+                                { key: "duty_manager_refs", label: "אחראי תורנות", value: row.duty_manager_refs.map((d) => d.ref) },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -1423,6 +1595,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">שעת סיום</th>
                   <th className="text-right p-3">הוראות</th>
                   <th className="text-right p-3">יחידות/דרישות</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1553,6 +1726,37 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "name", label: "שם", value: row.name, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "name", v) } },
+                                { key: "score_per_day", label: "ניקוד ליום", value: row.score_per_day, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "score_per_day", v) } },
+                                { key: "description", label: "תיאור", value: row.description, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "description", v) } },
+                                { key: "active", label: "פעיל", value: row.active, editable: { type: "checkbox", onChange: (v) => setFieldOverride("duty_types", row.row, "active", v) } },
+                                { key: "reserve_ratio", label: "יחס רזרבה", value: row.reserve_ratio, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "reserve_ratio", v) } },
+                                { key: "reserve_minimum", label: "מינימום רזרבה", value: row.reserve_minimum, editable: { type: "number", onChange: (v) => setFieldOverride("duty_types", row.row, "reserve_minimum", v) } },
+                                { key: "is_external", label: "חיצוני", value: row.is_external, editable: { type: "checkbox", onChange: (v) => setFieldOverride("duty_types", row.row, "is_external", v) } },
+                                { key: "contact_name", label: "איש קשר", value: row.contact_name, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "contact_name", v) } },
+                                { key: "contact_phone", label: "טלפון", value: row.contact_phone, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "contact_phone", v) } },
+                                { key: "start_time", label: "שעת התחלה", value: row.start_time, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "start_time", v) } },
+                                { key: "end_time", label: "שעת סיום", value: row.end_time, editable: { type: "text", onChange: (v) => setFieldOverride("duty_types", row.row, "end_time", v) } },
+                                { key: "instructions", label: "הוראות", value: row.instructions, editable: { type: "textarea", onChange: (v) => setFieldOverride("duty_types", row.row, "instructions", v) } },
+                                { key: "resolved_eligible_node_ids", label: "יחידות זכאיות", value: row.resolved_eligible_node_ids },
+                                { key: "requirements", label: "דרישות", value: row.requirements },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
                       {!readOnly && (
@@ -1588,6 +1792,7 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">רפואי</th>
                   <th className="text-right p-3">פטור פיקודי</th>
                   <th className="text-right p-3">חל על</th>
+                  <th className="text-right p-3">פרטים</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1652,6 +1857,29 @@ export default function ImportSessionReviewPage() {
                             ערוך חל-על
                           </button>
                         )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "name", label: "שם", value: row.name, editable: { type: "text", onChange: (v) => setFieldOverride("exemption_types", row.row, "name", v) } },
+                                { key: "description", label: "תיאור", value: row.description, editable: { type: "text", onChange: (v) => setFieldOverride("exemption_types", row.row, "description", v) } },
+                                { key: "is_global", label: "גלובלי", value: row.is_global, editable: { type: "checkbox", onChange: (v) => setFieldOverride("exemption_types", row.row, "is_global", v) } },
+                                { key: "is_medical", label: "רפואי", value: row.is_medical, editable: { type: "checkbox", onChange: (v) => setFieldOverride("exemption_types", row.row, "is_medical", v) } },
+                                { key: "is_commander_exemption", label: "פטור פיקודי", value: row.is_commander_exemption, editable: { type: "checkbox", onChange: (v) => setFieldOverride("exemption_types", row.row, "is_commander_exemption", v) } },
+                                { key: "resolved_duty_type_ids", label: "חל על", value: row.resolved_duty_type_ids },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
                       </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
@@ -1783,6 +2011,14 @@ export default function ImportSessionReviewPage() {
               setShiftTemplateFieldsRow({ ...shiftTemplateFieldsRow, resolved_eligible_node_ids: next });
             },
           }}
+        />
+      )}
+
+      {detailModal && (
+        <ImportRowDetailModal
+          title={detailModal.title}
+          fields={detailModal.fields}
+          onClose={() => setDetailModal(null)}
         />
       )}
     </Layout>
