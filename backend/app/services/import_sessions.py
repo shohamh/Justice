@@ -85,6 +85,16 @@ def _resolve_soldiers(
         enlistment_date = field("enlistment_date", row.enlistment_date)
         phone = field("phone", row.phone)
         email = field("email", row.email)
+        is_career = field("is_career", row.is_career)
+        next_rank_date = field("next_rank_date", row.next_rank_date)
+        bahad1_graduate = field("bahad1_graduate", row.bahad1_graduate)
+        has_military_driving_license = field("has_military_driving_license", row.has_military_driving_license)
+        military_driving_license_expiry = field("military_driving_license_expiry", row.military_driving_license_expiry)
+        mandatory_end_date = field("mandatory_end_date", row.mandatory_end_date)
+        discharge_date = field("discharge_date", row.discharge_date)
+        last_mitvahim_date = field("last_mitvahim_date", row.last_mitvahim_date)
+        last_alal_date = field("last_alal_date", row.last_alal_date)
+        left_at = field("left_at", row.left_at)
 
         if not personal_number:
             errors.append("חסר מספר אישי")
@@ -147,6 +157,16 @@ def _resolve_soldiers(
             "enlistment_date": enlistment_date,
             "phone": phone,
             "email": email,
+            "is_career": is_career,
+            "next_rank_date": next_rank_date,
+            "bahad1_graduate": bahad1_graduate,
+            "has_military_driving_license": has_military_driving_license,
+            "military_driving_license_expiry": military_driving_license_expiry,
+            "mandatory_end_date": mandatory_end_date,
+            "discharge_date": discharge_date,
+            "last_mitvahim_date": last_mitvahim_date,
+            "last_alal_date": last_alal_date,
+            "left_at": left_at,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
@@ -1032,11 +1052,30 @@ def confirm_session(
                     ),
                     phone=row.get("phone"),
                     email=row.get("email"),
+                    is_career=row.get("is_career") or False,
+                    bahad1_graduate=row.get("bahad1_graduate") or False,
+                    has_military_driving_license=row.get("has_military_driving_license"),
                 )
                 if row.get("enrolled_at"):
                     new_soldier.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                 if row.get("enlistment_date"):
                     new_soldier.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                if row.get("next_rank_date"):
+                    new_soldier.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
+                if row.get("military_driving_license_expiry"):
+                    new_soldier.military_driving_license_expiry = date_type.fromisoformat(
+                        row["military_driving_license_expiry"]
+                    )
+                if row.get("mandatory_end_date"):
+                    new_soldier.mandatory_end_date = date_type.fromisoformat(row["mandatory_end_date"])
+                if row.get("discharge_date"):
+                    new_soldier.discharge_date = date_type.fromisoformat(row["discharge_date"])
+                if row.get("last_mitvahim_date"):
+                    new_soldier.last_mitvahim_date = date_type.fromisoformat(row["last_mitvahim_date"])
+                if row.get("last_alal_date"):
+                    new_soldier.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
+                if row.get("left_at"):
+                    new_soldier.left_at = date_type.fromisoformat(row["left_at"])
                 session.add(new_soldier)
                 session.flush()
                 created += 1
@@ -1058,10 +1097,32 @@ def confirm_session(
                         s.phone = row["phone"]
                     if row.get("email") is not None:
                         s.email = row["email"]
+                    if row.get("is_career") is not None:
+                        s.is_career = row["is_career"]
+                    if row.get("bahad1_graduate") is not None:
+                        s.bahad1_graduate = row["bahad1_graduate"]
+                    if row.get("has_military_driving_license") is not None:
+                        s.has_military_driving_license = row["has_military_driving_license"]
                     if row.get("enrolled_at"):
                         s.enrolled_at = date_type.fromisoformat(row["enrolled_at"])
                     if row.get("enlistment_date"):
                         s.enlistment_date = date_type.fromisoformat(row["enlistment_date"])
+                    if row.get("next_rank_date"):
+                        s.next_rank_date = date_type.fromisoformat(row["next_rank_date"])
+                    if row.get("military_driving_license_expiry"):
+                        s.military_driving_license_expiry = date_type.fromisoformat(
+                            row["military_driving_license_expiry"]
+                        )
+                    if row.get("mandatory_end_date"):
+                        s.mandatory_end_date = date_type.fromisoformat(row["mandatory_end_date"])
+                    if row.get("discharge_date"):
+                        s.discharge_date = date_type.fromisoformat(row["discharge_date"])
+                    if row.get("last_mitvahim_date"):
+                        s.last_mitvahim_date = date_type.fromisoformat(row["last_mitvahim_date"])
+                    if row.get("last_alal_date"):
+                        s.last_alal_date = date_type.fromisoformat(row["last_alal_date"])
+                    if row.get("left_at"):
+                        s.left_at = date_type.fromisoformat(row["left_at"])
                     session.flush()
                     updated += 1
                     created_soldiers.append(str(s.id))

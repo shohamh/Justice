@@ -54,6 +54,61 @@ def _wb_with_soldiers(rows):
     return wb
 
 
+def _wb_with_soldiers_full_profile(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("soldiers")
+    ws.append([
+        "personal_number", "full_name", "rank", "gender", "is_officer",
+        "hierarchy_node_name", "enrolled_at", "enlistment_date", "phone", "email",
+        "is_career", "next_rank_date", "bahad1_graduate",
+        "has_military_driving_license", "military_driving_license_expiry",
+        "mandatory_end_date", "discharge_date", "last_mitvahim_date",
+        "last_alal_date", "left_at",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_soldier_import_round_trips_full_profile_fields(admin_session):
+    wb = _wb_with_soldiers_full_profile([
+        [
+            "1234567", "Some Soldier", "", "", "",
+            "", "", "", "", "",
+            "true", "01.01.2027", "true",
+            "true", "01.01.2028",
+            "01.01.2026", "", "",
+            "", "",
+        ],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+
+    row = sess.parsed_state["soldiers"][0]
+    assert row["is_career"] is True
+    assert row["next_rank_date"] == "2027-01-01"
+    assert row["bahad1_graduate"] is True
+    assert row["has_military_driving_license"] is True
+    assert row["military_driving_license_expiry"] == "2028-01-01"
+    assert row["mandatory_end_date"] == "2026-01-01"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    created = admin_session.execute(
+        select(Soldier).where(Soldier.personal_number == "1234567")
+    ).scalar_one()
+    assert created.is_career is True
+    assert created.next_rank_date == date_type(2027, 1, 1)
+    assert created.bahad1_graduate is True
+    assert created.has_military_driving_license is True
+    assert created.military_driving_license_expiry == date_type(2028, 1, 1)
+    assert created.mandatory_end_date == date_type(2026, 1, 1)
+
+
 def _to_bytes(wb) -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
