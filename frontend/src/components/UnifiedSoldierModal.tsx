@@ -84,6 +84,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [profileAlal, setProfileAlal] = useState(soldier.last_alal_date ?? "");
   const [profileEmail, setProfileEmail] = useState(soldier.email ?? "");
   const [profilePictureUrl, setProfilePictureUrl] = useState(soldier.profile_picture_url ?? "");
+  const [profileHasLicense, setProfileHasLicense] = useState(soldier.has_military_driving_license ?? false);
+  const [profileLicenseExpiry, setProfileLicenseExpiry] = useState(soldier.military_driving_license_expiry ?? "");
   const [rankOptions, setRankOptions] = useState<{ enlisted: string[]; officers: string[] }>({ enlisted: [], officers: [] });
 
   useEffect(() => {
@@ -139,6 +141,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
       ...(soldierData.is_officer ? { last_alal_date: profileAlal || null } : {}),
       ...(isAdmin ? { email: profileEmail || null } : {}),
       profile_picture_url: profilePictureUrl || null,
+      has_military_driving_license: profileHasLicense,
+      military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
     });
     setSavingProfile(false);
     onRefresh();
@@ -426,6 +430,17 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
                   <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                </label>
+              )}
+              <label className="flex items-center gap-2 mt-1">
+                <input type="checkbox" checked={profileHasLicense} onChange={(e) => setProfileHasLicense(e.target.checked)} />
+                <span className="text-xs">{t("soldier_profile.has_driving_license")}</span>
+              </label>
+              {profileHasLicense && (
+                <label className="block">
+                  <span className="text-xs">{t("soldier_profile.driving_license_expiry")}</span>
+                  <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={profileLicenseExpiry} onChange={(e) => setProfileLicenseExpiry(e.target.value)} />
                 </label>
               )}
               {isAdmin && (
