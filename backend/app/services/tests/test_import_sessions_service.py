@@ -1537,3 +1537,29 @@ def test_soldier_field_override_changes_rank(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["soldiers"][0]
     assert row["rank"] == "rank2"
+
+
+def test_duty_shift_field_override_changes_required_count(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    admin_session.commit()
+
+    wb = _wb_with_duty_shifts([
+        [dt.name, loc.name, "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["duty_shifts"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"duty_shifts": {str(row_num): {"required_count": 9}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["duty_shifts"][0]
+    assert row["required_count"] == 9

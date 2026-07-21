@@ -497,11 +497,13 @@ def _resolve_duty_shifts(
     dt_by_row: dict[str, str] | None = None,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     dt_by_name = dt_by_name or {}
     dt_by_row = dt_by_row or {}
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     duty_types_by_name = {dt.name: dt for dt in session.execute(select(DutyType)).scalars()}
     locations_by_name = {loc.name: loc for loc in session.execute(select(DutyLocation)).scalars()}
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
@@ -509,28 +511,41 @@ def _resolve_duty_shifts(
     out = []
     for row in data.duty_shifts:
         errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        start_date = field("start_date", row.start_date)
+        end_date = field("end_date", row.end_date)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        required_count = field("required_count", row.required_count)
+        notes = field("notes", row.notes)
 
         duty_type = None
-        if row.duty_type_name:
+        if duty_type_name:
             row_key = f"duty_shifts:{row.source_row}"
-            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(row.duty_type_name)
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
             if mapped_id:
                 try:
                     duty_type = session.get(DutyType, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if duty_type is None:
-                duty_type = duty_types_by_name.get(row.duty_type_name)
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
 
-        location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
         if location is None:
-            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
-        if not row.start_date:
+        if not start_date:
             errors.append("חסר תאריך התחלה")
-        if not row.end_date:
+        if not end_date:
             errors.append("חסר תאריך סיום")
 
         quota_dicts = []
@@ -554,9 +569,9 @@ def _resolve_duty_shifts(
             })
             quota_total += q.count
 
-        if quota_total > row.required_count:
+        if quota_total > required_count:
             errors.append(
-                f"סה\"כ מכסות ({quota_total}) גדול מהכמות הנדרשת ({row.required_count})"
+                f"סה\"כ מכסות ({quota_total}) גדול מהכמות הנדרשת ({required_count})"
             )
 
         action = "error" if errors else "new"
@@ -578,17 +593,17 @@ def _resolve_duty_shifts(
             "row": row.source_row,
             "action": action,
             "errors": errors,
-            "duty_type_name": row.duty_type_name,
+            "duty_type_name": duty_type_name,
             "resolved_duty_type_id": str(duty_type.id) if duty_type is not None else None,
-            "duty_location_name": row.duty_location_name,
+            "duty_location_name": duty_location_name,
             "resolved_duty_location_id": str(location.id) if location is not None else None,
-            "start_date": row.start_date,
-            "end_date": row.end_date,
-            "start_time": row.start_time,
-            "end_time": row.end_time,
-            "required_count": row.required_count,
+            "start_date": start_date,
+            "end_date": end_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "required_count": required_count,
             "node_quotas": quota_dicts,
-            "notes": row.notes,
+            "notes": notes,
         })
     return out
 
@@ -862,7 +877,7 @@ def _resolve_and_score(
     dt_by_row   = nm.get("duty_type", {}).get("by_row", {})
     node_by_name = nm.get("hierarchy_node", {}).get("by_name", {})
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
-    duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row)
+    duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("duty_shifts", {}))
     return {
         "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row, fo.get("soldiers", {})),
         "duty_shifts": duty_shifts,
