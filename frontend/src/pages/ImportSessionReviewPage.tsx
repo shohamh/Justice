@@ -323,7 +323,7 @@ export default function ImportSessionReviewPage() {
   }
 
   function setFieldOverride(
-    group: "duty_types" | "exemption_types" | "shift_templates",
+    group: string,
     row: number,
     field: string,
     value: unknown,
@@ -1049,6 +1049,7 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">בסיס</th>
+                  <th className="text-right p-3">פעיל</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1058,8 +1059,33 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.name}</td>
-                      <td className="p-3">{row.base}</td>
+                      <td className="p-3">
+                        {readOnly ? row.name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.name}
+                            onBlur={(e) => setFieldOverride("duty_locations", row.row, "name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.base ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.base ?? ""}
+                            onBlur={(e) => setFieldOverride("duty_locations", row.row, "base", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.active === null ? "—" : row.active ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.active ?? false}
+                            onChange={(e) => setFieldOverride("duty_locations", row.row, "active", e.target.checked)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} />
                       </td>
