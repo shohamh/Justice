@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-22
+
+### Features
+- Import review: row-detail modal exposing full field data across all import tabs (hierarchy, soldiers, duty_locations, duty_shifts, assignments), plus inline editing and field-override support (with duty_type remap on assignments) so rows can be corrected directly in the review table instead of re-uploading a fixed sheet.
+
+### Fixes
+- Per-IP and per-account login rate limiting no longer collapses every client to the same bucket: the Vite dev proxy and production uvicorn now trust the reverse proxy's `X-Forwarded-For`/`X-Forwarded-Proto` headers instead of seeing every request as coming from the proxy itself.
+- The login page's rate-limited "try again in N seconds" message now shows a real countdown instead of an unfilled `{{seconds}}` placeholder (slowapi's `Retry-After` header wasn't being sent).
+
+### Chores
+- Split `.env` into a committed `.env.defaults` (non-secret dev config, so a fresh clone works out of the box) and a gitignored `.env` for the Telegram bot token and machine-specific overrides.
+
 ## 2026-07-21
 
 ### Features
