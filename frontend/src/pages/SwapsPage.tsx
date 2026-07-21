@@ -228,9 +228,15 @@ function AskSwapModal({
     });
   }
 
+  const soldierModeNeedsSelection = mode === "soldier" && selectedTargets.size === 0;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (soldierModeNeedsSelection) {
+      setError(t("swaps.select_at_least_one"));
+      return;
+    }
     try {
       if (mode === "soldier" && selectedTargets.size > 0) {
         await createBulkSwap({
@@ -313,7 +319,7 @@ function AskSwapModal({
           {error && <p className="text-red-500 text-xs">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300">{t("swaps.cancel")}</button>
-            <button type="submit" disabled={enrollmentPending} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("swaps.save")}</button>
+            <button type="submit" disabled={enrollmentPending || soldierModeNeedsSelection} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("swaps.save")}</button>
           </div>
         </form>
       </div>

@@ -152,6 +152,42 @@ describe("SwapsPage - AskSwapModal eligible-soldier picker", () => {
     expect(swapsApi.createSwap).not.toHaveBeenCalled();
   });
 
+  it("disables save and does not silently post to the open board when soldier mode has zero targets selected", async () => {
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "sol-2", full_name: "דני כהן", node_name: null, hierarchy_distance: 0 },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByText("swaps.ask_swap"));
+    fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
+
+    const saveButton = await screen.findByText("swaps.save");
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(saveButton);
+
+    expect(swapsApi.createBulkSwap).not.toHaveBeenCalled();
+    expect(swapsApi.createSwap).not.toHaveBeenCalled();
+  });
+
+  it("re-enables save once a target is selected in soldier mode", async () => {
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "sol-2", full_name: "דני כהן", node_name: null, hierarchy_distance: 0 },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByText("swaps.ask_swap"));
+    fireEvent.click(await screen.findByText("swaps.send_to_soldier"));
+
+    const saveButton = await screen.findByText("swaps.save");
+    expect(saveButton).toBeDisabled();
+
+    const checkbox = await screen.findByRole("checkbox");
+    fireEvent.click(checkbox);
+
+    expect(saveButton).not.toBeDisabled();
+  });
+
   it("extracts a message from an array-shaped 422 validation error detail", async () => {
     vi.mocked(swapsApi.createSwap).mockRejectedValue({
       response: { data: { detail: [{ msg: "תאריך לא תקין", loc: ["body", "date"], type: "value_error" }] } },
