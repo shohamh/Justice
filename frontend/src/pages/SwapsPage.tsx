@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { HelpCircle } from "lucide-react";
 import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
@@ -544,8 +545,20 @@ export default function SwapsPage() {
 
   return (
     <Layout>
+      {(openHelp) => (
+      <>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6" dir="rtl" data-testid="swaps-page">
-        <h2 className="text-xl font-semibold mb-4 dark:text-gray-100">{t("swaps.title")}</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <h2 className="text-xl font-semibold dark:text-gray-100">{t("swaps.title")}</h2>
+          <button
+            type="button"
+            onClick={() => openHelp("swaps")}
+            aria-label={t("swaps.help_aria")}
+            className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300"
+          >
+            <HelpCircle size={16} />
+          </button>
+        </div>
         {loadError && (
           <p className="text-red-500 text-sm mb-3">{loadError}</p>
         )}
@@ -733,6 +746,8 @@ export default function SwapsPage() {
           onClose={() => setSelectedShift(null)}
           onRefreshNeeded={() => { setSelectedShift(null); void refreshSwapData(); }}
         />
+      )}
+      </>
       )}
     </Layout>
   );

@@ -21,7 +21,9 @@ vi.mock("../api/hierarchy");
 vi.mock("../api/soldiers");
 vi.mock("../auth/AuthContext");
 vi.mock("../components/Layout", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  default: ({ children }: { children: React.ReactNode | ((openHelp: (tab?: string) => void) => React.ReactNode) }) => (
+    <div>{typeof children === "function" ? children(() => {}) : children}</div>
+  ),
 }));
 
 const duty = {

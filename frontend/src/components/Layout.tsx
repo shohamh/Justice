@@ -9,12 +9,18 @@ import HelpModal from "./HelpModal";
 import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 
-export default function Layout({ children }: { children: ReactNode }) {
+export default function Layout({ children }: { children: ReactNode | ((openHelp: (tab?: string) => void) => ReactNode) }) {
   const { t } = useTranslation();
   const { logout, user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
+
+  function openHelp(tab?: string) {
+    setHelpTab(tab);
+    setHelpOpen(true);
+  }
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
@@ -26,7 +32,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} />}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} initialTab={helpTab} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-4 py-3 flex items-center justify-between">
           {/* Left side: profile icon + optional gear icon */}
@@ -45,7 +51,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setHelpOpen(true)}
+              onClick={() => openHelp()}
               aria-label="עזרה"
               className="text-gray-500 hover:text-indigo-600"
             >
@@ -62,7 +68,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-y-auto px-4 py-6 pb-24 md:pb-6">{children}</main>
+      <main className="flex-1 overflow-y-auto px-4 py-6 pb-24 md:pb-6">
+        {typeof children === "function" ? children(openHelp) : children}
+      </main>
     </div>
   );
 }
