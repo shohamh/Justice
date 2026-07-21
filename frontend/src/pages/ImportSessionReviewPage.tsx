@@ -522,6 +522,12 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">שם</th>
                   <th className="text-right p-3">מ&quot;א</th>
+                  <th className="text-right p-3">דרגה</th>
+                  <th className="text-right p-3">מגדר</th>
+                  <th className="text-right p-3">קצין</th>
+                  <th className="text-right p-3">טלפון</th>
+                  <th className="text-right p-3">אימייל</th>
+                  <th className="text-right p-3">תאריך גיוס</th>
                   <th className="text-right p-3">יחידה</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
@@ -535,8 +541,71 @@ export default function ImportSessionReviewPage() {
                     !row.hierarchy_node_id && row.hierarchy_node_name;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
-                      <td className="p-3">{row.full_name}</td>
+                      <td className="p-3">
+                        {readOnly ? row.full_name : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.full_name}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "full_name", e.target.value)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">{row.personal_number}</td>
+                      <td className="p-3">
+                        {readOnly ? row.rank ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-20 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.rank ?? ""}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "rank", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.gender ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.gender ?? ""}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "gender", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_officer === null ? "—" : row.is_officer ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_officer ?? false}
+                            onChange={(e) => setFieldOverride("soldiers", row.row, "is_officer", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.phone ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.phone ?? ""}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "phone", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.email ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.email ?? ""}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "email", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.enlistment_date ?? "—" : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.enlistment_date ?? ""}
+                            onBlur={(e) => setFieldOverride("soldiers", row.row, "enlistment_date", e.target.value || null)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         {unresolvedNode ? (
                           <div className="flex flex-col gap-1">
