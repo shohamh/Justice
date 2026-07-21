@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-07-21
+
+### Features
+- Affected soldiers are now notified across more workflows: enrollment-request approval/rejection, hakpaza call-up approval (both pulled and replacement soldiers), duty-day override substitutions, and reserve call-up/dismissal (primary and reserve).
+- Job creators are now notified on all algorithm-run terminal states, not just success/exception.
+
+### Fixes
+- Self-approval of a soldier's own constraint/exemption requests is now blocked; commander-exemption grants must go through the dedicated endpoint (not the generic one), with notifications on direct grants, and duty managers are notified when a commander approves their exemption-request step.
+- `dismiss_and_reallocate` now authorizes the covering reserve's own scope, not just the primary soldier's.
+- Shift-template endpoints now use `SHIFT_MANAGE` instead of `ASSIGNMENT_MANAGE`, restoring duty-manager access.
+- Swap notifications now cover no-approval paths for both parties and the covering soldier on reject/cancel.
+- Single/bulk shift-assignment removal is now audit-logged and notifies affected soldiers, with per-item exceptions isolated so one failure doesn't block the rest of a bulk operation.
+- Excel import apply now enforces duty-manager scope and adds audit-logging/notifications, with per-row notification failures made non-fatal to the response.
+- `announce()` no longer reuses the `ALGORITHM_RUN` action, and non-admin broadcasts now enforce scope.
+
 ## 2026-07-20
 
 ### Features
