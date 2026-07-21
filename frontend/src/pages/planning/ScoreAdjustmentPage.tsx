@@ -6,6 +6,7 @@ import { queryKeys } from "../../queryKeys";
 import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment } from "../../api/scoreAdjustments";
 import { getSoldierScore, listSoldiers, SoldierDTO } from "../../api/soldiers";
 import { getEffortBreakdown } from "../../api/scoring";
+import { formatDate } from "../../utils/formatDate";
 
 export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
@@ -335,7 +336,7 @@ export default function ScoreAdjustmentPage() {
                 <tbody>
                   {adjustments.map((a) => (
                     <tr key={a.id} className="border-b dark:border-gray-600 last:border-0">
-                      <td className="py-2 text-xs">{a.created_at.slice(0, 10)}</td>
+                      <td className="py-2 text-xs">{formatDate(a.created_at)}</td>
                       <td className={`py-2 font-medium ${Number(a.delta) >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {Number(a.delta) >= 0 ? "+" : ""}{Number(a.delta).toFixed(3)}
                       </td>
