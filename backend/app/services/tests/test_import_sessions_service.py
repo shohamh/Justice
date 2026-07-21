@@ -1563,3 +1563,78 @@ def test_duty_shift_field_override_changes_required_count(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["duty_shifts"][0]
     assert row["required_count"] == 9
+
+
+def test_assignment_field_override_changes_notes(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    admin_session.commit()
+
+    from app.db.models import DutyShift
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        required_count=5,
+    )
+    admin_session.add(shift)
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, dt.name, loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["assignments"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"assignments": {str(row_num): {"notes": "overridden note"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["assignments"][0]
+    assert row["notes"] == "overridden note"
+
+
+def test_assignment_duty_type_resolved_via_by_row_mapping(admin_session):
+    dt = create_duty_type(admin_session, name=f"dt_{_uid()}", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add(loc)
+    admin_session.flush()
+    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    admin_session.commit()
+
+    from app.db.models import DutyShift
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        required_count=5,
+    )
+    admin_session.add(shift)
+    admin_session.commit()
+
+    wb = _wb_with_assignments([
+        [soldier.personal_number, soldier.full_name, "no_such_duty_type", loc.name,
+         "15.06.2024", "16.06.2024", "", "", "false", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["assignments"][0]["row"]
+    assert sess.parsed_state["assignments"][0]["action"] == "error"
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_name_mappings": {"duty_type": {"by_row": {f"assignments:{row_num}": str(dt.id)}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["assignments"][0]
+    assert row["action"] == "new"

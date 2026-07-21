@@ -717,7 +717,14 @@ def _resolve_assignments(
     data: ParsedImportData,
     actor: Soldier,
     resolved_duty_shifts: list[dict],
+    dt_by_name: dict[str, str] | None = None,
+    dt_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
+    dt_by_name = dt_by_name or {}
+    dt_by_row = dt_by_row or {}
+    overrides = overrides or {}
+
     def _default_time(value: str | None, default: str) -> str:
         return value if value else default
 
@@ -769,44 +776,70 @@ def _resolve_assignments(
     for row in data.assignments:
         errors: list[str] = []
         warnings: list[str] = []
+        override = overrides.get(str(row.source_row), {})
 
-        soldier = soldiers_by_pn.get(row.personal_number) if row.personal_number else None
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        duty_type_name = field("duty_type_name", row.duty_type_name)
+        duty_location_name = field("duty_location_name", row.duty_location_name)
+        start_date = field("start_date", row.start_date)
+        end_date = field("end_date", row.end_date)
+        start_time = field("start_time", row.start_time)
+        end_time = field("end_time", row.end_time)
+        is_reserve = field("is_reserve", row.is_reserve)
+        notes = field("notes", row.notes)
+
+        soldier = soldiers_by_pn.get(personal_number) if personal_number else None
         if soldier is not None:
-            if soldier.full_name != row.full_name:
+            if soldier.full_name != full_name:
                 errors.append(
-                    f"שם מלא '{row.full_name}' אינו תואם לחייל עם מספר אישי "
-                    f"'{row.personal_number}' ('{soldier.full_name}')"
+                    f"שם מלא '{full_name}' אינו תואם לחייל עם מספר אישי "
+                    f"'{personal_number}' ('{soldier.full_name}')"
                 )
         else:
-            candidates = soldiers_by_full_name.get(row.full_name, []) if row.full_name else []
+            candidates = soldiers_by_full_name.get(full_name, []) if full_name else []
             if len(candidates) == 1:
                 soldier = candidates[0]
-                warnings.append(f"נמצא לפי שם — מספר אישי '{row.personal_number}' לא נמצא")
+                warnings.append(f"נמצא לפי שם — מספר אישי '{personal_number}' לא נמצא")
             elif len(candidates) > 1:
                 errors.append(
-                    f"מספר אישי '{row.personal_number}' לא נמצא ושם '{row.full_name}' אינו חד משמעי"
+                    f"מספר אישי '{personal_number}' לא נמצא ושם '{full_name}' אינו חד משמעי"
                 )
             else:
                 errors.append(
-                    f"לא נמצא חייל עם מספר אישי '{row.personal_number}' או שם '{row.full_name}'"
+                    f"לא נמצא חייל עם מספר אישי '{personal_number}' או שם '{full_name}'"
                 )
 
-        duty_type = duty_types_by_name.get(row.duty_type_name) if row.duty_type_name else None
+        duty_type = None
+        if duty_type_name:
+            row_key = f"assignments:{row.source_row}"
+            mapped_id = dt_by_row.get(row_key) or dt_by_name.get(duty_type_name)
+            if mapped_id:
+                try:
+                    duty_type = session.get(DutyType, uuid.UUID(mapped_id))
+                except ValueError:
+                    pass
+            if duty_type is None:
+                duty_type = duty_types_by_name.get(duty_type_name)
         if duty_type is None:
-            errors.append(f"סוג תורנות לא מזוהה '{row.duty_type_name}'")
-        location = locations_by_name.get(row.duty_location_name) if row.duty_location_name else None
+            errors.append(f"סוג תורנות לא מזוהה '{duty_type_name}'")
+
+        location = locations_by_name.get(duty_location_name) if duty_location_name else None
         if location is None:
-            errors.append(f"מיקום תורנות לא מזוהה '{row.duty_location_name}'")
+            errors.append(f"מיקום תורנות לא מזוהה '{duty_location_name}'")
 
         resolved_duty_shift_id: str | None = None
         matched_session_row: int | None = None
         shift_key_str: str | None = None
         required_count: int | None = None
-        if duty_type is not None and location is not None and row.start_date and row.end_date:
+        if duty_type is not None and location is not None and start_date and end_date:
             key = (
-                duty_type.id, location.id, row.start_date, row.end_date,
-                _default_time(row.start_time, "00:00"),
-                _default_time(row.end_time, "23:59"),
+                duty_type.id, location.id, start_date, end_date,
+                _default_time(start_time, "00:00"),
+                _default_time(end_time, "23:59"),
             )
             existing_match = existing_shift_by_key.get(key)
             session_match = session_shift_by_key.get(key)
@@ -848,16 +881,16 @@ def _resolve_assignments(
             "action": action,
             "errors": errors,
             "warnings": warnings,
-            "personal_number": row.personal_number,
-            "full_name": row.full_name,
-            "duty_type_name": row.duty_type_name,
-            "duty_location_name": row.duty_location_name,
-            "start_date": row.start_date,
-            "end_date": row.end_date,
-            "start_time": row.start_time,
-            "end_time": row.end_time,
-            "is_reserve": row.is_reserve,
-            "notes": row.notes,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "duty_type_name": duty_type_name,
+            "duty_location_name": duty_location_name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "start_time": start_time,
+            "end_time": end_time,
+            "is_reserve": is_reserve,
+            "notes": notes,
             "resolved_soldier_id": str(soldier.id) if soldier is not None else None,
             "resolved_duty_shift_id": resolved_duty_shift_id,
             "matched_session_row": matched_session_row,
@@ -884,7 +917,7 @@ def _resolve_and_score(
         "shift_templates": _resolve_shift_templates(
             session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
         ),
-        "assignments": _resolve_assignments(session, data, actor, duty_shifts),
+        "assignments": _resolve_assignments(session, data, actor, duty_shifts, dt_by_name, dt_by_row, fo.get("assignments", {})),
         "duty_locations": _resolve_duty_locations(session, data, fo.get("duty_locations", {})),
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
