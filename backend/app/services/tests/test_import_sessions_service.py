@@ -1517,3 +1517,23 @@ def test_hierarchy_field_override_changes_level(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["hierarchy"][0]
     assert row["level"] == "team"
+
+
+def test_soldier_field_override_changes_rank(admin_session):
+    wb = _wb_with_soldiers([
+        ["1234567", "Some Soldier", "rank1", "", "", "", "", "", "", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row_num = sess.parsed_state["soldiers"][0]["row"]
+
+    set_selections(admin_session, session_id=sess.id, selections={
+        "_field_overrides": {"soldiers": {str(row_num): {"rank": "rank2"}}},
+    })
+    admin_session.commit()
+
+    reparse_session(admin_session, session_id=sess.id, actor=admin)
+    row = sess.parsed_state["soldiers"][0]
+    assert row["rank"] == "rank2"

@@ -53,9 +53,11 @@ def _resolve_soldiers(
     actor: Soldier,
     node_by_name: dict[str, str] | None = None,
     node_by_row: dict[str, str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> list[dict]:
     node_by_name = node_by_name or {}
     node_by_row = node_by_row or {}
+    overrides = overrides or {}
     existing_by_pn = {
         s.personal_number: s for s in session.execute(select(Soldier)).scalars()
     }
@@ -68,36 +70,52 @@ def _resolve_soldiers(
     for row in data.soldiers:
         errors: list[str] = []
         warnings: list[str] = []
-        if not row.personal_number:
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        personal_number = field("personal_number", row.personal_number)
+        full_name = field("full_name", row.full_name)
+        rank = field("rank", row.rank)
+        gender = field("gender", row.gender)
+        is_officer = field("is_officer", row.is_officer)
+        hierarchy_node_name = field("hierarchy_node_name", row.hierarchy_node_name)
+        enrolled_at = field("enrolled_at", row.enrolled_at)
+        enlistment_date = field("enlistment_date", row.enlistment_date)
+        phone = field("phone", row.phone)
+        email = field("email", row.email)
+
+        if not personal_number:
             errors.append("חסר מספר אישי")
-        if not row.full_name:
+        if not full_name:
             errors.append("חסר שם מלא")
 
         node = None
-        if row.hierarchy_node_name:
+        if hierarchy_node_name:
             row_key = f"soldiers:{row.source_row}"
-            mapped_id = node_by_row.get(row_key) or node_by_name.get(row.hierarchy_node_name)
+            mapped_id = node_by_row.get(row_key) or node_by_name.get(hierarchy_node_name)
             if mapped_id:
                 try:
                     node = session.get(HierarchyNode, uuid.UUID(mapped_id))
                 except ValueError:
                     pass
             if node is None:
-                node = nodes_by_name.get(row.hierarchy_node_name)
+                node = nodes_by_name.get(hierarchy_node_name)
             if node is None:
-                errors.append(f"יחידה לא מזוהה '{row.hierarchy_node_name}'")
+                errors.append(f"יחידה לא מזוהה '{hierarchy_node_name}'")
 
-        existing = existing_by_pn.get(row.personal_number) if row.personal_number else None
-        if existing is None and row.personal_number and row.full_name:
-            candidates = existing_by_full_name.get(row.full_name, [])
+        existing = existing_by_pn.get(personal_number) if personal_number else None
+        if existing is None and personal_number and full_name:
+            candidates = existing_by_full_name.get(full_name, [])
             if len(candidates) == 1:
                 existing = candidates[0]
                 warnings.append(
-                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{row.personal_number}'"
+                    f"נמצא לפי שם — מספר אישי עודכן מ-'{existing.personal_number}' ל-'{personal_number}'"
                 )
             elif len(candidates) > 1:
                 errors.append(
-                    f"שם '{row.full_name}' אינו חד משמעי (מספר אישי '{row.personal_number}' לא נמצא)"
+                    f"שם '{full_name}' אינו חד משמעי (מספר אישי '{personal_number}' לא נמצא)"
                 )
 
         if errors:
@@ -108,11 +126,6 @@ def _resolve_soldiers(
             action = "new"
 
         if action != "error" and node is not None:
-            # Per-row scope check: re-runs scope_root_ids(session, actor) on every
-            # iteration instead of hoisting it out of the loop. Fine for typical
-            # single-Excel-import row counts; if import volumes grow significantly,
-            # this is the first place to optimize (precompute scope_root_ids once
-            # and inline the subtree check).
             if actor.role != "admin" and not is_node_in_actor_scope(
                 session=session, actor=actor, node_id=node.id
             ):
@@ -123,17 +136,17 @@ def _resolve_soldiers(
             "action": action,
             "errors": errors,
             "warnings": warnings,
-            "personal_number": row.personal_number,
-            "full_name": row.full_name,
-            "rank": row.rank,
-            "gender": row.gender,
-            "is_officer": row.is_officer,
+            "personal_number": personal_number,
+            "full_name": full_name,
+            "rank": rank,
+            "gender": gender,
+            "is_officer": is_officer,
             "hierarchy_node_id": str(node.id) if node is not None else None,
-            "hierarchy_node_name": row.hierarchy_node_name,
-            "enrolled_at": row.enrolled_at,
-            "enlistment_date": row.enlistment_date,
-            "phone": row.phone,
-            "email": row.email,
+            "hierarchy_node_name": hierarchy_node_name,
+            "enrolled_at": enrolled_at,
+            "enlistment_date": enlistment_date,
+            "phone": phone,
+            "email": email,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
@@ -851,7 +864,7 @@ def _resolve_and_score(
     node_by_row  = nm.get("hierarchy_node", {}).get("by_row", {})
     duty_shifts = _resolve_duty_shifts(session, data, actor, dt_by_name, dt_by_row, node_by_name, node_by_row)
     return {
-        "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row),
+        "soldiers": _resolve_soldiers(session, data, actor, node_by_name, node_by_row, fo.get("soldiers", {})),
         "duty_shifts": duty_shifts,
         "shift_templates": _resolve_shift_templates(
             session, data, dt_by_name, dt_by_row, node_by_name, node_by_row, fo.get("shift_templates", {})
