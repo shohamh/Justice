@@ -1119,8 +1119,12 @@ export default function ImportSessionReviewPage() {
                   <th className="text-right p-3">מ&quot;א</th>
                   <th className="text-right p-3">סוג תורנות</th>
                   <th className="text-right p-3">מיקום</th>
-                  <th className="text-right p-3">תאריכים</th>
+                  <th className="text-right p-3">תאריך התחלה</th>
+                  <th className="text-right p-3">תאריך סיום</th>
+                  <th className="text-right p-3">שעת התחלה</th>
+                  <th className="text-right p-3">שעת סיום</th>
                   <th className="text-right p-3">רזרבה</th>
+                  <th className="text-right p-3">הערות</th>
                   <th className="text-right p-3">סטטוס</th>
                   {!readOnly && <th className="text-right p-3">פעולה</th>}
                 </tr>
@@ -1129,16 +1133,95 @@ export default function ImportSessionReviewPage() {
                 {assignments.map((row: AssignmentRow) => {
                   const canToggle =
                     row.action !== "error" && row.action !== "out_of_scope";
+                  const unresolvedType = row.action === "error" && !!row.duty_type_name;
                   return (
                     <tr key={row.row} className="border-b dark:border-gray-700">
                       <td className="p-3">{row.full_name}</td>
                       <td className="p-3">{row.personal_number}</td>
-                      <td className="p-3">{row.duty_type_name}</td>
+                      <td className="p-3">
+                        {unresolvedType ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-red-600 text-xs font-medium">{row.duty_type_name}</span>
+                            {!readOnly && (
+                              <Combobox
+                                items={buildPickerItems(row.duty_type_name, allDutyTypes, sortedDutyTypeItems)}
+                                value=""
+                                onChange={(pickedId) => {
+                                  if (pickedId)
+                                    handlePick("duty_type", row.duty_type_name, `assignments:${row.row}`, pickedId);
+                                }}
+                              />
+                            )}
+                            {pendingPick?.rowKey === `assignments:${row.row}` && pendingPick.kind === "duty_type" && (
+                              <PendingPickBanner
+                                pick={pendingPick}
+                                onApplyAll={() => void applyMapping("all", pendingPick)}
+                                onApplyRow={() => void applyMapping("row", pendingPick)}
+                                onCancel={() => setPendingPick(null)}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          row.duty_type_name
+                        )}
+                      </td>
                       <td className="p-3">{row.duty_location_name}</td>
                       <td className="p-3">
-                        {row.start_date} – {row.end_date}
+                        {readOnly ? row.start_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_date}
+                            onBlur={(e) => setFieldOverride("assignments", row.row, "start_date", e.target.value)}
+                          />
+                        )}
                       </td>
-                      <td className="p-3">{row.is_reserve ? "כן" : "לא"}</td>
+                      <td className="p-3">
+                        {readOnly ? row.end_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_date}
+                            onBlur={(e) => setFieldOverride("assignments", row.row, "end_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_time ?? ""}
+                            onBlur={(e) => setFieldOverride("assignments", row.row, "start_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_time ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-16 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_time ?? ""}
+                            onBlur={(e) => setFieldOverride("assignments", row.row, "end_time", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.is_reserve ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.is_reserve}
+                            onChange={(e) => setFieldOverride("assignments", row.row, "is_reserve", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.notes ?? "—" : (
+                          <textarea
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.notes ?? ""}
+                            onBlur={(e) => setFieldOverride("assignments", row.row, "notes", e.target.value || null)}
+                          />
+                        )}
+                      </td>
                       <td className="p-3">
                         <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
                       </td>
