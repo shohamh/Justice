@@ -13,7 +13,7 @@ from app.db.models import (
 )
 from app.services import assignments as assignments_svc
 from app.services.notifications import create_notification
-from app.services.settings_loader import SettingNotFound, get_setting
+from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 from app.services.reserves import check_reserve_cap
 from app.services.eligibility import check_soldier_for_assignment
 
@@ -52,7 +52,49 @@ def _enforce_hierarchy_level_restriction(
         raise SwapError("hierarchy_level_mismatch")
 
 
+def _max_specific_targets(session: Session) -> int:
+    return get_setting_int(session, "swaps.max_specific_targets", 5)
+
+
 def create_request(
+    session: Session,
+    *,
+    requesting_soldier_id: uuid.UUID,
+    duty_assignment_id: uuid.UUID,
+    target_soldier_id: uuid.UUID | None,
+    reason: str | None,
+    target_soldier_ids: list[uuid.UUID] | None = None,
+    actor_id: uuid.UUID | None = None,
+) -> SwapRequest | list[SwapRequest]:
+    """Create one or more targeted swap requests for the same duty assignment.
+
+    `target_soldier_ids`, when given, takes precedence over `target_soldier_id`
+    and fans out into one SwapRequest row per target (capped by the
+    swaps.max_specific_targets setting). Single-target/open-board callers keep
+    using `target_soldier_id` unmodified and get a single SwapRequest back.
+    """
+    targets = target_soldier_ids if target_soldier_ids is not None else (
+        [target_soldier_id] if target_soldier_id is not None else [None]
+    )
+    if len(targets) > _max_specific_targets(session):
+        raise SwapError("too_many_targets")
+    if len(targets) > 1:
+        return [
+            _create_single_request(
+                session, requesting_soldier_id=requesting_soldier_id,
+                duty_assignment_id=duty_assignment_id, target_soldier_id=t,
+                reason=reason, actor_id=actor_id,
+            )
+            for t in targets
+        ]
+    return _create_single_request(
+        session, requesting_soldier_id=requesting_soldier_id,
+        duty_assignment_id=duty_assignment_id, target_soldier_id=targets[0],
+        reason=reason, actor_id=actor_id,
+    )
+
+
+def _create_single_request(
     session: Session,
     *,
     requesting_soldier_id: uuid.UUID,
@@ -82,6 +124,7 @@ def create_request(
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == duty_assignment_id,
+            SwapRequest.target_soldier_id == target_soldier_id,
             SwapRequest.status.in_(["open", "pending_approval"]),
         )
     ).scalar_one_or_none()
@@ -558,6 +601,21 @@ def claim_request(
             entity_id=req.id, before={"status": before_status},
             after={"status": "applied", "covering_soldier_id": str(covering_soldier_id)},
         )
+    session.flush()
+    # This request is now claimed (targeted at a specific covering soldier).
+    # If it was one of several parallel targeted requests fanned out by
+    # create_request for the same duty + requester, cancel the still-open
+    # siblings — the requester only needs one cover, not N.
+    siblings = session.execute(
+        select(SwapRequest).where(
+            SwapRequest.duty_assignment_id == req.duty_assignment_id,
+            SwapRequest.requesting_soldier_id == req.requesting_soldier_id,
+            SwapRequest.id != req.id,
+            SwapRequest.status == "open",
+        )
+    ).scalars().all()
+    for sib in siblings:
+        sib.status = "cancelled"
     session.flush()
     return req
 

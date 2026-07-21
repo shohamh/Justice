@@ -497,3 +497,63 @@ def test_take_free_allowed_across_hierarchy_level_when_not_restricted(admin_sess
         covering_soldier_id=target.id, actor_id=target.id,
     )
     assert req.status == "applied"
+
+
+def _seed_multi_target(session, n=3):
+    dt = DutyType(name="dt_multi_target", score_per_day=1)
+    loc = DutyLocation(name="loc_multi_target")
+    requester = Soldier(personal_number="mt_req", full_name="Req", password_hash="x", role="soldier",
+                        enrolled_at=date(2026, 1, 1), must_change_password=False)
+    targets = [
+        Soldier(personal_number=f"mt_s{i}", full_name=f"S{i}", password_hash="x", role="soldier",
+                enrolled_at=date(2026, 1, 1), must_change_password=False)
+        for i in range(1, n + 1)
+    ]
+    session.add_all([dt, loc, requester, *targets])
+    session.flush()
+    assignment = DutyAssignment(
+        soldier_id=requester.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+    )
+    session.add(assignment)
+    session.flush()
+    return requester, targets, assignment
+
+
+def test_create_request_fans_out_to_multiple_targets_capped_at_setting(admin_session):
+    requester, (s1, s2, s3), assignment = _seed_multi_target(admin_session, n=3)
+    set_setting(admin_session, "swaps.max_specific_targets", 2, actor_id=None)
+    admin_session.flush()
+
+    try:
+        svc.create_request(
+            admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=[s1.id, s2.id, s3.id], reason=None,
+        )
+        assert False, "expected SwapError"
+    except svc.SwapError as exc:
+        assert str(exc) == "too_many_targets"
+
+    reqs = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[s1.id, s2.id], reason=None,
+    )
+    assert len(reqs) == 2
+    assert {r.target_soldier_id for r in reqs} == {s1.id, s2.id}
+    assert all(r.status == "open" for r in reqs)
+
+
+def test_claiming_one_targeted_request_cancels_siblings(admin_session):
+    requester, (s1, s2), assignment = _seed_multi_target(admin_session, n=2)
+    reqs = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[s1.id, s2.id], reason=None,
+    )
+    admin_session.flush()
+    req_for_s1 = next(r for r in reqs if r.target_soldier_id == s1.id)
+    req_for_s2 = next(r for r in reqs if r.target_soldier_id == s2.id)
+
+    svc.claim_request(admin_session, request_id=req_for_s1.id, covering_soldier_id=s1.id)
+    admin_session.flush()
+    admin_session.refresh(req_for_s2)
+    assert req_for_s2.status == "cancelled"

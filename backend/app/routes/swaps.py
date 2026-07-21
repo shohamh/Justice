@@ -74,6 +74,7 @@ class SwapOut(BaseModel):
 class CreateSwapRequest(BaseModel):
     duty_assignment_id: uuid.UUID
     target_soldier_id: uuid.UUID | None = None
+    target_soldier_ids: list[uuid.UUID] | None = None
     reason: str | None = Field(default=None, max_length=1000)
 
 
@@ -374,14 +375,39 @@ def create(
     try:
         r = svc.create_request(
             session, requesting_soldier_id=user.id, duty_assignment_id=body.duty_assignment_id,
-            target_soldier_id=body.target_soldier_id,
+            target_soldier_id=body.target_soldier_id, target_soldier_ids=body.target_soldier_ids,
             reason=body.reason, actor_id=user.id,
         )
     except svc.SwapError as exc:
         raise _err(exc) from exc
     session.commit()
-    session.refresh(r)
-    return _out(r, session)
+    # create_request returns a list when target_soldier_ids fans out to multiple
+    # targets; keep this route's response shape a single object for backward
+    # compatibility with existing (mobile/bot) callers — return the first one.
+    first = r[0] if isinstance(r, list) else r
+    session.refresh(first)
+    return _out(first, session)
+
+
+@router.post("/me/swaps/bulk", response_model=list[SwapOut], status_code=status.HTTP_201_CREATED)
+def create_bulk(
+    body: CreateSwapRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_enrolled),
+) -> list[SwapOut]:
+    try:
+        r = svc.create_request(
+            session, requesting_soldier_id=user.id, duty_assignment_id=body.duty_assignment_id,
+            target_soldier_id=body.target_soldier_id, target_soldier_ids=body.target_soldier_ids,
+            reason=body.reason, actor_id=user.id,
+        )
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    reqs = r if isinstance(r, list) else [r]
+    for req in reqs:
+        session.refresh(req)
+    return [_out(req, session) for req in reqs]
 
 
 class TakeFreeDutyRequest(BaseModel):
