@@ -138,6 +138,18 @@ describe("SystemSettingsContent export/import", () => {
     });
   });
 
+  it("renders the constraints reset-period select with the three expected options, defaulting to quarter", async () => {
+    renderWithProviders(<SystemSettingsContent />);
+    await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());
+
+    expect(screen.getByText("תקופת איפוס ימי אילוץ")).toBeInTheDocument();
+    const select = screen.getByText("תקופת איפוס ימי אילוץ").closest("div")!.parentElement!.parentElement!.querySelector("select") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    expect(select.value).toBe("quarter");
+    const optionLabels = Array.from(select.options).map((o) => o.textContent);
+    expect(optionLabels).toEqual(["רבעון", "חצי שנה", "שנה"]);
+  });
+
   it("shows an error banner when the selected file is not valid JSON", async () => {
     renderWithProviders(<SystemSettingsContent />);
     await waitFor(() => expect(systemSettingsApi.getSystemSettings).toHaveBeenCalled());

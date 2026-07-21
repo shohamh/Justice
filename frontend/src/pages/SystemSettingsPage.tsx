@@ -24,6 +24,17 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     settings: [
       { key: "constraints.personal_cap_days", label: "מכסת ימי אילוץ לחייל", description: "מספר ימי האילוץ המרביים שחייל יכול לבקש", type: "number", defaultValue: 15 },
       { key: "constraints.require_manager_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      {
+        key: "constraints.reset_period",
+        label: "",
+        type: "select" as const,
+        defaultValue: "quarter",
+        options: [
+          { value: "quarter", label: "רבעון" },
+          { value: "half_year", label: "חצי שנה" },
+          { value: "year", label: "שנה" },
+        ],
+      },
     ],
   },
   {
@@ -397,7 +408,11 @@ export function SystemSettingsContent() {
               <div key={def.key} className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                    {def.key === "transparency.visible_commander_levels" ? t("admin_settings.transparency_visible_levels") : def.label}
+                    {def.key === "transparency.visible_commander_levels"
+                      ? t("admin_settings.transparency_visible_levels")
+                      : def.key === "constraints.reset_period"
+                        ? t("admin_settings.constraints_reset_period")
+                        : def.label}
                   </div>
                   {def.description && <div className="text-xs text-gray-400 dark:text-gray-300 mt-0.5">{def.description}</div>}
                 </div>

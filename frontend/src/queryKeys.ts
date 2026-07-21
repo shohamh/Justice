@@ -24,6 +24,7 @@ export const queryKeys = {
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
   pendingFieldUpdatesCount: () => ["soldiers", "pendingFieldUpdatesCount"] as const,
   myConstraints: () => ["constraints", "mine"] as const,
+  remainingConstraintDays: () => ["constraints", "remaining"] as const,
   myExemptionRequests: () => ["exemptionRequests", "mine"] as const,
   pendingConstraints: () => ["constraints", "pending"] as const,
   pendingExemptionRequests: () => ["exemptionRequests", "pending"] as const,

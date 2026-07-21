@@ -88,6 +88,9 @@
     "sub_units_title": "ייצוא תתי-יחידות",
     "sub_units_desc": "ייצוא סיכום ניקוד לפי יחידות משנה לקובץ Excel."
   },
+  "constraints": {
+    "remaining_summary": "נותרו {{remaining}} מתוך {{cap}} ימי אילוץ (עד {{until}})"
+  },
   "my_requests": {
     "title": "אילוצים ופטורים",
     "section_constraints": "אילוצים אישיים",
@@ -1013,7 +1016,8 @@
   },
   "admin_settings": {
     "transparency_visible_levels": "אילו רמות פיקוד רשאיות לצפות בדף השקיפות (בנוסף לאחראי תורנויות ומנהל)",
-    "transparency_no_level_types": "אין רמות היררכיה מוגדרות"
+    "transparency_no_level_types": "אין רמות היררכיה מוגדרות",
+    "constraints_reset_period": "תקופת איפוס ימי אילוץ"
   },
   "enrollment": {
     "tab": "הצטרפות",

@@ -55,6 +55,13 @@ beforeEach(() => {
     user: { id: "sol-1", full_name: "A", role: "soldier" },
   } as ReturnType<typeof useAuth>);
   vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([constraint]);
+  vi.mocked(constraintsApi.getRemainingConstraintDays).mockResolvedValue({
+    cap_days: 15,
+    used_days: 5,
+    remaining_days: 10,
+    period_start: "2026-01-01",
+    period_end: "2026-03-31",
+  });
   vi.mocked(exemptionsApi.listMyExemptionRequests).mockResolvedValue([exemptionRequest]);
   vi.mocked(exemptionsApi.listExemptions).mockResolvedValue([]);
   vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([]);
@@ -84,5 +91,11 @@ describe("MyRequestsPage - day-count badges", () => {
     renderPage();
     await screen.findByText("y");
     expect(screen.getByText("(10 ימים)")).toBeTruthy();
+  });
+
+  it("shows the remaining constraint days summary", async () => {
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+    expect(constraintsApi.getRemainingConstraintDays).toHaveBeenCalled();
   });
 });
