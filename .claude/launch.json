@@ -8,6 +8,13 @@
       "port": 5173,
       "autoPort": true,
       "healthCheckPath": "/api/health"
+    },
+    {
+      "name": "frontend-only",
+      "cwd": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
     }
   ]
 }

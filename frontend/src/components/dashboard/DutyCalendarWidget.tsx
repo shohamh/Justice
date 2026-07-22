@@ -88,7 +88,7 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
           firstDay={0}
           locale={heLocale}
           events={[...dutyEvents, ...holidayEvents]}
-          headerToolbar={{ start: "prev,next", center: "title", end: "dayGridMonth,timeGridWeek,timeGridThreeDay" }}
+          headerToolbar={{ start: "prev,next", center: "title", end: "timeGridThreeDay,timeGridWeek,dayGridMonth" }}
           datesSet={handleDatesSet}
           slotMinTime="00:00:00"
           slotMaxTime="24:00:00"
