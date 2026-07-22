@@ -957,7 +957,9 @@
     "type_gimelim_dismissed": "שחרור גימלים",
     "type_gimelim_reserve_called_up": "הוקפצת לרזרבה (גימלים)",
     "type_gimelim_demoted_to_reserve": "הומרת לרזרבה (גימלים)",
-    "type_gimelim_reassigned": "שובצת מחדש (גימלים)"
+    "type_gimelim_reassigned": "שובצת מחדש (גימלים)",
+    "type_exemption_revoked": "פטור בוטל",
+    "type_transfer_request_pending": "בקשת העברה ממתינה"
   },
   "register": {
     "title": "הרשמה",
