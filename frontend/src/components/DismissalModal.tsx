@@ -60,7 +60,7 @@ export default function DismissalModal({
   const [fromIdx, setFromIdx] = useState<number | null>(0);
   const [toIdx, setToIdx] = useState<number | null>(allDates.length - 1);
   // "to" = next click narrows/sets the end; "from" = next click starts a new anchor
-  const [selectionPhase, setSelectionPhase] = useState<"from" | "to">("to");
+  const [selectionPhase, setSelectionPhase] = useState<"from" | "to">("from");
   const [selectedReserveId, setSelectedReserveId] = useState(primary.reserve_assignment_id ?? "");
 
   // ── Shared ───────────────────────────────────────────────────────────────
