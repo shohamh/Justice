@@ -31,6 +31,8 @@ export interface EnrollmentRequestDTO {
   last_mitvahim_date: string | null;
   last_alal_date: string | null;
   exemption_requests: EnrollmentExemptionDTO[];
+  nearest_commander: { id: string; name: string } | null;
+  nearest_duty_manager: { id: string; name: string } | null;
 }
 
 export async function listPendingEnrollments(): Promise<EnrollmentRequestDTO[]> {
