@@ -83,6 +83,13 @@ _DM_ACTIONS = {
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
     Action.HIERARCHY_READ,
+    # I-1: commanders may manage the hierarchy subtree they directly command
+    # (add/rename/move/delete child nodes, assign commanders, etc.), scoped
+    # via _node_in_scope like every other action here — since roots already
+    # includes commanded node ids (see scope_root_ids) and _node_in_scope
+    # matches via path_ids containment, this covers descendants of the
+    # commanded node too, mirroring how duty-manager scope already works.
+    Action.HIERARCHY_MANAGE,
     Action.EXEMPTION_GRANT,
     Action.EXEMPTION_READ,
     Action.CONSTRAINT_READ,

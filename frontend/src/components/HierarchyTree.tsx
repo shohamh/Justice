@@ -57,7 +57,6 @@ type DragData = DragDataSoldier | DragDataNode;
 interface Props {
   nodes: NodeDTO[];
   soldiers: SoldierDTO[];
-  isAdmin: boolean;
   canManageLevelTypes: boolean;
   onChanged: () => void;
 }
@@ -65,13 +64,13 @@ interface Props {
 function DraggableSoldier({
   s,
   nodeId,
-  isAdmin,
+  canEdit,
   onEdit,
   t,
 }: {
   s: SoldierDTO;
   nodeId: string;
-  isAdmin: boolean;
+  canEdit: boolean;
   onEdit: (s: SoldierDTO) => void;
   t: (k: string) => string;
 }) {
@@ -86,14 +85,14 @@ function DraggableSoldier({
       className={`flex items-center gap-2 py-0.5 px-2 text-sm text-gray-700 dark:text-gray-200 ${isDragging ? "opacity-40" : ""}`}
       data-testid={`tree-soldier-${s.personal_number}`}
     >
-      {isAdmin && (
+      {canEdit && (
         <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 text-xs select-none">⠿</span>
       )}
       <SoldierAvatar url={s.profile_picture_url} name={s.full_name} />
       <SoldierLink id={s.id} name={s.full_name} />
       <span className="text-xs text-gray-400">({s.personal_number})</span>
       <TelegramBadge linked={s.telegram_linked} />
-      {isAdmin && (
+      {canEdit && (
         <button
           className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline ml-auto"
           onClick={() => onEdit(s)}
@@ -109,7 +108,6 @@ function DraggableSoldier({
 function DroppableNodeRow({
   node,
   depth,
-  isAdmin,
   canHaveChildren,
   onAddChild,
   onAddSoldier,
@@ -127,7 +125,6 @@ function DroppableNodeRow({
 }: {
   node: NodeDTO;
   depth: number;
-  isAdmin: boolean;
   canHaveChildren: boolean;
   onAddChild: () => void;
   onAddSoldier: () => void;
@@ -172,7 +169,7 @@ function DroppableNodeRow({
       >
         {isExpanded ? "▼" : "▶"}
       </button>
-      {isAdmin && (
+      {node.can_edit && (
         <span
           {...attributes}
           {...listeners}
@@ -209,19 +206,19 @@ function DroppableNodeRow({
           ))})
         </span>
       )}
-      {(isAdmin || node.dm_manageable) && (
+      {(node.can_edit || node.dm_manageable) && (
         <span className="flex gap-1 ml-auto">
-          {isAdmin && canHaveChildren && (
+          {node.can_edit && canHaveChildren && (
             <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddChild} data-testid={`tree-add-child-${node.id}`}>
               +{t("team.add_node")}
             </button>
           )}
-          {isAdmin && (
+          {node.can_edit && (
             <button className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline" onClick={onAddSoldier} data-testid={`tree-add-soldier-${node.id}`}>
               +{t("team.add_soldier")}
             </button>
           )}
-          {isAdmin && (
+          {node.can_edit && (
             <button className="text-xs text-green-600 hover:underline" onClick={onAssignCommander} data-testid={`tree-commander-btn-${node.id}`}>
               {t("team.assign_commander")}
             </button>
@@ -231,12 +228,12 @@ function DroppableNodeRow({
               {t("team.assign_duty_managers")}
             </button>
           )}
-          {isAdmin && (
+          {node.can_edit && (
             <button className="text-xs text-amber-600 hover:underline" onClick={onRename} data-testid={`tree-rename-${node.id}`}>
               {t("team.edit")}
             </button>
           )}
-          {isAdmin && !node.commander_id && !hasChildren && (
+          {node.can_edit && !node.commander_id && !hasChildren && (
             <button className="text-xs text-red-500 hover:underline" onClick={onDelete} data-testid={`tree-delete-${node.id}`}>
               {t("duty_config.delete")}
             </button>
@@ -247,9 +244,29 @@ function DroppableNodeRow({
   );
 }
 
-export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevelTypes, onChanged }: Props) {
+export function ancestorIdsOf(nodes: NodeDTO[], targetIds: Set<string>): Set<string> {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const result = new Set<string>();
+  for (const id of targetIds) {
+    const node = byId.get(id);
+    if (!node) continue;
+    for (const ancestorId of node.path_ids) result.add(ancestorId);
+  }
+  return result;
+}
+
+export default function HierarchyTree({ nodes, soldiers, canManageLevelTypes, onChanged }: Props) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id)));
+  const ownNodeIds = useMemo(
+    () => new Set(nodes.filter((n) => n.can_edit).map((n) => n.id)),
+    [nodes],
+  );
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const defaultExpanded = new Set(nodes.filter((n) => n.path_ids.length <= 2).map((n) => n.id));
+    if (ownNodeIds.size === 0) return defaultExpanded;
+    const ownAncestors = ancestorIdsOf(nodes, ownNodeIds);
+    return new Set([...defaultExpanded, ...ownAncestors]);
+  });
   const [addDialog, setAddDialog] = useState<NodeDTO | null>(null);
   const [commanderDialog, setCommanderDialog] = useState<NodeDTO | null>(null);
   const [renameDialog, setRenameDialog] = useState<NodeDTO | null>(null);
@@ -384,11 +401,10 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
     const nodeSoldiers = soldiersOf(node.id);
 
     return (
-      <li key={node.id} className="select-none">
+      <li key={node.id} className={`select-none ${ownNodeIds.has(node.id) ? "bg-indigo-50 dark:bg-indigo-900/30 rounded" : ""}`}>
         <DroppableNodeRow
           node={node}
           depth={depth}
-          isAdmin={isAdmin}
           canHaveChildren={canHaveChildrenFn(node.level)}
           onAddChild={() => setAddDialog(node)}
           onAddSoldier={() => setQuickAddNode(node.id)}
@@ -421,7 +437,7 @@ export default function HierarchyTree({ nodes, soldiers, isAdmin, canManageLevel
                 key={s.id}
                 s={s}
                 nodeId={node.id}
-                isAdmin={isAdmin}
+                canEdit={node.can_edit}
                 onEdit={setEditSoldier}
                 t={t}
               />

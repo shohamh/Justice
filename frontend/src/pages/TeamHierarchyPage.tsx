@@ -83,7 +83,7 @@ export default function TeamHierarchyPage() {
         <div className="flex items-center gap-3">
           <h3 className="font-medium">{t("team.title")}</h3>
         </div>
-        <HierarchyTree nodes={nodes} soldiers={soldiers} isAdmin={isAdmin} onChanged={refresh} canManageLevelTypes={canManageLevelTypes} />
+        <HierarchyTree nodes={nodes} soldiers={soldiers} onChanged={refresh} canManageLevelTypes={canManageLevelTypes} />
 
         {isAdmin && (
           <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
