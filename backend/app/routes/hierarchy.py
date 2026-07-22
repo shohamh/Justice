@@ -39,6 +39,7 @@ class NodeOut(BaseModel):
     path_ids: list[uuid.UUID]
     duty_managers: list[DutyManagerEntryOut] = []
     dm_manageable: bool = False
+    can_edit: bool = False
 
 
 class CreateNodeRequest(BaseModel):
@@ -114,6 +115,8 @@ def _out(
         is_duty_manager=user_is_duty_manager,
     )
 
+    can_edit = user.role == "admin" or n.commander_id == user.id or dm_manageable
+
     return NodeOut(
         id=n.id,
         level=n.level,
@@ -124,6 +127,7 @@ def _out(
         path_ids=list(n.path_ids),
         duty_managers=duty_managers,
         dm_manageable=dm_manageable,
+        can_edit=can_edit,
     )
 
 
@@ -239,23 +243,12 @@ def get_tree(
 ) -> list[NodeOut]:
     root_node_id = _get_root_node_id(session)
 
-    if all or user.role == "admin":
-        nodes = list(session.execute(select(HierarchyNode)).scalars().all())
-    elif user.role == "soldier":
-        if user.hierarchy_node_id is None:
-            return []
-        node = session.get(HierarchyNode, user.hierarchy_node_id)
-        nodes = [node] if node else []
-    else:
-        roots = scope_root_ids(session, user)
-        if not roots:
-            nodes = []
-        else:
-            nodes = [
-                n
-                for n in session.execute(select(HierarchyNode)).scalars().all()
-                if any(r in n.path_ids for r in roots)
-            ]
+    # The tree is always returned in full regardless of caller role — this endpoint is a
+    # display convenience, not an access-control boundary. Every mutating hierarchy
+    # endpoint (create/update/move/delete) enforces its own scope check via authorize()/
+    # can() against the specific target_node, independent of what this GET returns. The
+    # `all` query param is now a no-op kept for backward compatibility with existing callers.
+    nodes = list(session.execute(select(HierarchyNode)).scalars().all())
 
     # Always include the system root node so every role can use it as a calendar default.
     if root_node_id and not any(n.id == root_node_id for n in nodes):
