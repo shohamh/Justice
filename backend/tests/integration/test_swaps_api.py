@@ -165,12 +165,14 @@ def test_swap_config_reports_duty_manager_setting(client: TestClient, admin_sess
 
 def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestClient, admin_session: Session):
     """The requester's node sits under a two-level chain: mid commander (nearest)
-    and root commander (further). All rows for this side are created in a single
-    flush and share the same created_at, so only chain_order can guarantee that
-    requester_manager_approvals[0] is genuinely the nearest commander — the
-    thing DirectCommanderApproval.tsx on the frontend relies on. Checked via
-    both the single-swap path (/api/me/swaps, _manager_approvals_out) and the
-    bulk path (/api/swaps/pending, _manager_approvals_out_bulk)."""
+    and root commander (further). requester_manager_approvals is now
+    live-computed from commander_chain_for_soldier (nearest-first) rather than
+    read from persisted rows ordered by chain_order — no SwapManagerApproval
+    rows exist yet at this point (they're created lazily only once someone
+    actually approves/rejects), so this asserts ordering purely from the live
+    chain. Checked via both the single-swap path (/api/me/swaps,
+    _manager_approvals_out) and the bulk path (/api/swaps/pending,
+    _out_bulk -> _manager_approvals_out)."""
     root_node = create_node(admin_session, level="division", name=f"api_root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"api_rootc_{_uid()}", role="commander")
     root_node.commander_id = root_cmd.id
@@ -202,17 +204,17 @@ def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestCli
 
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
 
-    # All rows for this side share one created_at (single flush inside
-    # _create_manager_approval_rows) — assert that precondition still holds,
-    # so this test would actually fail if chain_order were removed/ignored.
+    # No SwapManagerApproval rows exist yet — they're created lazily, only
+    # once someone actually approves/rejects a row. The ordering guarantee
+    # this test cares about now comes entirely from the live chain
+    # (commander_chain_for_soldier), not from persisted rows/chain_order.
     rows = admin_session.execute(
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == swap_req.id,
             SwapManagerApproval.side == "requester",
         )
     ).scalars().all()
-    assert len({row.created_at for row in rows}) == 1
-    assert len(rows) == 2
+    assert len(rows) == 0
 
     r = client.get("/api/me/swaps", headers=auth_headers(requester))
     assert r.status_code == 200, r.text
@@ -250,24 +252,78 @@ def test_manager_reject_kills_swap(client: TestClient, admin_session: Session):
     assert r.json()["status"] == "rejected"
 
 
-def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
-    """Claiming a swap should create SwapManagerApproval rows for both the
-    chain-commander requirement and the duty-manager requirement, on each
-    side that has a soldier."""
+def test_manager_reject_records_rejecting_commander_on_row(client: TestClient, admin_session: Session):
+    """A chain commander rejecting via manager-reject should route through
+    reject_manager_row: their row on the live-computed roster should show
+    rejected=True with rejected_by_name attributing them, and the top-level
+    SwapOut should surface who rejected via rejected_by_name."""
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
-    create_soldier(admin_session, personal_number=f"api_dm_{_uid()}", role="duty_manager")
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(req_cmd), json={"decision_note": "denied"}
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "rejected"
+    assert body["rejected_by_name"] == req_cmd.full_name
+
+    row = next(
+        a for a in body["requester_manager_approvals"] if a["commander_id"] == str(req_cmd.id)
+    )
+    assert row["rejected"] is True
+    assert row["rejected_by"] == str(req_cmd.id)
+    assert row["rejected_by_name"] == req_cmd.full_name
+    assert row["rejected_at"] is not None
+    # The covering side's chain commander never acted — their row stays clean.
+    cov_row = next(
+        a for a in body["covering_manager_approvals"] if a["commander_id"] == str(cov_cmd.id)
+    )
+    assert cov_row["rejected"] is False
+    assert cov_row["rejected_by"] is None
+
+
+def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
+    """Claiming a swap should surface both the chain-commander requirement and
+    the duty-manager requirement in the API response's live-computed approval
+    roster, on each side that has a soldier. SwapManagerApproval rows are no
+    longer pre-populated on claim — they're created lazily only once someone
+    actually approves/rejects — so this asserts against the live-computed
+    requester_manager_approvals/covering_manager_approvals instead of
+    persisted rows."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    # duty_manager_chain_for_soldier is scope-based (DutyManagerScope), not a
+    # blanket "every duty_manager role" lookup — scope each DM to the
+    # respective side's node so both sides have a live duty-manager requirement.
+    create_soldier(
+        admin_session, personal_number=f"api_dm_req_{_uid()}", role="duty_manager",
+        hierarchy_node_id=requester.hierarchy_node_id,
+    )
+    create_soldier(
+        admin_session, personal_number=f"api_dm_cov_{_uid()}", role="duty_manager",
+        hierarchy_node_id=covering.hierarchy_node_id,
+    )
     admin_session.commit()
 
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
 
+    # No rows are persisted yet — the roster is live-computed.
     rows = admin_session.execute(
         select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == swap_req.id)
     ).scalars().all()
-    kinds_by_side = {(r.side, r.approver_kind) for r in rows}
-    assert ("requester", "commander") in kinds_by_side
-    assert ("requester", "duty_manager") in kinds_by_side
-    assert ("covering", "commander") in kinds_by_side
-    assert ("covering", "duty_manager") in kinds_by_side
+    assert len(rows) == 0
+
+    r = client.get("/api/me/swaps", headers=auth_headers(requester))
+    assert r.status_code == 200, r.text
+    swap_out = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    requester_kinds = {a["approver_kind"] for a in swap_out["requester_manager_approvals"]}
+    covering_kinds = {a["approver_kind"] for a in swap_out["covering_manager_approvals"]}
+    assert "commander" in requester_kinds
+    assert "duty_manager" in requester_kinds
+    assert "commander" in covering_kinds
+    assert "duty_manager" in covering_kinds
+    assert all(not a["approved"] for a in swap_out["requester_manager_approvals"])
+    assert all(not a["approved"] for a in swap_out["covering_manager_approvals"])
 
 
 def test_shared_commander_approval_cascades_to_other_side(admin_session: Session):
@@ -283,7 +339,13 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
 
     requester = create_soldier(admin_session, personal_number=f"api_shreq_{_uid()}", hierarchy_node_id=shared_node.id)
     covering = create_soldier(admin_session, personal_number=f"api_shcov_{_uid()}", hierarchy_node_id=shared_node.id)
-    dm = create_soldier(admin_session, personal_number=f"api_shdm_{_uid()}", role="duty_manager")
+    # Scoped to shared_node, which both requester and covering sit under directly
+    # — duty_manager_chain_for_soldier is DutyManagerScope-based, so this single
+    # scope entry covers both sides.
+    dm = create_soldier(
+        admin_session, personal_number=f"api_shdm_{_uid()}", role="duty_manager",
+        hierarchy_node_id=shared_node.id,
+    )
 
     dt = DutyType(name=f"api_sh_dt_{_uid()}", score_per_day=1)
     loc = DutyLocation(name=f"api_sh_loc_{_uid()}")
@@ -307,9 +369,11 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
 
     svc.approve_soldier_side(admin_session, request_id=swap_req.id, soldier_id=requester.id)
     svc.approve_soldier_side(admin_session, request_id=swap_req.id, soldier_id=covering.id)
-    svc.approve_manager_row(
-        admin_session, request_id=swap_req.id, side="requester", commander_id=shared_cmd.id, actor_id=shared_cmd.id,
-    )
+    # New signature: approve_manager_row resolves every (side, kind) the actor
+    # currently qualifies for in one call — no side/commander_id params. Since
+    # shared_cmd commands both requester's and covering's node, one call
+    # cascades to both sides' commander row.
+    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=shared_cmd.id)
 
     rows = admin_session.execute(
         select(SwapManagerApproval).where(
@@ -321,9 +385,9 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
     assert all(r.approved for r in rows)  # cascaded to both sides
     assert admin_session.get(SwapRequest, swap_req.id).status == "pending_approval"  # duty manager still required
 
-    svc.approve_manager_row(
-        admin_session, request_id=swap_req.id, side="requester", commander_id=dm.id, actor_id=dm.id,
-    )
+    # Same for the duty manager: their single scope over shared_node covers
+    # both sides, so one call cascades to both sides' duty_manager row.
+    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=dm.id)
     dm_rows = admin_session.execute(
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == swap_req.id,

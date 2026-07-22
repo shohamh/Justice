@@ -37,6 +37,10 @@ class SwapManagerApprovalOut(BaseModel):
     approved_by: uuid.UUID | None = None
     approved_by_name: str | None = None
     approved_at: datetime | None = None
+    rejected: bool = False
+    rejected_by: uuid.UUID | None = None
+    rejected_by_name: str | None = None
+    rejected_at: datetime | None = None
     approver_kind: str
 
 
@@ -52,6 +56,7 @@ class SwapOut(BaseModel):
     requester_side_approved: bool | None
     covering_side_approved: bool | None
     decision_note: str | None
+    rejected_by_name: str | None = None
     offered_assignment_ids: list[str] = []
     created_at: datetime
     duty_type_name: str | None = None
@@ -105,48 +110,48 @@ def _soldier_names(
     return soldier.full_name, commander_name
 
 
-def _manager_approvals_out(session: Session, request_id: uuid.UUID, side: str) -> list[SwapManagerApprovalOut]:
-    rows = session.execute(
-        select(SwapManagerApproval).where(
-            SwapManagerApproval.swap_request_id == request_id,
-            SwapManagerApproval.side == side,
-        ).order_by(SwapManagerApproval.chain_order)
-    ).scalars().all()
+def _manager_approvals_out(session: Session, request_id: uuid.UUID, soldier_id: uuid.UUID, side: str) -> list[SwapManagerApprovalOut]:
+    """Live-compute the full approval roster for one side of a swap: every
+    commander/duty-manager currently in scope for `soldier_id`, cross-referenced
+    against whatever SwapManagerApproval decision rows already exist (rows are
+    now created lazily, only once someone actually approves/rejects — see
+    app.services.swaps — so a chain member with no row yet still shows up here
+    with approved=False/rejected=False)."""
+    from app.services.approval_scope import commander_chain_for_soldier, duty_manager_chain_for_soldier
+    from app.services.swaps import _require_duty_manager_approval
+
+    decisions_by_person_kind = {
+        (row.commander_id, row.approver_kind): row
+        for row in session.execute(
+            select(SwapManagerApproval).where(
+                SwapManagerApproval.swap_request_id == request_id,
+                SwapManagerApproval.side == side,
+            )
+        ).scalars().all()
+    }
+
+    chains: list[tuple[str, uuid.UUID]] = [("commander", cid) for cid in commander_chain_for_soldier(session, soldier_id)]
+    if _require_duty_manager_approval(session):
+        chains += [("duty_manager", did) for did in duty_manager_chain_for_soldier(session, soldier_id)]
+
     out = []
-    for row in rows:
-        commander = session.get(Soldier, row.commander_id)
-        approved_by = session.get(Soldier, row.approved_by) if row.approved_by else None
+    for kind, person_id in chains:
+        row = decisions_by_person_kind.get((person_id, kind))
+        person = session.get(Soldier, person_id)
+        approved_by = session.get(Soldier, row.approved_by) if row and row.approved_by else None
+        rejected_by = session.get(Soldier, row.rejected_by) if row and row.rejected_by else None
         out.append(SwapManagerApprovalOut(
-            commander_id=row.commander_id,
-            commander_name=commander.full_name if commander else None,
-            approved=row.approved,
-            approved_by=row.approved_by,
+            commander_id=person_id,
+            commander_name=person.full_name if person else None,
+            approved=bool(row.approved) if row else False,
+            approved_by=row.approved_by if row else None,
             approved_by_name=approved_by.full_name if approved_by else None,
-            approved_at=row.approved_at,
-            approver_kind=row.approver_kind,
-        ))
-    return out
-
-
-def _manager_approvals_out_bulk(
-    approvals_by_request: dict[tuple[uuid.UUID, str], list[SwapManagerApproval]],
-    approval_soldier_names: dict[uuid.UUID, str | None],
-    request_id: uuid.UUID,
-    side: str,
-) -> list[SwapManagerApprovalOut]:
-    """Build SwapManagerApprovalOut list purely from pre-loaded dicts — zero session queries."""
-    rows = approvals_by_request.get((request_id, side), [])
-    out = []
-    for row in rows:
-        approved_by_name = approval_soldier_names.get(row.approved_by) if row.approved_by else None
-        out.append(SwapManagerApprovalOut(
-            commander_id=row.commander_id,
-            commander_name=approval_soldier_names.get(row.commander_id),
-            approved=row.approved,
-            approved_by=row.approved_by,
-            approved_by_name=approved_by_name,
-            approved_at=row.approved_at,
-            approver_kind=row.approver_kind,
+            approved_at=row.approved_at if row else None,
+            rejected=bool(row.rejected) if row else False,
+            rejected_by=row.rejected_by if row else None,
+            rejected_by_name=rejected_by.full_name if rejected_by else None,
+            rejected_at=row.rejected_at if row else None,
+            approver_kind=kind,
         ))
     return out
 
@@ -180,8 +185,12 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
             loc = session.get(DutyLocation, assignment.duty_location_id)
             duty_type_name = dt.name if dt else None
             duty_location_name = loc.name if loc else None
-    requester_manager_approvals = _manager_approvals_out(session, r.id, "requester") if session is not None else []
-    covering_manager_approvals = _manager_approvals_out(session, r.id, "covering") if session is not None else []
+    requester_manager_approvals = _manager_approvals_out(session, r.id, r.requesting_soldier_id, "requester") if session is not None and r.requesting_soldier_id else []
+    covering_manager_approvals = _manager_approvals_out(session, r.id, r.covering_soldier_id, "covering") if session is not None and r.covering_soldier_id else []
+    rejected_by_name = None
+    if session is not None and r.rejected_by:
+        rejected_by_soldier = session.get(Soldier, r.rejected_by)
+        rejected_by_name = rejected_by_soldier.full_name if rejected_by_soldier else None
     return SwapOut(
         id=r.id, duty_assignment_id=r.duty_assignment_id, duty_date=r.duty_date,
         requesting_soldier_id=r.requesting_soldier_id, target_soldier_id=r.target_soldier_id,
@@ -189,6 +198,7 @@ def _out(r: SwapRequest, session: Session | None = None, warnings: list[str] | N
         requester_side_approved=r.requester_side_approved,
         covering_side_approved=r.covering_side_approved,
         decision_note=r.decision_note,
+        rejected_by_name=rejected_by_name,
         offered_assignment_ids=[str(x) for x in (r.offered_assignment_ids or [])],
         created_at=r.created_at,
         duty_type_name=duty_type_name,
@@ -546,29 +556,6 @@ def pending(
         select(DutyLocation).where(DutyLocation.id.in_(loc_ids))
     ).scalars().all()} if loc_ids else {}
 
-    # Batch-load manager approvals for all pending swaps in one query, instead of
-    # 2 queries + N session.get() calls per swap.
-    request_ids = {r.id for r in all_pending}
-    approval_rows = session.execute(
-        select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id.in_(request_ids))
-        .order_by(SwapManagerApproval.chain_order)
-    ).scalars().all()
-    approvals_by_request: dict[tuple[uuid.UUID, str], list[SwapManagerApproval]] = {}
-    approval_person_ids: set[uuid.UUID] = set()
-    for row in approval_rows:
-        approvals_by_request.setdefault((row.swap_request_id, row.side), []).append(row)
-        approval_person_ids.add(row.commander_id)
-        if row.approved_by:
-            approval_person_ids.add(row.approved_by)
-
-    approval_person_ids -= soldiers.keys()
-    approval_soldier_names: dict[uuid.UUID, str | None] = {s.id: s.full_name for s in soldiers.values()}
-    if approval_person_ids:
-        extra_soldiers = session.execute(
-            select(Soldier).where(Soldier.id.in_(approval_person_ids))
-        ).scalars().all()
-        approval_soldier_names.update({s.id: s.full_name for s in extra_soldiers})
-
     def _side_node_bulk(r: SwapRequest, soldier_id: uuid.UUID | None) -> HierarchyNode | None:
         if soldier_id is None:
             return None
@@ -579,10 +566,7 @@ def pending(
 
     if user.role == "admin":
         return [
-            _out_bulk(
-                session, r, soldiers, nodes, assignments, duty_types, duty_locations,
-                approvals_by_request, approval_soldier_names,
-            )
+            _out_bulk(session, r, soldiers, nodes, assignments, duty_types, duty_locations)
             for r in all_pending
         ]
 
@@ -590,10 +574,7 @@ def pending(
     user_is_commander = is_commander(session, user.id)
     user_is_duty_manager = is_duty_manager(session, user.id)
     return [
-        _out_bulk(
-            session, r, soldiers, nodes, assignments, duty_types, duty_locations,
-            approvals_by_request, approval_soldier_names,
-        )
+        _out_bulk(session, r, soldiers, nodes, assignments, duty_types, duty_locations)
         for r in all_pending
         if can(
             user, Action.SWAP_APPROVE, target_node=_side_node_bulk(r, r.requesting_soldier_id), roots=roots,
@@ -613,11 +594,15 @@ def _out_bulk(
     assignments: dict,
     duty_types: dict,
     duty_locations: dict,
-    approvals_by_request: dict[tuple[uuid.UUID, str], list[SwapManagerApproval]],
-    approval_soldier_names: dict[uuid.UUID, str | None],
     warnings: list[str] | None = None,
 ) -> SwapOut:
-    """Build SwapOut from pre-loaded dicts — zero session.get() calls."""
+    """Build SwapOut from pre-loaded dicts, except for manager approvals which
+    are live-computed per request via _manager_approvals_out (see that
+    function's docstring — the old bulk-preloaded-rows optimization no longer
+    applies since SwapManagerApproval rows aren't pre-populated for the whole
+    roster anymore; this accepts an N+1 query cost on this path as a
+    reasonable simplification, a candidate for a follow-up batch-optimization
+    if /swaps/pending latency ever becomes a real problem)."""
     def _soldier_name(sid):
         s = soldiers.get(sid)
         return s.full_name if s else None
@@ -643,12 +628,16 @@ def _out_bulk(
     dt = duty_types.get(assignment.duty_type_id) if assignment else None
     loc = duty_locations.get(assignment.duty_location_id) if assignment else None
 
-    requester_manager_approvals = _manager_approvals_out_bulk(
-        approvals_by_request, approval_soldier_names, r.id, "requester"
+    requester_manager_approvals = (
+        _manager_approvals_out(session, r.id, r.requesting_soldier_id, "requester") if r.requesting_soldier_id else []
     )
-    covering_manager_approvals = _manager_approvals_out_bulk(
-        approvals_by_request, approval_soldier_names, r.id, "covering"
+    covering_manager_approvals = (
+        _manager_approvals_out(session, r.id, r.covering_soldier_id, "covering") if r.covering_soldier_id else []
     )
+    rejected_by_name = None
+    if r.rejected_by:
+        rejected_by_soldier = soldiers.get(r.rejected_by) or session.get(Soldier, r.rejected_by)
+        rejected_by_name = rejected_by_soldier.full_name if rejected_by_soldier else None
 
     return SwapOut(
         id=r.id, duty_assignment_id=r.duty_assignment_id, duty_date=r.duty_date,
@@ -659,6 +648,7 @@ def _out_bulk(
         requester_side_approved=r.requester_side_approved,
         covering_side_approved=r.covering_side_approved,
         decision_note=r.decision_note,
+        rejected_by_name=rejected_by_name,
         offered_assignment_ids=[str(x) for x in (r.offered_assignment_ids or [])],
         created_at=r.created_at,
         duty_type_name=dt.name if dt else None,
@@ -780,7 +770,7 @@ def manager_reject(
     if not authorized:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
-        r = svc.reject_request(session, request_id=request_id, decision_note=body.decision_note, actor_id=user.id)
+        r = svc.reject_manager_row(session, request_id=request_id, actor_id=user.id, decision_note=body.decision_note)
     except svc.SwapError as exc:
         raise _err(exc) from exc
     session.commit()
