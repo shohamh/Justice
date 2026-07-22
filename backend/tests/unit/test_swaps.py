@@ -87,8 +87,39 @@ def test_claim_queues_when_approval_on(admin_session):
     assert out.resulting_override_id is None
 
 
-def test_two_sided_approval_applies_only_after_both(admin_session):
-    a, b, assignment = _seed(admin_session)
+def _seed_with_commander(session):
+    """Like _seed, but places both soldiers under a hierarchy node with a
+    commander in scope, so manager approval is actually required (and
+    actually gate-able) for this swap — unlike the plain _seed helper, whose
+    soldiers have no hierarchy_node_id and therefore no commander chain at
+    all, so _all_approved would consider manager approval vacuously
+    satisfied the moment both soldier-side flags are auto-set."""
+    dt = DutyType(name="dt_mgr_swap", score_per_day=1)
+    loc = DutyLocation(name="loc_mgr_swap")
+    session.add_all([dt, loc])
+    session.flush()
+
+    commander = create_soldier(session, personal_number="mgr_cmd", role="commander")
+    node = create_node(session, level="unit", name="unit_mgr_swap", commander_id=commander.id)
+    a = create_soldier(session, personal_number="mgr_a", hierarchy_node_id=node.id)
+    b = create_soldier(session, personal_number="mgr_b", hierarchy_node_id=node.id)
+
+    assignment = DutyAssignment(
+        soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+    )
+    session.add(assignment)
+    session.flush()
+    return commander, a, b, assignment
+
+
+def test_swap_applies_only_after_manager_approval(admin_session):
+    # Soldier-side approval is auto-set the moment a swap is claimed (asking
+    # for / claiming a swap already implies consent — see claim_request), so
+    # this test's job is no longer to prove a two-step *soldier* approval
+    # gate. It's to prove the swap still doesn't finalize on claim alone when
+    # a commander is in scope, and DOES finalize once that commander approves.
+    commander, a, b, assignment = _seed_with_commander(admin_session)
     set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
     req = svc.create_request(
         admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
@@ -98,10 +129,14 @@ def test_two_sided_approval_applies_only_after_both(admin_session):
     svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
     admin_session.flush()
 
-    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id)
-    assert admin_session.get(SwapRequest, req.id).status == "pending_approval"  # still waiting
+    # Both soldier-side flags are already auto-approved at this point, but the
+    # commander (in scope for both sides) hasn't signed off yet.
+    reloaded = admin_session.get(SwapRequest, req.id)
+    assert reloaded.status == "pending_approval"
+    assert reloaded.requester_side_approved is True
+    assert reloaded.covering_side_approved is True
 
-    out = svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=b.id)
+    out = svc.approve_manager_row(admin_session, request_id=req.id, actor_id=commander.id)
     assert out.status == "applied"
     assert out.resulting_override_id is not None
 
