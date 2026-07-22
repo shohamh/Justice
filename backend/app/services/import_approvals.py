@@ -299,7 +299,11 @@ def _parse_approval_log(raw: str | None) -> list[dict]:
         segment = segment.strip()
         if not segment:
             continue
-        parts = segment.split(":")
+        # maxsplit=4: the "at" field is an ISO datetime and always contains
+        # its own colons (HH:MM:SS[+TZ]) — an unbounded split(":") would
+        # fragment it and every real entry would silently fail the length
+        # check below, so only the first 4 delimiters are split on.
+        parts = segment.split(":", 4)
         if len(parts) != 5:
             continue
         side, kind, person_pn, outcome, at = parts

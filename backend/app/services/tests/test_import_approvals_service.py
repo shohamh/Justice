@@ -7,15 +7,16 @@ from decimal import Decimal
 
 import openpyxl
 import pytest
+from sqlalchemy import select
 
 from app.db.models import (
     DutyAssignment, DutyLocation, DutyShift, ExemptionRequest, ExemptionType,
     PersonalConstraint, Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SwapRequest,
+    SoldierFieldUpdate, SwapManagerApproval, SwapRequest,
 )
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401
-from app.services.import_sessions import create_session
+from app.services.import_sessions import confirm_session, create_session
 from tests.helpers import create_node, create_soldier
 
 
@@ -373,3 +374,231 @@ def test_swap_request_existing_id_resolves_to_update(admin_session):
     row = sess.parsed_state["swap_requests"][0]
     assert row["action"] == "update"
     assert row["existing_id"] == str(existing.id)
+
+
+# ---------------------------------------------------------------------------
+# confirm_session — restores decided status onto real DB records
+# ---------------------------------------------------------------------------
+
+def test_personal_constraint_confirm_restores_decided_status(admin_session):
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    existing = PersonalConstraint(
+        soldier_id=soldier.id, start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2),
+        reason="old", status="pending",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    wb = _wb_with_personal_constraints([
+        [str(existing.id), soldier.personal_number, "15.06.2024", "16.06.2024", "new reason",
+         "approved", decider.personal_number, "ok"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(PersonalConstraint, existing.id)
+    assert updated.status == "approved"
+    assert updated.reason == "new reason"
+    assert updated.start_date == date_type(2024, 6, 15)
+    assert updated.end_date == date_type(2024, 6, 16)
+    assert updated.decided_by == decider.id
+    assert updated.decision_note == "ok"
+
+
+def test_soldier_field_update_confirm_restores_decided_status(admin_session):
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    existing = SoldierFieldUpdate(
+        soldier_id=soldier.id, field_name="phone", new_value="0501111111",
+        previous_value="0509999999", status="pending",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    wb = _wb_with_soldier_field_updates([
+        [str(existing.id), soldier.personal_number, "phone", "0501234567", "0509999999",
+         "approved", decider.personal_number, "ok"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(SoldierFieldUpdate, existing.id)
+    assert updated.status == "approved"
+    assert updated.new_value == "0501234567"
+    assert updated.decided_by == decider.id
+    assert updated.decision_note == "ok"
+
+
+def test_soldier_enrollment_request_confirm_restores_decided_status(admin_session):
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    node = create_node(admin_session, level="branch", name=f"node_{_uid()}")
+    existing = SoldierEnrollmentRequest(soldier_id=soldier.id, requested_node_id=node.id, status="pending")
+    admin_session.add(existing)
+    admin_session.commit()
+
+    wb = _wb_with_soldier_enrollment_requests([
+        [str(existing.id), soldier.personal_number, node.name, "approved", decider.personal_number, "ok"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(SoldierEnrollmentRequest, existing.id)
+    assert updated.status == "approved"
+    assert updated.decided_by == decider.id
+    assert updated.decision_note == "ok"
+
+
+def test_soldier_exemption_confirm_restores_revoked_status(admin_session):
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    granter = create_soldier(admin_session, personal_number=f"gr_{_uid()}")
+    et = ExemptionType(name=f"et_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    existing = SoldierExemption(
+        soldier_id=soldier.id, exemption_type_id=et.id,
+        start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2), reason="old",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    wb = _wb_with_soldier_exemptions([
+        [str(existing.id), soldier.personal_number, et.name, "15.06.2024", "16.06.2024",
+         "new reason", granter.personal_number, "true", "revoke reason"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(SoldierExemption, existing.id)
+    assert updated.reason == "new reason"
+    assert updated.granted_by == granter.id
+    assert updated.revoked_at is not None
+    assert updated.revoke_reason == "revoke reason"
+
+
+def test_exemption_request_confirm_restores_decided_status(admin_session):
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    commander_approver = create_soldier(admin_session, personal_number=f"cmd_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    et = ExemptionType(name=f"et_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    existing = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id,
+        start_date=date_type(2024, 1, 1), status="pending_commander",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    wb = _wb_with_exemption_requests([
+        [str(existing.id), soldier.personal_number, et.name, "15.06.2024", "16.06.2024",
+         "new reason", "approved", commander_approver.personal_number, decider.personal_number, "ok", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(ExemptionRequest, existing.id)
+    assert updated.status == "approved"
+    assert updated.reason == "new reason"
+    assert updated.commander_approved_by == commander_approver.id
+    assert updated.decided_by == decider.id
+    assert updated.decision_note == "ok"
+
+
+def test_swap_request_confirm_restores_status_and_approval_log(admin_session):
+    requesting = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}")
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}")
+    existing = _make_swap_request(admin_session, requesting_soldier=requesting)
+    admin_session.commit()
+
+    approval_log = f"requester:commander:{commander.personal_number}:approved:2024-06-15T10:00:00+00:00"
+    wb = _wb_with_swap_requests([
+        [str(existing.id), requesting.personal_number, "", covering.personal_number, "15.06.2024",
+         "applied", "reason", "true", "true", "", "ok", approval_log],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(SwapRequest, existing.id)
+    assert updated.status == "applied"
+    assert updated.requester_side_approved is True
+    assert updated.covering_side_approved is True
+    assert updated.covering_soldier_id == covering.id
+    assert updated.decision_note == "ok"
+
+    approvals = admin_session.execute(
+        select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == existing.id)
+    ).scalars().all()
+    assert len(approvals) == 1
+    approval = approvals[0]
+    assert approval.side == "requester"
+    assert approval.approver_kind == "commander"
+    assert approval.commander_id == commander.id
+    assert approval.approved is True
+    assert approval.approved_by == commander.id
+    assert approval.approved_at is not None
+
+
+def test_swap_request_confirm_reconfirm_is_idempotent_no_duplicate_approval_rows(admin_session):
+    """Re-running confirm_session against the same decided rows must not
+    create duplicate SwapManagerApproval rows for the same (side, kind,
+    person) — verifies the idempotent re-confirm behavior described in the
+    task brief."""
+    requesting = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}")
+    existing = _make_swap_request(admin_session, requesting_soldier=requesting)
+    admin_session.commit()
+
+    approval_log = f"requester:commander:{commander.personal_number}:approved:2024-06-15T10:00:00+00:00"
+    wb = _wb_with_swap_requests([
+        [str(existing.id), requesting.personal_number, "", "", "15.06.2024",
+         "applied", "reason", "true", "", "", "ok", approval_log],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+
+    sess1 = create_session(admin_session, filename="f1.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+    confirm_session(admin_session, session_id=sess1.id, actor=admin)
+    admin_session.commit()
+
+    sess2 = create_session(admin_session, filename="f2.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+    result2 = confirm_session(admin_session, session_id=sess2.id, actor=admin)
+    admin_session.commit()
+
+    assert result2["updated"] == 1
+    assert result2["errors"] == []
+    approvals = admin_session.execute(
+        select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == existing.id)
+    ).scalars().all()
+    assert len(approvals) == 1

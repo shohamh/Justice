@@ -18,12 +18,19 @@ from app.db.models import (
     DutyManagerScope,
     DutyShift,
     DutyType,
+    ExemptionRequest,
     ExemptionType,
     HierarchyLevelType,
     HierarchyNode,
     ImportSession,
+    PersonalConstraint,
     ShiftTemplate,
     Soldier,
+    SoldierEnrollmentRequest,
+    SoldierExemption,
+    SoldierFieldUpdate,
+    SwapManagerApproval,
+    SwapRequest,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
 from app.services.duty_config import (
@@ -1544,6 +1551,277 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "exemption_types", "error": str(exc)})
+
+    # ── Personal constraints ────────────────────────────────────────────
+    for row in state.get("personal_constraints", []):
+        effective = _effective_action(selections, "personal_constraints", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    pc = PersonalConstraint(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        start_date=date_type.fromisoformat(row["start_date"]),
+                        end_date=date_type.fromisoformat(row["end_date"]),
+                        reason=row["reason"],
+                        status=row["status"],
+                    )
+                    if row.get("resolved_decided_by_id"):
+                        pc.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        pc.decided_at = datetime.now(UTC)
+                    pc.decision_note = row.get("decision_note")
+                    session.add(pc)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    pc = session.get(PersonalConstraint, uuid.UUID(row["existing_id"]))
+                    if pc is not None:
+                        pc.start_date = date_type.fromisoformat(row["start_date"])
+                        pc.end_date = date_type.fromisoformat(row["end_date"])
+                        pc.reason = row["reason"]
+                        pc.status = row["status"]
+                        if row.get("resolved_decided_by_id"):
+                            pc.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        pc.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "personal_constraints", "error": str(exc)})
+
+    # ── Soldier field updates ───────────────────────────────────────────
+    for row in state.get("soldier_field_updates", []):
+        effective = _effective_action(selections, "soldier_field_updates", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    sfu = SoldierFieldUpdate(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        field_name=row["field_name"],
+                        new_value=row["new_value"],
+                        previous_value=row.get("previous_value"),
+                        status=row["status"],
+                    )
+                    if row.get("resolved_decided_by_id"):
+                        sfu.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        sfu.decided_at = datetime.now(UTC)
+                    sfu.decision_note = row.get("decision_note")
+                    session.add(sfu)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    sfu = session.get(SoldierFieldUpdate, uuid.UUID(row["existing_id"]))
+                    if sfu is not None:
+                        sfu.field_name = row["field_name"]
+                        sfu.new_value = row["new_value"]
+                        sfu.previous_value = row.get("previous_value")
+                        sfu.status = row["status"]
+                        if row.get("resolved_decided_by_id"):
+                            sfu.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        sfu.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldier_field_updates", "error": str(exc)})
+
+    # ── Soldier enrollment requests ──────────────────────────────────────
+    for row in state.get("soldier_enrollment_requests", []):
+        effective = _effective_action(selections, "soldier_enrollment_requests", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    ser = SoldierEnrollmentRequest(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        requested_node_id=uuid.UUID(row["resolved_node_id"]),
+                        status=row["status"],
+                    )
+                    if row.get("resolved_decided_by_id"):
+                        ser.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        ser.decided_at = datetime.now(UTC)
+                    ser.decision_note = row.get("decision_note")
+                    session.add(ser)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    ser = session.get(SoldierEnrollmentRequest, uuid.UUID(row["existing_id"]))
+                    if ser is not None:
+                        ser.requested_node_id = uuid.UUID(row["resolved_node_id"])
+                        ser.status = row["status"]
+                        if row.get("resolved_decided_by_id"):
+                            ser.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        ser.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldier_enrollment_requests", "error": str(exc)})
+
+    # ── Soldier exemptions ───────────────────────────────────────────────
+    for row in state.get("soldier_exemptions", []):
+        effective = _effective_action(selections, "soldier_exemptions", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    se = SoldierExemption(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        exemption_type_id=uuid.UUID(row["resolved_exemption_type_id"]),
+                        start_date=date_type.fromisoformat(row["start_date"]),
+                        end_date=(
+                            date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
+                        ),
+                        reason=row.get("reason"),
+                    )
+                    if row.get("resolved_granted_by_id"):
+                        se.granted_by = uuid.UUID(row["resolved_granted_by_id"])
+                    if row.get("revoked"):
+                        se.revoked_at = datetime.now(UTC)
+                        se.revoke_reason = row.get("revoke_reason")
+                    session.add(se)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    se = session.get(SoldierExemption, uuid.UUID(row["existing_id"]))
+                    if se is not None:
+                        se.start_date = date_type.fromisoformat(row["start_date"])
+                        se.end_date = (
+                            date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
+                        )
+                        se.reason = row.get("reason")
+                        if row.get("resolved_granted_by_id"):
+                            se.granted_by = uuid.UUID(row["resolved_granted_by_id"])
+                        if row.get("revoked"):
+                            if se.revoked_at is None:
+                                se.revoked_at = datetime.now(UTC)
+                            se.revoke_reason = row.get("revoke_reason")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "soldier_exemptions", "error": str(exc)})
+
+    # ── Exemption requests ───────────────────────────────────────────────
+    for row in state.get("exemption_requests", []):
+        effective = _effective_action(selections, "exemption_requests", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                if effective == "new":
+                    er = ExemptionRequest(
+                        soldier_id=uuid.UUID(row["resolved_soldier_id"]),
+                        exemption_type_id=uuid.UUID(row["resolved_exemption_type_id"]),
+                        start_date=date_type.fromisoformat(row["start_date"]),
+                        end_date=(
+                            date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
+                        ),
+                        reason=row.get("reason"),
+                        status=row["status"],
+                    )
+                    if row.get("resolved_commander_approved_by_id"):
+                        er.commander_approved_by = uuid.UUID(row["resolved_commander_approved_by_id"])
+                    if row.get("resolved_decided_by_id"):
+                        er.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                    er.decision_note = row.get("decision_note")
+                    session.add(er)
+                    created += 1
+                elif effective == "update" and row.get("existing_id"):
+                    er = session.get(ExemptionRequest, uuid.UUID(row["existing_id"]))
+                    if er is not None:
+                        er.start_date = date_type.fromisoformat(row["start_date"])
+                        er.end_date = (
+                            date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
+                        )
+                        er.reason = row.get("reason")
+                        er.status = row["status"]
+                        if row.get("resolved_commander_approved_by_id"):
+                            er.commander_approved_by = uuid.UUID(row["resolved_commander_approved_by_id"])
+                        if row.get("resolved_decided_by_id"):
+                            er.decided_by = uuid.UUID(row["resolved_decided_by_id"])
+                        er.decision_note = row.get("decision_note")
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "exemption_requests", "error": str(exc)})
+
+    # ── Swap requests ───────────────────────────────────────────────────
+    for row in state.get("swap_requests", []):
+        effective = _effective_action(selections, "swap_requests", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                # update-only (see resolve_swap_requests in Task 3) — action is
+                # always "update" for a non-error, non-skipped row; "existing_id"
+                # is always present since resolution requires it.
+                if effective != "update" or not row.get("existing_id"):
+                    skipped += 1
+                    continue
+                swap = session.get(SwapRequest, uuid.UUID(row["existing_id"]))
+                if swap is None:
+                    skipped += 1
+                    continue
+                swap.status = row["status"]
+                swap.reason = row.get("reason")
+                swap.requester_side_approved = row.get("requester_side_approved")
+                swap.covering_side_approved = row.get("covering_side_approved")
+                swap.decision_note = row.get("decision_note")
+                if row.get("resolved_rejected_by_id"):
+                    swap.rejected_by = uuid.UUID(row["resolved_rejected_by_id"])
+                if row.get("resolved_covering_soldier_id"):
+                    swap.covering_soldier_id = uuid.UUID(row["resolved_covering_soldier_id"])
+                updated += 1
+
+                # Restore the approval_log's decision-log rows — one insert
+                # per segment, exactly as recorded (not re-derived from the
+                # live hierarchy), skipping any (side, kind, person) already
+                # present for this swap (idempotent re-confirm).
+                for entry in row.get("approval_log", []):
+                    existing_decision = session.execute(
+                        select(SwapManagerApproval).where(
+                            SwapManagerApproval.swap_request_id == swap.id,
+                            SwapManagerApproval.side == entry["side"],
+                            SwapManagerApproval.approver_kind == entry["kind"],
+                            SwapManagerApproval.commander_id == uuid.UUID(entry["resolved_person_id"]),
+                        )
+                    ).scalar_one_or_none()
+                    if existing_decision is None:
+                        existing_decision = SwapManagerApproval(
+                            swap_request_id=swap.id, side=entry["side"], approver_kind=entry["kind"],
+                            commander_id=uuid.UUID(entry["resolved_person_id"]),
+                        )
+                        session.add(existing_decision)
+                    at = datetime.fromisoformat(entry["at"]) if entry.get("at") else datetime.now(UTC)
+                    if entry["outcome"] == "approved":
+                        existing_decision.approved = True
+                        existing_decision.approved_by = uuid.UUID(entry["resolved_person_id"])
+                        existing_decision.approved_at = at
+                    else:
+                        existing_decision.rejected = True
+                        existing_decision.rejected_by = uuid.UUID(entry["resolved_person_id"])
+                        existing_decision.rejected_at = at
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "swap_requests", "error": str(exc)})
 
     import_session.created_links = {
         "soldiers": created_soldiers,
