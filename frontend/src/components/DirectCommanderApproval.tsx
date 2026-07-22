@@ -9,6 +9,8 @@ export interface DirectCommanderApprovalRow {
   commander_name?: string | null;
   approved: boolean;
   approved_by_name?: string | null;
+  rejected?: boolean;
+  rejected_by_name?: string | null;
   approver_kind?: "commander" | "duty_manager";
 }
 
@@ -54,11 +56,18 @@ export default function DirectCommanderApproval({
   const direct = approvals[0];
   const satisfied = isSideSatisfied(approvals);
   const approvedByOther = !direct.approved ? approvals.find((a) => a.approved) : undefined;
+  const rejectedRow = approvals.find((a) => a.rejected);
+  const dotValue = rejectedRow ? false : satisfied ? true : null;
 
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
       <SoldierLink id={direct.commander_id} name={direct.commander_name ?? direct.commander_id.slice(0, 8)} />
-      <ApprovalDot value={satisfied ? true : null} />
+      <ApprovalDot value={dotValue} />
+      {rejectedRow && (
+        <span className="text-red-500 text-xs">
+          {t("swaps.rejected_by", { name: rejectedRow.rejected_by_name ?? rejectedRow.commander_name ?? rejectedRow.commander_id.slice(0, 8) })}
+        </span>
+      )}
       {approvedByOther && (
         <span className="text-gray-400 text-xs">
           {t("swaps.approved_by_other", {

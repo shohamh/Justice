@@ -7,6 +7,10 @@ export interface SwapManagerApproval {
   approved_by: string | null;
   approved_by_name: string | null;
   approved_at: string | null;
+  rejected: boolean;
+  rejected_by: string | null;
+  rejected_by_name: string | null;
+  rejected_at: string | null;
   approver_kind: "commander" | "duty_manager";
 }
 

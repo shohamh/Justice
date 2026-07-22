@@ -758,6 +758,7 @@
     "approver_kind_commander": "מפקד",
     "approver_kind_duty_manager": "אחראי תורנויות",
     "approved_by_other": "(אושר ע\"י {{name}})",
+    "rejected_by": "(נדחה ע\"י {{name}})",
     "has_cover_candidate": "יש מועמד לכיסוי",
     "decision_note": "הערת החלטה",
     "days": "ימים",
