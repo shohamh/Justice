@@ -12,17 +12,25 @@ from app.services.import_parsers.schema import (
     ImportDutyLocationRow,
     ImportDutyShiftRow,
     ImportDutyTypeRow,
+    ImportExemptionRequestRow,
     ImportExemptionTypeRow,
     ImportHierarchyNodeRow,
     ImportNodeQuota,
+    ImportPersonalConstraintRow,
     ImportShiftTemplateRow,
+    ImportSoldierEnrollmentRequestRow,
+    ImportSoldierExemptionRow,
+    ImportSoldierFieldUpdateRow,
     ImportSoldierRow,
+    ImportSwapRequestRow,
     ParsedImportData,
 )
 
 KNOWN_SHEETS = {
     "soldiers", "duty_shifts", "assignments", "duty_locations", "hierarchy",
     "duty_types", "exemption_types", "shift_templates",
+    "swap_requests", "exemption_requests", "soldier_field_updates",
+    "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
 }
 
 
@@ -306,6 +314,102 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "shift_templates")
         ]
 
+        swap_requests = [
+            ImportSwapRequestRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                requesting_personal_number=str(r.get("requesting_personal_number") or "").strip(),
+                target_personal_number=str(r.get("target_personal_number") or "").strip() or None,
+                covering_personal_number=str(r.get("covering_personal_number") or "").strip() or None,
+                duty_date=_parse_date(r.get("duty_date")) or "",
+                status=str(r.get("status") or "").strip(),
+                reason=str(r.get("reason") or "").strip() or None,
+                requester_side_approved=_parse_bool(r.get("requester_side_approved")),
+                covering_side_approved=_parse_bool(r.get("covering_side_approved")),
+                rejected_by_personal_number=str(r.get("rejected_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+                approval_log=str(r.get("approval_log") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "swap_requests")
+        ]
+
+        exemption_requests = [
+            ImportExemptionRequestRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                exemption_type_name=str(r.get("exemption_type_name") or "").strip(),
+                start_date=_parse_date(r.get("start_date")) or "",
+                end_date=_parse_date(r.get("end_date")),
+                reason=str(r.get("reason") or "").strip() or None,
+                status=str(r.get("status") or "").strip(),
+                commander_approved_by_personal_number=str(r.get("commander_approved_by_personal_number") or "").strip() or None,
+                decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+                files=str(r.get("files") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "exemption_requests")
+        ]
+
+        soldier_field_updates = [
+            ImportSoldierFieldUpdateRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                field_name=str(r.get("field_name") or "").strip(),
+                new_value=str(r.get("new_value") or "").strip(),
+                previous_value=str(r.get("previous_value") or "").strip() or None,
+                status=str(r.get("status") or "").strip(),
+                decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "soldier_field_updates")
+        ]
+
+        soldier_enrollment_requests = [
+            ImportSoldierEnrollmentRequestRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                requested_node_name=str(r.get("requested_node_name") or "").strip(),
+                status=str(r.get("status") or "").strip(),
+                decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "soldier_enrollment_requests")
+        ]
+
+        personal_constraints = [
+            ImportPersonalConstraintRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                start_date=_parse_date(r.get("start_date")) or "",
+                end_date=_parse_date(r.get("end_date")) or "",
+                reason=str(r.get("reason") or "").strip(),
+                status=str(r.get("status") or "").strip(),
+                decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
+                decision_note=str(r.get("decision_note") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "personal_constraints")
+        ]
+
+        soldier_exemptions = [
+            ImportSoldierExemptionRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
+                exemption_type_name=str(r.get("exemption_type_name") or "").strip(),
+                start_date=_parse_date(r.get("start_date")) or "",
+                end_date=_parse_date(r.get("end_date")),
+                reason=str(r.get("reason") or "").strip() or None,
+                granted_by_personal_number=str(r.get("granted_by_personal_number") or "").strip() or None,
+                revoked=bool(_parse_bool(r.get("revoked"))),
+                revoke_reason=str(r.get("revoke_reason") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "soldier_exemptions")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
@@ -315,6 +419,12 @@ class V1StandardParser:
             duty_types=duty_types,
             shift_templates=shift_templates,
             exemption_types=exemption_types,
+            swap_requests=swap_requests,
+            exemption_requests=exemption_requests,
+            soldier_field_updates=soldier_field_updates,
+            soldier_enrollment_requests=soldier_enrollment_requests,
+            personal_constraints=personal_constraints,
+            soldier_exemptions=soldier_exemptions,
             parser_id=self.id,
             parser_warnings=warnings,
         )
