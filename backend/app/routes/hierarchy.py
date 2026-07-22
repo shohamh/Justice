@@ -115,7 +115,18 @@ def _out(
         is_duty_manager=user_is_duty_manager,
     )
 
-    can_edit = user.role == "admin" or n.commander_id == user.id or dm_manageable
+    # I-1: derive can_edit directly from the same can()/HIERARCHY_MANAGE check
+    # the mutation endpoints enforce (authorize(..., Action.HIERARCHY_MANAGE, ...))
+    # instead of an ad-hoc boolean, so the displayed flag can never drift from
+    # what the buttons it gates actually do server-side.
+    can_edit = can(
+        user,
+        Action.HIERARCHY_MANAGE,
+        target_node=n,
+        roots=user_roots,
+        is_commander=user_is_commander,
+        is_duty_manager=user_is_duty_manager,
+    )
 
     return NodeOut(
         id=n.id,
