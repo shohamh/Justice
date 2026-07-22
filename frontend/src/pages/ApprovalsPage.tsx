@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
-import { api } from "../api/client";
+import { api, getAccessToken } from "../api/client";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
@@ -44,6 +44,19 @@ import {
 } from "../api/hierarchyTransfers";
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
+
+async function handleExportApprovals() {
+  const resp = await fetch("/api/approvals/export", {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+  });
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "approvals_export.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function describeError(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
@@ -321,7 +334,16 @@ export default function ApprovalsPage() {
   return (
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
-        <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+          <button
+            type="button"
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+            onClick={() => void handleExportApprovals()}
+          >
+            ייצוא
+          </button>
+        </div>
 
         {actionError && (
           <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 text-sm rounded p-2 flex items-center justify-between" dir="rtl">

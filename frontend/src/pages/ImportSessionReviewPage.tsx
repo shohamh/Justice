@@ -19,6 +19,12 @@ import {
   type HierarchyImportRow,
   type DutyTypeImportRow,
   type ExemptionTypeImportRow,
+  type PersonalConstraintImportRow,
+  type SoldierFieldUpdateImportRow,
+  type SoldierEnrollmentRequestImportRow,
+  type SoldierExemptionImportRow,
+  type ExemptionRequestImportRow,
+  type SwapRequestImportRow,
   getSession,
   reparseSession,
   saveSelections,
@@ -53,7 +59,13 @@ type TabKey =
   | "duty_locations"
   | "hierarchy"
   | "duty_types"
-  | "exemption_types";
+  | "exemption_types"
+  | "personal_constraints"
+  | "soldier_field_updates"
+  | "soldier_enrollment_requests"
+  | "soldier_exemptions"
+  | "exemption_requests"
+  | "swap_requests";
 
 type GroupKey =
   | "soldiers"
@@ -63,7 +75,13 @@ type GroupKey =
   | "duty_locations"
   | "hierarchy"
   | "duty_types"
-  | "exemption_types";
+  | "exemption_types"
+  | "personal_constraints"
+  | "soldier_field_updates"
+  | "soldier_enrollment_requests"
+  | "soldier_exemptions"
+  | "exemption_requests"
+  | "swap_requests";
 
 function extractDetail(err: unknown): string | undefined {
   return (err as { response?: { data?: { detail?: string } } })?.response?.data
@@ -477,6 +495,12 @@ export default function ImportSessionReviewPage() {
     hierarchy,
     duty_types,
     exemption_types,
+    personal_constraints,
+    soldier_field_updates,
+    soldier_enrollment_requests,
+    soldier_exemptions,
+    exemption_requests,
+    swap_requests,
   } = detail.parsed_state;
 
   return (
@@ -501,6 +525,12 @@ export default function ImportSessionReviewPage() {
               ["hierarchy", `היררכיה (${hierarchy.length})`],
               ["duty_types", `סוגי תורנות (${duty_types.length})`],
               ["exemption_types", `פטורים (${exemption_types.length})`],
+              ["personal_constraints", `אילוצים אישיים (${personal_constraints.length})`],
+              ["soldier_field_updates", `עדכוני שדות (${soldier_field_updates.length})`],
+              ["soldier_enrollment_requests", `בקשות שיבוץ (${soldier_enrollment_requests.length})`],
+              ["soldier_exemptions", `פטורי חיילים (${soldier_exemptions.length})`],
+              ["exemption_requests", `בקשות פטור (${exemption_requests.length})`],
+              ["swap_requests", `בקשות החלפה (${swap_requests.length})`],
             ] as [TabKey, string][]
           ).map(([key, label]) => (
             <button
@@ -1901,6 +1931,880 @@ export default function ImportSessionReviewPage() {
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("exemption_types", row)}
                               onChange={(e) => setRowAction("exemption_types", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "personal_constraints" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">חייל</th>
+                  <th className="text-right p-3">תאריך התחלה</th>
+                  <th className="text-right p-3">תאריך סיום</th>
+                  <th className="text-right p-3">סיבה</th>
+                  <th className="text-right p-3">סטטוס אישור</th>
+                  <th className="text-right p-3">מחליט</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {personal_constraints.map((row: PersonalConstraintImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>
+                          {row.soldier_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_date}
+                            onBlur={(e) => setFieldOverride("personal_constraints", row.row, "start_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_date}
+                            onBlur={(e) => setFieldOverride("personal_constraints", row.row, "end_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reason : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reason}
+                            onBlur={(e) => setFieldOverride("personal_constraints", row.row, "reason", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("personal_constraints", row.row, "status", e.target.value)}
+                          >
+                            <option value="pending">ממתין</option>
+                            <option value="approved">מאושר</option>
+                            <option value="rejected">נדחה</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.decided_by_personal_number ? (
+                          <span className={row.resolved_decided_by_id ? "" : "text-red-600"}>
+                            {row.decided_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("personal_constraints", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "start_date", label: "תאריך התחלה", value: row.start_date, editable: { type: "date", onChange: (v) => setFieldOverride("personal_constraints", row.row, "start_date", v) } },
+                                { key: "end_date", label: "תאריך סיום", value: row.end_date, editable: { type: "date", onChange: (v) => setFieldOverride("personal_constraints", row.row, "end_date", v) } },
+                                { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("personal_constraints", row.row, "reason", v) } },
+                                { key: "status", label: "סטטוס אישור", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("personal_constraints", row.row, "status", v) } },
+                                { key: "decided_by_personal_number", label: "מ\"א מחליט", value: row.decided_by_personal_number },
+                                { key: "resolved_decided_by_id", label: "מזהה מחליט", value: row.resolved_decided_by_id },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("personal_constraints", row.row, "decision_note", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("personal_constraints", row)}
+                              onChange={(e) => setRowAction("personal_constraints", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "soldier_field_updates" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">חייל</th>
+                  <th className="text-right p-3">שם שדה</th>
+                  <th className="text-right p-3">ערך חדש</th>
+                  <th className="text-right p-3">ערך קודם</th>
+                  <th className="text-right p-3">סטטוס אישור</th>
+                  <th className="text-right p-3">מחליט</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {soldier_field_updates.map((row: SoldierFieldUpdateImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>
+                          {row.soldier_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.field_name : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.field_name}
+                            onBlur={(e) => setFieldOverride("soldier_field_updates", row.row, "field_name", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.new_value : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.new_value}
+                            onBlur={(e) => setFieldOverride("soldier_field_updates", row.row, "new_value", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.previous_value ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.previous_value ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_field_updates", row.row, "previous_value", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("soldier_field_updates", row.row, "status", e.target.value)}
+                          >
+                            <option value="pending">ממתין</option>
+                            <option value="approved">מאושר</option>
+                            <option value="rejected">נדחה</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.decided_by_personal_number ? (
+                          <span className={row.resolved_decided_by_id ? "" : "text-red-600"}>
+                            {row.decided_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_field_updates", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "field_name", label: "שם שדה", value: row.field_name, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_field_updates", row.row, "field_name", v) } },
+                                { key: "new_value", label: "ערך חדש", value: row.new_value, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_field_updates", row.row, "new_value", v) } },
+                                { key: "previous_value", label: "ערך קודם", value: row.previous_value, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_field_updates", row.row, "previous_value", v) } },
+                                { key: "status", label: "סטטוס אישור", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_field_updates", row.row, "status", v) } },
+                                { key: "decided_by_personal_number", label: "מ\"א מחליט", value: row.decided_by_personal_number },
+                                { key: "resolved_decided_by_id", label: "מזהה מחליט", value: row.resolved_decided_by_id },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_field_updates", row.row, "decision_note", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("soldier_field_updates", row)}
+                              onChange={(e) => setRowAction("soldier_field_updates", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "soldier_enrollment_requests" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">חייל</th>
+                  <th className="text-right p-3">יחידה מבוקשת</th>
+                  <th className="text-right p-3">סטטוס אישור</th>
+                  <th className="text-right p-3">מחליט</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {soldier_enrollment_requests.map((row: SoldierEnrollmentRequestImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>
+                          {row.soldier_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span className={row.resolved_node_id ? "" : "text-red-600"}>
+                          {row.requested_node_name}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("soldier_enrollment_requests", row.row, "status", e.target.value)}
+                          >
+                            <option value="pending">ממתין</option>
+                            <option value="commander_approved">אישור מפקד</option>
+                            <option value="approved">מאושר</option>
+                            <option value="rejected">נדחה</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.decided_by_personal_number ? (
+                          <span className={row.resolved_decided_by_id ? "" : "text-red-600"}>
+                            {row.decided_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_enrollment_requests", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "requested_node_name", label: "יחידה מבוקשת", value: row.requested_node_name },
+                                { key: "resolved_node_id", label: "מזהה יחידה", value: row.resolved_node_id },
+                                { key: "status", label: "סטטוס אישור", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_enrollment_requests", row.row, "status", v) } },
+                                { key: "decided_by_personal_number", label: "מ\"א מחליט", value: row.decided_by_personal_number },
+                                { key: "resolved_decided_by_id", label: "מזהה מחליט", value: row.resolved_decided_by_id },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_enrollment_requests", row.row, "decision_note", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("soldier_enrollment_requests", row)}
+                              onChange={(e) => setRowAction("soldier_enrollment_requests", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "soldier_exemptions" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">חייל</th>
+                  <th className="text-right p-3">סוג פטור</th>
+                  <th className="text-right p-3">תאריך התחלה</th>
+                  <th className="text-right p-3">תאריך סיום</th>
+                  <th className="text-right p-3">סיבה</th>
+                  <th className="text-right p-3">מעניק</th>
+                  <th className="text-right p-3">בוטל</th>
+                  <th className="text-right p-3">סיבת ביטול</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {soldier_exemptions.map((row: SoldierExemptionImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>
+                          {row.soldier_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span className={row.resolved_exemption_type_id ? "" : "text-red-600"}>
+                          {row.exemption_type_name}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_date}
+                            onBlur={(e) => setFieldOverride("soldier_exemptions", row.row, "start_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_date ?? "—" : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_date ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_exemptions", row.row, "end_date", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reason ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reason ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_exemptions", row.row, "reason", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.granted_by_personal_number ? (
+                          <span className={row.resolved_granted_by_id ? "" : "text-red-600"}>
+                            {row.granted_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.revoked ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.revoked}
+                            onChange={(e) => setFieldOverride("soldier_exemptions", row.row, "revoked", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.revoke_reason ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.revoke_reason ?? ""}
+                            onBlur={(e) => setFieldOverride("soldier_exemptions", row.row, "revoke_reason", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "exemption_type_name", label: "סוג פטור", value: row.exemption_type_name },
+                                { key: "resolved_exemption_type_id", label: "מזהה סוג פטור", value: row.resolved_exemption_type_id },
+                                { key: "start_date", label: "תאריך התחלה", value: row.start_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldier_exemptions", row.row, "start_date", v) } },
+                                { key: "end_date", label: "תאריך סיום", value: row.end_date, editable: { type: "date", onChange: (v) => setFieldOverride("soldier_exemptions", row.row, "end_date", v) } },
+                                { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_exemptions", row.row, "reason", v) } },
+                                { key: "granted_by_personal_number", label: "מ\"א מעניק", value: row.granted_by_personal_number },
+                                { key: "resolved_granted_by_id", label: "מזהה מעניק", value: row.resolved_granted_by_id },
+                                { key: "revoked", label: "בוטל", value: row.revoked, editable: { type: "checkbox", onChange: (v) => setFieldOverride("soldier_exemptions", row.row, "revoked", v) } },
+                                { key: "revoke_reason", label: "סיבת ביטול", value: row.revoke_reason, editable: { type: "text", onChange: (v) => setFieldOverride("soldier_exemptions", row.row, "revoke_reason", v) } },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("soldier_exemptions", row)}
+                              onChange={(e) => setRowAction("soldier_exemptions", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "exemption_requests" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">חייל</th>
+                  <th className="text-right p-3">סוג פטור</th>
+                  <th className="text-right p-3">תאריך התחלה</th>
+                  <th className="text-right p-3">תאריך סיום</th>
+                  <th className="text-right p-3">סיבה</th>
+                  <th className="text-right p-3">סטטוס אישור</th>
+                  <th className="text-right p-3">מפקד מאשר</th>
+                  <th className="text-right p-3">מחליט</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">קבצים</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {exemption_requests.map((row: ExemptionRequestImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_soldier_id ? "" : "text-red-600"}>
+                          {row.soldier_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span className={row.resolved_exemption_type_id ? "" : "text-red-600"}>
+                          {row.exemption_type_name}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.start_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.start_date}
+                            onBlur={(e) => setFieldOverride("exemption_requests", row.row, "start_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.end_date ?? "—" : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.end_date ?? ""}
+                            onBlur={(e) => setFieldOverride("exemption_requests", row.row, "end_date", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reason ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reason ?? ""}
+                            onBlur={(e) => setFieldOverride("exemption_requests", row.row, "reason", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("exemption_requests", row.row, "status", e.target.value)}
+                          >
+                            <option value="pending_commander">ממתין למפקד</option>
+                            <option value="pending_duty_manager">ממתין לקצין תורן</option>
+                            <option value="approved">מאושר</option>
+                            <option value="rejected">נדחה</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.commander_approved_by_personal_number ? (
+                          <span className={row.resolved_commander_approved_by_id ? "" : "text-red-600"}>
+                            {row.commander_approved_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.decided_by_personal_number ? (
+                          <span className={row.resolved_decided_by_id ? "" : "text-red-600"}>
+                            {row.decided_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("exemption_requests", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">{row.files ?? "—"}</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "soldier_personal_number", label: "מ\"א חייל", value: row.soldier_personal_number },
+                                { key: "resolved_soldier_id", label: "מזהה חייל", value: row.resolved_soldier_id },
+                                { key: "exemption_type_name", label: "סוג פטור", value: row.exemption_type_name },
+                                { key: "resolved_exemption_type_id", label: "מזהה סוג פטור", value: row.resolved_exemption_type_id },
+                                { key: "start_date", label: "תאריך התחלה", value: row.start_date, editable: { type: "date", onChange: (v) => setFieldOverride("exemption_requests", row.row, "start_date", v) } },
+                                { key: "end_date", label: "תאריך סיום", value: row.end_date, editable: { type: "date", onChange: (v) => setFieldOverride("exemption_requests", row.row, "end_date", v) } },
+                                { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("exemption_requests", row.row, "reason", v) } },
+                                { key: "status", label: "סטטוס אישור", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("exemption_requests", row.row, "status", v) } },
+                                { key: "commander_approved_by_personal_number", label: "מ\"א מפקד מאשר", value: row.commander_approved_by_personal_number },
+                                { key: "resolved_commander_approved_by_id", label: "מזהה מפקד מאשר", value: row.resolved_commander_approved_by_id },
+                                { key: "decided_by_personal_number", label: "מ\"א מחליט", value: row.decided_by_personal_number },
+                                { key: "resolved_decided_by_id", label: "מזהה מחליט", value: row.resolved_decided_by_id },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("exemption_requests", row.row, "decision_note", v) } },
+                                { key: "files", label: "קבצים", value: row.files },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("exemption_requests", row)}
+                              onChange={(e) => setRowAction("exemption_requests", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "swap_requests" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">מבקש</th>
+                  <th className="text-right p-3">חייל יעד</th>
+                  <th className="text-right p-3">מכסה</th>
+                  <th className="text-right p-3">תאריך תורנות</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  <th className="text-right p-3">סיבה</th>
+                  <th className="text-right p-3">אישור מבקש</th>
+                  <th className="text-right p-3">אישור מכסה</th>
+                  <th className="text-right p-3">נדחה ע&quot;י</th>
+                  <th className="text-right p-3">הערת החלטה</th>
+                  <th className="text-right p-3">לוג אישורים</th>
+                  <th className="text-right p-3">פרטים</th>
+                  <th className="text-right p-3">מצב</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {swap_requests.map((row: SwapRequestImportRow) => {
+                  const canToggle = row.action !== "error" && row.action !== "out_of_scope";
+                  const approvalLogSummary = row.approval_log.length > 0
+                    ? row.approval_log
+                        .map((e) => `${e.side === "requester" ? "מבקש" : "מכסה"}/${e.kind === "commander" ? "מפקד" : "קצין תורן"}: ${e.person_pn} - ${e.outcome === "approved" ? "אישר" : "דחה"} (${e.at})`)
+                        .join("; ")
+                    : null;
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">
+                        <span className={row.resolved_requesting_soldier_id ? "" : "text-red-600"}>
+                          {row.requesting_personal_number}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {row.target_personal_number ? (
+                          <span className={row.resolved_target_soldier_id ? "" : "text-red-600"}>
+                            {row.target_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.covering_personal_number ? (
+                          <span className={row.resolved_covering_soldier_id ? "" : "text-red-600"}>
+                            {row.covering_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.duty_date : (
+                          <input
+                            type="date"
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.duty_date}
+                            onBlur={(e) => setFieldOverride("swap_requests", row.row, "duty_date", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("swap_requests", row.row, "status", e.target.value)}
+                          >
+                            <option value="open">פתוח</option>
+                            <option value="pending_approval">ממתין לאישור</option>
+                            <option value="applied">בוצע</option>
+                            <option value="rejected">נדחה</option>
+                            <option value="cancelled">בוטל</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.reason ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-28 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.reason ?? ""}
+                            onBlur={(e) => setFieldOverride("swap_requests", row.row, "reason", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.requester_side_approved === null ? "—" : row.requester_side_approved ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.requester_side_approved ?? false}
+                            onChange={(e) => setFieldOverride("swap_requests", row.row, "requester_side_approved", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? (row.covering_side_approved === null ? "—" : row.covering_side_approved ? "כן" : "לא") : (
+                          <input
+                            type="checkbox"
+                            checked={row.covering_side_approved ?? false}
+                            onChange={(e) => setFieldOverride("swap_requests", row.row, "covering_side_approved", e.target.checked)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {row.rejected_by_personal_number ? (
+                          <span className={row.resolved_rejected_by_id ? "" : "text-red-600"}>
+                            {row.rejected_by_personal_number}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.decision_note ?? "—" : (
+                          <input
+                            className="border rounded p-1 text-sm w-32 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.decision_note ?? ""}
+                            onBlur={(e) => setFieldOverride("swap_requests", row.row, "decision_note", e.target.value || null)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3 text-xs text-gray-500">
+                        {row.approval_log.length > 0 ? `${row.approval_log.length} רשומות` : "—"}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline text-xs"
+                          onClick={() =>
+                            setDetailModal({
+                              title: `פרטי שורה ${row.row}`,
+                              fields: [
+                                { key: "requesting_personal_number", label: "מ\"א מבקש", value: row.requesting_personal_number },
+                                { key: "resolved_requesting_soldier_id", label: "מזהה מבקש", value: row.resolved_requesting_soldier_id },
+                                { key: "target_personal_number", label: "מ\"א חייל יעד", value: row.target_personal_number },
+                                { key: "resolved_target_soldier_id", label: "מזהה חייל יעד", value: row.resolved_target_soldier_id },
+                                { key: "covering_personal_number", label: "מ\"א מכסה", value: row.covering_personal_number },
+                                { key: "resolved_covering_soldier_id", label: "מזהה מכסה", value: row.resolved_covering_soldier_id },
+                                { key: "duty_date", label: "תאריך תורנות", value: row.duty_date, editable: { type: "date", onChange: (v) => setFieldOverride("swap_requests", row.row, "duty_date", v) } },
+                                { key: "status", label: "סטטוס", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "status", v) } },
+                                { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "reason", v) } },
+                                { key: "requester_side_approved", label: "אישור מבקש", value: row.requester_side_approved, editable: { type: "checkbox", onChange: (v) => setFieldOverride("swap_requests", row.row, "requester_side_approved", v) } },
+                                { key: "covering_side_approved", label: "אישור מכסה", value: row.covering_side_approved, editable: { type: "checkbox", onChange: (v) => setFieldOverride("swap_requests", row.row, "covering_side_approved", v) } },
+                                { key: "rejected_by_personal_number", label: "נדחה ע\"י (מ\"א)", value: row.rejected_by_personal_number },
+                                { key: "resolved_rejected_by_id", label: "מזהה דוחה", value: row.resolved_rejected_by_id },
+                                { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "decision_note", v) } },
+                                { key: "approval_log", label: "לוג אישורים", value: approvalLogSummary },
+                                { key: "existing_id", label: "מזהה קיים", value: row.existing_id },
+                                { key: "errors", label: "שגיאות", value: row.errors },
+                              ],
+                            })
+                          }
+                        >
+                          פרטים
+                        </button>
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("swap_requests", row)}
+                              onChange={(e) => setRowAction("swap_requests", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
                               {row.action !== "skip" && <option value="skip">דלג</option>}
