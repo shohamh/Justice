@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import (
-    DutyAssignment, HierarchyNode, NotificationType, Soldier, SwapManagerApproval, SwapRequest,
+    DutyAssignment, NotificationType, Soldier, SwapManagerApproval, SwapRequest,
 )
 from app.services import assignments as assignments_svc
+from app.services.approval_scope import commander_chain_for_soldier, duty_manager_chain_for_soldier
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 from app.services.reserves import check_reserve_cap
@@ -218,41 +219,6 @@ def _require_duty_manager_approval(session: Session) -> bool:
 
 def duty_manager_ids(session: Session) -> list[uuid.UUID]:
     return list(session.execute(select(Soldier.id).where(Soldier.role == "duty_manager")).scalars().all())
-
-
-def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
-    """Every distinct commander from the soldier's own node up to the root of
-    the hierarchy, excluding the soldier themself if they command their own node.
-
-    Ordered NEAREST-commander-first: chain[0] is the closest ancestor (or the
-    soldier's own node) that has a commander, and the list walks outward to
-    the root from there. `node.path_ids` is materialized root-first (see
-    `hierarchy.py`: `node.path_ids = [*parent.path_ids, node.id]`), so we
-    reorder via `reversed(node.path_ids)` rather than relying on the `IN (...)`
-    query's row order, which SQL does not guarantee to match the list order.
-    """
-    soldier = session.get(Soldier, soldier_id)
-    if soldier is None or soldier.hierarchy_node_id is None:
-        return []
-    node = session.get(HierarchyNode, soldier.hierarchy_node_id)
-    if node is None or not node.path_ids:
-        return []
-    nodes_by_id = {
-        n.id: n
-        for n in session.execute(
-            select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
-        ).scalars().all()
-    }
-    seen: set[uuid.UUID] = set()
-    chain: list[uuid.UUID] = []
-    for node_id in reversed(node.path_ids):
-        n = nodes_by_id.get(node_id)
-        if n is None:
-            continue
-        if n.commander_id and n.commander_id != soldier_id and n.commander_id not in seen:
-            seen.add(n.commander_id)
-            chain.append(n.commander_id)
-    return chain
 
 
 def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None:

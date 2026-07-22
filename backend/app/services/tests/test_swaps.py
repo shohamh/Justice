@@ -72,7 +72,7 @@ def _make_assignment(session, *, soldier, node):
 
 
 def test_commander_chain_walks_to_root(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     root = create_node(admin_session, level="division", name=f"root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"rc_{_uid()}", role="commander")
@@ -91,7 +91,7 @@ def test_commander_chain_orders_nearest_first(admin_session):
     """The soldier's own node has no commander; mid has commander B; root has
     commander A. The chain must come back nearest-first: [B, A] — not [A, B]
     and not merely the same set."""
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     root = create_node(admin_session, level="division", name=f"root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"rc2_{_uid()}", role="commander")
@@ -108,7 +108,7 @@ def test_commander_chain_orders_nearest_first(admin_session):
 
 
 def test_commander_chain_excludes_soldier_commanding_own_node(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     node = create_node(admin_session, level="unit", name=f"self_cmd_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id, role="commander")
@@ -120,7 +120,7 @@ def test_commander_chain_excludes_soldier_commanding_own_node(admin_session):
 
 
 def test_commander_chain_empty_when_no_commanders(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     node = create_node(admin_session, level="unit", name=f"no_cmd_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
