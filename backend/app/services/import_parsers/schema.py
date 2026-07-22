@@ -121,6 +121,84 @@ class ImportAssignmentRow(BaseModel):
     notes: str | None = None
 
 
+class ImportSwapRequestRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    requesting_personal_number: str
+    target_personal_number: str | None = None
+    covering_personal_number: str | None = None
+    duty_date: str
+    status: str
+    reason: str | None = None
+    requester_side_approved: bool | None = None
+    covering_side_approved: bool | None = None
+    rejected_by_personal_number: str | None = None
+    decision_note: str | None = None
+    approval_log: str | None = None  # "side:kind:person_pn:approved|rejected:iso_datetime;..."
+
+
+class ImportExemptionRequestRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    exemption_type_name: str
+    start_date: str
+    end_date: str | None = None
+    reason: str | None = None
+    status: str
+    commander_approved_by_personal_number: str | None = None
+    decided_by_personal_number: str | None = None
+    decision_note: str | None = None
+    files: str | None = None  # flattened filenames, comma-separated
+
+
+class ImportSoldierFieldUpdateRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    field_name: str
+    new_value: str
+    previous_value: str | None = None
+    status: str
+    decided_by_personal_number: str | None = None
+    decision_note: str | None = None
+
+
+class ImportSoldierEnrollmentRequestRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    requested_node_name: str
+    status: str
+    decided_by_personal_number: str | None = None
+    decision_note: str | None = None
+
+
+class ImportPersonalConstraintRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    start_date: str
+    end_date: str
+    reason: str
+    status: str
+    decided_by_personal_number: str | None = None
+    decision_note: str | None = None
+
+
+class ImportSoldierExemptionRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    soldier_personal_number: str
+    exemption_type_name: str
+    start_date: str
+    end_date: str | None = None
+    reason: str | None = None
+    granted_by_personal_number: str | None = None
+    revoked: bool = False
+    revoke_reason: str | None = None
+
+
 class ParsedImportData(BaseModel):
     """Canonical output every import parser implementation must produce.
 
@@ -139,5 +217,11 @@ class ParsedImportData(BaseModel):
     shift_templates: list[ImportShiftTemplateRow] = []
     exemption_types: list[ImportExemptionTypeRow] = []
     assignments: list[ImportAssignmentRow] = []
+    swap_requests: list[ImportSwapRequestRow] = []
+    exemption_requests: list[ImportExemptionRequestRow] = []
+    soldier_field_updates: list[ImportSoldierFieldUpdateRow] = []
+    soldier_enrollment_requests: list[ImportSoldierEnrollmentRequestRow] = []
+    personal_constraints: list[ImportPersonalConstraintRow] = []
+    soldier_exemptions: list[ImportSoldierExemptionRow] = []
     parser_id: str
     parser_warnings: list[str] = []
