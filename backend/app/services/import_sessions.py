@@ -36,6 +36,10 @@ from app.services.duty_config import (
     update_location,
 )
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
+from app.services.import_approvals import (
+    resolve_exemption_requests, resolve_personal_constraints, resolve_soldier_enrollment_requests,
+    resolve_soldier_exemptions, resolve_soldier_field_updates, resolve_swap_requests,
+)
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
@@ -942,6 +946,12 @@ def _resolve_and_score(
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
+        "personal_constraints": resolve_personal_constraints(session, data, fo.get("personal_constraints", {})),
+        "soldier_field_updates": resolve_soldier_field_updates(session, data, fo.get("soldier_field_updates", {})),
+        "soldier_enrollment_requests": resolve_soldier_enrollment_requests(session, data, fo.get("soldier_enrollment_requests", {})),
+        "soldier_exemptions": resolve_soldier_exemptions(session, data, fo.get("soldier_exemptions", {})),
+        "exemption_requests": resolve_exemption_requests(session, data, fo.get("exemption_requests", {})),
+        "swap_requests": resolve_swap_requests(session, data, fo.get("swap_requests", {})),
         "parser_id": data.parser_id,
         "parser_warnings": data.parser_warnings,
     }
