@@ -73,6 +73,34 @@ def test_soldier_submits_field_update(client, admin_session):
     assert profile.json()["last_mitvahim_date"] == "2026-05-01"
 
 
+def test_field_update_includes_nearest_commander_and_duty_manager(client, admin_session):
+    d = create_node(admin_session, level="department", name="d-nearest-fu")
+    b = create_node(admin_session, level="branch", name="b-nearest-fu", parent=d)
+    cmd = create_soldier(admin_session, personal_number="prof_cmd_004", role="commander")
+    b.commander_id = cmd.id
+    admin_session.commit()
+    dm = create_soldier(admin_session, personal_number="prof_dm_004", role="duty_manager", hierarchy_node_id=d.id)
+    s = create_soldier(admin_session, personal_number="prof_s_004", hierarchy_node_id=b.id)
+
+    resp = client.post(
+        f"/api/soldiers/{s.id}/field-updates",
+        json={"field_name": "last_mitvahim_date", "new_value": "2026-05-01"},
+        headers=auth_headers(s),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["nearest_commander"]["id"] == str(cmd.id)
+    assert body["nearest_commander"]["name"] == cmd.full_name
+    assert body["nearest_duty_manager"]["id"] == str(dm.id)
+    assert body["nearest_duty_manager"]["name"] == dm.full_name
+
+    resp2 = client.get(f"/api/soldiers/{s.id}/field-updates", headers=auth_headers(s))
+    items = resp2.json()
+    assert len(items) == 1
+    assert items[0]["nearest_commander"]["id"] == str(cmd.id)
+    assert items[0]["nearest_duty_manager"]["id"] == str(dm.id)
+
+
 def test_soldier_cannot_update_is_officer_directly(client, admin_session):
     _, node = _setup_dm(admin_session, "prof_dm_004")
     s = create_soldier(admin_session, personal_number="prof_s_004", hierarchy_node_id=node.id)

@@ -20,6 +20,11 @@ router = APIRouter(tags=["constraints"])
 # ── Schemas ──
 
 
+class NearestApproverOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class ConstraintOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
@@ -33,6 +38,8 @@ class ConstraintOut(BaseModel):
     decided_at: datetime | None = None
     decision_note: str | None = None
     created_at: datetime
+    nearest_commander: NearestApproverOut | None = None
+    nearest_duty_manager: NearestApproverOut | None = None
 
 
 class SubmitRequest(BaseModel):
@@ -64,7 +71,10 @@ class RemainingDaysOut(BaseModel):
 # ── Helpers ──
 
 
-def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None, include_reason: bool = True) -> ConstraintOut:
+def _out(
+    c: PersonalConstraint, soldier_name: str = "", node_name: str | None = None, include_reason: bool = True,
+    nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
+) -> ConstraintOut:
     return ConstraintOut(
         id=c.id,
         soldier_id=c.soldier_id,
@@ -78,6 +88,23 @@ def _out(c: PersonalConstraint, soldier_name: str = "", node_name: str | None = 
         decided_at=c.decided_at,
         decision_note=c.decision_note,
         created_at=c.created_at,
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
+    )
+
+
+def _nearest_approvers(
+    session: Session, soldier_id: uuid.UUID
+) -> tuple[NearestApproverOut | None, NearestApproverOut | None]:
+    from app.services.approval_scope import nearest_commander_for_soldier, nearest_duty_manager_for_soldier
+
+    cmd_id = nearest_commander_for_soldier(session, soldier_id)
+    dm_id = nearest_duty_manager_for_soldier(session, soldier_id)
+    cmd = session.get(Soldier, cmd_id) if cmd_id else None
+    dm = session.get(Soldier, dm_id) if dm_id else None
+    return (
+        NearestApproverOut(id=cmd.id, name=cmd.full_name) if cmd else None,
+        NearestApproverOut(id=dm.id, name=dm.full_name) if dm else None,
     )
 
 
@@ -100,7 +127,11 @@ def list_own(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[ConstraintOut]:
-    return [_out(c) for c in svc.list_constraints(session, soldier_id=user.id)]
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
+    return [
+        _out(c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+        for c in svc.list_constraints(session, soldier_id=user.id)
+    ]
 
 
 @router.post("/me/constraints", response_model=ConstraintOut, status_code=status.HTTP_201_CREATED)
@@ -122,7 +153,8 @@ def submit(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
-    return _out(c)
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, user.id)
+    return _out(c, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.get("/me/constraints/remaining", response_model=RemainingDaysOut)
@@ -159,7 +191,11 @@ def list_for_soldier(
     if s.id != user.id:
         authorize(session, user, Action.CONSTRAINT_READ, target_node=_node_of(session, s))
     include_reason = can_see_private(session, user, s)
-    return [_out(c, include_reason=include_reason) for c in svc.list_constraints(session, soldier_id=soldier_id)]
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return [
+        _out(c, include_reason=include_reason, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+        for c in svc.list_constraints(session, soldier_id=soldier_id)
+    ]
 
 
 # ── Approval management ──
@@ -197,7 +233,13 @@ def _attach_names(
             else None
         )
         include_reason = s is not None and can_see_private(session, user, s)
-        result.append(_out(c, soldier_name=soldier_name, node_name=node_name, include_reason=include_reason))
+        nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+        result.append(
+            _out(
+                c, soldier_name=soldier_name, node_name=node_name, include_reason=include_reason,
+                nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+            )
+        )
     return result
 
 
@@ -268,7 +310,8 @@ def approve(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
-    return _out(c, include_reason=True)
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    return _out(c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.post("/constraints/{constraint_id}/reject", response_model=ConstraintOut)
@@ -292,4 +335,5 @@ def reject(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(c)
-    return _out(c, include_reason=True)
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, c.soldier_id)
+    return _out(c, include_reason=True, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)

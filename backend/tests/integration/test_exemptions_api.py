@@ -335,3 +335,29 @@ def test_detail_endpoint_hides_revoke_reason_from_out_of_scope_viewer(
     body = resp.json()
     assert body["revoke_reason"] is None
     assert body["revoked_by_name"] is None
+
+
+def test_exemption_request_includes_nearest_commander_and_duty_manager(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d-nearest-exreq")
+    b = create_node(admin_session, level="branch", name="b-nearest-exreq", parent=d)
+    cmd = create_soldier(admin_session, personal_number="5200040", role="commander")
+    b.commander_id = cmd.id
+    admin_session.commit()
+    dm = create_soldier(admin_session, personal_number="5200041", role="duty_manager", hierarchy_node_id=d.id)
+    soldier = create_soldier(admin_session, personal_number="5200042", hierarchy_node_id=b.id)
+    et = _et(admin_session, "פטור-נראסט")
+    req = client.post(
+        "/api/me/exemption-requests",
+        headers=auth_headers(soldier),
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+    ).json()
+    assert req["nearest_commander"]["id"] == str(cmd.id)
+    assert req["nearest_commander"]["name"] == cmd.full_name
+    assert req["nearest_duty_manager"]["id"] == str(dm.id)
+    assert req["nearest_duty_manager"]["name"] == dm.full_name
+
+    r2 = client.get("/api/me/exemption-requests", headers=auth_headers(soldier))
+    items = r2.json()
+    assert len(items) == 1
+    assert items[0]["nearest_commander"]["id"] == str(cmd.id)
+    assert items[0]["nearest_duty_manager"]["id"] == str(dm.id)
