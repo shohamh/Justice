@@ -79,6 +79,74 @@ def test_submit_cap_enforced(admin_session):
         )
 
 
+def test_submit_cap_period_scoped_ignores_other_period_usage(admin_session):
+    # Finding I-2: submit_constraint's cap enforcement must be scoped to the
+    # reset period containing the new request, matching remaining_days(). A
+    # soldier who has already claimed 15 days in a FUTURE period should not
+    # have those days block a same-period-fitting request today. This test
+    # fails against the old _future_cap_used() (which sums ALL future
+    # pending/approved days with no period boundary) and passes once
+    # submit_constraint checks only the touched period's own usage.
+    s = create_soldier(admin_session, personal_number=_pn(200))
+    # Claim the full cap (15 days) far enough out to land in a different
+    # quarter than "today".
+    far_start = date.today() + timedelta(days=200)
+    far_end = far_start + timedelta(days=14)
+    submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=far_start,
+        end_date=far_end,
+        reason="עתידי",
+        actor_id=None,
+    )
+    admin_session.commit()
+    # A short request anchored in the *current* period should still succeed,
+    # since none of the far-future days fall in this period.
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=1),
+        end_date=date.today() + timedelta(days=3),
+        reason="נוכחי",
+        actor_id=None,
+    )
+    admin_session.commit()
+    assert c.status == "pending"
+
+
+def test_submit_cap_straddling_periods_checks_each_period_independently(admin_session):
+    # Finding I-2 design decision: when a new request spans multiple reset
+    # periods, each touched period is checked against its OWN remaining cap
+    # (not a single sum across the whole span). Here the current period has
+    # plenty of room, but the next period is already nearly full — the
+    # request should still be rejected because of the next period alone.
+    s = create_soldier(admin_session, personal_number=_pn(202))
+    period_start, period_end = period_bounds("quarter", date.today())
+    # Fill the *next* period with cap_days - 2 (13) days.
+    submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=period_end,
+        end_date=period_end + timedelta(days=12),
+        reason="ממלא את הרבעון הבא",
+        actor_id=None,
+    )
+    admin_session.commit()
+    # New request: 1 day in the current period + 3 days into the next period.
+    # Current-period usage (0 + 1 = 1) is fine; next-period usage
+    # (13 existing + 3 new = 16) exceeds the 15-day cap.
+    with pytest.raises(ConstraintError, match="cap_exceeded"):
+        submit_constraint(
+            admin_session,
+            soldier_id=s.id,
+            start_date=period_end - timedelta(days=1),
+            end_date=period_end + timedelta(days=2),
+            reason="חוצה רבעונים",
+            actor_id=None,
+        )
+
+
 def test_submit_bad_date_range(admin_session):
     s = create_soldier(admin_session, personal_number=_pn(4))
     with pytest.raises(ConstraintError, match="bad_date_range"):

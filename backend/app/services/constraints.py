@@ -24,20 +24,27 @@ def _get_setting_with_default(session: Session, key: str, default):
         return default
 
 
-def _future_cap_used(session: Session, soldier_id: uuid.UUID) -> int:
-    today = date.today()
-    rows = list(
-        session.execute(
-            select(PersonalConstraint).where(
-                PersonalConstraint.soldier_id == soldier_id,
-                PersonalConstraint.end_date >= today,
-                PersonalConstraint.status.in_(["pending", "approved"]),
-            )
+def _used_days_in_period(
+    session: Session, soldier_id: uuid.UUID, period_start: date, period_end: date
+) -> int:
+    """Days already claimed (pending/approved) by `soldier_id` that overlap
+    [period_start, period_end) — the same overlap/clipping logic remaining_days()
+    uses, factored out so both read (remaining_days) and enforcement
+    (submit_constraint's cap check) always agree on what "used" means."""
+    rows = session.execute(
+        select(PersonalConstraint).where(
+            PersonalConstraint.soldier_id == soldier_id,
+            PersonalConstraint.status.in_(["pending", "approved"]),
+            PersonalConstraint.start_date < period_end,
+            PersonalConstraint.end_date >= period_start,
         )
-        .scalars()
-        .all()
-    )
-    return sum((r.end_date - r.start_date).days + 1 for r in rows)
+    ).scalars().all()
+    used = 0
+    for r in rows:
+        overlap_start = max(r.start_date, period_start)
+        overlap_end = min(r.end_date, date.fromordinal(period_end.toordinal() - 1))
+        used += (overlap_end - overlap_start).days + 1
+    return used
 
 
 def submit_constraint(
@@ -58,10 +65,27 @@ def submit_constraint(
         raise ConstraintError("start_date_in_past")
 
     cap_days = int(_get_setting_with_default(session, "constraints.personal_cap_days", 15))
-    used = _future_cap_used(session, soldier_id)
-    requested = (end_date - start_date).days + 1
-    if used + requested > cap_days:
-        raise ConstraintError("cap_exceeded")
+    reset_period = str(_get_setting_with_default(session, "constraints.reset_period", "quarter"))
+
+    # I-2: enforcement is period-scoped to match remaining_days()'s displayed
+    # number — a soldier's already-claimed days in a period OTHER than the one
+    # a given day of the new request falls into no longer count against it.
+    # Design decision for requests straddling a period boundary: each touched
+    # period is checked independently against its own remaining cap (existing
+    # usage in that period + the new request's day-count clipped to that
+    # period), rather than summing the whole request against a single period's
+    # cap. This matches how remaining_days() already clips usage per period,
+    # and rejects a request as soon as ANY touched period would be exceeded.
+    cursor = start_date
+    while cursor <= end_date:
+        period_start, period_end = period_bounds(reset_period, cursor)
+        existing_used = _used_days_in_period(session, soldier_id, period_start, period_end)
+        overlap_start = max(start_date, period_start)
+        overlap_end = min(end_date, date.fromordinal(period_end.toordinal() - 1))
+        new_days_in_period = (overlap_end - overlap_start).days + 1
+        if existing_used + new_days_in_period > cap_days:
+            raise ConstraintError("cap_exceeded")
+        cursor = period_end
 
     require_approval = bool(
         _get_setting_with_default(session, "constraints.require_manager_approval", True)
@@ -301,19 +325,7 @@ def remaining_days(session: Session, *, soldier_id: uuid.UUID, today: date | Non
     reset_period = str(_get_setting_with_default(session, "constraints.reset_period", "quarter"))
     period_start, period_end = period_bounds(reset_period, today)
     cap_days = int(_get_setting_with_default(session, "constraints.personal_cap_days", 15))
-    rows = session.execute(
-        select(PersonalConstraint).where(
-            PersonalConstraint.soldier_id == soldier_id,
-            PersonalConstraint.status.in_(["pending", "approved"]),
-            PersonalConstraint.start_date < period_end,
-            PersonalConstraint.end_date >= period_start,
-        )
-    ).scalars().all()
-    used = 0
-    for r in rows:
-        overlap_start = max(r.start_date, period_start)
-        overlap_end = min(r.end_date, date.fromordinal(period_end.toordinal() - 1))
-        used += (overlap_end - overlap_start).days + 1
+    used = _used_days_in_period(session, soldier_id, period_start, period_end)
     return {
         "cap_days": cap_days,
         "used_days": used,
