@@ -11,6 +11,7 @@ import { listExemptions } from "../api/exemptions";
 import { ExemptionType, listExemptionTypes, getAllExemptionDutyTypeMaps, listDutyTypes } from "../api/dutyConfig";
 import {
   cancelConstraint,
+  getRemainingConstraintDays,
   listMyConstraints,
   submitConstraint,
 } from "../api/constraints";
@@ -19,6 +20,7 @@ import {
   submitExemptionRequest,
   uploadExemptionFile,
 } from "../api/exemptions";
+import { formatDate } from "../utils/formatDate";
 
 export default function MyRequestsPage() {
   const { t } = useTranslation();
@@ -53,6 +55,11 @@ export default function MyRequestsPage() {
 
   const constraintsQuery = useQuery({ queryKey: queryKeys.myConstraints(), queryFn: listMyConstraints });
   const items = constraintsQuery.data ?? [];
+
+  const remainingQuery = useQuery({
+    queryKey: queryKeys.remainingConstraintDays(),
+    queryFn: getRemainingConstraintDays,
+  });
 
   const exemptionRequestsQuery = useQuery({ queryKey: queryKeys.myExemptionRequests(), queryFn: listMyExemptionRequests });
   const exemptionRequests = exemptionRequestsQuery.data ?? [];
@@ -103,7 +110,7 @@ export default function MyRequestsPage() {
         reason,
       });
       setStart(""); setEnd(""); setReason("");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
+      await queryClient.invalidateQueries({ queryKey: ["constraints"] });
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { detail?: string } } };
@@ -120,7 +127,7 @@ export default function MyRequestsPage() {
   async function onCancel(id: string) {
     if (!confirm(t("my_requests.cancel") + "?")) return;
     await cancelConstraint(id);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
+    await queryClient.invalidateQueries({ queryKey: ["constraints"] });
   }
 
   async function onErSubmit(e: FormEvent) {
@@ -177,6 +184,15 @@ export default function MyRequestsPage() {
           <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2">
             בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
           </div>
+        )}
+        {remainingQuery.data && (
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+            {t("constraints.remaining_summary", {
+              remaining: remainingQuery.data.remaining_days,
+              cap: remainingQuery.data.cap_days,
+              until: formatDate(remainingQuery.data.period_end),
+            })}
+          </p>
         )}
         <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
           <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="req-start" />

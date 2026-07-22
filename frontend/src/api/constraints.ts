@@ -67,3 +67,16 @@ export async function listSoldierConstraints(
 ): Promise<PersonalConstraint[]> {
   return (await api.get<PersonalConstraint[]>(`/soldiers/${soldierId}/constraints`)).data;
 }
+
+export interface RemainingConstraintDays {
+  cap_days: number;
+  used_days: number;
+  remaining_days: number;
+  period_start: string;
+  period_end: string;
+}
+
+export async function getRemainingConstraintDays(): Promise<RemainingConstraintDays> {
+  const { data } = await api.get<RemainingConstraintDays>("/me/constraints/remaining");
+  return data;
+}

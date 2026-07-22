@@ -1076,5 +1076,11 @@
   "hierarchy_scope": {
     "title": "הגבלת זכאות ליחידות",
     "help": "אם לא נבחרו יחידות, כל החיילים זכאים. בחירת יחידה כוללת את כל היחידות שמתחתיה."
+  },
+  "constraints": {
+    "remaining_summary": "נותרו {{remaining}} מתוך {{cap}} ימי אילוץ (עד {{until}})"
+  },
+  "admin_settings": {
+    "constraints_reset_period": "תקופת איפוס ימי אילוץ"
   }
 }
