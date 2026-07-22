@@ -18,6 +18,7 @@
 - Swap-request errors no longer leak the raw `cover_not_eligible:` error code — only the underlying reason is shown.
 - Fixed a gap where accepting one of several parallel swap offers for the same duty could leave another offer's approval still pending instead of being cancelled.
 - Submitting a targeted swap request with no soldier selected no longer silently falls back to posting an open request to the whole board.
+- The release-from-duty modal's date-range picker now prompts for the start date before the end date, matching the actual click order (it previously asked for the end date first).
 
 ### Chores
 - Split `.env` into a committed `.env.defaults` (non-secret dev config, so a fresh clone works out of the box) and a gitignored `.env` for the Telegram bot token and machine-specific overrides.
