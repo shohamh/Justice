@@ -4,10 +4,20 @@
 
 ### Features
 - Import review: row-detail modal exposing full field data across all import tabs (hierarchy, soldiers, duty_locations, duty_shifts, assignments), plus inline editing and field-override support (with duty_type remap on assignments) so rows can be corrected directly in the review table instead of re-uploading a fixed sheet.
+- Shift swap approval now requires one commander AND one duty-manager sign-off per side (configurable, on by default), with a same-approver shortcut when one person covers both sides; the swaps help screen and a new page-level help icon explain the new flow.
+- The transparency page can now be restricted to commanders of specific hierarchy levels (e.g. section/branch/team) plus duty managers and admins, via a new admin setting; open to everyone by default.
+- Soldiers can see how many personal-constraint ("ימי אילוץ") days they have left in the current period, which resets quarterly, semi-annually, or annually per a new admin setting (default quarterly) — and the submission cap now enforces the same period-scoped count the display shows.
+- Releasing/discharging a soldier now asks for a start date first, via a small modal, instead of a plain confirmation dialog.
+- Requesting a swap from a specific soldier now shows a table of eligible, available soldiers sorted by hierarchical distance, with a configurable cap (default 5) on how many can be selected at once.
+- The soldier profile modal now shows service type (חובה/קבע) and driving-license status/expiry, with the license fields editable.
+- Reordered the unit calendar's view buttons to 3-day, week, month (month remains the default view).
 
 ### Fixes
 - Per-IP and per-account login rate limiting no longer collapses every client to the same bucket: the Vite dev proxy and production uvicorn now trust the reverse proxy's `X-Forwarded-For`/`X-Forwarded-Proto` headers instead of seeing every request as coming from the proxy itself.
 - The login page's rate-limited "try again in N seconds" message now shows a real countdown instead of an unfilled `{{seconds}}` placeholder (slowapi's `Retry-After` header wasn't being sent).
+- Swap-request errors no longer leak the raw `cover_not_eligible:` error code — only the underlying reason is shown.
+- Fixed a gap where accepting one of several parallel swap offers for the same duty could leave another offer's approval still pending instead of being cancelled.
+- Submitting a targeted swap request with no soldier selected no longer silently falls back to posting an open request to the whole board.
 
 ### Chores
 - Split `.env` into a committed `.env.defaults` (non-secret dev config, so a fresh clone works out of the box) and a gitignored `.env` for the Telegram bot token and machine-specific overrides.
