@@ -97,6 +97,7 @@ export default function PotentialPage() {
     path_ids: [WHOLE_ORG_ID],
     duty_managers: [],
     dm_manageable: false,
+    can_edit: false,
   }), [t]);
 
   const tableRows = useMemo(
