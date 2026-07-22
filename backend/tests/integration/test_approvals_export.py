@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import io
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import openpyxl
 
 from app.db.models import (
+    DutyAssignment,
+    DutyLocation,
+    DutyType,
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapManagerApproval,
+    SwapRequest,
 )
 from app.services.hierarchy import create_node as create_hierarchy_node
 from tests.helpers import auth_headers, create_soldier
@@ -64,6 +69,89 @@ def test_export_personal_constraints_sheet(client, admin_session):
     assert row[6] == "approved"
     assert row[7] == admin.personal_number
     assert row[8] == "ok"
+
+
+def test_export_swap_requests_sheet(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    requester = create_soldier(admin_session, personal_number=f"req_{_uid()}")
+    covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}")
+    commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}", role="commander")
+    rejecting_commander = create_soldier(admin_session, personal_number=f"rcmd_{_uid()}", role="commander")
+
+    dt = DutyType(name=f"dt_{_uid()}", score_per_day=1)
+    loc = DutyLocation(name=f"loc_{_uid()}")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=requester.id,
+        start_date=date(2026, 4, 1), end_date=date(2026, 4, 1), status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+
+    swap = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, covering_soldier_id=covering.id,
+        status="pending_approval", reason="סיבה אישית",
+        requester_side_approved=True, covering_side_approved=False,
+        decision_note="ממתין לאישור צד שני",
+    )
+    admin_session.add(swap)
+    admin_session.flush()
+
+    approved_at = datetime(2026, 4, 1, 8, 30, tzinfo=timezone.utc)
+    approval = SwapManagerApproval(
+        swap_request_id=swap.id, side="requester", commander_id=commander.id,
+        approved=True, approved_by=commander.id, approved_at=approved_at,
+        approver_kind="commander",
+    )
+    admin_session.add(approval)
+
+    rejected_at = approved_at + timedelta(minutes=5)
+    rejection = SwapManagerApproval(
+        swap_request_id=swap.id, side="covering", commander_id=rejecting_commander.id,
+        rejected=True, rejected_by=rejecting_commander.id, rejected_at=rejected_at,
+        approver_kind="commander",
+    )
+    admin_session.add(rejection)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/approvals/export?sheets=swap_requests",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert wb.sheetnames == ["swap_requests"]
+    ws = wb["swap_requests"]
+    header = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    assert header == [
+        "id", "requesting_personal_number", "requesting_name", "target_personal_number",
+        "covering_personal_number", "duty_date", "status", "reason",
+        "requester_side_approved", "covering_side_approved",
+        "rejected_by_personal_number", "decision_note", "approval_log", "created_at", "updated_at",
+    ]
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    row = next(r for r in rows if r[0] == str(swap.id))
+    assert row[1] == requester.personal_number
+    assert row[2] == requester.full_name
+    assert row[3] is None
+    assert row[4] == covering.personal_number
+    assert row[5] == "2026-04-01"
+    assert row[6] == "pending_approval"
+    assert row[7] == "סיבה אישית"
+    assert row[8] is True
+    assert row[9] is False
+    assert row[10] is None
+    assert row[11] == "ממתין לאישור צד שני"
+
+    approval_log = row[12]
+    segments = approval_log.split(";")
+    assert len(segments) == 2
+    approved_segment = f"requester:commander:{commander.personal_number}:approved:{approved_at.isoformat()}"
+    rejected_segment = f"covering:commander:{rejecting_commander.personal_number}:rejected:{rejected_at.isoformat()}"
+    assert approved_segment in segments
+    assert rejected_segment in segments
 
 
 def test_export_defaults_to_all_six_sheets(client, admin_session):
