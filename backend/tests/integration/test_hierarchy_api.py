@@ -49,7 +49,11 @@ def test_plain_soldier_cannot_create_node(client: TestClient, admin_session: Ses
     assert r.status_code == 403
 
 
-def test_get_tree_scoped_for_duty_manager(client: TestClient, admin_session: Session):
+def test_get_tree_returns_full_tree_for_duty_manager(client: TestClient, admin_session: Session):
+    # The tree endpoint is a display convenience, not an access-control boundary — all
+    # mutating hierarchy endpoints call authorize()/can() with their own target_node scope
+    # check independent of what this GET returns. So non-admin callers now get the same
+    # unpruned list as admins, matching what `?all=true` already returned before this change.
     d = create_node(admin_session, level="department", name="d")
     b = create_node(admin_session, level="branch", name="b", parent=d)
     other = create_node(admin_session, level="department", name="other")
@@ -61,7 +65,86 @@ def test_get_tree_scoped_for_duty_manager(client: TestClient, admin_session: Ses
     assert r.status_code == 200
     ids = {n["id"] for n in r.json()}
     assert str(b.id) in ids
-    assert str(other.id) not in ids
+    assert str(other.id) in ids
+
+
+def test_tree_returns_all_nodes_for_non_admin_commander(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="5000022", role="commander")
+    own = create_node(admin_session, level="team", name="own-team", commander_id=cmd.id)
+    unrelated = create_node(admin_session, level="team", name="unrelated-team")
+    admin_session.commit()
+    r = client.get("/api/hierarchy/tree", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    ids = {n["id"] for n in r.json()}
+    assert str(own.id) in ids
+    assert str(unrelated.id) in ids  # previously excluded — now must be present
+
+
+def test_tree_can_edit_flag_only_true_for_own_commanded_node(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="5000023", role="commander")
+    own = create_node(admin_session, level="team", name="own-team-2", commander_id=cmd.id)
+    other = create_node(admin_session, level="team", name="other-team-2")
+    admin_session.commit()
+    r = client.get("/api/hierarchy/tree", headers=auth_headers(cmd))
+    assert r.status_code == 200
+    by_id = {n["id"]: n for n in r.json()}
+    assert by_id[str(own.id)]["can_edit"] is True
+    assert by_id[str(other.id)]["can_edit"] is False
+
+
+def test_commander_can_rename_own_commanded_node(client: TestClient, admin_session: Session):
+    # Finding I-1: a commander must actually be able to perform the mutations
+    # the (now correctly derived) can_edit flag advertises, not just see the
+    # button and get a 403.
+    cmd = create_soldier(admin_session, personal_number="5000030", role="commander")
+    own = create_node(admin_session, level="team", name="own-team-i1", commander_id=cmd.id)
+    admin_session.commit()
+    r = client.patch(
+        f"/api/hierarchy/nodes/{own.id}",
+        headers=auth_headers(cmd),
+        json={"name": "renamed-by-commander"},
+    )
+    assert r.status_code == 200
+    assert r.json()["name"] == "renamed-by-commander"
+
+
+def test_commander_gets_403_editing_node_they_do_not_command(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="5000031", role="commander")
+    create_node(admin_session, level="team", name="own-team-i1b", commander_id=cmd.id)
+    other = create_node(admin_session, level="team", name="other-team-i1b")
+    admin_session.commit()
+    r = client.patch(
+        f"/api/hierarchy/nodes/{other.id}",
+        headers=auth_headers(cmd),
+        json={"name": "should-not-work"},
+    )
+    assert r.status_code == 403
+
+
+def test_commander_can_add_child_node_under_own_commanded_node(client: TestClient, admin_session: Session):
+    cmd = create_soldier(admin_session, personal_number="5000032", role="commander")
+    own = create_node(admin_session, level="branch", name="own-branch-i1", commander_id=cmd.id)
+    admin_session.commit()
+    r = client.post(
+        "/api/hierarchy/nodes",
+        headers=auth_headers(cmd),
+        json={"level": "team", "name": "new-child-i1", "parent_id": str(own.id)},
+    )
+    assert r.status_code == 201
+
+
+def test_tree_can_edit_true_for_duty_manager_manageable_node(client: TestClient, admin_session: Session):
+    # can_edit must remain True for a duty-manager's manageable nodes even
+    # though they are not is_commander for that node (I-1 regression guard).
+    node = create_node(admin_session, level="department", name="dm-can-edit-node")
+    dm = create_soldier(
+        admin_session, personal_number="5000033", role="duty_manager", hierarchy_node_id=node.id
+    )
+    admin_session.commit()
+    r = client.get("/api/hierarchy/tree", headers=auth_headers(dm))
+    assert r.status_code == 200
+    by_id = {n["id"]: n for n in r.json()}
+    assert by_id[str(node.id)]["can_edit"] is True
 
 
 def test_list_level_types_ordered_by_rank(client: TestClient, admin_session: Session):

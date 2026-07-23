@@ -103,6 +103,14 @@ def list_own(
     return [_out(c) for c in svc.list_constraints(session, soldier_id=user.id)]
 
 
+@router.get("/me/constraints/remaining", response_model=RemainingDaysOut)
+def my_remaining_constraint_days(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RemainingDaysOut:
+    return RemainingDaysOut(**svc.remaining_days(session, soldier_id=user.id))
+
+
 @router.post("/me/constraints", response_model=ConstraintOut, status_code=status.HTTP_201_CREATED)
 def submit(
     body: SubmitRequest,
@@ -123,14 +131,6 @@ def submit(
     session.commit()
     session.refresh(c)
     return _out(c)
-
-
-@router.get("/me/constraints/remaining", response_model=RemainingDaysOut)
-def my_remaining_constraint_days(
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> RemainingDaysOut:
-    return RemainingDaysOut(**svc.remaining_days(session, soldier_id=user.id))
 
 
 @router.delete("/me/constraints/{constraint_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)

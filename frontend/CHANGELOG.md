@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-23
+
+### Features
+- The hierarchy tree now shows its full extent to every viewer (not just a commander's own scope), with per-node edit gating, auto-expand, and the viewer's own node highlighted; commanders' `HIERARCHY_MANAGE` permission is now scoped rather than all-or-nothing.
+- Soldiers can now see their remaining personal-constraint ("ימי אילוץ") days for the current reset period directly, alongside the existing submission-cap enforcement.
+
+### Fixes
+- The Telegram account-linking panel on the profile page no longer renders when Telegram is globally disabled.
+- The push/Telegram notification preference column is hidden when Telegram is globally disabled.
+- Restored missing translations for two notification preference types.
+- Fixed the military driving-license expiry field label.
+- The score-adjustment history table now uses Hebrew date formatting.
+- The calendar's week/3-day views no longer force horizontal scroll at desktop widths.
+- Duty cells no longer render with an invalid empty color.
+
+### Chores
+- Capped the vitest thread pool and fixed stale/flaky frontend tests.
+
 ## 2026-07-22
 
 ### Features

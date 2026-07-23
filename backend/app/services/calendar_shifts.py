@@ -20,6 +20,14 @@ from app.db.models import (
 )
 
 
+def _duty_color_for(duty_type_id: uuid.UUID) -> str:
+    """Deterministic color from a duty_type_id alone — used when the id
+    isn't present in the loaded DutyType map (e.g. a dangling reference),
+    so a shift never falls back to an invalid empty color (which renders
+    as black in the calendar UI)."""
+    return f"hsl({hash(duty_type_id) % 360}, 65%, 55%)"
+
+
 def _shift_instants(shift: DutyShift) -> tuple[Any, Any]:
     """Wall-clock start/end of a shift, for hour-aware calendar views.
 
@@ -247,7 +255,7 @@ def get_calendar_shifts(
     result = []
     for shift in shifts:
         assignees = assignees_by_shift.get(shift.id, [])
-        dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
+        dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id)))
         primary_count = sum(1 for a_ in assignees if not a_["is_reserve"])
         reserve_count = sum(
             1 for a_ in assignees if a_["is_reserve"] and not a_.get("called_up_from")
@@ -322,7 +330,7 @@ def get_single_shift(session: Session, *, shift_id: uuid.UUID) -> dict[str, Any]
         .all()
     )
 
-    dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", ""))
+    dt_name, dt_color = dt_map.get(shift.duty_type_id, ("", _duty_color_for(shift.duty_type_id)))
     start_at, end_at = _shift_instants(shift)
     base = {
         "id": shift.id,

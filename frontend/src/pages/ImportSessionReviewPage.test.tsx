@@ -4,9 +4,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportSessionReviewPage from "./ImportSessionReviewPage";
 import * as importSessionsApi from "../api/importSessions";
+import * as hierarchyApi from "../api/hierarchy";
+import * as soldiersApi from "../api/soldiers";
 import type { SessionDetail } from "../api/importSessions";
 
 vi.mock("../api/importSessions");
+// The duty_type fields modal renders SubHierarchySelector and
+// DutyTypeRequirementsEditor, which fetch real hierarchy/soldiers data on
+// mount (fetchTree / getRanks). Left unmocked, those calls hit jsdom's real
+// XHR with no server behind it, producing unhandled rejections that surface
+// (often misattributed to whatever test happens to be running next).
+vi.mock("../api/hierarchy");
+vi.mock("../api/soldiers");
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -156,6 +165,8 @@ describe("ImportSessionReviewPage", () => {
     });
     vi.mocked(importSessionsApi.listDutyTypesForImport).mockResolvedValue([]);
     vi.mocked(importSessionsApi.listNodesForImport).mockResolvedValue([]);
+    vi.mocked(hierarchyApi.fetchTree).mockResolvedValue([]);
+    vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [] });
   });
 
   it("loads and renders session data with correct tab counts", async () => {

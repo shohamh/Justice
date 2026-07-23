@@ -103,9 +103,13 @@ describe("TransparencyPage 403 handling", () => {
 });
 
 describe("TransparencyPage exemptions column", () => {
-  it("renders the exemptions_display value for a visible row", async () => {
+  it("renders an exemption chip for a visible row", async () => {
     const out: TransparencyOut = {
-      rows: [makeRow({ exemptions_display: "מגבלה רפואית (חלקי, עד 15/08/2026)" })],
+      rows: [makeRow({
+        exemptions: [
+          { id: "e1", exemption_type_name: "מגבלה רפואית", is_global: false, start_date: "2026-01-01", end_date: "2026-08-15" },
+        ],
+      })],
       can_see_exemption_aggregates: true,
     };
     vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
@@ -113,7 +117,7 @@ describe("TransparencyPage exemptions column", () => {
     renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
 
     await waitFor(() => {
-      expect(screen.getByText("מגבלה רפואית (חלקי, עד 15/08/2026)")).toBeInTheDocument();
+      expect(screen.getByText("מגבלה רפואית (עד 15/08/2026)")).toBeInTheDocument();
     });
   });
 

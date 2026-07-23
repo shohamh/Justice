@@ -23,10 +23,10 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "אילוצים אישיים",
     settings: [
       { key: "constraints.personal_cap_days", label: "מכסת ימי אילוץ לחייל", description: "מספר ימי האילוץ המרביים שחייל יכול לבקש", type: "number", defaultValue: 15 },
-      { key: "constraints.require_manager_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
       {
         key: "constraints.reset_period",
-        label: "",
+        label: "תקופת איפוס ימי אילוץ",
+        description: "התדירות שבה מכסת ימי האילוץ של חייל מתאפסת",
         type: "select" as const,
         defaultValue: "quarter",
         options: [
@@ -35,6 +35,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
           { value: "year", label: "שנה" },
         ],
       },
+      { key: "constraints.require_manager_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
     ],
   },
   {

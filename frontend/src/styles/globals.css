@@ -49,8 +49,10 @@ body {
 .fc-view-harness {
   overflow-x: auto;
 }
-.fc-view-harness > .fc-view {
-  min-width: var(--fc-grid-min-width, auto);
+@media (max-width: 767px) {
+  .fc-view-harness > .fc-view {
+    min-width: var(--fc-grid-min-width, auto);
+  }
 }
 
 /* Toolbar buttons (prev/next, today, month/week/3-day) take up a lot of
