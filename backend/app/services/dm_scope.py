@@ -38,9 +38,9 @@ def assign_dm_scope(
     actor_id: uuid.UUID | None,
 ) -> DutyManagerScope:
     if session.get(Soldier, soldier_id) is None:
-        raise DmScopeError("soldier not found")
+        raise DmScopeError("soldier_not_found")
     if session.get(HierarchyNode, node_id) is None:
-        raise DmScopeError("node not found")
+        raise DmScopeError("node_not_found")
 
     existing = session.execute(
         select(DutyManagerScope).where(
@@ -77,7 +77,7 @@ def remove_dm_scope(
 ) -> None:
     entry = session.get(DutyManagerScope, entry_id)
     if entry is None:
-        raise DmScopeError("scope entry not found")
+        raise DmScopeError("scope_entry_not_found")
 
     soldier_id = entry.duty_manager_id
     session.delete(entry)

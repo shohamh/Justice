@@ -116,7 +116,7 @@ test("re-syncs selected duty types when mappedDutyTypeIds prop changes after sav
 });
 
 test("shows an error and stays in edit mode when updateExemptionType fails", async () => {
-  mockUpdateExemptionType.mockRejectedValueOnce({ response: { data: { detail: "שגיאת שרת" } } });
+  mockUpdateExemptionType.mockRejectedValueOnce({ response: { data: { detail: "some_backend_error_code" } } });
   const onSaved = vi.fn();
   render(
     <ExemptionTypeViewModal
@@ -130,7 +130,7 @@ test("shows an error and stays in edit mode when updateExemptionType fails", asy
   );
   fireEvent.click(screen.getByTestId("exemption-edit-pencil"));
   fireEvent.click(screen.getByTestId("exemption-edit-save"));
-  await waitFor(() => expect(screen.getByText("שגיאת שרת")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("שגיאה")).toBeInTheDocument());
   expect(onSaved).not.toHaveBeenCalled();
   expect(screen.getByTestId("exemption-edit-save")).toBeInTheDocument();
 });

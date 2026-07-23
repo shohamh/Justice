@@ -8,6 +8,7 @@ import { submitJob, getAlgorithmDefaults, SolverSettings } from "../api/algorith
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
 import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 
 interface QuotaRow {
   hierarchy_node_id: string;
@@ -30,16 +31,17 @@ function flattenNodes(nodes: NodeDTO[]): { id: string; name: string; path_ids: s
   return result;
 }
 
-function extractErrorMessage(err: unknown, fallback: string): string {
+function extractErrorMessage(err: unknown, t: (key: string, options?: Record<string, unknown>) => string, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
-    return detail
-      .map((d) => (typeof d === "string" ? d : (d as { msg?: string })?.msg))
-      .filter(Boolean)
-      .join(", ") || fallback;
+    // Pydantic v2 validation errors — list of {loc, msg, type}. The msg
+    // itself is English framework text, so we don't surface it — just the field.
+    const fields = (detail as { loc?: string[] }[])
+      .map((d) => d.loc?.slice(1).join(".") ?? "?")
+      .join(", ");
+    return fields ? `נתונים לא תקינים בשדות: ${fields}` : fallback;
   }
-  return fallback;
+  return translateApiError(err, t, fallback);
 }
 
 function commonAncestorName(
@@ -145,7 +147,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       const resp = await submitJob({ shift_ids: [existing.id], mode: "shadow", settings });
       setRerunResult(t("shifts.rerun_algorithm_success", { id: resp.id }));
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה"));
     } finally {
       setRerunning(false);
     }
@@ -170,7 +172,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       );
       return true;
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה"));
       return false;
     } finally {
       setSplitting(false);
@@ -284,7 +286,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       }
       await onSaved();
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה"));
     }
   }
 

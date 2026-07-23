@@ -8,6 +8,7 @@ import { queryKeys } from "../queryKeys";
 import { ShiftTemplate, deleteTemplate, listTemplates } from "../api/shiftTemplates";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { DataTable, type ColDef } from "../components/DataTable";
+import { translateApiError } from "../utils/translateApiError";
 
 export function ShiftTemplatesContent() {
   const { t } = useTranslation();
@@ -35,8 +36,7 @@ export function ShiftTemplatesContent() {
       await deleteTemplate(tmpl.id);
       await refresh();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      alert(detail ?? "שגיאה");
+      alert(translateApiError(err, t, "שגיאה"));
     }
   }
 

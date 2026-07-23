@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   title: string;
@@ -9,6 +11,7 @@ interface Props {
 }
 
 export default function ReasonPromptModal({ title, description, confirmLabel, onConfirm, onClose }: Props) {
+  const { t } = useTranslation();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +23,7 @@ export default function ReasonPromptModal({ title, description, confirmLabel, on
     try {
       await onConfirm(reason.trim());
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
       setSubmitting(false);
     }
   }

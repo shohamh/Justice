@@ -9,6 +9,7 @@ import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import ReasonPromptModal from "../components/ReasonPromptModal";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { type DutyType as DutyTypeT } from "../api/dutyConfig";
+import { translateApiError } from "../utils/translateApiError";
 
 type Reqs = NonNullable<DutyTypeT["requirements"]>;
 type RankLists = { enlisted: string[]; officers: string[] };
@@ -119,10 +120,8 @@ export function DutyConfigContent() {
       console.error("getDutyTypeUsage failed:", err);
       const resp = (err as { response?: { data?: unknown; status?: number } })?.response;
       const status = resp?.status;
-      let msg = status === 403 ? "אין הרשאה" : status === 404 ? "נתיב לא נמצא (אולי השרת לא עודכן)" : `שגיאה בטעינת נתונים (${status ?? "network"})`;
-      const detail = (resp?.data as { detail?: unknown } | undefined)?.detail;
-      if (typeof detail === "string" && detail) msg = detail;
-      else if (Array.isArray(detail) && detail.length > 0) msg = JSON.stringify(detail[0]);
+      const fallbackMsg = status === 403 ? "אין הרשאה" : status === 404 ? "נתיב לא נמצא (אולי השרת לא עודכן)" : `שגיאה בטעינת נתונים (${status ?? "network"})`;
+      const msg = translateApiError(err, t, fallbackMsg);
       setDeleteModal({ dt, usage: null, loading: false, error: msg });
     }
   }
@@ -135,8 +134,7 @@ export function DutyConfigContent() {
       setDeleteModal(null);
       await refresh();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setDeleteModal(prev => prev ? { ...prev, loading: false, error: detail ?? "שגיאה במחיקה" } : null);
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה במחיקה") } : null);
     }
   }
 
@@ -148,8 +146,7 @@ export function DutyConfigContent() {
       setDeleteModal(null);
       await refresh();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setDeleteModal(prev => prev ? { ...prev, loading: false, error: detail ?? "שגיאה בהשבתה" } : null);
+      setDeleteModal(prev => prev ? { ...prev, loading: false, error: translateApiError(err, t, "שגיאה בהשבתה") } : null);
     }
   }
   async function handleDeleteExemptionType(et: ExemptionType) {
@@ -158,11 +155,11 @@ export function DutyConfigContent() {
       await deleteExemptionType(et.id);
       await refresh();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
-      if (detail?.status === 409) {
+      const resp = (err as { response?: { data?: { detail?: string }; status?: number } })?.response;
+      if (resp?.status === 409) {
         setEtDisableModal({ et });
       } else {
-        setEtDeleteError(detail?.data?.detail ?? "שגיאה במחיקה");
+        setEtDeleteError(translateApiError(err, t, "שגיאה במחיקה"));
       }
     }
   }

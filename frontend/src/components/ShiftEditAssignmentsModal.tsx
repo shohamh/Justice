@@ -5,6 +5,7 @@ import { DutyType } from "../api/dutyConfig";
 import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { lastDutyDay } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   shift: DutyShift;
@@ -233,8 +234,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
       await assignBatch(shift.id, { primaries: [...primarySelected], reserves: [...reserveSelected] });
       onSaved();
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה בשיבוץ");
+      setError(translateApiError(e, t, "שגיאה בשיבוץ"));
       setSaving(false);
     }
   }

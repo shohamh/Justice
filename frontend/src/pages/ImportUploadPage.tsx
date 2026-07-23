@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { uploadSession } from "../api/importSessions";
+import { translateApiError } from "../utils/translateApiError";
 
 export default function ImportUploadPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +23,7 @@ export default function ImportUploadPage() {
       const { session_id } = await uploadSession(file);
       navigate(`/import/sessions/${session_id}`);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה בפענוח הקובץ — ודא שהוא xlsx תקין");
+      setError(translateApiError(err, t, "שגיאה בפענוח הקובץ — ודא שהוא xlsx תקין"));
     } finally {
       setLoading(false);
     }

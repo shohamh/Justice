@@ -977,9 +977,9 @@ def create_session(
 def reparse_session(session: Session, *, session_id: uuid.UUID, actor: Soldier) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise ImportSessionError("session not found")
+        raise ImportSessionError("session_not_found")
     if import_session.status != "draft":
-        raise ImportSessionError("only draft sessions can be reparsed")
+        raise ImportSessionError("only_draft_sessions_can_be_reparsed")
 
     wb = openpyxl.load_workbook(io.BytesIO(import_session.raw_excel), data_only=True)
     parser = get_parser(import_session.parsed_state["parser_id"])
@@ -996,7 +996,7 @@ def set_selections(
 ) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise ImportSessionError("session not found")
+        raise ImportSessionError("session_not_found")
 
     import_session.user_selections = selections
     session.flush()
@@ -1012,9 +1012,9 @@ def confirm_session(
 ) -> dict:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise ImportSessionError("session not found")
+        raise ImportSessionError("session_not_found")
     if import_session.status != "draft":
-        raise ImportSessionError("only draft sessions can be confirmed")
+        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
 
     selections = import_session.user_selections or {}
     state = import_session.parsed_state
@@ -1553,9 +1553,9 @@ def cancel_session(
 ) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise ImportSessionError("session not found")
+        raise ImportSessionError("session_not_found")
     if import_session.status != "draft":
-        raise ImportSessionError("only draft sessions can be cancelled")
+        raise ImportSessionError("only_draft_sessions_can_be_cancelled")
 
     import_session.status = "cancelled"
     import_session.cancelled_at = datetime.now(tz=UTC)
@@ -1568,9 +1568,9 @@ def mark_done(
 ) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise ImportSessionError("session not found")
+        raise ImportSessionError("session_not_found")
     if import_session.status != "confirmed":
-        raise ImportSessionError("only confirmed sessions can be marked done")
+        raise ImportSessionError("only_confirmed_sessions_can_be_marked_done")
 
     import_session.status = "done"
     session.flush()

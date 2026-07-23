@@ -1,5 +1,6 @@
 import Fuse from "fuse.js";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Combobox, { type ComboboxItem } from "../components/Combobox";
@@ -26,6 +27,7 @@ import {
   listDutyTypesForImport,
   listNodesForImport,
 } from "../api/importSessions";
+import { translateApiError } from "../utils/translateApiError";
 
 type ActionValue = RowBase["action"];
 
@@ -64,11 +66,6 @@ type GroupKey =
   | "hierarchy"
   | "duty_types"
   | "exemption_types";
-
-function extractDetail(err: unknown): string | undefined {
-  return (err as { response?: { data?: { detail?: string } } })?.response?.data
-    ?.detail;
-}
 
 function StatusChip({
   action,
@@ -172,6 +169,7 @@ function PendingPickBanner({
 }
 
 export default function ImportSessionReviewPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -443,7 +441,7 @@ export default function ImportSessionReviewPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionDetail(id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
-      setConfirmError(extractDetail(err) ?? "שגיאה באישור הייבוא");
+      setConfirmError(translateApiError(err, t, "שגיאה באישור הייבוא"));
     } finally {
       setConfirming(false);
     }

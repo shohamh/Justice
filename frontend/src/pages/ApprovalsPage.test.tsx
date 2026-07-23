@@ -57,6 +57,8 @@ const swap = {
   duty_shift_id: null,
   requesting_soldier_name: "B",
   covering_soldier_name: "C",
+  requester_manager_approvals: [],
+  covering_manager_approvals: [],
 } as swapsApi.SwapRequest;
 
 const constraint = {
@@ -126,7 +128,7 @@ describe("ApprovalsPage - action error banner", () => {
     const approveBtn = await screen.findByTestId("approve-c1");
     fireEvent.click(approveBtn);
     await waitFor(() => {
-      expect(screen.getByText(/already_decided/)).toBeInTheDocument();
+      expect(screen.getByText("הבקשה כבר טופלה")).toBeInTheDocument();
     });
   });
 
@@ -297,7 +299,7 @@ describe("ApprovalsPage - exemption file links", () => {
     fireEvent.click(fileLink);
 
     await waitFor(() => {
-      expect(screen.getByText(/file_not_found/)).toBeInTheDocument();
+      expect(screen.getByText("הקובץ לא נמצא")).toBeInTheDocument();
     });
   });
 });

@@ -40,7 +40,7 @@ def create_duty_type(
     actor_id: uuid.UUID | None = None,
 ) -> DutyType:
     if score_per_day < 0:
-        raise DutyConfigError("score_per_day must be >= 0")
+        raise DutyConfigError("score_per_day_must_be_positive")
     if session.execute(select(DutyType.id).where(DutyType.name == name)).first():
         raise DutyConfigError("name_taken")
     if requirements is not None:
@@ -106,7 +106,7 @@ def update_duty_type(
     }
     if score_per_day is not None:
         if score_per_day < 0:
-            raise DutyConfigError("score_per_day must be >= 0")
+            raise DutyConfigError("score_per_day_must_be_positive")
         duty_type.score_per_day = score_per_day
     if name is not None and name != duty_type.name:
         if session.execute(select(DutyType.id).where(DutyType.name == name)).first():

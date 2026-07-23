@@ -66,16 +66,16 @@ def create_node(
 ) -> HierarchyNode:
     level_rank = get_level_rank(session, level)
     if level_rank is None:
-        raise HierarchyError(f"unknown level: {level}")
+        raise HierarchyError("unknown_level")
     if parent_id is None:
         parent = None
     else:
         parent = session.get(HierarchyNode, parent_id)
         if parent is None:
-            raise HierarchyError("parent not found")
+            raise HierarchyError("parent_not_found")
         parent_rank = get_level_rank(session, parent.level)
         if parent_rank is None or level_rank <= parent_rank:
-            raise HierarchyError("child level must rank below parent level")
+            raise HierarchyError("child_level_must_be_below_parent")
 
     node = HierarchyNode(
         level=level, name=name, parent_id=parent_id, commander_id=commander_id, path_ids=[]
@@ -104,22 +104,22 @@ def move_node(
 ) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
-        raise HierarchyError("node not found")
+        raise HierarchyError("node_not_found")
 
     if new_parent_id is None:
         new_base: list[uuid.UUID] = []
     else:
         if new_parent_id == node_id:
-            raise HierarchyError("a node cannot be its own parent")
+            raise HierarchyError("node_cannot_be_own_parent")
         parent = session.get(HierarchyNode, new_parent_id)
         if parent is None:
-            raise HierarchyError("parent not found")
+            raise HierarchyError("parent_not_found")
         if node.id in parent.path_ids:
-            raise HierarchyError("cannot move a node under its own descendant")
+            raise HierarchyError("cannot_move_under_own_descendant")
         node_rank = get_level_rank(session, node.level)
         parent_rank = get_level_rank(session, parent.level)
         if node_rank is None or parent_rank is None or node_rank <= parent_rank:
-            raise HierarchyError("node level must rank below new parent level")
+            raise HierarchyError("node_level_must_be_below_new_parent")
         new_base = list(parent.path_ids)
 
     old_path = list(node.path_ids)
@@ -156,7 +156,7 @@ def rename_node(
 ) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
-        raise HierarchyError("node not found")
+        raise HierarchyError("node_not_found")
     before = {"name": node.name}
     node.name = name
     write_audit(
@@ -180,12 +180,12 @@ def set_commander(
 ) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
-        raise HierarchyError("node not found")
+        raise HierarchyError("node_not_found")
     previous_commander_id = node.commander_id
     if commander_id is not None:
         soldier = session.get(Soldier, commander_id)
         if soldier is None:
-            raise HierarchyError("commander not found")
+            raise HierarchyError("commander_not_found")
         # Clear this soldier as commander from any other node
         session.query(HierarchyNode).filter(
             HierarchyNode.commander_id == soldier.id,
@@ -220,17 +220,17 @@ def set_commander(
 def delete_node(session: Session, *, node_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> None:
     node = session.get(HierarchyNode, node_id)
     if node is None:
-        raise HierarchyError("node not found")
+        raise HierarchyError("node_not_found")
     child = session.execute(
         select(HierarchyNode.id).where(HierarchyNode.parent_id == node_id).limit(1)
     ).first()
     if child is not None:
-        raise HierarchyError("cannot delete a node that has children")
+        raise HierarchyError("cannot_delete_node_with_children")
     soldier = session.execute(
         select(Soldier.id).where(Soldier.hierarchy_node_id == node_id).limit(1)
     ).first()
     if soldier is not None:
-        raise HierarchyError("cannot delete a node that has soldiers assigned")
+        raise HierarchyError("cannot_delete_node_with_soldiers")
     write_audit(
         session,
         actor_id=actor_id,
@@ -249,7 +249,7 @@ def create_level_type(
         select(HierarchyLevelType.id).where(HierarchyLevelType.key == key)
     ).first()
     if existing is not None:
-        raise HierarchyError(f"level type key already exists: {key}")
+        raise HierarchyError("level_type_key_exists")
     max_rank = session.execute(select(func.max(HierarchyLevelType.rank))).scalar_one() or 0
     level_type = HierarchyLevelType(key=key, label=label, rank=max_rank + 1)
     session.add(level_type)
@@ -270,12 +270,12 @@ def delete_level_type(
 ) -> None:
     level_type = session.get(HierarchyLevelType, id)
     if level_type is None:
-        raise HierarchyError("level type not found")
+        raise HierarchyError("level_type_not_found")
     in_use = session.execute(
         select(HierarchyNode.id).where(HierarchyNode.level == level_type.key).limit(1)
     ).first()
     if in_use is not None:
-        raise HierarchyError("cannot delete a level type that is in use")
+        raise HierarchyError("cannot_delete_level_type_in_use")
     write_audit(
         session,
         actor_id=actor_id,
@@ -292,10 +292,10 @@ def change_node_level(
 ) -> HierarchyNode:
     node = session.get(HierarchyNode, node_id)
     if node is None:
-        raise HierarchyError("node not found")
+        raise HierarchyError("node_not_found")
     new_rank = get_level_rank(session, level)
     if new_rank is None:
-        raise HierarchyError("unknown level: " + level)
+        raise HierarchyError("unknown_level")
 
     if node.parent_id is not None:
         parent = session.get(HierarchyNode, node.parent_id)
@@ -336,7 +336,7 @@ def reorder_level_types(
 ) -> list[HierarchyLevelType]:
     all_types = session.execute(select(HierarchyLevelType)).scalars().all()
     if {t.id for t in all_types} != set(ordered_ids) or len(ordered_ids) != len(all_types):
-        raise HierarchyError("ordered_ids must contain exactly all existing level type ids")
+        raise HierarchyError("ordered_ids_mismatch")
 
     new_rank_by_id = {type_id: i + 1 for i, type_id in enumerate(ordered_ids)}
     new_rank_by_key = {t.key: new_rank_by_id[t.id] for t in all_types}

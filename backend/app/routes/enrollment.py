@@ -204,7 +204,7 @@ def patch_enrollment(
     if body.requested_node_id is not None:
         new_node = session.get(HierarchyNode, body.requested_node_id)
         if new_node is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node_not_found")
         authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=new_node)
         req.requested_node_id = body.requested_node_id
     session.commit()

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyType, ExemptionType, setExemptionDutyTypes, updateExemptionType } from "../api/dutyConfig";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   exemptionType: ExemptionType;
@@ -45,8 +46,7 @@ export default function ExemptionTypeViewModal({
       onSaved(updated, newMapping);
       setEditing(false);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
     } finally {
       setSaving(false);
     }

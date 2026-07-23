@@ -7,6 +7,7 @@ import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 import Combobox from "./Combobox";
 import { lastDutyDay } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -99,8 +100,7 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
       const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings });
       onJobSubmitted(resp.id);
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה בשליחת הבקשה");
+      setError(translateApiError(e, t, "שגיאה בשליחת הבקשה"));
     } finally {
       setSubmitting(false);
     }

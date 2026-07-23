@@ -32,11 +32,12 @@ export default function AlgorithmProposalTable({ job, jobId, soldiers, dutyTypes
       const detail = e.response?.data?.detail;
       const status = e.response?.status;
       if (Array.isArray(detail)) {
-        // Pydantic v2 validation errors — list of {loc, msg, type}
-        const msgs = (detail as { loc?: string[]; msg?: string }[])
-          .map(d => `${d.loc?.slice(1).join(".") ?? "?"}: ${d.msg ?? "?"}`)
-          .join(" | ");
-        return `שגיאה ${status}: ${msgs}`;
+        // Pydantic v2 validation errors — list of {loc, msg, type}. The msg
+        // itself is English framework text, so we don't surface it — just the field.
+        const fields = (detail as { loc?: string[] }[])
+          .map(d => d.loc?.slice(1).join(".") ?? "?")
+          .join(", ");
+        return `שגיאה ${status}: נתונים לא תקינים בשדות: ${fields}`;
       }
       if (detail) return `שגיאה ${status ?? ""}: ${detail}`;
       return `שגיאה HTTP ${status ?? ""}`;

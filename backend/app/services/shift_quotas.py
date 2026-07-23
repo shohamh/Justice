@@ -34,24 +34,22 @@ def set_shift_quotas(
     duplicate nodes, and that the sum does not exceed required_count."""
     shift = session.get(DutyShift, shift_id)
     if shift is None:
-        raise ShiftQuotaError("shift not found")
+        raise ShiftQuotaError("shift_not_found")
 
     seen: set[uuid.UUID] = set()
     total = 0
     for node_id, count in quotas:
         if node_id in seen:
-            raise ShiftQuotaError(f"duplicate node {node_id} in quotas")
+            raise ShiftQuotaError("duplicate_quota_node")
         seen.add(node_id)
         if count < 1:
-            raise ShiftQuotaError(f"count must be >= 1 for node {node_id}")
+            raise ShiftQuotaError("quota_count_must_be_positive")
         if session.get(HierarchyNode, node_id) is None:
-            raise ShiftQuotaError(f"hierarchy node {node_id} not found")
+            raise ShiftQuotaError("hierarchy_node_not_found")
         total += count
 
     if total > shift.required_count:
-        raise ShiftQuotaError(
-            f"sum of quota counts ({total}) exceeds required_count ({shift.required_count})"
-        )
+        raise ShiftQuotaError("quota_sum_exceeds_required_count")
 
     existing = get_shift_quotas(session, shift_id=shift_id)
     before = [{"node_id": str(q.hierarchy_node_id), "count": q.count} for q in existing]
@@ -90,7 +88,7 @@ def compute_potential_split(
     if every child has zero weight (otherwise the split would be all-zero and
     useless)."""
     if required_count < 1:
-        raise ShiftQuotaError("required_count must be >= 1")
+        raise ShiftQuotaError("required_count_must_be_positive")
 
     children = list(
         session.execute(
@@ -100,7 +98,7 @@ def compute_potential_split(
         ).scalars().all()
     )
     if not children:
-        raise ShiftQuotaError("parent node has no direct children")
+        raise ShiftQuotaError("parent_node_no_children")
 
     ref = reference_date or date.today()
     weights = [
@@ -143,14 +141,14 @@ def compute_potential_split_multi(
     nodes (not necessarily siblings under one parent), weighted by each
     node's own final_potential."""
     if required_count < 1:
-        raise ShiftQuotaError("required_count must be >= 1")
+        raise ShiftQuotaError("required_count_must_be_positive")
     if not node_ids:
-        raise ShiftQuotaError("node_ids must not be empty")
+        raise ShiftQuotaError("node_ids_required")
 
     nodes = [session.get(HierarchyNode, nid) for nid in node_ids]
     for nid, node in zip(node_ids, nodes):
         if node is None:
-            raise ShiftQuotaError(f"hierarchy node {nid} not found")
+            raise ShiftQuotaError("hierarchy_node_not_found")
 
     ref = reference_date or date.today()
     weights = [max(compute_potential(session, node_id=n.id, reference_date=ref).final_potential, 0) for n in nodes]

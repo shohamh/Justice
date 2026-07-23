@@ -11,6 +11,7 @@ import {
 } from "../api/gimelim";
 import Combobox from "./Combobox";
 import SoldierLink from "./SoldierLink";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   shift: CalendarShift;
@@ -305,7 +306,7 @@ export default function DismissalModal({
             {mutation.isError && (
               <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
                 <p className="text-red-600 text-sm">
-                  {(mutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("dismiss_modal.error")}
+                  {translateApiError(mutation.error, t, t("dismiss_modal.error"))}
                 </p>
               </div>
             )}
@@ -447,8 +448,7 @@ export default function DismissalModal({
 
             {previewMutation.isError && (
               <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
-                {(previewMutation.error as { response?: { data?: { detail?: string } } })
-                  ?.response?.data?.detail ?? "שגיאה בחישוב ההצעה"}
+                {translateApiError(previewMutation.error, t, "שגיאה בחישוב ההצעה")}
               </div>
             )}
 
@@ -537,8 +537,7 @@ export default function DismissalModal({
 
             {commitMutation.isError && (
               <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded-lg p-3 mb-3 text-sm text-red-700">
-                {(commitMutation.error as { response?: { data?: { detail?: string } } })
-                  ?.response?.data?.detail ?? "שגיאה בביצוע"}
+                {translateApiError(commitMutation.error, t, "שגיאה בביצוע")}
                 {String(
                   (commitMutation.error as { response?: { data?: { detail?: string } } })
                     ?.response?.data?.detail ?? ""

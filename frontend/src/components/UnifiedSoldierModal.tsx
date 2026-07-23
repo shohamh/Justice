@@ -187,7 +187,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 text-xl leading-none -mt-1 -mr-1 p-1"
-            aria-label="close"
+            aria-label="סגור"
             data-testid="modal-close"
           >
             ×

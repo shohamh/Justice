@@ -10,6 +10,7 @@ import {
 } from "../api/shiftTemplates";
 import { DutyType, DutyLocation } from "../api/dutyConfig";
 import Combobox from "./Combobox";
+import { translateApiError } from "../utils/translateApiError";
 import DutyTypeFormModal from "./DutyTypeFormModal";
 import LocationFormModal from "./LocationFormModal";
 import SubHierarchySelector from "./SubHierarchySelector";
@@ -266,8 +267,7 @@ export default function ShiftTemplateFormModal({
       }
       await onSubmit();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
     }
   }
 

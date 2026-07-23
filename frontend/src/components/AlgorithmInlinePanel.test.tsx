@@ -99,7 +99,7 @@ test("shows error message on submit failure", async () => {
   fireEvent.click(screen.getByRole("button", { name: /הרץ שיבוץ/ }));
 
   await waitFor(() => {
-    expect(screen.getByText("server_error")).toBeInTheDocument();
+    expect(screen.getByText("שגיאה בשליחת הבקשה")).toBeInTheDocument();
   });
 });
 

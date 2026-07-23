@@ -6,6 +6,7 @@ import { queryKeys } from "../../queryKeys";
 import { AdjustmentPreview, createAdjustment, listAdjustments, previewAdjustment } from "../../api/scoreAdjustments";
 import { getSoldierScore, listSoldiers, SoldierDTO } from "../../api/soldiers";
 import { getEffortBreakdown } from "../../api/scoring";
+import { translateApiError } from "../../utils/translateApiError";
 
 export default function ScoreAdjustmentPage() {
   const { t } = useTranslation();
@@ -78,8 +79,7 @@ export default function ScoreAdjustmentPage() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.effortBreakdown(soldierId) });
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? t("score_adjustment.generic_error"));
+      setError(translateApiError(err, t, t("score_adjustment.generic_error")));
     },
   });
 

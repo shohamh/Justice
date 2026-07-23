@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarShift, CalendarShiftAssignee, dismissReserve } from "../api/calendar";
 import { ReserveCandidate, getReserveCandidates } from "../api/reserves";
 import Combobox from "./Combobox";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   shift: CalendarShift;
@@ -190,7 +191,7 @@ export default function ReserveDismissalModal({ shift, reserve, onClose, onDone 
         {mutation.isError && (
           <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-4">
             <p className="text-red-600 text-sm">
-              {(mutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? t("dismiss_modal.error")}
+              {translateApiError(mutation.error, t, t("dismiss_modal.error"))}
             </p>
           </div>
         )}

@@ -188,9 +188,9 @@ describe("SwapsPage - AskSwapModal eligible-soldier picker", () => {
     expect(saveButton).not.toBeDisabled();
   });
 
-  it("extracts a message from an array-shaped 422 validation error detail", async () => {
+  it("shows a field list (not the raw English msg) for an array-shaped 422 validation error detail", async () => {
     vi.mocked(swapsApi.createSwap).mockRejectedValue({
-      response: { data: { detail: [{ msg: "תאריך לא תקין", loc: ["body", "date"], type: "value_error" }] } },
+      response: { data: { detail: [{ msg: "Input should be a valid date", loc: ["body", "date"], type: "value_error" }] } },
     });
     renderPage();
 
@@ -200,7 +200,7 @@ describe("SwapsPage - AskSwapModal eligible-soldier picker", () => {
     const saveButton = await screen.findByText("swaps.save");
     fireEvent.click(saveButton);
 
-    expect(await screen.findByText("תאריך לא תקין")).toBeInTheDocument();
+    expect(await screen.findByText("נתונים לא תקינים בשדות: date")).toBeInTheDocument();
   });
 
   it("strips the cover_not_eligible prefix from error messages", async () => {

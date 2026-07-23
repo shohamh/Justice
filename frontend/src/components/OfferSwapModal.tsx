@@ -5,6 +5,7 @@ import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, getEligibleDuties, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { lastDutyDay } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   targetSoldierId: string;
@@ -174,7 +175,7 @@ export default function OfferSwapModal({
         if (capMatch) {
           setError(t("errors.reserve_cap_exceeded", { current: capMatch[1], max: capMatch[2], window: capMatch[3] }));
         } else {
-          setError(detail);
+          setError(translateApiError(err, t, "שגיאה"));
         }
       } else {
         setError("שגיאה");

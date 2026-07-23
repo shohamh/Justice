@@ -170,7 +170,7 @@ describe("ImportSessionsListPage", () => {
 
   it("shows an alert when cancelSession rejects", async () => {
     vi.mocked(importSessionsApi.cancelSession).mockRejectedValue({
-      response: { data: { detail: "לא ניתן לבטל" } },
+      response: { data: { detail: "only_draft_sessions_can_be_cancelled" } },
     });
     renderPage();
     await screen.findByText("draft-file.xlsx");
@@ -179,7 +179,7 @@ describe("ImportSessionsListPage", () => {
     fireEvent.click(within(draftRow).getByText("בטל"));
 
     await waitFor(() => {
-      expect(window.alert).toHaveBeenCalledWith("לא ניתן לבטל");
+      expect(window.alert).toHaveBeenCalledWith("שגיאה בביטול הייבוא");
     });
   });
 

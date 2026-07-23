@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyLocation, createLocation } from "../api/dutyConfig";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   onCreated: (loc: DutyLocation) => void;
@@ -21,8 +22,7 @@ export default function LocationFormModal({ onCreated, onClose }: Props) {
       const loc = await createLocation({ name: name.trim() });
       onCreated(loc);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
     } finally {
       setSaving(false);
     }

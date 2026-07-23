@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { DutyType, createDutyType, updateDutyType, updateDutyTypeRequirements } from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
 import SubHierarchySelector from "./SubHierarchySelector";
+import { translateApiError } from "../utils/translateApiError";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
 
@@ -91,8 +92,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
       }
       onSaved(dt);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
     } finally {
       setSaving(false);
     }

@@ -9,6 +9,7 @@ vi.mock("../api/importSessions");
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
+  Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
 }));
 
 vi.mock("../components/Layout", () => ({
@@ -55,9 +56,9 @@ describe("ImportUploadPage", () => {
     });
   });
 
-  it("shows the backend detail message when uploadSession rejects with one", async () => {
+  it("shows the generic error banner when uploadSession rejects with an untranslatable backend code", async () => {
     vi.mocked(importSessionsApi.uploadSession).mockRejectedValue({
-      response: { data: { detail: "עמודה חסרה: soldier_id" } },
+      response: { data: { detail: "some_backend_error_code" } },
     });
 
     render(<ImportUploadPage />);
@@ -66,7 +67,7 @@ describe("ImportUploadPage", () => {
     fireEvent.change(input, { target: { files: [makeFile()] } });
 
     expect(
-      await screen.findByText("עמודה חסרה: soldier_id"),
+      await screen.findByText("שגיאה בפענוח הקובץ — ודא שהוא xlsx תקין"),
     ).toBeInTheDocument();
 
     expect(mockNavigate).not.toHaveBeenCalled();

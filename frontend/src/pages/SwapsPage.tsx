@@ -21,6 +21,7 @@ import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { fetchTree } from "../api/hierarchy";
 import { lastDutyDay } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 
 interface HierarchyNode {
   id: string;
@@ -46,19 +47,23 @@ function statusKey(status: string) {
   return map[status] ?? status;
 }
 
-function extractErrorMessage(err: unknown, fallback: string): string {
+function extractErrorMessage(err: unknown, t: (key: string, options?: Record<string, unknown>) => string, fallback: string): string {
   const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   if (typeof detail === "string" && detail) {
     if (detail.startsWith("cover_not_eligible:")) {
       return detail.slice("cover_not_eligible:".length) || fallback;
     }
-    return detail;
   }
   if (Array.isArray(detail)) {
-    const first = detail[0] as { msg?: unknown } | undefined;
-    if (first && typeof first.msg === "string") return first.msg;
+    // Pydantic v2 validation errors — list of {loc, msg, type}. The msg
+    // itself is English framework text, so we don't surface it — just the field.
+    const fields = (detail as { loc?: string[] }[])
+      .map((d) => d.loc?.slice(1).join(".") ?? "?")
+      .join(", ");
+    return fields ? `נתונים לא תקינים בשדות: ${fields}` : fallback;
   }
-  return fallback;
+  // Pydantic validation msg is English framework text — never surface it raw.
+  return translateApiError(err, t, fallback);
 }
 
 function ApprovalDot({ value }: { value: boolean | null }) {
@@ -254,7 +259,7 @@ function AskSwapModal({
       }
       onCreated();
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, "שגיאה"));
+      setError(extractErrorMessage(err, t, "שגיאה"));
     }
   }
 
@@ -450,7 +455,7 @@ export default function SwapsPage() {
   async function handleCancel(id: string) {
     try { await cancelSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
+      alert(translateApiError(err, t, "שגיאה"));
     }
   }
 
@@ -459,7 +464,7 @@ export default function SwapsPage() {
   async function handleSoldierApprove(id: string) {
     try { await soldierApproveSwap(id); await refreshSwapData(); }
     catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
+      alert(translateApiError(err, t, "שגיאה"));
     }
   }
   async function handleSoldierReject(id: string) {
@@ -468,7 +473,7 @@ export default function SwapsPage() {
       setSwapRejectNote((prev) => { const next = { ...prev }; delete next[id]; return next; });
       await refreshSwapData();
     } catch (err: unknown) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "שגיאה");
+      alert(translateApiError(err, t, "שגיאה"));
     }
   }
 

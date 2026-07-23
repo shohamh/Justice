@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
@@ -9,6 +10,7 @@ import {
   listSessions,
   markSessionDone,
 } from "../api/importSessions";
+import { translateApiError } from "../utils/translateApiError";
 
 const STATUS_LABEL: Record<SessionSummary["status"], string> = {
   draft: "טיוטה",
@@ -37,6 +39,7 @@ function formatDate(iso: string): string {
 }
 
 export default function ImportSessionsListPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
@@ -60,9 +63,7 @@ export default function ImportSessionsListPage() {
       await cancelSession(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })
-        ?.response?.data?.detail;
-      alert(detail ?? "שגיאה בביטול הייבוא");
+      alert(translateApiError(err, t, "שגיאה בביטול הייבוא"));
     } finally {
       setPendingId(null);
     }
@@ -75,9 +76,7 @@ export default function ImportSessionsListPage() {
       await markSessionDone(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })
-        ?.response?.data?.detail;
-      alert(detail ?? "שגיאה בעדכון הייבוא");
+      alert(translateApiError(err, t, "שגיאה בעדכון הייבוא"));
     } finally {
       setPendingId(null);
     }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { SolverSettings, submitJob, getAlgorithmDefaults } from "../api/algorithm";
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   selectedShiftIds: string[];
@@ -14,6 +16,7 @@ const DEFAULT_SETTINGS: SolverSettings = {
 };
 
 export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted, onClose }: Props) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<"draft" | "direct_publish">("draft");
   const [showModeHelp, setShowModeHelp] = useState(false);
   const [showDeterministicHelp, setShowDeterministicHelp] = useState(false);
@@ -38,8 +41,7 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
       onJobSubmitted(resp.id);
       onClose();
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה בשליחת הבקשה");
+      setError(translateApiError(e, t, "שגיאה בשליחת הבקשה"));
     } finally {
       setSubmitting(false);
     }

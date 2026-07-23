@@ -40,11 +40,11 @@ def _check_soldier_dates(
     is_career: bool,
 ) -> None:
     if discharge_date is not None and enlistment_date is not None and discharge_date <= enlistment_date:
-        raise SoldierValidationError("discharge_date must be after enlistment_date")
+        raise SoldierValidationError("discharge_date_before_enlistment")
     if mandatory_end_date is not None and discharge_date is not None and mandatory_end_date > discharge_date:
-        raise SoldierValidationError("mandatory_end_date must not be after discharge_date")
+        raise SoldierValidationError("mandatory_end_after_discharge")
     if is_career and discharge_date is not None and discharge_date < date.today():
-        raise SoldierValidationError("career soldier's discharge_date cannot be in the past")
+        raise SoldierValidationError("career_discharge_in_past")
     from app.services.eligibility import CHOVAH_ONLY_RANKS
     if (
         rank in CHOVAH_ONLY_RANKS
@@ -54,7 +54,7 @@ def _check_soldier_dates(
     ):
         # Dates alone say מועד סיום חובה has passed with no discharge closing it out
         # (i.e. the soldier would derive to קבע), but the rank held is חובה-only.
-        raise SoldierValidationError("rank is חובה-only and cannot be combined with קבע status")
+        raise SoldierValidationError("chovah_rank_cannot_be_keva")
 
 
 def validate_soldier_dates(soldier: Soldier) -> None:
@@ -104,9 +104,9 @@ def onboard_soldier(
     if session.execute(
         select(Soldier.id).where(Soldier.personal_number == personal_number)
     ).first():
-        raise SoldierError("personal_number already exists")
+        raise SoldierError("personal_number_exists")
     if hierarchy_node_id is not None and session.get(HierarchyNode, hierarchy_node_id) is None:
-        raise SoldierError("hierarchy node not found")
+        raise SoldierError("hierarchy_node_not_found")
 
     temp_password: str | None = None
     if password is None:
@@ -160,7 +160,7 @@ def update_soldier(
         soldier.phone = phone
     if hierarchy_node_id is not None:
         if session.get(HierarchyNode, hierarchy_node_id) is None:
-            raise SoldierError("hierarchy node not found")
+            raise SoldierError("hierarchy_node_not_found")
         soldier.hierarchy_node_id = hierarchy_node_id
     write_audit(
         session,

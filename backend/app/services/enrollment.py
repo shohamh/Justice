@@ -33,7 +33,7 @@ def try_activate(
         return
     soldier = session.get(Soldier, req.soldier_id)
     if soldier is None:
-        raise EnrollmentError("soldier not found for enrollment request")
+        raise EnrollmentError("soldier_not_found")
     soldier.hierarchy_node_id = req.requested_node_id
     req.status = "approved"
     session.flush()
@@ -48,9 +48,9 @@ def approve_enrollment(
 ) -> SoldierEnrollmentRequest:
     req = session.get(SoldierEnrollmentRequest, request_id)
     if req is None:
-        raise EnrollmentError("enrollment request not found")
+        raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":
-        raise EnrollmentError("already decided")
+        raise EnrollmentError("already_decided")
     req.status = "commander_approved"
     req.decided_by = decider_id
     req.decided_at = datetime.now(timezone.utc)
@@ -82,9 +82,9 @@ def reject_enrollment(
 ) -> SoldierEnrollmentRequest:
     req = session.get(SoldierEnrollmentRequest, request_id)
     if req is None:
-        raise EnrollmentError("enrollment request not found")
+        raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":
-        raise EnrollmentError("already decided")
+        raise EnrollmentError("already_decided")
     req.status = "rejected"
     req.decided_by = decider_id
     req.decided_at = datetime.now(timezone.utc)

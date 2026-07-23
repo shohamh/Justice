@@ -16,6 +16,7 @@ import {
   submitConstraint,
 } from "../api/constraints";
 import { formatDate } from "../utils/formatDate";
+import { translateApiError } from "../utils/translateApiError";
 import {
   listMyExemptionRequests,
   submitExemptionRequest,
@@ -111,13 +112,7 @@ export default function MyRequestsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.myConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.remainingConstraintDays() });
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        const code = axiosErr.response?.data?.detail;
-        setError(t(`errors.${code}` as Parameters<typeof t>[0]) || t("errors.generic"));
-      } else {
-        setError(t("errors.generic"));
-      }
+      setError(translateApiError(err, t));
     } finally {
       setSubmitting(false);
     }
@@ -149,13 +144,7 @@ export default function MyRequestsPage() {
       setUploadFiles([]); setUploadSizeErrors([]); setErMedical(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myExemptionRequests() });
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        const code = axiosErr.response?.data?.detail;
-        setErError(t(`errors.${code}` as Parameters<typeof t>[0]) || t("errors.generic"));
-      } else {
-        setErError(t("errors.generic"));
-      }
+      setErError(translateApiError(err, t));
     } finally {
       setErSubmitting(false);
     }

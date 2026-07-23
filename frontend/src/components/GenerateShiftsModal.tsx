@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PreviewRow, generateShifts, previewGeneration } from "../api/shiftTemplates";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   open: boolean;
@@ -49,8 +50,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
       .then((rows) => { if (!cancelled) setPreview(rows); })
       .catch((err: unknown) => {
         if (!cancelled) {
-          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-          setError(detail ?? "שגיאה");
+          setError(translateApiError(err, t, "שגיאה"));
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -71,8 +71,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
       setPreview(null);
       onGenerated();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה");
+      setError(translateApiError(err, t, "שגיאה"));
     } finally {
       setLoading(false);
     }

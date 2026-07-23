@@ -44,18 +44,19 @@ import {
 } from "../api/hierarchyTransfers";
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
+import { translateApiError } from "../utils/translateApiError";
 
 function describeError(err: unknown): string {
+  const fallback = "שגיאה בביצוע הפעולה";
   if (err && typeof err === "object" && "response" in err) {
     const resp = (err as { response?: { data?: { detail?: string } } }).response;
     const detail = resp?.data?.detail;
     if (detail?.startsWith("cover_blocked:")) {
       const reason = detail.slice("cover_blocked:".length);
-      return i18n.t(`cover_blocked.${reason}`, { defaultValue: reason });
+      return i18n.t(`cover_blocked.${reason}`, { defaultValue: translateApiError(err, i18n.t.bind(i18n), fallback) });
     }
-    if (detail) return detail;
   }
-  return "שגיאה בביצוע הפעולה";
+  return translateApiError(err, i18n.t.bind(i18n), fallback);
 }
 
 function ApprovalDotInline({ value }: { value: boolean | null }) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SwapRequest, submitCoverOffer, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { EffectiveDuty } from "../api/assignments";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   swap: SwapRequest;
@@ -42,9 +43,9 @@ export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, on
         setError(detail.slice("cover_not_eligible:".length));
       } else if (detail?.startsWith("cover_blocked:")) {
         const reason = detail.slice("cover_blocked:".length);
-        setError(t(`cover_blocked.${reason}`, { defaultValue: reason }));
+        setError(t(`cover_blocked.${reason}`, { defaultValue: translateApiError(err, t, "שגיאה") }));
       } else {
-        setError(detail ?? "שגיאה");
+        setError(translateApiError(err, t, "שגיאה"));
       }
     }
   }

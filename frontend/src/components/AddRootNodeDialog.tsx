@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { createNode } from "../api/hierarchy";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import Combobox, { type ComboboxItem } from "./Combobox";
+import { translateApiError } from "../utils/translateApiError";
 
 interface ParentNode {
   id: string;
@@ -55,8 +56,7 @@ export default function AddRootNodeDialog({ onClose, onCreated, initialName = ""
       onCreated();
       onClose();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "שגיאה ביצירת היחידה");
+      setError(translateApiError(err, t, "שגיאה ביצירת היחידה"));
     }
   }
 
