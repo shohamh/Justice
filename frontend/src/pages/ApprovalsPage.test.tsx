@@ -34,6 +34,10 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "viewer-1", role: "admin" } }),
+}));
+
 const swap = {
   id: "s1",
   duty_assignment_id: "da1",
@@ -161,7 +165,7 @@ describe("ApprovalsPage - action error banner", () => {
     );
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
-    const approveBtn = await screen.findByText("approvals.approve (swaps.requester)");
+    const approveBtn = await screen.findByText("approvals.approve");
     fireEvent.click(approveBtn);
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
