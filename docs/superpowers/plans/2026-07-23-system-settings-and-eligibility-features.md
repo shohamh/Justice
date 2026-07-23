@@ -1888,3 +1888,332 @@ Start the dev stack for this worktree on non-conflicting ports if the main check
 - [ ] **Step 4: Report to the user**
 
 Summarize what was built (all 7 requested features plus the CP-SAT solver integration from Task 12) and hand off for review before merging.
+
+---
+
+## Post-review addendum (added after final whole-branch review)
+
+The final review found the branch ready to merge with no Critical issues, but flagged one Important cross-task gap and two Minor cleanups, all addressed by the two tasks below.
+
+### Task 14: Exemption-duty-location matrix editor in DutyConfigPage
+
+**Files:**
+- Modify: `frontend/src/pages/DutyConfigPage.tsx`
+
+**Interfaces:**
+- Consumes: `getAllExemptionDutyLocationMaps()`, `setExemptionDutyLocations(id, duty_location_ids)` (Task 9, already exist and are currently unused), `queryKeys.exemptionDutyLocationMap()` (Task 9).
+
+**Context:** The exemption-type ↔ duty-TYPE mapping already has a live, always-editable matrix: each exemption type's row in `DutyConfigPage.tsx` renders a checkbox per duty type (`mapSel[et.id]`, `toggleMap`, lines ~465-476), backed by `getAllExemptionDutyTypeMaps`/`setExemptionDutyTypes`. Task 10 added a duty-LOCATION mapping with the exact same backend shape, but the only way to set it today is once, at exemption-type creation time, in `ExemptionTypeFormModal.tsx`. There is no way to view or change it afterward. This task adds the missing symmetric matrix for duty locations, right next to the existing duty-type one.
+
+- [ ] **Step 1: Write the failing test**
+
+Check whether `frontend/src/pages/DutyConfigPage.test.tsx` exists (Task 10's implementer confirmed it did NOT exist as of Task 10). If it still doesn't exist, create it with a focused test:
+
+```tsx
+// frontend/src/pages/DutyConfigPage.test.tsx
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { DutyConfigContent } from "./DutyConfigPage";
+import * as dutyConfigApi from "../api/dutyConfig";
+import * as soldiersApi from "../api/soldiers";
+
+vi.mock("../api/dutyConfig");
+vi.mock("../api/soldiers");
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(soldiersApi.getRanks).mockResolvedValue({ enlisted: [], officers: [] });
+  vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
+  vi.mocked(dutyConfigApi.listLocations).mockResolvedValue([
+    { id: "loc1", name: "שער צפוני", base: null, active: true },
+  ]);
+  vi.mocked(dutyConfigApi.listExemptionTypes).mockResolvedValue([
+    { id: "et1", name: "רפואי", description: null, is_global: false, is_medical: true, is_commander_exemption: false, active: true },
+  ]);
+  vi.mocked(dutyConfigApi.getAllExemptionDutyTypeMaps).mockResolvedValue({});
+  vi.mocked(dutyConfigApi.getAllExemptionDutyLocationMaps).mockResolvedValue({ et1: ["loc1"] });
+  vi.mocked(dutyConfigApi.setExemptionDutyLocations).mockResolvedValue(["loc1"]);
+});
+
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <DutyConfigContent />
+    </QueryClientProvider>
+  );
+}
+
+describe("DutyConfigPage - exemption-duty-location matrix", () => {
+  it("shows existing duty-location mappings as checked and toggling calls setExemptionDutyLocations", async () => {
+    renderPage();
+    const checkbox = await screen.findByTestId("loc-map-רפואי-שער צפוני");
+    expect(checkbox).toBeChecked();
+
+    fireEvent.click(checkbox);
+
+    await waitFor(() => {
+      expect(dutyConfigApi.setExemptionDutyLocations).toHaveBeenCalledWith("et1", []);
+    });
+  });
+});
+```
+
+If `DutyConfigPage.tsx` does not export `DutyConfigContent` as a named export, check its actual export shape first and adjust the import — the plan's earlier tasks referenced it as `export function DutyConfigContent()`, confirm this is still accurate before writing the test.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run src/pages/DutyConfigPage.test.tsx`
+Expected: FAIL — `getAllExemptionDutyLocationMaps` is never called by the component, `loc-map-...` testid doesn't exist.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `frontend/src/pages/DutyConfigPage.tsx`, add the import:
+
+```tsx
+import {
+  // ...existing imports...
+  getAllExemptionDutyLocationMaps,
+  setExemptionDutyLocations,
+} from "../api/dutyConfig";
+```
+
+Add a query mirroring `mapSelQuery`/`mapSel`, immediately after it:
+
+```tsx
+const locMapSelQuery = useQuery({ queryKey: queryKeys.exemptionDutyLocationMap(), queryFn: getAllExemptionDutyLocationMaps });
+const locMapSel = locMapSelQuery.data ?? {};
+```
+
+Add `queryKeys.exemptionDutyLocationMap()` to the `refresh()` function's invalidation list, alongside the existing `exemptionDutyTypeMap()` invalidation:
+
+```tsx
+async function refresh() {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.dutyTypes() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.dutyLocations() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.exemptionTypes() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyTypeMap() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyLocationMap() }),
+  ]);
+}
+```
+
+Add a `toggleLocationMap` function mirroring `toggleMap` exactly, immediately after it:
+
+```tsx
+async function toggleLocationMap(etId: string, locId: string) {
+  const current = locMapSel[etId] ?? [];
+  const next = current.includes(locId) ? current.filter((x) => x !== locId) : [...current, locId];
+  await setExemptionDutyLocations(etId, next);
+  await queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyLocationMap() });
+}
+```
+
+In the JSX, immediately after the existing duty-type checkbox list (the `{et.is_global ? (...) : (<>...duty-type checkboxes...</>)}` block, ending around the line with `data-testid={\`map-${et.name}-${d.name}\`}`), add a second, symmetric block for locations — inside the SAME `{et.is_global ? ... : (<>...)}` non-global branch, since a globally-exempt type doesn't need a location list either (it already exempts from everything):
+
+```tsx
+                  <div className="text-xs text-gray-500 mt-2">{t("duty_config.exempts_from_locations", "פוטר ממיקומים")}:</div>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {locations.map((loc) => (
+                      <label key={loc.id} className="text-xs flex items-center gap-1">
+                        <input type="checkbox" checked={(locMapSel[et.id] ?? []).includes(loc.id)}
+                               onChange={() => toggleLocationMap(et.id, loc.id)}
+                               data-testid={`loc-map-${et.name}-${loc.name}`} />
+                        {loc.name}
+                      </label>
+                    ))}
+                  </div>
+```
+
+Check `frontend/src/i18n/he.json` for whether `duty_config.exempts_from_locations` should be added as a real translation key (matching the existing `duty_config.exempts_from` key's presence there) rather than relying on the inline fallback string — follow whatever convention `duty_config.exempts_from` itself uses (i18n key file vs. inline fallback) for consistency.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run src/pages/DutyConfigPage.test.tsx`
+Expected: PASS
+
+- [ ] **Step 5: Typecheck, lint, full frontend suite**
+
+Run: `npm run typecheck && npm run lint && npm test`
+Expected: all clean
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add frontend/src/pages/DutyConfigPage.tsx frontend/src/pages/DutyConfigPage.test.tsx frontend/src/i18n/he.json
+git commit -m "feat: add exemption-duty-location matrix editor to Duty Config page"
+```
+
+---
+
+### Task 15: Minor cleanups from final review
+
+**Files:**
+- Modify: `frontend/src/components/DutyTypeFormModal.tsx`
+- Modify: `backend/app/services/eligibility.py`
+- Modify: `backend/app/services/potential.py`
+- Modify: `backend/app/services/algorithm_bridge.py`
+
+**Interfaces:**
+- `compute_eligibility_exclusions` gains a new required keyword parameter `reference_date: date`, replacing its internal `date.today()` call. Both call sites (`potential.py`, `algorithm_bridge.py`) already have a date value in scope (`reference_date` and `as_of` respectively) to pass through.
+
+This task bundles two independent, low-risk cleanups flagged as Minor in the final review. Do them as two separate commits since they touch unrelated files.
+
+#### Part A: Remove dead edit-mode effect in DutyTypeFormModal
+
+- [ ] **Step 1: Confirm the effect is genuinely dead**
+
+Read `frontend/src/components/DutyTypeFormModal.tsx` in full. Confirm: (a) the `useEffect` that calls `getAllExemptionDutyTypeMaps()` when `initial` is set (populating `selectedExemptionIds`/`reviewConfirmed`) exists, and (b) neither `selectedExemptionIds` nor `reviewConfirmed` is read anywhere in the component when `initial` is truthy — the review-gate JSX section and the submit-disabled condition are both guarded by `!initial`, and the post-create mapping loop in `handleSubmit` only runs in the `else` (create) branch. If you find ANY place where these values ARE read in edit mode that the plan missed, STOP and report DONE_WITH_CONCERNS rather than removing the effect — don't delete something that turns out to be load-bearing.
+
+- [ ] **Step 2: Remove the dead effect**
+
+Delete the `useEffect` block (the one with the comment "Editing an existing duty type keeps today's behavior...") entirely. Also remove the `getAllExemptionDutyTypeMaps` import if this was its only use in the file (check `handleSubmit` still uses it for the create-path mapping composition — per Task 7's implementation it does, so the import likely stays; verify before touching it).
+
+- [ ] **Step 3: Run the existing test suite for this component**
+
+Run: `npx vitest run src/components/DutyTypeFormModal.test.tsx`
+Expected: PASS, same count as before (this change should not require new tests — it's a pure deletion of unreachable-effect code, and existing tests for both create and edit modes should already pass unchanged since nothing observable changes)
+
+- [ ] **Step 4: Typecheck and lint**
+
+Run: `npm run typecheck && npm run lint`
+Expected: clean
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/components/DutyTypeFormModal.tsx
+git commit -m "refactor: remove dead edit-mode exemption-map prefetch in DutyTypeFormModal"
+```
+
+#### Part B: Thread reference_date through compute_eligibility_exclusions
+
+**Context:** `compute_eligibility_exclusions` (`backend/app/services/eligibility.py:127-158`) hardcodes `today = date.today()` at line 138, ignoring the reference date its two callers otherwise use for everything else. `potential.py`'s `compute_potential` already has `reference_date` in scope at its call site (`potential.py:164-166`). `algorithm_bridge.py`'s `load_soldier_inputs(session, *, as_of: date)` already has `as_of` in scope at its call site (`algorithm_bridge.py:231-233`).
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `backend/app/services/tests/test_eligibility.py` (create the file if it doesn't exist, following the style of `backend/app/services/tests/test_potential.py` for fixtures) or wherever `compute_eligibility_exclusions`'s existing tests live (search for them first):
+
+```python
+def test_compute_eligibility_exclusions_respects_reference_date(admin_session):
+    """A soldier whose mitvahim (shooting range qualification) will have
+    expired by a FUTURE reference date, but hasn't expired yet as of today,
+    must be excluded when evaluated as-of that future date — not as-of
+    today's date."""
+    from datetime import date, timedelta
+    from app.db.models import DutyType
+    from app.services.eligibility import compute_eligibility_exclusions
+    from tests.helpers import create_soldier
+
+    dt = DutyType(
+        name=f"ref_date_dt_{uuid.uuid4().hex[:8]}", score_per_day=1,
+        requirements={"requires_mitvahim": True},
+    )
+    admin_session.add(dt)
+    admin_session.flush()
+
+    soldier = create_soldier(admin_session, personal_number=f"ref_date_s_{uuid.uuid4().hex[:8]}")
+    soldier.last_mitvahim_date = date.today() - timedelta(days=170)  # ~5.5 months ago
+    admin_session.commit()
+
+    # As of today (6-month default window), still eligible.
+    today_exclusions = compute_eligibility_exclusions(
+        admin_session, [soldier], mitvahim_months=6, alal_months=3, reference_date=date.today(),
+    )
+    assert dt.id not in today_exclusions.get(soldier.id, set())
+
+    # As of 60 days in the future, the mitvahim will be ~7.8 months stale — excluded.
+    future_exclusions = compute_eligibility_exclusions(
+        admin_session, [soldier], mitvahim_months=6, alal_months=3, reference_date=date.today() + timedelta(days=60),
+    )
+    assert dt.id in future_exclusions.get(soldier.id, set())
+```
+
+Check `create_soldier`'s exact signature and `DutyType`'s exact required fields before finalizing (read `tests/helpers.py` and `backend/app/db/models.py` if unsure).
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest app/services/tests/test_eligibility.py -k reference_date -q` (adjust path to wherever you placed it)
+Expected: FAIL — `TypeError: compute_eligibility_exclusions() got an unexpected keyword argument 'reference_date'`
+
+- [ ] **Step 3: Update the function signature**
+
+In `backend/app/services/eligibility.py`:
+
+```python
+def compute_eligibility_exclusions(
+    session: Session,
+    soldiers: list[Soldier],
+    *,
+    mitvahim_months: int,
+    alal_months: int,
+    reference_date: date,
+) -> dict[uuid.UUID, set[uuid.UUID]]:
+    """For each soldier, return the set of duty_type_ids they're ineligible for due to requirements.
+
+    Returns {soldier_id: {duty_type_id, ...}}
+    """
+    duty_types = session.execute(
+        select(DutyType).where(DutyType.active.is_(True))
+    ).scalars().all()
+
+    exclusions: dict[uuid.UUID, set[uuid.UUID]] = {s.id: set() for s in soldiers}
+
+    for dt in duty_types:
+        raw_reqs = dt.requirements or {}
+        if not raw_reqs:
+            continue
+        try:
+            reqs = DutyTypeRequirements.model_validate(raw_reqs)
+        except Exception:
+            continue
+
+        for soldier in soldiers:
+            if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=reference_date):
+                exclusions[soldier.id].add(dt.id)
+
+    return exclusions
+```
+
+(Removed the `today = date.today()` line; `_is_eligible`'s `today` parameter now receives `reference_date` directly. `_is_eligible`'s own signature is unchanged — only this function's internal date source changes.)
+
+- [ ] **Step 4: Update both call sites**
+
+In `backend/app/services/potential.py`, update the call at line ~164:
+
+```python
+exclusions = compute_eligibility_exclusions(
+    session, subtree_soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months,
+    reference_date=reference_date,
+)
+```
+
+In `backend/app/services/algorithm_bridge.py`, update the call at line ~231:
+
+```python
+eligibility_exclusions = compute_eligibility_exclusions(
+    session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months, reference_date=as_of,
+)
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pytest app/services/tests/test_eligibility.py -k reference_date -q`
+Expected: PASS
+
+- [ ] **Step 6: Full backend regression run**
+
+Run: `pytest -q`
+Expected: all PASS — this is a signature change to a function with exactly two call sites, both now updated, but confirm nothing else in the codebase calls `compute_eligibility_exclusions` without the new required argument (search for it first: `grep -rn "compute_eligibility_exclusions" backend/`).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/app/services/eligibility.py backend/app/services/potential.py backend/app/services/algorithm_bridge.py backend/app/services/tests/test_eligibility.py
+git commit -m "fix: make compute_eligibility_exclusions respect the caller's reference date instead of today()"
+```
