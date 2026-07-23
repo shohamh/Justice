@@ -6,6 +6,7 @@ import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import DutyTypeRequirementsEditor from "../components/DutyTypeRequirementsEditor";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
+import ExemptionTypeFormModal from "../components/ExemptionTypeFormModal";
 import ReasonPromptModal from "../components/ReasonPromptModal";
 import { DataTable, type ColDef } from "../components/DataTable";
 import { type DutyType as DutyTypeT } from "../api/dutyConfig";
@@ -55,7 +56,6 @@ function summarizeReqs(r: Reqs | undefined, rankLists: RankLists): string {
 import {
   DutyType,
   ExemptionType,
-  createExemptionType,
   createLocation,
   DutyTypeUsage,
   deleteDutyType,
@@ -76,11 +76,8 @@ export function DutyConfigContent() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [locName, setLocName] = useState("");
-  const [exName, setExName] = useState("");
-  const [exGlobal, setExGlobal] = useState(false);
-  const [exMedical, setExMedical] = useState(false);
-  const [exCommanderExemption, setExCommanderExemption] = useState(false);
   const [dtModal, setDtModal] = useState<{ initial?: DutyType } | null>(null);
+  const [etModalOpen, setEtModalOpen] = useState(false);
   const [eligModal, setEligModal] = useState<DutyType | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ dt: DutyType; usage: DutyTypeUsage | null; loading: boolean; error: string | null } | null>(null);
   const [etDisableModal, setEtDisableModal] = useState<{ et: ExemptionType } | null>(null);
@@ -179,12 +176,6 @@ export function DutyConfigContent() {
     setLocName("");
     await refresh();
   }
-  async function addExType(e: FormEvent) {
-    e.preventDefault();
-    await createExemptionType({ name: exName, is_global: exGlobal, is_medical: exMedical, is_commander_exemption: exCommanderExemption });
-    setExName(""); setExGlobal(false); setExMedical(false); setExCommanderExemption(false);
-    await refresh();
-  }
   async function toggleMap(etId: string, dtId: string) {
     const current = mapSel[etId] ?? [];
     const next = current.includes(dtId) ? current.filter((x) => x !== dtId) : [...current, dtId];
@@ -199,6 +190,12 @@ export function DutyConfigContent() {
         initial={dtModal.initial}
         onSaved={async () => { setDtModal(null); await refresh(); }}
         onClose={() => setDtModal(null)}
+      />
+    )}
+    {etModalOpen && (
+      <ExemptionTypeFormModal
+        onSaved={async () => { setEtModalOpen(false); await refresh(); }}
+        onClose={() => setEtModalOpen(false)}
       />
     )}
     {eligModal && (
@@ -393,23 +390,17 @@ export function DutyConfigContent() {
       </div>
 
       <div data-testid="exemption-types-section">
-        <h3 className="font-medium mb-2">{t("duty_config.exemption_types")}</h3>
-        <form onSubmit={addExType} className="flex items-end gap-2 mb-2 flex-wrap" data-testid="exemption-type-form">
-          <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exName} onChange={(e) => setExName(e.target.value)} required data-testid="et-name" placeholder={t("duty_config.name")} />
-          <label className="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" checked={exGlobal} onChange={(e) => setExGlobal(e.target.checked)} data-testid="et-global" />
-            {t("duty_config.global")}
-          </label>
-          <label className="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" checked={exMedical} onChange={(e) => setExMedical(e.target.checked)} data-testid="et-medical" />
-            🏥 {t("duty_config.medical")}
-          </label>
-          <label className="flex items-center gap-1 text-xs cursor-pointer">
-            <input type="checkbox" checked={exCommanderExemption} onChange={(e) => setExCommanderExemption(e.target.checked)} data-testid="et-commander-exemption" />
-            🎖️ פטור פיקודי
-          </label>
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="et-submit">{t("duty_config.add")}</button>
-        </form>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-medium">{t("duty_config.exemption_types")}</h3>
+          <button
+            type="button"
+            onClick={() => setEtModalOpen(true)}
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm hover:bg-indigo-700"
+            data-testid="et-open-modal"
+          >
+            + {t("duty_config.add")} {t("duty_config.exemption_types")}
+          </button>
+        </div>
         <ul className="text-sm space-y-2" data-testid="exemption-type-list">
           {exTypes.map((et) => (
             <li key={et.id} data-testid={`et-row-${et.name}`} className="border dark:border-gray-600 rounded p-2">
