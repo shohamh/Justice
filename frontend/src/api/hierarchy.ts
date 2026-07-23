@@ -16,6 +16,7 @@ export interface NodeDTO {
   path_ids: string[];
   duty_managers: DutyManagerEntry[];
   dm_manageable: boolean;
+  can_edit: boolean;
   children?: NodeDTO[];
 }
 

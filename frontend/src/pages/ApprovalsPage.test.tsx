@@ -57,6 +57,18 @@ const swap = {
   duty_shift_id: null,
   requesting_soldier_name: "B",
   covering_soldier_name: "C",
+  requester_manager_approvals: [
+    {
+      commander_id: "m1",
+      commander_name: null,
+      approved: false,
+      approved_by: null,
+      approved_by_name: null,
+      approved_at: null,
+      approver_kind: "commander",
+    },
+  ],
+  covering_manager_approvals: [],
 } as swapsApi.SwapRequest;
 
 const constraint = {
@@ -132,7 +144,7 @@ describe("ApprovalsPage - action error banner", () => {
 
   it("shows the translated cover_blocked message when approving a swap fails", async () => {
     vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([swap]);
-    vi.mocked(swapsApi.approveSwapSide).mockRejectedValue({
+    vi.mocked(swapsApi.managerApproveSwap).mockRejectedValue({
       response: { data: { detail: "cover_blocked:overlap" } },
     });
     const queryClient = new QueryClient({

@@ -22,11 +22,14 @@ import { getPreferences, updatePreferences, listCommanderScopes, addCommanderSco
 import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const publicSettings = usePublicSettings();
+  const telegramEnabled = publicSettings?.["telegram.enabled"] !== false;
 
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
@@ -409,6 +412,7 @@ export default function ProfilePage() {
         )}
       </section>
 
+      {telegramEnabled && (
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.telegram")}</h3>
         {tgCode ? (
@@ -451,13 +455,19 @@ export default function ProfilePage() {
           </button>
         )}
       </section>
+      )}
 
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>
-        <div className="text-sm" style={{ display: "grid", gridTemplateColumns: "1fr repeat(3, 4.5rem)" }}>
-          {/* header — column labels with select-all checkboxes */}
-          <div className="py-1 border-b dark:border-gray-600" />
-          {(["in_app_enabled", "push_enabled", "email_enabled"] as const).map((field) => {
+        {(() => {
+          const prefColumns = (
+            ["in_app_enabled", "push_enabled", "email_enabled"] as const
+          ).filter((field) => field !== "push_enabled" || telegramEnabled);
+          return (
+            <div className="text-sm" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${prefColumns.length}, 4.5rem)` }}>
+              {/* header — column labels with select-all checkboxes */}
+              <div className="py-1 border-b dark:border-gray-600" />
+              {prefColumns.map((field) => {
             const allOn = prefs.length > 0 && prefs.every((p) => p[field]);
             const someOn = prefs.some((p) => p[field]);
             return (
@@ -478,7 +488,7 @@ export default function ProfilePage() {
           {prefs.map((p) => (
             <React.Fragment key={p.notification_type}>
               <div className="py-1 border-b dark:border-gray-600 flex items-center">{t(`notifications.type_${p.notification_type}`)}</div>
-              {(["in_app_enabled", "push_enabled", "email_enabled"] as const).map((field) => (
+              {prefColumns.map((field) => (
                 <div key={field} className="py-1 border-b dark:border-gray-600 flex items-center justify-center">
                   <input
                     type="checkbox"
@@ -489,7 +499,9 @@ export default function ProfilePage() {
               ))}
             </React.Fragment>
           ))}
-        </div>
+            </div>
+          );
+        })()}
       </section>
 
       {(user?.role === "admin" || user?.is_commander || user?.is_duty_manager) && (

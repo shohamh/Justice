@@ -50,6 +50,34 @@ def test_commander_read_only_in_commanded_subtree(admin_session):
     assert not authz.can(cmd, authz.Action.SOLDIER_CREATE, target_node=b, roots=roots, is_commander=is_cmd, is_duty_manager=is_dm)
 
 
+def test_commander_can_manage_hierarchy_in_commanded_subtree_only(admin_session):
+    # Finding I-1: commanders must be granted HIERARCHY_MANAGE for nodes they
+    # directly command, scoped the same way DM scope already is (path_ids
+    # containment via _node_in_scope, so it covers descendants of the
+    # commanded node too, not just the node itself).
+    d = create_node(admin_session, level="department", name="d-i1")
+    b = create_node(admin_session, level="branch", name="b-i1", parent=d)
+    child = create_node(admin_session, level="team", name="child-i1", parent=b)
+    other = create_node(admin_session, level="department", name="other-i1")
+    cmd = create_soldier(admin_session, personal_number="7000030", role="commander")
+    b.commander_id = cmd.id
+    admin_session.flush()
+    roots = _roots(admin_session, cmd)
+    is_cmd, is_dm = _caps(admin_session, cmd)
+    assert authz.can(
+        cmd, authz.Action.HIERARCHY_MANAGE, target_node=b, roots=roots,
+        is_commander=is_cmd, is_duty_manager=is_dm,
+    )
+    assert authz.can(
+        cmd, authz.Action.HIERARCHY_MANAGE, target_node=child, roots=roots,
+        is_commander=is_cmd, is_duty_manager=is_dm,
+    )
+    assert not authz.can(
+        cmd, authz.Action.HIERARCHY_MANAGE, target_node=other, roots=roots,
+        is_commander=is_cmd, is_duty_manager=is_dm,
+    )
+
+
 def test_plain_soldier_has_no_management(admin_session):
     d = create_node(admin_session, level="department", name="d")
     s = create_soldier(

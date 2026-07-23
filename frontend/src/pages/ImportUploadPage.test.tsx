@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ImportUploadPage from "./ImportUploadPage";
 import * as importSessionsApi from "../api/importSessions";
@@ -7,9 +8,13 @@ import type { ParsedState } from "../api/importSessions";
 vi.mock("../api/importSessions");
 
 const mockNavigate = vi.fn();
-vi.mock("react-router-dom", () => ({
-  useNavigate: () => mockNavigate,
-}));
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -39,7 +44,7 @@ describe("ImportUploadPage", () => {
       preview: mockPreview,
     });
 
-    render(<ImportUploadPage />);
+    render(<MemoryRouter><ImportUploadPage /></MemoryRouter>);
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [makeFile()] } });
@@ -60,7 +65,7 @@ describe("ImportUploadPage", () => {
       response: { data: { detail: "עמודה חסרה: soldier_id" } },
     });
 
-    render(<ImportUploadPage />);
+    render(<MemoryRouter><ImportUploadPage /></MemoryRouter>);
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [makeFile()] } });
@@ -80,7 +85,7 @@ describe("ImportUploadPage", () => {
       new Error("network fail"),
     );
 
-    render(<ImportUploadPage />);
+    render(<MemoryRouter><ImportUploadPage /></MemoryRouter>);
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [makeFile()] } });
@@ -96,7 +101,7 @@ describe("ImportUploadPage", () => {
   });
 
   it("rejects a non-xlsx file client-side without calling the API", async () => {
-    render(<ImportUploadPage />);
+    render(<MemoryRouter><ImportUploadPage /></MemoryRouter>);
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const wrongFile = new File(["dummy"], "import.docx", {
@@ -113,7 +118,7 @@ describe("ImportUploadPage", () => {
   });
 
   it("renders a template download link with the correct href", () => {
-    render(<ImportUploadPage />);
+    render(<MemoryRouter><ImportUploadPage /></MemoryRouter>);
 
     const link = screen.getByText("הורד תבנית לדוגמה ›");
     expect(link).toHaveAttribute("href", "/api/import/template");
