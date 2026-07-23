@@ -9,7 +9,8 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
-import DirectCommanderApproval, { isSideSatisfied } from "../components/DirectCommanderApproval";
+import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "../components/DirectCommanderApproval";
+import { useAuth } from "../auth/AuthContext";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import {
@@ -65,12 +66,44 @@ function ApprovalDotInline({ value }: { value: boolean | null }) {
   return <span className="text-gray-400">—</span>;
 }
 
+/** One approval-kind row (commander or duty-manager) for one swap side. Shows
+ * status for everyone, but only shows the actionable button to a viewer who
+ * is actually eligible for this specific kind — a commander with no
+ * authority over the duty-manager step (or vice versa) sees status only. */
+function SwapKindApproval({
+  approvals, label, canAct, onApprove, t,
+}: {
+  approvals: DirectCommanderApprovalRow[];
+  label: string;
+  canAct: boolean;
+  onApprove: () => void;
+  t: (k: string) => string;
+}) {
+  if (approvals.length === 0) return null;
+  const done = isSideSatisfied(approvals);
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span>{label}:</span>
+      <DirectCommanderApproval approvals={approvals} />
+      {!done && canAct && (
+        <button
+          onClick={onApprove}
+          className="bg-green-600 text-white px-2 py-0.5 rounded text-xs"
+        >
+          {t("approvals.approve")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment" | "transfers";
 
 const VALID_TABS: Tab[] = ["constraints", "exemptions", "field_updates", "swaps", "enrollment", "transfers"];
 
 export default function ApprovalsPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") as Tab | null;
   const tab: Tab = rawTab && VALID_TABS.includes(rawTab) ? rawTab : "constraints";
@@ -243,8 +276,7 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function onEnrollApprove(id: string, soldierName: string, nodeName: string) {
-    if (!window.confirm(t("enrollment.confirm_approve", { soldier: soldierName, node: nodeName }))) return;
+  async function onEnrollApprove(id: string) {
     try {
       await approveEnrollment(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
@@ -498,8 +530,12 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {swapItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {swapItems.map(swap => {
-              const requesterManagersDone = isSideSatisfied(swap.requester_manager_approvals);
-              const coveringManagersDone = isSideSatisfied(swap.covering_manager_approvals);
+              const isAdmin = user?.role === "admin";
+              const reqGroups = groupByKind(swap.requester_manager_approvals);
+              const covGroups = groupByKind(swap.covering_manager_approvals);
+              const canActCommander = (commanderApprovals: DirectCommanderApprovalRow[]) =>
+                isAdmin || commanderApprovals.some(a => a.commander_id === user?.id);
+              const canActDutyManager = isAdmin || !!user?.is_duty_manager;
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
@@ -517,30 +553,36 @@ export default function ApprovalsPage() {
                   )}
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
                   <div className="text-xs text-gray-500 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span>{t("swaps.requester_managers")}:</span>
-                      <DirectCommanderApproval approvals={swap.requester_manager_approvals} />
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span>{t("swaps.covering_managers")}:</span>
-                      <DirectCommanderApproval approvals={swap.covering_manager_approvals} />
-                    </div>
+                    <SwapKindApproval
+                      approvals={reqGroups.commander}
+                      label={`${t("swaps.requester_managers")} (${t("swaps.approver_kind_commander")})`}
+                      canAct={canActCommander(reqGroups.commander)}
+                      onApprove={() => onSwapManagerApprove(swap.id, "requester")}
+                      t={t}
+                    />
+                    <SwapKindApproval
+                      approvals={reqGroups.duty_manager}
+                      label={`${t("swaps.requester_managers")} (${t("swaps.approver_kind_duty_manager")})`}
+                      canAct={canActDutyManager}
+                      onApprove={() => onSwapManagerApprove(swap.id, "requester")}
+                      t={t}
+                    />
+                    <SwapKindApproval
+                      approvals={covGroups.commander}
+                      label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_commander")})`}
+                      canAct={canActCommander(covGroups.commander)}
+                      onApprove={() => onSwapManagerApprove(swap.id, "covering")}
+                      t={t}
+                    />
+                    <SwapKindApproval
+                      approvals={covGroups.duty_manager}
+                      label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_duty_manager")})`}
+                      canAct={canActDutyManager}
+                      onApprove={() => onSwapManagerApprove(swap.id, "covering")}
+                      t={t}
+                    />
                   </div>
                   <div className="flex gap-2 items-center flex-wrap">
-                    <button
-                      onClick={() => onSwapManagerApprove(swap.id, "requester")}
-                      disabled={requesterManagersDone}
-                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
-                    >
-                      {requesterManagersDone ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.requester")})
-                    </button>
-                    <button
-                      onClick={() => onSwapManagerApprove(swap.id, "covering")}
-                      disabled={coveringManagersDone}
-                      className="bg-green-600 text-white px-2 py-1 rounded text-xs disabled:opacity-50"
-                    >
-                      {coveringManagersDone ? "✓ " : ""}{t("approvals.approve")} ({t("swaps.covering")})
-                    </button>
                     <input
                       placeholder={t("approvals.decision_note")}
                       value={swapRejectNotes[swap.id] ?? ""}
@@ -572,7 +614,7 @@ export default function ApprovalsPage() {
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
                   <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => onEnrollApprove(req.id, req.soldier_name, nodeName)}
+                    <button onClick={() => onEnrollApprove(req.id)}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs">
                       {t("enrollment.approve")}
                     </button>

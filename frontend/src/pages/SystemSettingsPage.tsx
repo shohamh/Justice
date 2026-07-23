@@ -67,7 +67,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "הרשמה",
     settings: [
       { key: "registration.telegram_required", label: "טלגרם חובה", description: "האם חיילים חדשים חייבים לקשר חשבון טלגרם לאחר ההרשמה", type: "boolean", defaultValue: false },
-      { key: "registration.email_domain_hint", label: "רמז לדומיין אימייל", description: "דומיין ברירת מחדל המוצג כרמז בשדה האימייל, למשל gmail.com (ריק = ללא רמז)", type: "text", defaultValue: "" },
+      { key: "registration.email_domain_hint", label: "סיומת דומיין אימייל מומלצת", description: "דומיין ברירת מחדל המוצג כרמז בשדה האימייל, למשל gmail.com (ריק = ללא רמז)", type: "text", defaultValue: "" },
     ],
   },
   {

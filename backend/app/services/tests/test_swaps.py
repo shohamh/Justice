@@ -375,3 +375,66 @@ def test_approve_manager_side_override_clears_all_rows_for_side(admin_session):
     admin_session.commit()
     admin_session.refresh(req)
     assert req.status == "applied"
+
+
+def test_override_by_broader_commander_does_not_clear_duty_manager_rows(admin_session):
+    """A commander who reaches the override path (e.g. reassigned as the
+    node's commander after the swap was already claimed, so they hold no
+    chain row of their own) may only clear the commander-kind requirement —
+    not silently satisfy the separate duty-manager requirement too."""
+    from app.services.swaps import approve_manager_side_override, approve_soldier_side, claim_request
+
+    node = create_node(admin_session, level="unit", name=f"ovr_{_uid()}")
+    original_cmd = create_soldier(admin_session, personal_number=f"ovr_orig_{_uid()}", role="commander")
+    node.commander_id = original_cmd.id
+    dm = create_soldier(admin_session, personal_number=f"ovr_dm_{_uid()}", role="duty_manager", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    requester = create_soldier(admin_session, personal_number=f"ovr_req_{_uid()}", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number=f"ovr_cov_{_uid()}")
+    assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="open",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+    req = claim_request(admin_session, request_id=req.id, covering_soldier_id=covering.id)
+    admin_session.commit()
+
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id)
+    approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id)
+    admin_session.commit()
+
+    # Commander reassigned after claim time — has scope over the node but no
+    # SwapManagerApproval row of their own, so they land on the override path.
+    new_cmd = create_soldier(admin_session, personal_number=f"ovr_new_{_uid()}", role="commander")
+    node.commander_id = new_cmd.id
+    admin_session.commit()
+
+    approve_manager_side_override(admin_session, request_id=req.id, side="requester", actor_id=new_cmd.id)
+    admin_session.commit()
+
+    rows = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == req.id, SwapManagerApproval.side == "requester"
+        )
+    ).scalars().all()
+    by_kind = {r.approver_kind: r for r in rows}
+    assert by_kind["commander"].approved is True
+    assert by_kind["commander"].approved_by == new_cmd.id
+    assert by_kind["duty_manager"].approved is False, (
+        "a broader commander's override must not satisfy the duty-manager requirement"
+    )
+
+    admin_session.refresh(req)
+    assert req.status == "pending_approval"
+
+    # Symmetric case: the actual duty manager's override must not satisfy the
+    # commander requirement either.
+    approve_manager_side_override(admin_session, request_id=req.id, side="requester", actor_id=dm.id)
+    admin_session.commit()
+    admin_session.refresh(by_kind["duty_manager"])
+    admin_session.refresh(by_kind["commander"])
+    assert by_kind["duty_manager"].approved is True
+    assert by_kind["commander"].approved is True  # already cleared above, unaffected
