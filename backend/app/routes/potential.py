@@ -44,6 +44,7 @@ class SoldierDetailOut(BaseModel):
     rank: str | None = None
     partial_exemption_names: list[str] | None = None
     exemptions: list[ExemptionSummaryItemOut] | None = None
+    eligible_duty_type_ids: list[uuid.UUID]
 
 
 class ModifierOut(BaseModel):
@@ -97,6 +98,7 @@ def _out(r: svc.PotentialResult, *, can_view_exemptions: bool) -> PotentialOut:
                     ]
                     if can_view_exemptions else None
                 ),
+                eligible_duty_type_ids=s.eligible_duty_type_ids,
             )
             for s in r.soldiers
         ],

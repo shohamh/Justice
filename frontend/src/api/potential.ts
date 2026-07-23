@@ -10,6 +10,7 @@ export interface SoldierPotentialDetail {
   rank: string | null;
   partial_exemption_names: string[] | null;
   exemptions: ExemptionSummaryItem[] | null;
+  eligible_duty_type_ids: string[];
 }
 
 export interface PotentialModifierDTO {

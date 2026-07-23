@@ -17,6 +17,7 @@ import {
   SoldierPotentialDetail,
 } from "../../api/potential";
 import { fetchFullTree, NodeDTO } from "../../api/hierarchy";
+import { listDutyTypes } from "../../api/dutyConfig";
 import { useLevelTypes } from "../../hooks/useLevelTypes";
 import { sortNodesByTree } from "../../utils/sortNodesByTree";
 import { WHOLE_ORG_ID } from "../../utils/wholeOrg";
@@ -35,6 +36,14 @@ export default function PotentialPage() {
   const [newReason, setNewReason] = useState("");
   const [newDelta, setNewDelta] = useState(0);
   const [exportRows, setExportRows] = useState<NodeDTO[]>([]);
+  const [selectedDutyTypeIds, setSelectedDutyTypeIds] = useState<string[]>([]);
+
+  const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
+
+  function toggleDutyTypePill(id: string) {
+    setSelectedDutyTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   const treeQuery = useQuery({ queryKey: queryKeys.hierarchyTree(), queryFn: fetchFullTree });
   const treeNodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
@@ -164,6 +173,13 @@ export default function PotentialPage() {
   function pctEligibleText(n: NodeDTO): string {
     const pct = pctEligibleValue(n);
     return pct === null ? "—" : `${pct.toFixed(0)}%`;
+  }
+
+  function filterSoldiersByDutyType(soldiers: SoldierPotentialDetail[]): SoldierPotentialDetail[] {
+    if (selectedDutyTypeIds.length === 0) return soldiers;
+    return soldiers.filter((s) =>
+      selectedDutyTypeIds.every((dtId) => s.eligible_duty_type_ids.includes(dtId)),
+    );
   }
 
   function toggleExpanded(nodeId: string) {
@@ -361,6 +377,26 @@ export default function PotentialPage() {
           <input type="date" lang="he" value={referenceDate} onChange={(e) => setReferenceDate(e.target.value)} className="border rounded p-1" />
         </div>
 
+        {dutyTypes.length > 0 && (
+          <div className="flex flex-wrap gap-2" dir="rtl">
+            {dutyTypes.map((dt) => (
+              <button
+                key={dt.id}
+                type="button"
+                onClick={() => toggleDutyTypePill(dt.id)}
+                aria-pressed={selectedDutyTypeIds.includes(dt.id)}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                  selectedDutyTypeIds.includes(dt.id)
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600"
+                }`}
+              >
+                {dt.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex justify-start" dir="ltr">
           <ExcelExportButton columns={cols} rows={exportRows} filename="potential.xlsx" />
         </div>
@@ -378,7 +414,7 @@ export default function PotentialPage() {
               <div className="p-2">
                 <DataTable
                   columns={soldierCols}
-                  data={displayResults[n.id]?.soldiers ?? []}
+                  data={filterSoldiersByDutyType(displayResults[n.id]?.soldiers ?? [])}
                   filterPlaceholder={t("table.filter_placeholder")}
                   emptyMessage={t("potential.no_soldiers")}
                   testId={`potential-soldiers-table-${n.id}`}
