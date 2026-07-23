@@ -229,7 +229,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     alal_months = _setting_int("eligibility.alal_months", 3)
 
     eligibility_exclusions = compute_eligibility_exclusions(
-        session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months
+        session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months, reference_date=as_of
     )
 
     # Approved personal constraints per soldier (one query)

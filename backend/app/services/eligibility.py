@@ -130,12 +130,12 @@ def compute_eligibility_exclusions(
     *,
     mitvahim_months: int,
     alal_months: int,
+    reference_date: date,
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, return the set of duty_type_ids they're ineligible for due to requirements.
 
     Returns {soldier_id: {duty_type_id, ...}}
     """
-    today = date.today()
     duty_types = session.execute(
         select(DutyType).where(DutyType.active.is_(True))
     ).scalars().all()
@@ -152,7 +152,7 @@ def compute_eligibility_exclusions(
             continue
 
         for soldier in soldiers:
-            if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=today):
+            if not _is_eligible(soldier, reqs, mitvahim_months=mitvahim_months, alal_months=alal_months, today=reference_date):
                 exclusions[soldier.id].add(dt.id)
 
     return exclusions

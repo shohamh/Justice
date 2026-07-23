@@ -163,6 +163,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
     alal_months = get_setting_int(session, "eligibility.alal_months", 3)
     exclusions = compute_eligibility_exclusions(
         session, subtree_soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months,
+        reference_date=reference_date,
     )
 
     details: list[SoldierPotentialDetail] = []
