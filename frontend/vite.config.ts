@@ -43,5 +43,17 @@ export default defineConfig({
     // Playwright specs live in tests/e2e and must not be collected by vitest.
     exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
     passWithNoTests: true,
+    // Vitest's default thread pool spawns up to cpus-1 workers, each booting
+    // its own jsdom environment. On dev machines that's already running
+    // Docker/Postgres + backend + frontend + bot, that many concurrent
+    // workers can exhaust memory and start swapping (runs going from ~15s to
+    // 45+ minutes, sometimes OOMing outright). Capping it keeps memory use
+    // bounded without meaningfully hurting wall-clock time.
+    poolOptions: {
+      threads: {
+        maxThreads: 8,
+        minThreads: 1,
+      },
+    },
   } as unknown as Record<string, unknown>,
 });
