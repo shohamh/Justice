@@ -55,7 +55,7 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [templateId, fromDate, toDate]);
+  }, [templateId, fromDate, toDate, t]);
 
   if (!open) return null;
 
