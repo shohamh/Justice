@@ -9,6 +9,7 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
+import DocumentPreviewModal from "../components/DocumentPreviewModal";
 import DirectCommanderApproval, { isSideSatisfied } from "../components/DirectCommanderApproval";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
@@ -84,6 +85,7 @@ export default function ApprovalsPage() {
   const [transferRejectNotes, setTransferRejectNotes] = useState<Record<string, string>>({});
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentRequestDTO | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; contentType: string } | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -181,17 +183,12 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function openExemptionFile(erId: string, fileId: string) {
+  async function openExemptionFile(erId: string, fileId: string, fileName: string) {
     try {
       const resp = await api.get(exemptionFileDownloadUrl(erId, fileId), { responseType: "blob" });
-      const url = URL.createObjectURL(resp.data as Blob);
-      const win = window.open(url, "_blank");
-      if (win) {
-        win.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
-      } else {
-        // popup blocked — revoke immediately, nothing to show
-        URL.revokeObjectURL(url);
-      }
+      const blob = resp.data as Blob;
+      const url = URL.createObjectURL(blob);
+      setPreviewFile({ url, name: fileName, contentType: blob.type || "application/octet-stream" });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -421,7 +418,7 @@ export default function ApprovalsPage() {
                         <button
                           key={f.id}
                           type="button"
-                          onClick={() => openExemptionFile(er.id, f.id)}
+                          onClick={() => openExemptionFile(er.id, f.id, f.file_name)}
                           className="text-blue-600 dark:text-blue-400 text-xs hover:underline flex items-center gap-1"
                         >
                           📎 {f.file_name}
@@ -643,6 +640,17 @@ export default function ApprovalsPage() {
           onDone={async () => {
             setSelectedEnrollment(null);
             await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
+          }}
+        />
+      )}
+      {previewFile && (
+        <DocumentPreviewModal
+          fileUrl={previewFile.url}
+          fileName={previewFile.name}
+          contentType={previewFile.contentType}
+          onClose={() => {
+            URL.revokeObjectURL(previewFile.url);
+            setPreviewFile(null);
           }}
         />
       )}

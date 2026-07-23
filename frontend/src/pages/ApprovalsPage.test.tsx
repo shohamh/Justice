@@ -238,7 +238,7 @@ describe("ApprovalsPage - transfers tab", () => {
 });
 
 describe("ApprovalsPage - exemption file links", () => {
-  it("opens exemption files via an authenticated blob fetch, not a raw href", async () => {
+  it("opens exemption files via an authenticated blob fetch and previews them in-app", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
     vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
     const blob = new Blob(["data"], { type: "application/pdf" });
@@ -248,7 +248,6 @@ describe("ApprovalsPage - exemption file links", () => {
     const originalRevokeObjectURL = URL.revokeObjectURL;
     URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
     URL.revokeObjectURL = vi.fn();
-    const openSpy = vi.spyOn(window, "open").mockReturnValue({ addEventListener: vi.fn() } as unknown as Window);
 
     try {
       const queryClient = new QueryClient({
@@ -276,11 +275,15 @@ describe("ApprovalsPage - exemption file links", () => {
         );
       });
       expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
-      expect(openSpy).toHaveBeenCalledWith("blob:mock-url", "_blank");
+      const downloadLink = await screen.findByRole("link", { name: /הורדה/ });
+      expect(downloadLink).toHaveAttribute("href", "blob:mock-url");
+      expect(downloadLink).toHaveAttribute("download", "note.pdf");
+
+      fireEvent.click(screen.getByRole("button", { name: "✕" }));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
     } finally {
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
-      openSpy.mockRestore();
     }
   });
 
