@@ -11,6 +11,7 @@ from app.audit.writer import write_audit
 from app.db.models import (
     DutyLocation,
     DutyType,
+    ExemptionDutyLocationMap,
     ExemptionDutyTypeMap,
     ExemptionType,
     SoldierExemption,
@@ -462,4 +463,90 @@ def set_exemption_duty_types(
     for dtid in current - desired:
         unmap_exemption_from_duty_type(
             session, exemption_type_id=exemption_type_id, duty_type_id=dtid, actor_id=actor_id
+        )
+
+
+def map_exemption_to_duty_location(
+    session: Session,
+    *,
+    exemption_type_id: uuid.UUID,
+    duty_location_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    if session.get(ExemptionType, exemption_type_id) is None:
+        raise DutyConfigError("exemption_type_not_found")
+    if session.get(DutyLocation, duty_location_id) is None:
+        raise DutyConfigError("duty_location_not_found")
+    exists = session.get(ExemptionDutyLocationMap, (exemption_type_id, duty_location_id))
+    if exists is not None:
+        return  # idempotent
+    session.add(
+        ExemptionDutyLocationMap(exemption_type_id=exemption_type_id, duty_location_id=duty_location_id)
+    )
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="exemption_location_map.add",
+        entity_type="exemption_type",
+        entity_id=exemption_type_id,
+        after={"duty_location_id": str(duty_location_id)},
+    )
+
+
+def unmap_exemption_from_duty_location(
+    session: Session,
+    *,
+    exemption_type_id: uuid.UUID,
+    duty_location_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    row = session.get(ExemptionDutyLocationMap, (exemption_type_id, duty_location_id))
+    if row is None:
+        return  # idempotent
+    session.delete(row)
+    write_audit(
+        session,
+        actor_id=actor_id,
+        action="exemption_location_map.remove",
+        entity_type="exemption_type",
+        entity_id=exemption_type_id,
+        before={"duty_location_id": str(duty_location_id)},
+    )
+
+
+def list_exemption_duty_location_ids(
+    session: Session, *, exemption_type_id: uuid.UUID
+) -> list[uuid.UUID]:
+    return list(
+        session.execute(
+            select(ExemptionDutyLocationMap.duty_location_id).where(
+                ExemptionDutyLocationMap.exemption_type_id == exemption_type_id
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def set_exemption_duty_locations(
+    session: Session,
+    *,
+    exemption_type_id: uuid.UUID,
+    duty_location_ids: list[uuid.UUID],
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    if session.get(ExemptionType, exemption_type_id) is None:
+        raise DutyConfigError("exemption_type_not_found")
+    desired = set(duty_location_ids)
+    for lid in desired:
+        if session.get(DutyLocation, lid) is None:
+            raise DutyConfigError("duty_location_not_found")
+    current = set(list_exemption_duty_location_ids(session, exemption_type_id=exemption_type_id))
+    for lid in desired - current:
+        map_exemption_to_duty_location(
+            session, exemption_type_id=exemption_type_id, duty_location_id=lid, actor_id=actor_id
+        )
+    for lid in current - desired:
+        unmap_exemption_from_duty_location(
+            session, exemption_type_id=exemption_type_id, duty_location_id=lid, actor_id=actor_id
         )

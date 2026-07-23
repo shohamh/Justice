@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select, text
 
-from app.db.models import ExemptionDutyTypeMap, ExemptionType, SoldierExemption
+from app.db.models import ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType, SoldierExemption
 from app.services.duty_config import (
     DutyConfigError,
     create_duty_type,
@@ -12,8 +12,10 @@ from app.services.duty_config import (
     create_location,
     delete_exemption_type,
     disable_exemption_type_and_revoke_all,
+    list_exemption_duty_location_ids,
     map_exemption_to_duty_type,
     set_duty_type_active,
+    set_exemption_duty_locations,
     set_exemption_duty_types,
     update_duty_type,
     update_exemption_type,
@@ -124,6 +126,28 @@ def test_set_exemption_duty_types_diffs(admin_session):
         for r in admin_session.query(ExemptionDutyTypeMap).filter_by(exemption_type_id=et.id)
     }
     assert rows == {d2.id}
+
+
+def test_set_exemption_duty_locations_diffs(admin_session):
+    et = create_exemption_type(admin_session, name="פטור מיקום", actor_id=None)
+    l1 = create_location(admin_session, name="עמדה-מ1", actor_id=None)
+    l2 = create_location(admin_session, name="עמדה-מ2", actor_id=None)
+    admin_session.flush()
+    set_exemption_duty_locations(
+        admin_session, exemption_type_id=et.id, duty_location_ids=[l1.id], actor_id=None
+    )
+    admin_session.commit()
+    assert list_exemption_duty_location_ids(admin_session, exemption_type_id=et.id) == [l1.id]
+
+    set_exemption_duty_locations(
+        admin_session, exemption_type_id=et.id, duty_location_ids=[l2.id], actor_id=None
+    )
+    admin_session.commit()
+    rows = {
+        r.duty_location_id
+        for r in admin_session.query(ExemptionDutyLocationMap).filter_by(exemption_type_id=et.id)
+    }
+    assert rows == {l2.id}
 
 
 def test_delete_exemption_type_rejected_when_granted(admin_session):

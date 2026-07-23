@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    DutyAssignment, DutyType, ExemptionDutyTypeMap, ExemptionType,
+    DutyAssignment, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType,
     PersonalConstraint, Soldier, SoldierExemption,
 )
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -220,6 +220,13 @@ def check_soldier_for_assignment(
         ).scalars().all()
         if assignment.duty_type_id in dtype_ids:
             return False, "פטור מסוג תורנות זו"
+        loc_ids = session.execute(
+            select(ExemptionDutyLocationMap.duty_location_id).where(
+                ExemptionDutyLocationMap.exemption_type_id == ex.exemption_type_id
+            )
+        ).scalars().all()
+        if assignment.duty_location_id in loc_ids:
+            return False, "פטור ממיקום תורנות זה"
 
     # 3. Approved personal constraint overlapping the duty date range
     if session.execute(

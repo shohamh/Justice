@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.services.eligibility import DutyTypeRequirements
 
 from app.auth.deps import require_duty_manager_or_admin, require_password_changed
-from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap, ExemptionType, ShiftTemplate, Soldier
 from app.db.session import get_session
 from app.services import duty_config as svc
 
@@ -526,3 +526,51 @@ def put_exemption_duty_types(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     return svc.list_exemption_duty_type_ids(session, exemption_type_id=exemption_type_id)
+
+
+@router.get("/exemption-types/duty-location-map", response_model=dict[str, list[str]])
+def get_all_exemption_duty_location_maps(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> dict[str, list[str]]:
+    """Return {exemption_type_id: [duty_location_id, ...]} for all exemption types in one query."""
+    rows = session.execute(
+        select(ExemptionDutyLocationMap.exemption_type_id, ExemptionDutyLocationMap.duty_location_id)
+    ).all()
+    result: dict[str, list[str]] = {}
+    for etid, lid in rows:
+        result.setdefault(str(etid), []).append(str(lid))
+    return result
+
+
+@router.get("/exemption-types/{exemption_type_id}/duty-locations", response_model=list[uuid.UUID])
+def get_exemption_duty_locations(
+    exemption_type_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> list[uuid.UUID]:
+    return svc.list_exemption_duty_location_ids(session, exemption_type_id=exemption_type_id)
+
+
+class SetDutyLocationsRequest(BaseModel):
+    duty_location_ids: list[uuid.UUID]
+
+
+@router.put("/exemption-types/{exemption_type_id}/duty-locations", response_model=list[uuid.UUID])
+def put_exemption_duty_locations(
+    exemption_type_id: uuid.UUID,
+    body: SetDutyLocationsRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_config_manager),
+) -> list[uuid.UUID]:
+    try:
+        svc.set_exemption_duty_locations(
+            session,
+            exemption_type_id=exemption_type_id,
+            duty_location_ids=body.duty_location_ids,
+            actor_id=user.id,
+        )
+    except svc.DutyConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    session.commit()
+    return svc.list_exemption_duty_location_ids(session, exemption_type_id=exemption_type_id)

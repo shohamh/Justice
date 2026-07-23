@@ -255,6 +255,17 @@ class ExemptionDutyTypeMap(Base):
     )
 
 
+class ExemptionDutyLocationMap(Base):
+    __tablename__ = "exemption_duty_location_map"
+
+    exemption_type_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("exemption_types.id", ondelete="CASCADE"), primary_key=True
+    )
+    duty_location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_locations.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class SoldierExemption(Base):
     __tablename__ = "soldier_exemptions"
 
