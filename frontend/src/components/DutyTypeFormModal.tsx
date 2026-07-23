@@ -1,6 +1,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DutyType, createDutyType, updateDutyType, updateDutyTypeRequirements } from "../api/dutyConfig";
+import {
+  DutyType,
+  ExemptionType,
+  createDutyType,
+  updateDutyType,
+  updateDutyTypeRequirements,
+  listExemptionTypes,
+  getAllExemptionDutyTypeMaps,
+  setExemptionDutyTypes,
+} from "../api/dutyConfig";
 import { getRanks } from "../api/soldiers";
 import SubHierarchySelector from "./SubHierarchySelector";
 
@@ -37,8 +46,26 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
   const [showHelp, setShowHelp] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exemptionTypes, setExemptionTypesState] = useState<ExemptionType[]>([]);
+  const [selectedExemptionIds, setSelectedExemptionIds] = useState<string[]>([]);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
   useEffect(() => { void getRanks().then(setRanks); }, []);
+  useEffect(() => { void listExemptionTypes().then(setExemptionTypesState); }, []);
+
+  // Editing an existing duty type keeps today's behavior: the exemption-type
+  // review gate below is create-only, so pre-populate the current mapping
+  // (for reference / consistency) and treat review as already-satisfied.
+  useEffect(() => {
+    if (!initial) return;
+    void getAllExemptionDutyTypeMaps().then(map => {
+      const mine = Object.entries(map)
+        .filter(([, dtIds]) => dtIds.includes(initial.id))
+        .map(([etId]) => etId);
+      setSelectedExemptionIds(mine);
+      setReviewConfirmed(true);
+    });
+  }, [initial]);
 
   function toggleArr(key: keyof Reqs, value: string) {
     const current = (reqs[key] as string[] | undefined) ?? [];
@@ -87,6 +114,13 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
         dt = await createDutyType(payload);
         if (Object.keys(mergedReqs).length > 0) {
           dt = await updateDutyTypeRequirements(dt.id, mergedReqs);
+        }
+        if (selectedExemptionIds.length > 0) {
+          const currentMap = await getAllExemptionDutyTypeMaps();
+          for (const etId of selectedExemptionIds) {
+            const existingDutyTypeIds = currentMap[etId] ?? [];
+            await setExemptionDutyTypes(etId, [...existingDutyTypeIds, dt.id]);
+          }
         }
       }
       onSaved(dt);
@@ -291,6 +325,32 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             )}
           </div>
 
+          {/* Exemption-type review section (create-only) */}
+          {!initial && (
+            <div className="border dark:border-gray-600 rounded p-3">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">אילו סוגי פטור פוטרים מסוג תורנות זה?</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">חובה לעבור על הרשימה ולסמן את כל סוגי הפטור הרלוונטיים לפני יצירת סוג התורנות.</p>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {exemptionTypes.map(et => (
+                  <label key={et.id} className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedExemptionIds.includes(et.id)}
+                      onChange={() => setSelectedExemptionIds(prev =>
+                        prev.includes(et.id) ? prev.filter(x => x !== et.id) : [...prev, et.id]
+                      )}
+                    />
+                    {et.name}
+                  </label>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs mt-2 font-medium">
+                <input type="checkbox" checked={reviewConfirmed} onChange={e => setReviewConfirmed(e.target.checked)} />
+                עברתי על הרשימה ומאשר את הבחירה
+              </label>
+            </div>
+          )}
+
           {/* Hierarchy scope section */}
           <div className="border dark:border-gray-600 rounded p-3">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">{t("hierarchy_scope.title")}</p>
@@ -304,7 +364,7 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
             <button type="button" onClick={onClose} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded">
               {t("duty_config.cancel", "ביטול")}
             </button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || (!initial && !reviewConfirmed)}
               className="px-3 py-1 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50">
               {initial ? t("duty_config.save", "שמור") : t("duty_config.add")}
             </button>
