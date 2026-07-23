@@ -184,6 +184,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
     label: "הקפצה פיקודית",
     settings: [
+      { key: "forced_callup.enabled", label: "הקפצה פיקודית מופעלת", description: "כיבוי מסתיר את דף ההקפצה הפיקודית ומבטל את כל הפעולות הקשורות אליה", type: "boolean" as const, defaultValue: true },
       {
         key: "hakpaza.callup_multiplier",
         label: "מכפיל הקפצה פיקודית",
