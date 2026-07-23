@@ -412,6 +412,7 @@ export default function ProfilePage() {
         )}
       </section>
 
+      {telegramEnabled && (
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.telegram")}</h3>
         {tgCode ? (
@@ -454,6 +455,7 @@ export default function ProfilePage() {
           </button>
         )}
       </section>
+      )}
 
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mt-4 space-y-3">
         <h3 className="text-lg font-semibold">{t("notifications.preferences")}</h3>
