@@ -76,6 +76,31 @@ def test_dm_scope_covers_level_true_when_scope_node_at_or_above_target_level(app
     assert dm_scope_covers_level(app_session, scope_node=scope_node, required_level_key="מרכז") is True
 
 
+def test_commander_exemption_min_level_configurable(app_session):
+    from app.services.settings_loader import set_setting
+
+    _level(app_session, "גדוד", 1)
+    _level(app_session, "מדור", 2)
+    _level(app_session, "צוות", 3)
+    team_node = HierarchyNode(level="צוות", name="Team", path_ids=[])
+    app_session.add(team_node)
+    app_session.flush()
+    team_node.path_ids = [team_node.id]
+    cmd = Soldier(personal_number="4", full_name="X", password_hash="x", role="commander")
+    app_session.add(cmd)
+    app_session.flush()
+    team_node.commander_id = cmd.id
+    app_session.flush()
+
+    # Default threshold ("מדור") — a צוות commander should NOT qualify.
+    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id, commander_rank=None) is False
+
+    # Lower the required threshold to "צוות" via setting — now they should qualify.
+    set_setting(app_session, "exemptions.commander_exemption_min_level", "צוות", actor_id=None)
+    app_session.flush()
+    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id, commander_rank=None) is True
+
+
 def test_dm_scope_covers_level_false_when_scope_node_below_target_level(app_session):
     _level(app_session, "גדוד", 1)
     _level(app_session, "מרכז", 2)

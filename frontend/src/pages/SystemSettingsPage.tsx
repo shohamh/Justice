@@ -179,6 +179,14 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         type: "boolean" as const,
         defaultValue: false,
       },
+      {
+        key: "exemptions.commander_exemption_min_level",
+        label: "החל מאיזו רמת פיקוד ניתן להעניק פטור פיקודי",
+        description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול להעניק פטור פיקודי, גם ללא דרגת קצונה מתאימה",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
     ],
   },
   {
@@ -276,6 +284,9 @@ export function SystemSettingsContent() {
     { value: "", label: "ללא הגבלה" },
     ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
   ];
+  // A minimum level must always be set, so unlike hierarchyLevelOptions above,
+  // this one has no "no restriction" entry.
+  const commanderExemptionLevelOptions = levelTypes.map(lt => ({ value: lt.key, label: lt.label }));
 
   // draft mirrors the query result but is then edited locally before saving,
   // so it stays a useState fed by an effect rather than reading straight from
@@ -460,7 +471,12 @@ export function SystemSettingsContent() {
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="rtl"
                     >
-                      {(def.key === "swaps.restrict_to_hierarchy_level" ? hierarchyLevelOptions : def.options ?? []).map((opt) => (
+                      {(def.key === "swaps.restrict_to_hierarchy_level"
+                        ? hierarchyLevelOptions
+                        : def.key === "exemptions.commander_exemption_min_level"
+                        ? commanderExemptionLevelOptions
+                        : def.options ?? []
+                      ).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
