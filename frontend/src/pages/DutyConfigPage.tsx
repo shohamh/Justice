@@ -62,11 +62,13 @@ import {
   deleteExemptionType,
   disableExemptionType,
   getAllExemptionDutyTypeMaps,
+  getAllExemptionDutyLocationMaps,
   getDutyTypeUsage,
   listDutyTypes,
   listExemptionTypes,
   listLocations,
   setExemptionDutyTypes,
+  setExemptionDutyLocations,
   updateDutyType,
   updateExemptionType,
 } from "../api/dutyConfig";
@@ -98,12 +100,16 @@ export function DutyConfigContent() {
   const mapSelQuery = useQuery({ queryKey: queryKeys.exemptionDutyTypeMap(), queryFn: getAllExemptionDutyTypeMaps });
   const mapSel = mapSelQuery.data ?? {};
 
+  const locMapSelQuery = useQuery({ queryKey: queryKeys.exemptionDutyLocationMap(), queryFn: getAllExemptionDutyLocationMaps });
+  const locMapSel = locMapSelQuery.data ?? {};
+
   async function refresh() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.dutyTypes() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dutyLocations() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.exemptionTypes() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyTypeMap() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyLocationMap() }),
     ]);
   }
 
@@ -181,6 +187,12 @@ export function DutyConfigContent() {
     const next = current.includes(dtId) ? current.filter((x) => x !== dtId) : [...current, dtId];
     await setExemptionDutyTypes(etId, next);
     await queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyTypeMap() });
+  }
+  async function toggleLocationMap(etId: string, locId: string) {
+    const current = locMapSel[etId] ?? [];
+    const next = current.includes(locId) ? current.filter((x) => x !== locId) : [...current, locId];
+    await setExemptionDutyLocations(etId, next);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.exemptionDutyLocationMap() });
   }
 
   return (
@@ -470,6 +482,17 @@ export function DutyConfigContent() {
                                onChange={() => toggleMap(et.id, d.id)}
                                data-testid={`map-${et.name}-${d.name}`} />
                         {d.name}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">{t("duty_config.exempts_from_locations", "פוטר ממיקומים")}:</div>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {locations.map((loc) => (
+                      <label key={loc.id} className="text-xs flex items-center gap-1">
+                        <input type="checkbox" checked={(locMapSel[et.id] ?? []).includes(loc.id)}
+                               onChange={() => toggleLocationMap(et.id, loc.id)}
+                               data-testid={`loc-map-${et.name}-${loc.name}`} />
+                        {loc.name}
                       </label>
                     ))}
                   </div>

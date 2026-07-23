@@ -148,6 +148,7 @@
     "edit": "ערוך",
     "cancel": "ביטול",
     "exempts_from": "פוטר מ-",
+    "exempts_from_locations": "פוטר ממיקומים",
     "global": "גלובלי",
     "global_exempt_desc": "פוטר מכל סוגי התורנויות",
     "medical": "פטור רפואי",
