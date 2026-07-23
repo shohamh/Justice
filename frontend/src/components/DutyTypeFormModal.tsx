@@ -53,20 +53,6 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
   useEffect(() => { void getRanks().then(setRanks); }, []);
   useEffect(() => { void listExemptionTypes().then(setExemptionTypesState); }, []);
 
-  // Editing an existing duty type keeps today's behavior: the exemption-type
-  // review gate below is create-only, so pre-populate the current mapping
-  // (for reference / consistency) and treat review as already-satisfied.
-  useEffect(() => {
-    if (!initial) return;
-    void getAllExemptionDutyTypeMaps().then(map => {
-      const mine = Object.entries(map)
-        .filter(([, dtIds]) => dtIds.includes(initial.id))
-        .map(([etId]) => etId);
-      setSelectedExemptionIds(mine);
-      setReviewConfirmed(true);
-    });
-  }, [initial]);
-
   function toggleArr(key: keyof Reqs, value: string) {
     const current = (reqs[key] as string[] | undefined) ?? [];
     const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
