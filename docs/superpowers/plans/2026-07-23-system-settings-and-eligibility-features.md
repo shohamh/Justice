@@ -1351,7 +1351,7 @@ git add backend/app/db/models.py backend/alembic/versions/*_add_exemption_duty_l
 git commit -m "feat: add exemption-type to duty-location eligibility mapping"
 ```
 
-**Known limitation (call out, don't silently skip):** this task wires location-based exemption into `check_soldier_for_assignment` (used for manual assignment/swap eligibility checks) but NOT into the CP-SAT algorithm's candidate-pool exclusion (`backend/app/algorithm/`, `backend/app/services/algorithm_bridge.py`) — that integration point was not conclusively located during planning and needs its own follow-up investigation/plan once this ships, so the solver doesn't assign soldiers to duties at locations they're exempted from.
+**Note:** this task wires location-based exemption into `check_soldier_for_assignment` (manual assignment/swap eligibility checks) only. The CP-SAT solver's own candidate-pool exclusion is a separate, already-located integration point — see Task 12, which must land before this feature is considered complete (otherwise the algorithm can still assign a soldier to a duty at a location they're exempted from, even though manual assignment/swaps would correctly block it).
 
 ---
 
@@ -1685,7 +1685,170 @@ git commit -m "feat: require reviewing duty-type and duty-location coverage befo
 
 ---
 
-### Task 11: Full-suite regression check
+### Task 12: Location-based eligibility — CP-SAT solver integration
+
+**Files:**
+- Modify: `backend/app/algorithm/types.py`
+- Modify: `backend/app/algorithm/model.py`
+- Modify: `backend/app/services/algorithm_bridge.py`
+- Test: `backend/app/algorithm/tests/test_solver.py` (existing — add to it)
+- Test: `backend/app/services/tests/test_algorithm_bridge.py` (existing — add to it)
+
+**Interfaces:**
+- Consumes: `ExemptionDutyLocationMap` (Task 8), `DutyBlock.duty_location_id` (existing, `backend/app/algorithm/types.py:51`).
+- Produces: `SoldierInput.exempted_duty_location_ids: set[uuid.UUID]` (new field, mirrors the existing `exempted_duty_type_ids` field at `types.py:40`). The CP-SAT pre-filter in `build_model` (`backend/app/algorithm/model.py`) skips a (duty, soldier) pair when the duty's location is in the soldier's exempted-locations set, exactly as it already does for duty type.
+
+This closes the gap flagged in Task 8: without this task, a soldier can still be algorithmically assigned to a duty at a location they're exempted from, even though `check_soldier_for_assignment` (Task 8) would correctly block a *manual* assignment or swap into the same slot.
+
+- [ ] **Step 1: Write the failing solver-level test**
+
+Open `backend/app/algorithm/tests/test_solver.py` and find the existing basic duty-type exemption test (per research: lines ~135-142, builds a `SoldierInput` with `exempted_duty_type_ids` and a `DutyBlock`, solves, and asserts the exempted soldier gets 0 assignments to that duty type). Copy its exact fixture-building style and add an equivalent location-based test immediately after it:
+
+```python
+def test_soldier_exempt_from_duty_location_gets_no_assignments_there(...):
+    """Mirrors the duty-type exemption test above, but keyed by duty_location_id
+    instead of duty_type_id — a soldier exempted from a specific location must
+    never be assigned to a DutyBlock at that location, even if they're eligible
+    for the duty TYPE in general."""
+    # Build two DutyBlocks with the SAME duty_type_id but DIFFERENT duty_location_id
+    # (e.g. loc_a and loc_b) covering the same date range, each needing 1 soldier.
+    # Build a SoldierInput with exempted_duty_location_ids={loc_a} and no
+    # exempted_duty_type_ids, otherwise fully eligible.
+    # Solve. Assert the soldier is assigned to the loc_b duty (or none), never loc_a.
+```
+
+Fill in the actual `SoldierInput`/`DutyBlock`/solve-call boilerplate by copying the exact pattern from the neighboring duty-type test at lines ~135-142 — match its helper functions (e.g. however it constructs dates, ids, and invokes the solver) exactly rather than reinventing it.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest app/algorithm/tests/test_solver.py -k exempt_from_duty_location -q`
+Expected: FAIL — `TypeError: SoldierInput.__init__() got an unexpected keyword argument 'exempted_duty_location_ids'` (field doesn't exist yet).
+
+- [ ] **Step 3: Add the field to `SoldierInput`**
+
+In `backend/app/algorithm/types.py`, immediately after the existing `exempted_duty_type_ids: set[uuid.UUID] = field(default_factory=set)` (line 40 per research), add:
+
+```python
+exempted_duty_location_ids: set[uuid.UUID] = field(default_factory=set)
+```
+
+- [ ] **Step 4: Apply the exclusion in `build_model`**
+
+In `backend/app/algorithm/model.py`, find the "Pre-filter eligible (duty, soldier) pairs" loop (per research, lines ~319-332):
+
+```python
+exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {s.id: s.exempted_duty_type_ids for s in soldier_list}
+```
+
+Add a parallel map immediately after it:
+
+```python
+location_exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {s.id: s.exempted_duty_location_ids for s in soldier_list}
+```
+
+Then extend the existing exclusion check inside the loop (per research, exact line: `if d.duty_type_id in exempt_map.get(s.id, set()): continue`) to also check location:
+
+```python
+if d.duty_type_id in exempt_map.get(s.id, set()):
+    continue
+if d.duty_location_id in location_exempt_map.get(s.id, set()):
+    continue
+```
+
+Do not merge these into one combined set/condition — keep them as two explicit checks so each stays independently readable and testable, matching how the duty-type check is already isolated from the `node_in_scope` check directly below it.
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pytest app/algorithm/tests/test_solver.py -k exempt_from_duty_location -q`
+Expected: PASS
+
+- [ ] **Step 6: Run full solver test suite for regressions**
+
+Run: `pytest app/algorithm/tests/test_solver.py -q`
+Expected: all PASS (adding an always-empty-by-default field must not change any existing test's outcome, since `exempted_duty_location_ids` defaults to `set()` for every `SoldierInput` that doesn't explicitly set it).
+
+- [ ] **Step 7: Write the failing bridge-level test**
+
+Open `backend/app/services/tests/test_algorithm_bridge.py` and find the existing `ExemptionDutyTypeMap`-based test of `load_soldier_inputs` (per research, lines ~105-124, asserts `soldier_dict["exempted_duty_type_ids"] == [str(exempted_duty_type_id)]`). Copy its exact setup and add a parallel test using `ExemptionDutyLocationMap`:
+
+```python
+def test_load_soldier_inputs_resolves_duty_location_exemptions(admin_session):
+    from app.db.models import DutyLocation, ExemptionDutyLocationMap, ExemptionType, SoldierExemption
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    loc = DutyLocation(name=f"algo_loc_{uuid.uuid4().hex[:8]}")
+    et = ExemptionType(name=f"algo_loc_et_{uuid.uuid4().hex[:8]}")
+    admin_session.add_all([loc, et])
+    admin_session.flush()
+    admin_session.add(ExemptionDutyLocationMap(exemption_type_id=et.id, duty_location_id=loc.id))
+
+    soldier = create_soldier(admin_session, personal_number=f"algo_loc_s_{uuid.uuid4().hex[:8]}")
+    admin_session.add(SoldierExemption(
+        soldier_id=soldier.id, exemption_type_id=et.id, start_date=date.today() - timedelta(days=1),
+    ))
+    admin_session.commit()
+
+    inputs = load_soldier_inputs(admin_session, as_of=date.today())
+    soldier_input = next(s for s in inputs if s.id == soldier.id)
+    assert soldier_input.exempted_duty_location_ids == {loc.id}
+```
+
+Check `SoldierExemption`'s exact required fields and `load_soldier_inputs`'s exact return shape (list of `SoldierInput` dataclass instances vs. dicts — the research noted the existing test does `soldier_dict[...]`, implying it may convert to dicts somewhere for the assertion; read that existing test's exact assertion style and match it rather than assuming dataclass attribute access) before finalizing this test.
+
+- [ ] **Step 8: Run test to verify it fails**
+
+Run: `pytest app/services/tests/test_algorithm_bridge.py -k duty_location_exemptions -q`
+Expected: FAIL — `exempted_duty_location_ids` is always empty (not yet resolved from the DB).
+
+- [ ] **Step 9: Resolve location exemptions in `load_soldier_inputs`**
+
+In `backend/app/services/algorithm_bridge.py`, find `load_soldier_inputs` (per research, lines 129-263). Add an import for `ExemptionDutyLocationMap` alongside the existing `ExemptionDutyTypeMap` import (line 37). Immediately after the existing `etid_to_dtids` build (per research, lines 158-163), add a parallel map:
+
+```python
+etid_to_locids: dict[uuid.UUID, set[uuid.UUID]] = {}
+for etid, locid in session.execute(
+    select(ExemptionDutyLocationMap.exemption_type_id, ExemptionDutyLocationMap.duty_location_id)
+).all():
+    etid_to_locids.setdefault(etid, set()).add(locid)
+```
+
+Then, in the per-exemption loop that populates `soldier_exempt_dtype_ids` (per research, lines 192-205 — checks exemption is active as of `as_of` and adds `etid_to_dtids.get(ex.exemption_type_id, set())`), add a parallel accumulator in the same loop body:
+
+```python
+soldier_exempt_locids.setdefault(ex.soldier_id, set()).update(
+    etid_to_locids.get(ex.exemption_type_id, set())
+)
+```
+
+(Initialize `soldier_exempt_locids: dict[uuid.UUID, set[uuid.UUID]] = {}` alongside wherever `soldier_exempt_dtype_ids` is initialized, before the loop.) Do **not** fold location ids into the existing `full_coverage_etids` global-exemption expansion (lines 165-183) — a globally-exempt soldier is already excluded from every duty via the duty-*type* path (every duty has a type), so expanding locations for them too would be redundant, not incorrect, but adds needless work; skip it per YAGNI.
+
+Finally, where `SoldierInput(...)` is constructed (per research, lines 249-260, currently sets `exempted_duty_type_ids=combined_exempt`), add:
+
+```python
+exempted_duty_location_ids=soldier_exempt_locids.get(s.id, set()),
+```
+
+- [ ] **Step 10: Run test to verify it passes**
+
+Run: `pytest app/services/tests/test_algorithm_bridge.py -q`
+Expected: all PASS (including the new test)
+
+- [ ] **Step 11: Full backend regression run**
+
+Run: `pytest -q`
+Expected: all PASS, 0 failures.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add backend/app/algorithm/types.py backend/app/algorithm/model.py backend/app/services/algorithm_bridge.py backend/app/algorithm/tests/test_solver.py backend/app/services/tests/test_algorithm_bridge.py
+git commit -m "feat: enforce duty-location exemptions in the CP-SAT scheduling algorithm"
+```
+
+---
+
+### Task 13: Full-suite regression check
 
 **Files:** none (verification only)
 
@@ -1720,7 +1883,8 @@ Start the dev stack for this worktree on non-conflicting ports if the main check
 4. The Potential page shows duty-type pills; selecting two pills narrows the soldier list to only those eligible for both.
 5. Creating a new duty type forces ticking at least reviewing the exemption-type list + the confirm checkbox before "הוסף" is enabled.
 6. Creating a new exemption type forces reviewing both the duty-type and duty-location lists + both confirm checkboxes before "הוסף" is enabled.
+7. Run the algorithm on a small test dataset where a soldier has a location-based exemption and confirm they're never assigned to a duty at that location (spot-check the algorithm run's result, or rely on Task 12's automated tests as sufficient evidence if a full manual algorithm run isn't practical here).
 
 - [ ] **Step 4: Report to the user**
 
-Summarize what was built, list the known limitation from Task 8 (CP-SAT solver not yet wired to location-based exemptions), and hand off for review before merging.
+Summarize what was built (all 7 requested features plus the CP-SAT solver integration from Task 12) and hand off for review before merging.
