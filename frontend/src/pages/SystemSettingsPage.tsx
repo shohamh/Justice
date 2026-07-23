@@ -187,6 +187,22 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         defaultValue: "מדור",
         options: [],
       },
+      {
+        key: "exemptions.medical_doc_min_commander_level",
+        label: "צפייה במסמך רפואי — החל מאיזו רמת מפקד בשרשרת הפיקוד",
+        description: "מפקדים ברמה זו ומעלה בשרשרת הפיקוד של החייל יכולים לצפות במסמך הרפואי עצמו (לא רק בפרטי הפטור)",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
+      {
+        key: "exemptions.medical_doc_min_duty_manager_level",
+        label: "צפייה במסמך רפואי — החל מאיזו רמת אחראי תורנויות",
+        description: "אחראי תורנויות עם סמכות ברמה זו ומעלה יכול לצפות במסמך הרפואי עצמו",
+        type: "select" as const,
+        defaultValue: "מרכז",
+        options: [],
+      },
     ],
   },
   {
@@ -285,8 +301,14 @@ export function SystemSettingsContent() {
     ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
   ];
   // A minimum level must always be set, so unlike hierarchyLevelOptions above,
-  // this one has no "no restriction" entry.
+  // this one has no "no restriction" entry. Shared by every "minimum level"
+  // setting (commander exemption grants, medical document view thresholds).
   const commanderExemptionLevelOptions = levelTypes.map(lt => ({ value: lt.key, label: lt.label }));
+  const MIN_LEVEL_SETTING_KEYS = new Set([
+    "exemptions.commander_exemption_min_level",
+    "exemptions.medical_doc_min_commander_level",
+    "exemptions.medical_doc_min_duty_manager_level",
+  ]);
 
   // draft mirrors the query result but is then edited locally before saving,
   // so it stays a useState fed by an effect rather than reading straight from
@@ -473,7 +495,7 @@ export function SystemSettingsContent() {
                     >
                       {(def.key === "swaps.restrict_to_hierarchy_level"
                         ? hierarchyLevelOptions
-                        : def.key === "exemptions.commander_exemption_min_level"
+                        : MIN_LEVEL_SETTING_KEYS.has(def.key)
                         ? commanderExemptionLevelOptions
                         : def.options ?? []
                       ).map((opt) => (
