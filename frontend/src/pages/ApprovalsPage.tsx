@@ -524,12 +524,12 @@ export default function ApprovalsPage() {
                     </div>
                   )}
                   <div className="flex items-center gap-2">
-                    {er.status === "pending_commander" && (
+                    {er.status === "pending_commander" && er.can_approve_commander_step && (
                       <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveCommander(er.id)} data-testid={`er-approve-${er.id}`}>
                         אשר (שלב מפקד)
                       </button>
                     )}
-                    {er.status === "pending_duty_manager" && (
+                    {er.status === "pending_duty_manager" && er.can_approve_duty_manager_step && (
                       <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onErApproveDutyManager(er.id)} data-testid={`er-approve-${er.id}`}>
                         אשר (שלב סופי)
                       </button>
@@ -577,7 +577,9 @@ export default function ApprovalsPage() {
                   {fuGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={fuGrouped.duty_manager} /></span>}
                 </div>
                 <div className="flex gap-2 items-center">
-                  <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
+                  {item.can_approve && (
+                    <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
+                  )}
                   <input
                     placeholder={t("approvals.decision_note")}
                     value={fuNotes[item.id] ?? ""}

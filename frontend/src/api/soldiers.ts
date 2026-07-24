@@ -48,6 +48,7 @@ export interface FieldUpdateDTO {
   created_at: string;
   nearest_commander: { id: string; name: string } | null;
   nearest_duty_manager: { id: string; name: string } | null;
+  can_approve: boolean;
 }
 
 export async function listSoldiers(): Promise<SoldierDTO[]> {

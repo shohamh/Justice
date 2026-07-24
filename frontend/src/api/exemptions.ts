@@ -61,6 +61,8 @@ export interface ExemptionRequest {
   files: ExemptionFile[];
   nearest_commander: { id: string; name: string } | null;
   nearest_duty_manager: { id: string; name: string } | null;
+  can_approve_commander_step: boolean;
+  can_approve_duty_manager_step: boolean;
 }
 
 export async function patchExemptionRequest(

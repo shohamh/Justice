@@ -37,6 +37,8 @@ vi.mock("../api/exemptions", () => ({
       decision_note: null,
       created_at: "2026-01-01T00:00:00Z",
       files: [],
+      can_approve_commander_step: true,
+      can_approve_duty_manager_step: true,
     },
   ])),
   approveExemptionRequestCommanderStep: vi.fn(() => Promise.resolve()),

@@ -107,6 +107,8 @@ const exemptionRequestWithFile = {
   files: [
     { id: "f1", file_name: "note.pdf", content_type: "application/pdf", created_at: "2026-01-01" },
   ],
+  can_approve_commander_step: true,
+  can_approve_duty_manager_step: true,
 } as exemptionsApi.ExemptionRequest;
 
 beforeEach(() => {
@@ -318,5 +320,52 @@ describe("ApprovalsPage - exemption file links", () => {
     await waitFor(() => {
       expect(screen.getByText("הקובץ לא נמצא")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ApprovalsPage - approve button authority", () => {
+  it("hides the duty-manager exemption approve button when the backend says the viewer can't approve it", async () => {
+    vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([
+      { ...exemptionRequestWithFile, status: "pending_duty_manager", can_approve_duty_manager_step: false },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const exemptionsTab = await screen.findByTestId("approvals-tab-exemptions");
+    fireEvent.click(exemptionsTab);
+    await screen.findByTestId(`er-reject-note-${exemptionRequestWithFile.id}`);
+    expect(screen.queryByTestId(`er-approve-${exemptionRequestWithFile.id}`)).not.toBeInTheDocument();
+  });
+
+  it("hides the field-update approve button when the backend says the viewer can't approve it", async () => {
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
+      {
+        id: "fu1", soldier_id: "sol-5", soldier_name: "E", node_name: null, field_name: "discharge_date",
+        previous_value: null, new_value: "2027-01-01", status: "pending", decided_by: null, decided_at: null,
+        decision_note: null, created_at: "2026-01-01", nearest_commander: null, nearest_duty_manager: null,
+        can_approve: false,
+      } as soldiersApi.FieldUpdateDTO,
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const fuTab = await screen.findByTestId("approvals-tab-field-updates");
+    fireEvent.click(fuTab);
+    await screen.findByText("soldier_profile.discharge_date");
+    expect(screen.queryByText("approvals.approve")).not.toBeInTheDocument();
   });
 });

@@ -238,7 +238,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                 {req.reason && <p className="text-xs text-gray-500 mb-2">{req.reason}</p>}
                 {canManage && (req.status === "pending_commander" || req.status === "pending_duty_manager") && (
                   <div className="flex items-center gap-2">
-                    {req.status === "pending_commander" && (
+                    {req.status === "pending_commander" && req.can_approve_commander_step && (
                       <button
                         className="bg-green-600 text-white px-3 py-1 rounded text-sm"
                         onClick={() => void onApproveCommanderStep(req.id)}
@@ -247,7 +247,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
                         {t("exemptions.approve_commander_step")}
                       </button>
                     )}
-                    {req.status === "pending_duty_manager" && canApproveDutyManagerStep && (
+                    {req.status === "pending_duty_manager" && canApproveDutyManagerStep && req.can_approve_duty_manager_step && (
                       <button
                         className="bg-green-600 text-white px-3 py-1 rounded text-sm"
                         onClick={() => void onApproveDutyManagerStep(req.id)}
