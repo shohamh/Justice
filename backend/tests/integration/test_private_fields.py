@@ -87,8 +87,11 @@ def test_plain_soldier_cannot_see_peer_gender(client: TestClient, admin_session:
         headers=auth_headers(dm),
     )
     r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
-    # Soldiers without command scope get 403 (authz blocks them)
-    assert r.status_code == 403
+    # Plain soldiers can view another soldier's basic profile (read-only),
+    # but private fields like gender stay redacted since the viewer has no
+    # command/duty-manager scope over the target.
+    assert r.status_code == 200
+    assert r.json()["gender"] is None
 
 
 # ── Field-update redaction ───────────────────────────────────────────────────
