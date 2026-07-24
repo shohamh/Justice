@@ -343,7 +343,11 @@ export default function ProfilePage() {
               <input type="checkbox" checked={licenseHasReq} onChange={e => setLicenseHasReq(e.target.checked)} />
               {t("soldier_profile.military_driving_license_has")}
             </label>
+            <label htmlFor="military-license-expiry-input" className="text-sm text-gray-500 dark:text-gray-400">
+              {t("soldier_profile.military_driving_license_expiry")}
+            </label>
             <DateInput
+              id="military-license-expiry-input"
               value={licenseExpiryReq}
               onChange={setLicenseExpiryReq}
               disabled={!licenseHasReq}
