@@ -547,7 +547,9 @@ def get_soldier(
     user: Soldier = Depends(require_password_changed),
 ) -> SoldierOut:
     s = _load(session, soldier_id)
-    if s.id != user.id:
+    is_self = s.id == user.id
+    is_plain_soldier = user.role == "soldier"
+    if not is_self and not is_plain_soldier:
         authorize(session, user, Action.SOLDIER_READ, target_node=_node_of(session, s))
     link = session.execute(
         select(TelegramLink).where(

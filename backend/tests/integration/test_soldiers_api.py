@@ -167,3 +167,24 @@ def test_dual_role_commander_can_see_draft_duty_history(client, admin_session):
         headers=auth_headers(dual),
     )
     assert r.status_code == 200
+
+
+def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClient, admin_session: Session):
+    """A plain soldier clicking another soldier's name should see a
+    read-only, redacted profile — not a 403."""
+    node = create_node(admin_session, level="branch", name="view_node")
+    viewer = create_soldier(admin_session, personal_number="view_plain_001", hierarchy_node_id=node.id)
+    other_node = create_node(admin_session, level="branch", name="view_other_node")
+    target = create_soldier(
+        admin_session, personal_number="view_target_001", hierarchy_node_id=other_node.id,
+    )
+    target.phone = "0501234567"
+    target.gender = "male"
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["full_name"] == target.full_name
+    assert body["phone"] is None
+    assert body["gender"] is None
