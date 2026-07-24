@@ -12,6 +12,7 @@ import {
 import Combobox from "./Combobox";
 import SoldierLink from "./SoldierLink";
 import { translateApiError } from "../utils/translateApiError";
+import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
 
 interface Props {
   shift: CalendarShift;
@@ -119,7 +120,7 @@ export default function DismissalModal({
   const reasonEmpty = reason.trim() === "";
   const showReasonError = mode === "gimelim" && reasonTouched && reasonEmpty;
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
     setFileError(null);
     if (!f) { setSelectedFile(null); return; }
@@ -131,6 +132,13 @@ export default function DismissalModal({
     }
     if (f.size > MAX_BYTES) {
       setFileError("הקובץ גדול מדי — מקסימום 20 MB");
+      setSelectedFile(null);
+      e.target.value = "";
+      return;
+    }
+    const signatureOk = await validateFileSignature(f, PDF_IMAGE_SIGNATURES);
+    if (!signatureOk) {
+      setFileError("תוכן הקובץ אינו תואם את סוג הקובץ המוצהר");
       setSelectedFile(null);
       e.target.value = "";
       return;

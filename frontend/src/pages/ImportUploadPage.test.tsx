@@ -28,7 +28,10 @@ const mockPreview: ParsedState = {
 };
 
 function makeFile(): File {
-  return new File(["dummy"], "import.xlsx", {
+  // Valid ZIP/xlsx magic bytes (PK\x03\x04) so the client-side magic-byte
+  // check in ImportUploadPage passes and these tests exercise the upload
+  // flow beyond that check.
+  return new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], "import.xlsx", {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
 }

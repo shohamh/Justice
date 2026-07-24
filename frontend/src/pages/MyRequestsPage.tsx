@@ -18,6 +18,7 @@ import {
 } from "../api/constraints";
 import { formatDate, isDateRangeValid } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import { validateFileSignature, PDF_IMAGE_SIGNATURES } from "../utils/fileValidation";
 import {
   listMyExemptionRequests,
   submitExemptionRequest,
@@ -347,16 +348,21 @@ export default function MyRequestsPage() {
                   multiple
                   accept=".pdf,image/*"
                   className="hidden"
-                  onChange={e => {
+                  onChange={async e => {
                     const picked = Array.from(e.target.files ?? []);
-                    const valid = picked.filter(f => f.size <= MAX_FILE_BYTES);
+                    e.target.value = "";
+                    const withinSize = picked.filter(f => f.size <= MAX_FILE_BYTES);
                     const oversized = picked.filter(f => f.size > MAX_FILE_BYTES).map(f => f.name);
+                    const signatureChecks = await Promise.all(
+                      withinSize.map(f => validateFileSignature(f, PDF_IMAGE_SIGNATURES)),
+                    );
+                    const valid = withinSize.filter((_, i) => signatureChecks[i]);
+                    const invalidType = withinSize.filter((_, i) => !signatureChecks[i]).map(f => f.name);
                     setUploadFiles(prev => {
                       const merged = [...prev, ...valid.filter(v => !prev.some(p => p.name === v.name))];
                       return merged;
                     });
-                    setUploadSizeErrors(oversized);
-                    e.target.value = "";
+                    setUploadSizeErrors([...oversized, ...invalidType]);
                   }}
                   data-testid="er-files"
                 />

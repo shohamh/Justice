@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { uploadSession } from "../api/importSessions";
 import { translateApiError } from "../utils/translateApiError";
+import { validateFileSignature, XLSX_SIGNATURES } from "../utils/fileValidation";
 
 export default function ImportUploadPage() {
   const { t } = useTranslation();
@@ -12,9 +13,26 @@ export default function ImportUploadPage() {
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
+
   async function handleUpload(file: File) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       setError("יש להעלות קובץ בפורמט xlsx בלבד");
+      return;
+    }
+    if (file.size > MAX_IMPORT_BYTES) {
+      setError("הקובץ גדול מדי — מקסימום 20 MB");
+      return;
+    }
+    const signatureOk = await validateFileSignature(file, {
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": XLSX_SIGNATURES[
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ],
+      "application/zip": XLSX_SIGNATURES["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+      "": XLSX_SIGNATURES["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    });
+    if (!signatureOk) {
+      setError("תוכן הקובץ אינו תואם קובץ xlsx תקין");
       return;
     }
     setLoading(true);
