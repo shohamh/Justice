@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { formatDutyRange, lastDutyDay, toExclusiveEndDate } from "./formatDate";
+import { formatDutyRange, isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "./formatDate";
+
+describe("isDateRangeValid", () => {
+  it("is valid when from is before to", () => {
+    expect(isDateRangeValid("2026-01-01", "2026-01-31")).toBe(true);
+  });
+
+  it("is valid when from equals to", () => {
+    expect(isDateRangeValid("2026-01-01", "2026-01-01")).toBe(true);
+  });
+
+  it("is invalid when from is after to", () => {
+    expect(isDateRangeValid("2026-02-01", "2026-01-01")).toBe(false);
+  });
+
+  it("treats a missing from as valid (not yet chosen)", () => {
+    expect(isDateRangeValid(undefined, "2026-01-01")).toBe(true);
+    expect(isDateRangeValid("", "2026-01-01")).toBe(true);
+  });
+
+  it("treats a missing to as valid (not yet chosen)", () => {
+    expect(isDateRangeValid("2026-01-01", undefined)).toBe(true);
+    expect(isDateRangeValid("2026-01-01", "")).toBe(true);
+  });
+});
 
 describe("lastDutyDay", () => {
   it("subtracts one day from an exclusive end_date", () => {

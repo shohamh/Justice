@@ -11,6 +11,7 @@ import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import { queryKeys } from "../queryKeys";
+import { isDateRangeValid } from "../utils/formatDate";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
@@ -272,8 +273,10 @@ export default function RegisterPage() {
                   placeholder="סוג פטור"
                 />
                 <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
+                  max={er.end_date || undefined}
                   onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: iso}; set("exemption_requests", rows); }} />
                 <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
+                  min={er.start_date || undefined}
                   onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: iso}; set("exemption_requests", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.reason}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], reason: e.target.value}; set("exemption_requests", rows); }} />
@@ -288,7 +291,7 @@ export default function RegisterPage() {
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(2)}>{t("register.back")}</button>
               <button
                 className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={form.exemption_requests.some(er => !er.exemption_type_id || !er.start_date)}
+                disabled={form.exemption_requests.some(er => !er.exemption_type_id || !er.start_date || !isDateRangeValid(er.start_date, er.end_date))}
                 onClick={() => setStep(4)}
               >
                 {t("register.next")}
@@ -303,8 +306,10 @@ export default function RegisterPage() {
             {form.personal_constraints.map((pc, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
                 <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
+                  max={pc.end_date || undefined}
                   onChange={iso => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], start_date: iso}; set("personal_constraints", rows); }} />
                 <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
+                  min={pc.start_date || undefined}
                   onChange={iso => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: iso}; set("personal_constraints", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.reason}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], reason: e.target.value}; set("personal_constraints", rows); }} />
@@ -319,7 +324,7 @@ export default function RegisterPage() {
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(3)}>{t("register.back")}</button>
               <button
                 className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
-                disabled={form.personal_constraints.some(pc => !pc.start_date || !pc.end_date)}
+                disabled={form.personal_constraints.some(pc => !pc.start_date || !pc.end_date || !isDateRangeValid(pc.start_date, pc.end_date))}
                 onClick={() => setStep(5)}
               >
                 {t("register.next")}

@@ -10,6 +10,7 @@ import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
+import { isDateRangeValid } from "../utils/formatDate";
 
 interface Props {
   soldiers: SoldierWithStatus[];
@@ -50,7 +51,7 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
   }
 
   async function handleGrantExemption() {
-    if (!exemptTarget || !exemptionTypeId || !exemptStart) return;
+    if (!exemptTarget || !exemptionTypeId || !exemptStart || !isDateRangeValid(exemptStart, exemptEnd)) return;
     await grantExemption(exemptTarget.id, {
       exemption_type_id: exemptionTypeId,
       start_date: exemptStart,
@@ -109,12 +110,12 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
                 placeholder={t("command_dashboard.none")}
               />
               <label className="block text-sm">{t("command_dashboard.exemption_start")}</label>
-              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(v) => setExemptStart(v)} />
+              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(v) => setExemptStart(v)} max={exemptEnd || undefined} />
               <label className="block text-sm">{t("command_dashboard.exemption_end")}</label>
-              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(v) => setExemptEnd(v)} />
+              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(v) => setExemptEnd(v)} min={exemptStart || undefined} />
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setExemptTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
-                <button onClick={handleGrantExemption} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.exempt")}</button>
+                <button onClick={handleGrantExemption} disabled={!isDateRangeValid(exemptStart, exemptEnd)} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm disabled:opacity-50">{t("command_dashboard.exempt")}</button>
               </div>
             </div>
           </div>
