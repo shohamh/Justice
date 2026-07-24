@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import uuid
 from typing import Any
 
@@ -84,13 +85,16 @@ async def upload_import_session(
         raise HTTPException(status_code=400, detail="invalid_file_type")
 
     content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="file_too_large")
     if content[:4] != b"PK\x03\x04":
         raise HTTPException(status_code=400, detail="invalid_file_type")
 
+    safe_filename = re.sub(r"[^\w.\-]", "_", file.filename or "import.xlsx").replace("..", "_")[:200]
     try:
         sess = create_session(
             session,
-            filename=file.filename or "import.xlsx",
+            filename=safe_filename,
             content=content,
             actor=actor,
             parser_id=parser_id,

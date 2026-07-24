@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExemptionType, SoldierExemption
+from app.db.models import ExemptionRequest, ExemptionType, SoldierExemption
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -361,3 +361,23 @@ def test_exemption_request_includes_nearest_commander_and_duty_manager(client: T
     assert len(items) == 1
     assert items[0]["nearest_commander"]["id"] == str(cmd.id)
     assert items[0]["nearest_duty_manager"]["id"] == str(dm.id)
+
+
+def test_upload_exemption_file_rejects_content_type_mismatch(client, admin_session):
+    soldier = create_soldier(admin_session, personal_number="mb_soldier_001")
+    et = ExemptionType(name="mb-type-001", is_medical=True)
+    admin_session.add(et)
+    admin_session.flush()
+    req = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id, status="draft", start_date=date(2026, 1, 1),
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/me/exemption-requests/{req.id}/files",
+        files={"file": ("fake.png", b"<script>alert(1)</script>", "image/png")},
+        headers=auth_headers(soldier),
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "invalid_file_type"

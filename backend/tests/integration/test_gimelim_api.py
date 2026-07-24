@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
+    DutyDismissal,
     DutyLocation,
     DutyReserveLink,
     DutyShift,
@@ -297,3 +298,31 @@ def test_preview_then_commit_with_backdated_from_date(client: TestClient, admin_
 
     admin_session.refresh(reserve_b)
     assert str(reserve_b.called_up_from) == "2030-10-02"
+
+
+# ── Test: attachment upload sanitizes a path-traversal-style filename ────────
+
+def test_upload_gimelim_attachment_sanitizes_filename(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="branch", name="n_gim008")
+    admin = create_soldier(admin_session, personal_number="gim008_adm", role="admin", hierarchy_node_id=node.id)
+    soldier_a = create_soldier(admin_session, personal_number="gim008_a", hierarchy_node_id=node.id)
+    dt, loc = _make_dt_loc(admin_session, "gim008")
+    shift = _make_shift(admin_session, dt, loc, "2030-11-01", "2030-11-05")
+    primary_a = _make_assignment(admin_session, soldier_a.id, dt, loc, shift, is_reserve=False)
+    dismissal = DutyDismissal(
+        duty_assignment_id=primary_a.id,
+        dismissed_from=date(2030, 11, 1),
+        dismissed_to=date(2030, 11, 5),
+        is_gimelim=True,
+    )
+    admin_session.add(dismissal)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/gimelim/{dismissal.id}/attachments",
+        files={"file": ("../../etc/passwd.pdf", b"%PDF-1.4 x", "application/pdf")},
+        headers=auth_headers(admin),
+    )
+    assert r.status_code == 201, r.text
+    assert "/" not in r.json()["file_name"]
+    assert ".." not in r.json()["file_name"]

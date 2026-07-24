@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 
@@ -281,7 +282,7 @@ async def upload_gimelim_attachment(
 
     attachment = GimelimAttachment(
         dismissal_id=dismissal_id,
-        file_name=file.filename or "file",
+        file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
         content_type=file.content_type or "application/octet-stream",
         data=data,
         uploaded_by=user.id,

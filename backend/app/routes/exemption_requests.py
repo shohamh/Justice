@@ -35,6 +35,17 @@ from app.services.exemptions import ExemptionError
 
 router = APIRouter(tags=["exemption-requests"])
 
+_MAGIC: dict[str, list[bytes]] = {
+    "application/pdf": [b"%PDF"],
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/gif": [b"GIF87a", b"GIF89a"],
+}
+
+
+def _magic_bytes_match(content_type: str, data: bytes) -> bool:
+    return any(data[: len(prefix)] == prefix for prefix in _MAGIC.get(content_type, []))
+
 
 class NearestApproverOut(BaseModel):
     id: uuid.UUID
@@ -457,9 +468,11 @@ async def upload_exemption_file(
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="file_too_large")
+    if not _magic_bytes_match(file.content_type, data):
+        raise HTTPException(status_code=400, detail="invalid_file_type")
     ef = ExemptionRequestFile(
         exemption_request_id=request_id,
-        file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file"))[:200],
+        file_name=re.sub(r"[^\w.\-]", "_", (file.filename or "file")).replace("..", "_")[:200],
         content_type=file.content_type,
         data=data,
         uploaded_by=user.id,

@@ -125,6 +125,8 @@ async def preview(
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="file_too_large")
     # Validate XLSX magic bytes (PK signature for ZIP format)
     if content[:4] != b"PK\x03\x04":
         raise HTTPException(status_code=400, detail="invalid_file_type")

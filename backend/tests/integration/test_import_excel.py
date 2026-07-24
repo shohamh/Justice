@@ -320,3 +320,17 @@ def test_export_current_data_includes_shift_templates(client, admin_session):
     rows = list(wb["shift_templates"].iter_rows(min_row=2, values_only=True))
     names = [r[0] for r in rows]
     assert tpl_name in names
+
+
+def test_preview_rejects_oversized_file(client, admin_session):
+    node = create_node(admin_session, level="branch", name="ie_node_size_001")
+    dm = create_soldier(admin_session, personal_number="ie_dm_size_001", role="duty_manager", hierarchy_node_id=node.id)
+    token = auth_headers(dm)["Authorization"].split(" ", 1)[1]
+    oversized = b"PK\x03\x04" + b"0" * (25 * 1024 * 1024)
+    resp = client.post(
+        "/api/import/preview",
+        files={"file": ("import.xlsx", oversized, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "file_too_large"

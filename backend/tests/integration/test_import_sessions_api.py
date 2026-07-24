@@ -107,6 +107,36 @@ def test_upload_wrong_extension_400(client, admin_session):
     assert resp.json()["detail"] == "invalid_file_type"
 
 
+def test_upload_rejects_oversized_file(client, admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    oversized = b"PK\x03\x04" + b"0" * (25 * 1024 * 1024)
+    resp = client.post(
+        "/api/import/sessions",
+        files={"file": ("import.xlsx", oversized, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "file_too_large"
+
+
+def test_upload_sanitizes_filename(client, admin_session):
+    xlsx, _, _ = _make_wb_bytes(admin_session)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    resp = client.post(
+        "/api/import/sessions?parser_id=v1_standard",
+        files={"file": ("../../etc/passwd.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200, resp.text
+    session_id = resp.json()["session_id"]
+    detail = client.get(
+        f"/api/import/sessions/{session_id}",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    ).json()
+    assert "/" not in detail["filename"]
+    assert ".." not in detail["filename"]
+
+
 def test_list_sessions_respects_status_filter_and_ownership(client, admin_session):
     xlsx, _, _ = _make_wb_bytes(admin_session)
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
