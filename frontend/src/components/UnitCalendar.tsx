@@ -157,6 +157,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           firstDay={0}
+          eventDisplay="block"
           events={events}
           dateClick={handleDateClick}
           eventClick={handleEventClick}
