@@ -145,6 +145,31 @@ def test_solve_no_eligible_soldiers() -> None:
     assert len(result.assignments) == 0
 
 
+def test_soldier_exempt_from_duty_location_gets_no_assignments_there() -> None:
+    """Mirrors test_solve_no_eligible_soldiers above, but keyed by duty_location_id
+    instead of duty_type_id — a soldier exempted from a specific location must
+    never be assigned to a DutyBlock at that location, even if they're eligible
+    for the duty TYPE in general."""
+    soldier_id = uuid4()
+    duty_type = uuid4()
+    loc_a = uuid4()
+    loc_b = uuid4()
+    duties = [
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc_a,
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+                  score_per_day=Decimal("1.00")),
+        DutyBlock(id=uuid4(), duty_type_id=duty_type, duty_location_id=loc_b,
+                  start_date=date(2026, 6, 1), end_date=date(2026, 6, 2),
+                  score_per_day=Decimal("1.00")),
+    ]
+    soldiers = [SoldierInput(id=soldier_id, enrolled_at=date(2026, 1, 1),
+                             cumulative_score=Decimal("0"), active_days=100,
+                             exempted_duty_location_ids={loc_a})]
+    result = solve(soldiers, duties, [], SolverSettings(time_limit_seconds=5))
+    assigned_locations = {d.duty_location_id for d in duties for a in result.assignments if a.duty_id == d.id}
+    assert loc_a not in assigned_locations
+
+
 def test_infeasibility_relaxation() -> None:
     soldier_a = uuid4()
     duty_type = uuid4()

@@ -19,7 +19,12 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
 )
-from app.services.eligibility import DutyTypeRequirements, inferred_service_type
+from app.services.eligibility import (
+    DutyTypeRequirements,
+    compute_eligibility_exclusions,
+    inferred_service_type,
+)
+from app.services.settings_loader import get_setting_int
 
 
 @dataclass
@@ -41,6 +46,7 @@ class SoldierPotentialDetail:
     rank: str | None = None
     partial_exemption_names: list[str] = field(default_factory=list)  # populated when counted is True but partially exempt
     exemptions: list[ExemptionSummary] = field(default_factory=list)
+    eligible_duty_type_ids: list[uuid.UUID] = field(default_factory=list)
 
 
 @dataclass
@@ -153,13 +159,22 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
         if ex.exemption_type_id in regular_types:
             exemptions_by_soldier.setdefault(ex.soldier_id, []).append(ex)
 
+    mitvahim_months = get_setting_int(session, "eligibility.mitvahim_months", 6)
+    alal_months = get_setting_int(session, "eligibility.alal_months", 3)
+    exclusions = compute_eligibility_exclusions(
+        session, subtree_soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months,
+        reference_date=reference_date,
+    )
+
     details: list[SoldierPotentialDetail] = []
     raw_count = 0
     for s in subtree_soldiers:
         rank = _rank_as_of(s, reference_date)
+        eligible_duty_type_ids = list(active_dt_ids - exclusions.get(s.id, set()))
         if s.left_at is not None and s.left_at <= reference_date:
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, False, "discharged", rank=rank,
+                eligible_duty_type_ids=eligible_duty_type_ids,
             ))
             continue
         base_eligible = _base_eligible_duty_types(s, rank, duty_types, reference_date)
@@ -194,7 +209,7 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
                 ]
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, True, rank=rank, partial_exemption_names=partial_names,
-                exemptions=partial_items,
+                exemptions=partial_items, eligible_duty_type_ids=eligible_duty_type_ids,
             ))
             raw_count += 1
         elif base_eligible:
@@ -216,10 +231,12 @@ def compute_potential(session: Session, *, node_id: uuid.UUID, reference_date: d
             ]
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, False, "exempted", names, rank=rank, exemptions=items,
+                eligible_duty_type_ids=eligible_duty_type_ids,
             ))
         else:
             details.append(SoldierPotentialDetail(
                 s.id, s.full_name, False, "no_eligible_duty_types", rank=rank,
+                eligible_duty_type_ids=eligible_duty_type_ids,
             ))
 
     modifier_rows = session.execute(

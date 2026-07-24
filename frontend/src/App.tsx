@@ -55,6 +55,7 @@ function AppGate({ children }: { children: ReactElement }) {
 export default function App() {
   const settings = usePublicSettings();
   const telegramEnabled = settings?.["telegram.enabled"] !== false;
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
 
   return (
     <ErrorBoundary>
@@ -92,7 +93,9 @@ export default function App() {
               <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
               {/* Admin */}
               <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
-              <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+              {hakpazaEnabled && (
+                <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+              )}
               <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
               <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
               <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />

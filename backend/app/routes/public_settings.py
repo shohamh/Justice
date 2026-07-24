@@ -17,6 +17,7 @@ _PUBLIC_KEYS = {
     "gimalim.reserve_fate",
     "shifts.auto_split_node_quotas",
     "telegram.enabled",
+    "forced_callup.enabled",
 }
 
 

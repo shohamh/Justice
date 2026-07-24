@@ -179,11 +179,36 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         type: "boolean" as const,
         defaultValue: false,
       },
+      {
+        key: "exemptions.commander_exemption_min_level",
+        label: "החל מאיזו רמת פיקוד ניתן להעניק פטור פיקודי",
+        description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול להעניק פטור פיקודי, גם ללא דרגת קצונה מתאימה",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
+      {
+        key: "exemptions.medical_doc_min_commander_level",
+        label: "צפייה במסמך רפואי — החל מאיזו רמת מפקד בשרשרת הפיקוד",
+        description: "מפקדים ברמה זו ומעלה בשרשרת הפיקוד של החייל יכולים לצפות במסמך הרפואי עצמו (לא רק בפרטי הפטור)",
+        type: "select" as const,
+        defaultValue: "מדור",
+        options: [],
+      },
+      {
+        key: "exemptions.medical_doc_min_duty_manager_level",
+        label: "צפייה במסמך רפואי — החל מאיזו רמת אחראי תורנויות",
+        description: "אחראי תורנויות עם סמכות ברמה זו ומעלה יכול לצפות במסמך הרפואי עצמו",
+        type: "select" as const,
+        defaultValue: "מרכז",
+        options: [],
+      },
     ],
   },
   {
     label: "הקפצה פיקודית",
     settings: [
+      { key: "forced_callup.enabled", label: "הקפצה פיקודית מופעלת", description: "כיבוי מסתיר את דף ההקפצה הפיקודית ומבטל את כל הפעולות הקשורות אליה", type: "boolean" as const, defaultValue: true },
       {
         key: "hakpaza.callup_multiplier",
         label: "מכפיל הקפצה פיקודית",
@@ -275,6 +300,15 @@ export function SystemSettingsContent() {
     { value: "", label: "ללא הגבלה" },
     ...levelTypes.map(lt => ({ value: lt.key, label: lt.label })),
   ];
+  // A minimum level must always be set, so unlike hierarchyLevelOptions above,
+  // this one has no "no restriction" entry. Shared by every "minimum level"
+  // setting (commander exemption grants, medical document view thresholds).
+  const commanderExemptionLevelOptions = levelTypes.map(lt => ({ value: lt.key, label: lt.label }));
+  const MIN_LEVEL_SETTING_KEYS = new Set([
+    "exemptions.commander_exemption_min_level",
+    "exemptions.medical_doc_min_commander_level",
+    "exemptions.medical_doc_min_duty_manager_level",
+  ]);
 
   // draft mirrors the query result but is then edited locally before saving,
   // so it stays a useState fed by an effect rather than reading straight from
@@ -459,7 +493,12 @@ export function SystemSettingsContent() {
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
                       dir="rtl"
                     >
-                      {(def.key === "swaps.restrict_to_hierarchy_level" ? hierarchyLevelOptions : def.options ?? []).map((opt) => (
+                      {(def.key === "swaps.restrict_to_hierarchy_level"
+                        ? hierarchyLevelOptions
+                        : MIN_LEVEL_SETTING_KEYS.has(def.key)
+                        ? commanderExemptionLevelOptions
+                        : def.options ?? []
+                      ).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>

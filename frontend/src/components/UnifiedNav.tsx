@@ -6,6 +6,7 @@ import {
   Calendar, BarChart2,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
@@ -45,6 +46,8 @@ export default function UnifiedNav() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const location = useLocation();
+  const settings = usePublicSettings();
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
 
@@ -151,7 +154,9 @@ export default function UnifiedNav() {
     { label: t("nav.team_hierarchy"), to: "/team", testId: "nav-team" },
     { label: t("nav.approvals"), to: "/approvals", badge: pendingCount, testId: "nav-approvals" },
     { label: t("nav.command_dashboard"), to: "/command-dashboard", testId: "nav-command-dashboard" },
-    { label: "הקפצה פיקודית", to: "/commander/hakpaza", testId: "nav-hakpaza" },
+    ...(hakpazaEnabled
+      ? [{ label: "הקפצה פיקודית", to: "/commander/hakpaza", testId: "nav-hakpaza" }]
+      : []),
   ];
 
   const planningItems = [

@@ -137,6 +137,12 @@ export async function getAllExemptionDutyTypeMaps(): Promise<Record<string, stri
 export async function setExemptionDutyTypes(id: string, duty_type_ids: string[]): Promise<string[]> {
   return (await api.put<string[]>(`/duty-config/exemption-types/${id}/duty-types`, { duty_type_ids })).data;
 }
+export async function getAllExemptionDutyLocationMaps(): Promise<Record<string, string[]>> {
+  return (await api.get<Record<string, string[]>>("/duty-config/exemption-types/duty-location-map")).data;
+}
+export async function setExemptionDutyLocations(id: string, duty_location_ids: string[]): Promise<string[]> {
+  return (await api.put<string[]>(`/duty-config/exemption-types/${id}/duty-locations`, { duty_location_ids })).data;
+}
 
 export async function updateDutyTypeRequirements(
   id: string,

@@ -15,9 +15,19 @@ from app.db.models import DutyAssignment, ForcedCallup, HierarchyNode, Notificat
 from app.db.session import get_session
 from app.services import hakpaza as svc
 from app.services.notifications import create_notification
-from app.services.settings_loader import get_setting
+from app.services.settings_loader import SettingNotFound, get_setting
 
 router = APIRouter(prefix="/hakpaza", tags=["hakpaza"])
+
+
+def _require_hakpaza_enabled(session: Session) -> None:
+    try:
+        enabled = get_setting(session, "forced_callup.enabled")
+        if not bool(enabled):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="hakpaza_disabled")
+    except SettingNotFound:
+        pass  # enabled by default
+
 
 def _require_commander_or_dm(session: Session, actor: Soldier) -> None:
     if (
@@ -116,6 +126,7 @@ def find_candidates(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
+    _require_hakpaza_enabled(session)
     _require_commander_or_dm(session, actor)
     _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
     candidates = svc.find_candidates(
@@ -133,6 +144,7 @@ def create_hakpaza(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
+    _require_hakpaza_enabled(session)
     _require_commander_or_dm(session, actor)
     original = _authorize_assignment_scope(session, actor, req.pulled_assignment_id)
 
@@ -160,6 +172,7 @@ def list_hakpazot(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
+    _require_hakpaza_enabled(session)
     _require_commander_or_dm(session, actor)
     all_items = session.execute(
         select(ForcedCallup).order_by(ForcedCallup.created_at.desc())
@@ -182,6 +195,7 @@ def pending_count(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ) -> dict:
+    _require_hakpaza_enabled(session)
     if actor.role != "admin" and not is_duty_manager(session, actor.id):
         return {"count": 0}
     count = len(session.execute(
@@ -196,6 +210,7 @@ def approve(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
+    _require_hakpaza_enabled(session)
     _require_dm(session, actor)
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":
@@ -257,6 +272,7 @@ def reject(
     session: Session = Depends(get_session),
     actor: Soldier = Depends(require_password_changed),
 ):
+    _require_hakpaza_enabled(session)
     _require_dm(session, actor)
     h = session.get(ForcedCallup, hakpaza_id)
     if not h or h.status != "pending":

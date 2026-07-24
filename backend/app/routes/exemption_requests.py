@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
-    Action, authorize, can_see_private, forbid_self_target, is_commander, is_duty_manager, scope_root_ids,
+    Action, authorize, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
+    is_duty_manager, scope_root_ids,
 )
 from app.rate_limit import limiter
 from app.auth.deps import require_enrolled, require_password_changed
@@ -475,14 +476,8 @@ def download_exemption_file(
     if req is None:
         raise HTTPException(status_code=404, detail="exemption_request_not_found")
     if req.soldier_id != user.id:
-        root_ids = scope_root_ids(session, user)
-        if not root_ids:
-            raise HTTPException(status_code=403, detail="no_permission")
         target_soldier = session.get(Soldier, req.soldier_id)
-        if target_soldier is None or target_soldier.hierarchy_node_id is None:
-            raise HTTPException(status_code=403, detail="no_permission")
-        node = session.get(HierarchyNode, target_soldier.hierarchy_node_id)
-        if node is None or not any(r in (node.path_ids or []) for r in root_ids):
+        if target_soldier is None or not can_view_medical_document(session, user, target_soldier):
             raise HTTPException(status_code=403, detail="no_permission")
     ef = session.get(ExemptionRequestFile, file_id)
     if ef is None or ef.exemption_request_id != request_id:
