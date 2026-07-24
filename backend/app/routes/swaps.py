@@ -135,8 +135,11 @@ def _manager_approvals_out(session: Session, request_id: uuid.UUID, soldier_id: 
         chains += [("duty_manager", did) for did in duty_manager_chain_for_soldier(session, soldier_id)]
 
     out = []
+    consumed_keys: set[tuple[uuid.UUID, str]] = set()
     for kind, person_id in chains:
-        row = decisions_by_person_kind.get((person_id, kind))
+        key = (person_id, kind)
+        consumed_keys.add(key)
+        row = decisions_by_person_kind.get(key)
         person = session.get(Soldier, person_id)
         approved_by = session.get(Soldier, row.approved_by) if row and row.approved_by else None
         rejected_by = session.get(Soldier, row.rejected_by) if row and row.rejected_by else None
@@ -152,6 +155,40 @@ def _manager_approvals_out(session: Session, request_id: uuid.UUID, soldier_id: 
             rejected_by_name=rejected_by.full_name if rejected_by else None,
             rejected_at=row.rejected_at if row else None,
             approver_kind=kind,
+        ))
+
+    # Surface decision rows that don't belong to any live chain member — these are
+    # "override" decisions (see app.services.swaps.approve_manager_side_override),
+    # where an authorized-but-not-chain-member actor (admin/duty-manager/broader
+    # commander) cleared the whole side on the chain's behalf. The row's
+    # commander_id is the override actor's own id, so it never matches a chain
+    # entry above and would otherwise vanish from the displayed roster even
+    # though it fully satisfies (and may have finalized) this side. Appended
+    # after the live chain rows so `approvals[0]` (the "direct" commander/duty
+    # manager) still comes from the chain; existing frontend logic
+    # (isSideSatisfied / DirectCommanderApproval's "approved by other") already
+    # picks these up correctly since it just scans the full list for an
+    # approved=True row.
+    for key, row in decisions_by_person_kind.items():
+        if key in consumed_keys:
+            continue
+        if not (row.approved or row.rejected):
+            continue
+        person = session.get(Soldier, row.commander_id)
+        approved_by = session.get(Soldier, row.approved_by) if row.approved_by else None
+        rejected_by = session.get(Soldier, row.rejected_by) if row.rejected_by else None
+        out.append(SwapManagerApprovalOut(
+            commander_id=row.commander_id,
+            commander_name=person.full_name if person else None,
+            approved=bool(row.approved),
+            approved_by=row.approved_by,
+            approved_by_name=approved_by.full_name if approved_by else None,
+            approved_at=row.approved_at,
+            rejected=bool(row.rejected),
+            rejected_by=row.rejected_by,
+            rejected_by_name=rejected_by.full_name if rejected_by else None,
+            rejected_at=row.rejected_at,
+            approver_kind=row.approver_kind,
         ))
     return out
 

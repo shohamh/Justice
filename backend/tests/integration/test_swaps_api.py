@@ -136,6 +136,51 @@ def test_admin_override_clears_manager_side(client: TestClient, admin_session: S
     assert all(row.approved_by == admin.id for row in rows)
 
 
+def test_admin_override_approval_visible_in_manager_approvals(client: TestClient, admin_session: Session):
+    """After an admin/duty-manager uses the override path to clear one side,
+    the roster returned by the API must show that decision — not just leave
+    every chain commander looking 'pending' with no visibility into what
+    happened. The override decision row's commander_id is the override
+    actor's own id (not any chain member's), so _manager_approvals_out must
+    surface it as an extra entry alongside the live chain rows."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+    admin = create_soldier(admin_session, personal_number=f"api_ovadm_{_uid()}", role="admin")
+
+    r = client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(admin), json={"side": "requester"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # The swap isn't fully finalized yet — covering side's commander hasn't approved.
+    assert body["status"] == "pending_approval"
+    assert body["requester_side_approved"] is True
+
+    requester_approvals = body["requester_manager_approvals"]
+    # The live chain member (req_cmd) still shows as not personally approved...
+    chain_row = next(a for a in requester_approvals if a["commander_id"] == str(req_cmd.id))
+    assert chain_row["approved"] is False
+    # ...but the override decision by the admin is surfaced as its own entry,
+    # proving the roster reflects what actually happened rather than hiding it.
+    override_row = next(a for a in requester_approvals if a["commander_id"] == str(admin.id))
+    assert override_row["approved"] is True
+    assert override_row["approved_by"] == str(admin.id)
+    assert override_row["approver_kind"] == "commander"
+
+    # Covering side is untouched by the override and still shows as pending.
+    covering_approvals = body["covering_manager_approvals"]
+    assert all(a["commander_id"] != str(admin.id) for a in covering_approvals)
+
+    # Fetching the swap again (a fresh GET, not just the mutation response)
+    # shows the same override decision — proving it's not a one-off artifact
+    # of the approve response but genuinely persisted/live-computed.
+    r2 = client.get("/api/swaps/pending", headers=auth_headers(cov_cmd))
+    pending_swap = next((s for s in r2.json() if s["id"] == str(swap_req.id)), None)
+    assert pending_swap is not None
+    override_row_2 = next(
+        a for a in pending_swap["requester_manager_approvals"] if a["commander_id"] == str(admin.id)
+    )
+    assert override_row_2["approved"] is True
+
+
 def test_swap_out_includes_manager_approvals(client: TestClient, admin_session: Session):
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
