@@ -531,6 +531,79 @@ def test_exemption_request_confirm_restores_decided_status(admin_session):
     assert updated.decision_note == "ok"
 
 
+def test_personal_constraint_confirm_with_redacted_reason_preserves_existing(admin_session):
+    """A row simulating a privacy-redacted export (reason blank, but id matching an
+    existing record) must NOT null out the real reason already stored in the DB.
+
+    This is the exact re-import-of-a-redacted-export scenario: reason=None means
+    "I couldn't see this value," not "clear it."
+    """
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    existing = PersonalConstraint(
+        soldier_id=soldier.id, start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2),
+        reason="real sensitive reason", status="pending",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    # blank "reason" cell == redacted export value
+    wb = _wb_with_personal_constraints([
+        [str(existing.id), soldier.personal_number, "15.06.2024", "16.06.2024", "",
+         "approved", decider.personal_number, "ok"],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(PersonalConstraint, existing.id)
+    assert updated.reason == "real sensitive reason"
+    assert updated.status == "approved"
+    assert updated.start_date == date_type(2024, 6, 15)
+    assert updated.end_date == date_type(2024, 6, 16)
+
+
+def test_exemption_request_confirm_with_redacted_reason_preserves_existing(admin_session):
+    """Same redacted-export-reimport scenario for exemption_requests."""
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    commander_approver = create_soldier(admin_session, personal_number=f"cmd_{_uid()}")
+    decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
+    et = ExemptionType(name=f"et_{_uid()}")
+    admin_session.add(et)
+    admin_session.flush()
+    existing = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id,
+        start_date=date_type(2024, 1, 1), status="pending_commander",
+        reason="real sensitive reason",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+
+    # blank "reason" cell == redacted export value
+    wb = _wb_with_exemption_requests([
+        [str(existing.id), soldier.personal_number, et.name, "15.06.2024", "16.06.2024",
+         "", "approved", commander_approver.personal_number, decider.personal_number, "ok", ""],
+    ])
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    sess = create_session(admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard")
+
+    result = confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert result["updated"] == 1
+    assert result["errors"] == []
+    updated = admin_session.get(ExemptionRequest, existing.id)
+    assert updated.reason == "real sensitive reason"
+    assert updated.status == "approved"
+    assert updated.commander_approved_by == commander_approver.id
+    assert updated.decided_by == decider.id
+    assert updated.decision_note == "ok"
+
+
 def test_swap_request_confirm_restores_status_and_approval_log(admin_session):
     requesting = create_soldier(admin_session, personal_number=f"s_{_uid()}")
     covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}")

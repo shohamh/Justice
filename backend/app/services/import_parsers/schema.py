@@ -180,7 +180,7 @@ class ImportPersonalConstraintRow(BaseModel):
     soldier_personal_number: str
     start_date: str
     end_date: str
-    reason: str
+    reason: str | None = None
     status: str
     decided_by_personal_number: str | None = None
     decision_note: str | None = None

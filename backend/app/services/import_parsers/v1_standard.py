@@ -386,7 +386,7 @@ class V1StandardParser:
                 soldier_personal_number=str(r.get("soldier_personal_number") or "").strip(),
                 start_date=_parse_date(r.get("start_date")) or "",
                 end_date=_parse_date(r.get("end_date")) or "",
-                reason=str(r.get("reason") or "").strip(),
+                reason=str(r.get("reason") or "").strip() or None,
                 status=str(r.get("status") or "").strip(),
                 decided_by_personal_number=str(r.get("decided_by_personal_number") or "").strip() or None,
                 decision_note=str(r.get("decision_note") or "").strip() or None,

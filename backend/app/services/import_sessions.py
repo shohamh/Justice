@@ -1565,7 +1565,7 @@ def confirm_session(
                         soldier_id=uuid.UUID(row["resolved_soldier_id"]),
                         start_date=date_type.fromisoformat(row["start_date"]),
                         end_date=date_type.fromisoformat(row["end_date"]),
-                        reason=row["reason"],
+                        reason=row["reason"] or "",
                         status=row["status"],
                     )
                     if row.get("resolved_decided_by_id"):
@@ -1579,7 +1579,8 @@ def confirm_session(
                     if pc is not None:
                         pc.start_date = date_type.fromisoformat(row["start_date"])
                         pc.end_date = date_type.fromisoformat(row["end_date"])
-                        pc.reason = row["reason"]
+                        if row.get("reason") is not None:
+                            pc.reason = row["reason"]
                         pc.status = row["status"]
                         if row.get("resolved_decided_by_id"):
                             pc.decided_by = uuid.UUID(row["resolved_decided_by_id"])
@@ -1748,7 +1749,8 @@ def confirm_session(
                         er.end_date = (
                             date_type.fromisoformat(row["end_date"]) if row.get("end_date") else None
                         )
-                        er.reason = row.get("reason")
+                        if row.get("reason") is not None:
+                            er.reason = row.get("reason")
                         er.status = row["status"]
                         if row.get("resolved_commander_approved_by_id"):
                             er.commander_approved_by = uuid.UUID(row["resolved_commander_approved_by_id"])
