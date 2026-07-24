@@ -22,6 +22,7 @@ import { getPreferences, updatePreferences, listCommanderScopes, addCommanderSco
 import { fetchTree, NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "../components/Combobox";
+import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 
 export default function ProfilePage() {
@@ -310,28 +311,28 @@ export default function ProfilePage() {
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
-            <input type="date" lang="he" value={mitvahimReq} onChange={e => setMitvahimReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_mitvahim_date", mitvahimReq)} disabled={!mitvahimReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.last_alal_date")}</label>
-            <input type="date" lang="he" value={alalReq} onChange={e => setAlalReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={alalReq} onChange={setAlalReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("last_alal_date", alalReq)} disabled={!alalReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.mandatory_end_date")}</label>
-            <input type="date" lang="he" value={mandatoryEndReq} onChange={e => setMandatoryEndReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={mandatoryEndReq} onChange={setMandatoryEndReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("mandatory_end_date", mandatoryEndReq)} disabled={!mandatoryEndReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.discharge_date")}</label>
-            <input type="date" lang="he" value={dischargeReq} onChange={e => setDischargeReq(e.target.value)} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={dischargeReq} onChange={setDischargeReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             <button type="button" onClick={() => requestUpdate("discharge_date", dischargeReq)} disabled={!dischargeReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
@@ -342,11 +343,9 @@ export default function ProfilePage() {
               <input type="checkbox" checked={licenseHasReq} onChange={e => setLicenseHasReq(e.target.checked)} />
               {t("soldier_profile.military_driving_license_has")}
             </label>
-            <input
-              type="date"
-              lang="he"
+            <DateInput
               value={licenseExpiryReq}
-              onChange={e => setLicenseExpiryReq(e.target.value)}
+              onChange={setLicenseExpiryReq}
               disabled={!licenseHasReq}
               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-50"
             />

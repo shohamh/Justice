@@ -8,6 +8,7 @@ import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 import Combobox from "./Combobox";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import DateInput from "../components/DateInput";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -111,11 +112,11 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
           {t("shifts.filter_from")}
-          <input type="date" lang="he" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+          <DateInput value={dateFrom} onChange={v => setDateFrom(v)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
         <label className="block">
           {t("shifts.filter_to")}
-          <input type="date" lang="he" value={dateTo} onChange={e => setDateTo(e.target.value)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+          <DateInput value={dateTo} onChange={v => setDateTo(v)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
       </div>
 

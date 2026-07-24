@@ -82,13 +82,13 @@ describe("EntriesExitsPanel - release flow", () => {
 
     fireEvent.click(screen.getByText("command_dashboard.release"));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const [todayY, todayM, todayD] = new Date().toISOString().slice(0, 10).split("-");
     const dateInput = await screen.findByTestId("release-date-input");
-    expect(dateInput).toHaveValue(today);
+    expect(dateInput).toHaveValue(`${todayD}/${todayM}/${todayY}`);
 
     expect(softDeleteSoldier).not.toHaveBeenCalled();
 
-    fireEvent.change(dateInput, { target: { value: "2026-02-10" } });
+    fireEvent.change(dateInput, { target: { value: "10/02/2026" } });
     fireEvent.click(screen.getByText("command_dashboard.confirm_release"));
 
     await waitFor(() => expect(softDeleteSoldier).toHaveBeenCalledWith("s1", "2026-02-10"));

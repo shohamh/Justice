@@ -93,7 +93,7 @@ test("escalate on without apply-immediately defaults apply_immediately to false"
   );
 });
 
-test("date inputs have lang=he attribute for Hebrew date picker", () => {
+test("date inputs render and accept Israeli dd/mm/yyyy format", () => {
   render(
     <CommanderExemptionGrantForm
       soldierId="s1"
@@ -105,6 +105,9 @@ test("date inputs have lang=he attribute for Hebrew date picker", () => {
   const startDateInput = screen.getByTestId("commander-exemption-start");
   const endDateInput = screen.getByTestId("commander-exemption-end");
 
-  expect(startDateInput).toHaveAttribute("lang", "he");
-  expect(endDateInput).toHaveAttribute("lang", "he");
+  fireEvent.change(startDateInput, { target: { value: "05/03/2026" } });
+  fireEvent.change(endDateInput, { target: { value: "10/03/2026" } });
+
+  expect(startDateInput).toHaveValue("05/03/2026");
+  expect(endDateInput).toHaveValue("10/03/2026");
 });

@@ -14,6 +14,7 @@ import { translateApiError } from "../utils/translateApiError";
 import DutyTypeFormModal from "./DutyTypeFormModal";
 import LocationFormModal from "./LocationFormModal";
 import SubHierarchySelector from "./SubHierarchySelector";
+import DateInput from "./DateInput";
 
 interface Props {
   dutyTypes: DutyType[];
@@ -488,13 +489,11 @@ export default function ShiftTemplateFormModal({
               <div className="pl-6 space-y-1">
                 <label className="block text-sm">
                   {t("shift_templates.auto_roll_until")}
-                  <input
-                    type="date" lang="he"
+                  <DateInput
                     value={autoRollUntil}
                     min={todayStr()}
-                    onChange={e => setAutoRollUntil(e.target.value)}
+                    onChange={isoValue => setAutoRollUntil(isoValue)}
                     data-testid="auto-roll-until-date"
-                    dir="ltr"
                     className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                 </label>

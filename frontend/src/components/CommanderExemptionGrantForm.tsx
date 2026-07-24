@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { escalateCommanderExemption, grantCommanderExemption } from "../api/exemptions";
+import DateInput from "../components/DateInput";
 
 interface Props {
   soldierId: string;
@@ -77,8 +78,8 @@ export default function CommanderExemptionGrantForm({
           <option key={t.id} value={t.id}>{t.name}</option>
         ))}
       </select>
-      <input type="date" lang="he" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border rounded p-1 w-full" data-testid="commander-exemption-start" />
-      <input type="date" lang="he" value={endDate} onChange={(e) => setEndDate(e.target.value)} placeholder="תאריך סיום (רשות)" className="border rounded p-1 w-full" data-testid="commander-exemption-end" />
+      <DateInput value={startDate} onChange={v => setStartDate(v)} className="border rounded p-1 w-full" data-testid="commander-exemption-start" />
+      <DateInput value={endDate} onChange={v => setEndDate(v)} className="border rounded p-1 w-full" data-testid="commander-exemption-end" />
       <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="סיבה (חובה)" className="border rounded p-1 w-full" data-testid="commander-exemption-reason" />
 
       <label className="flex items-center gap-2 text-sm cursor-pointer">

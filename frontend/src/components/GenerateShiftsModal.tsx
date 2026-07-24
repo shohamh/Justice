@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PreviewRow, generateShifts, previewGeneration } from "../api/shiftTemplates";
 import { translateApiError } from "../utils/translateApiError";
+import DateInput from "../components/DateInput";
 
 interface Props {
   open: boolean;
@@ -88,23 +89,19 @@ export default function GenerateShiftsModal({ open, templateId, onClose, onGener
         <div className="space-y-3 mb-5">
           <label className="block text-sm">
             <span className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t("shift_templates.from_date", "מתאריך")}</span>
-            <input
-              type="date" lang="he"
+            <DateInput
               value={fromDate}
-              onChange={(e) => { setFromDate(e.target.value); setPreview(null); setResult(null); }}
+              onChange={(v) => { setFromDate(v); setPreview(null); setResult(null); }}
               className="block w-full border rounded p-1.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              dir="ltr"
             />
           </label>
           <label className="block text-sm">
             <span className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">{t("shift_templates.to_date", "עד תאריך")}</span>
-            <input
-              type="date" lang="he"
+            <DateInput
               value={toDate}
               min={fromDate}
-              onChange={(e) => { setToDate(e.target.value); setPreview(null); setResult(null); }}
+              onChange={(v) => { setToDate(v); setPreview(null); setResult(null); }}
               className="block w-full border rounded p-1.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              dir="ltr"
             />
           </label>
         </div>

@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
+import DateInput from "../components/DateInput";
 
 // Rank lists for the rank selector
 const RANKS_ENLISTED = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
@@ -197,24 +198,20 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
           ].map(([label, value, setter]) => (
             <label key={label as string} className="block">
               <span className="text-xs text-gray-500">{label as string}</span>
-              <input
-                type="date"
-                lang="he"
+              <DateInput
                 className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600"
                 value={value as string}
-                onChange={e => (setter as (v: string) => void)(e.target.value)}
+                onChange={v => (setter as (v: string) => void)(v)}
               />
             </label>
           ))}
           {isOfficer && (
             <label className="block">
               <span className="text-xs text-gray-500">אל&quot;ל אחרון</span>
-              <input
-                type="date"
-                lang="he"
+              <DateInput
                 className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600"
                 value={lastAlalDate}
-                onChange={e => setLastAlalDate(e.target.value)}
+                onChange={v => setLastAlalDate(v)}
               />
             </label>
           )}

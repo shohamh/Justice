@@ -8,6 +8,7 @@ import { Assignment, listAssignments } from "../api/assignments";
 import { Candidate, createHakpaza, findCandidates } from "../api/hakpaza";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { formatDate, formatDutyRange, lastDutyDay } from "../utils/formatDate";
+import DateInput from "../components/DateInput";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -319,12 +320,11 @@ export default function HakpazaPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   תאריך הקפצה (מתי החייל יוחלף):
                 </label>
-                <input
-                  type="date" lang="he"
+                <DateInput
                   min={today}
                   max={lastDutyDay(selectedAssignment.end_date)}
                   value={pullDate}
-                  onChange={(e) => setPullDate(e.target.value)}
+                  onChange={(isoValue) => setPullDate(isoValue)}
                   className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 />
               </div>

@@ -39,7 +39,7 @@ test("picking an until-date shows the computed instance count for the default we
     <ShiftTemplateFormModal dutyTypes={dutyTypes} locations={locations} onSubmit={() => {}} onClose={() => {}} />
   );
   fireEvent.click(screen.getByTestId("auto-roll-checkbox"));
-  fireEvent.change(screen.getByTestId("auto-roll-until-date"), { target: { value: "2026-06-26" } });
+  fireEvent.change(screen.getByTestId("auto-roll-until-date"), { target: { value: "26/06/2026" } });
   // Default recurrence is "weekdays" (Sun-Thu). Today=2026-06-19 (Fri) .. 2026-06-26 (Fri):
   // matching days are Sun 6/21, Mon 6/22, Tue 6/23, Wed 6/24, Thu 6/25 = 5.
   expect(screen.getByTestId("auto-roll-until-count")).toHaveTextContent("count:5");

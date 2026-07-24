@@ -9,6 +9,7 @@ import { fetchTree, type NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import Combobox from "./Combobox";
+import DateInput from "../components/DateInput";
 
 interface Props {
   soldiers: SoldierWithStatus[];
@@ -108,9 +109,9 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
                 placeholder={t("command_dashboard.none")}
               />
               <label className="block text-sm">{t("command_dashboard.exemption_start")}</label>
-              <input type="date" lang="he" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(e) => setExemptStart(e.target.value)} />
+              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptStart} onChange={(v) => setExemptStart(v)} />
               <label className="block text-sm">{t("command_dashboard.exemption_end")}</label>
-              <input type="date" lang="he" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(e) => setExemptEnd(e.target.value)} />
+              <DateInput className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={exemptEnd} onChange={(v) => setExemptEnd(v)} />
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setExemptTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleGrantExemption} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">{t("command_dashboard.exempt")}</button>
@@ -146,8 +147,8 @@ export default function EntriesExitsPanel({ soldiers, onRefresh }: Props) {
             <h3 className="font-bold text-lg mb-4">{t("command_dashboard.release")} - {releaseTarget.full_name}</h3>
             <div className="space-y-3">
               <label className="block text-sm">{t("command_dashboard.release_date")}</label>
-              <input type="date" lang="he" data-testid="release-date-input" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} autoFocus />
+              <DateInput data-testid="release-date-input" className="w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={releaseDate} onChange={(v) => setReleaseDate(v)} autoFocus />
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setReleaseTarget(null)} className="px-3 py-1 border rounded text-sm">{t("command_dashboard.cancel")}</button>
                 <button onClick={handleConfirmRelease} className="px-3 py-1 bg-red-600 text-white rounded text-sm">{t("command_dashboard.confirm_release")}</button>

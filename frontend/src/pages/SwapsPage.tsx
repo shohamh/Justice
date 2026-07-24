@@ -22,6 +22,7 @@ import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { fetchTree } from "../api/hierarchy";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import DateInput from "../components/DateInput";
 
 interface HierarchyNode {
   id: string;
@@ -671,19 +672,17 @@ export default function SwapsPage() {
               <div className="flex flex-wrap gap-2 items-end">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_from")}</label>
-                  <input
-                    type="date" lang="he"
+                  <DateInput
                     value={boardFilters.dateFrom ?? ""}
-                    onChange={e => applyFilters({ dateFrom: e.target.value || undefined })}
+                    onChange={iso => applyFilters({ dateFrom: iso || undefined })}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_to")}</label>
-                  <input
-                    type="date" lang="he"
+                  <DateInput
                     value={boardFilters.dateTo ?? ""}
-                    onChange={e => applyFilters({ dateTo: e.target.value || undefined })}
+                    onChange={iso => applyFilters({ dateTo: iso || undefined })}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                 </div>

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Combobox, { type ComboboxItem } from "../components/Combobox";
+import DateInput from "../components/DateInput";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
@@ -599,11 +600,10 @@ export default function ImportSessionReviewPage() {
                       </td>
                       <td className="p-3">
                         {readOnly ? row.enlistment_date ?? "—" : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.enlistment_date ?? ""}
-                            onBlur={(e) => setFieldOverride("soldiers", row.row, "enlistment_date", e.target.value || null)}
+                            onBlur={(iso) => setFieldOverride("soldiers", row.row, "enlistment_date", iso || null)}
                           />
                         )}
                       </td>
@@ -803,21 +803,19 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">{row.duty_location_name}</td>
                       <td className="p-3">
                         {readOnly ? row.start_date : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.start_date}
-                            onBlur={(e) => setFieldOverride("duty_shifts", row.row, "start_date", e.target.value)}
+                            onBlur={(iso) => setFieldOverride("duty_shifts", row.row, "start_date", iso)}
                           />
                         )}
                       </td>
                       <td className="p-3">
                         {readOnly ? row.end_date : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.end_date}
-                            onBlur={(e) => setFieldOverride("duty_shifts", row.row, "end_date", e.target.value)}
+                            onBlur={(iso) => setFieldOverride("duty_shifts", row.row, "end_date", iso)}
                           />
                         )}
                       </td>
@@ -1116,11 +1114,10 @@ export default function ImportSessionReviewPage() {
                       </td>
                       <td className="p-3">
                         {!row.auto_roll ? "—" : readOnly ? row.auto_roll_until ?? "—" : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.auto_roll_until ?? ""}
-                            onBlur={(e) => setFieldOverride("shift_templates", row.row, "auto_roll_until", e.target.value || null)}
+                            onBlur={(iso) => setFieldOverride("shift_templates", row.row, "auto_roll_until", iso || null)}
                           />
                         )}
                       </td>
@@ -1271,21 +1268,19 @@ export default function ImportSessionReviewPage() {
                       <td className="p-3">{row.duty_location_name}</td>
                       <td className="p-3">
                         {readOnly ? row.start_date : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.start_date}
-                            onBlur={(e) => setFieldOverride("assignments", row.row, "start_date", e.target.value)}
+                            onBlur={(iso) => setFieldOverride("assignments", row.row, "start_date", iso)}
                           />
                         )}
                       </td>
                       <td className="p-3">
                         {readOnly ? row.end_date : (
-                          <input
-                            type="date"
+                          <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.end_date}
-                            onBlur={(e) => setFieldOverride("assignments", row.row, "end_date", e.target.value)}
+                            onBlur={(iso) => setFieldOverride("assignments", row.row, "end_date", iso)}
                           />
                         )}
                       </td>

@@ -19,6 +19,7 @@ import { DataTable, type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
+import DateInput from "../components/DateInput";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -144,19 +145,17 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
       <div className="flex flex-wrap gap-4 items-end text-sm">
         <label className="flex items-center gap-2">
           <span className="text-gray-700 dark:text-gray-300">מתאריך</span>
-          <input
-            type="date" lang="he"
+          <DateInput
             value={from}
-            onChange={e => { setFrom(e.target.value); resetResult(); }}
+            onChange={iso => { setFrom(iso); resetResult(); }}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
         <label className="flex items-center gap-2">
           <span className="text-gray-700 dark:text-gray-300">עד תאריך</span>
-          <input
-            type="date" lang="he"
+          <DateInput
             value={to}
-            onChange={e => { setTo(e.target.value); resetResult(); }}
+            onChange={iso => { setTo(iso); resetResult(); }}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
@@ -725,11 +724,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         <div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm">
           <label className="flex items-center gap-2">
             {t("shifts.filter_from")}
-            <input type="date" lang="he" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={dateFrom} onChange={iso => setDateFrom(iso)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           <label className="flex items-center gap-2">
             {t("shifts.filter_to")}
-            <input type="date" lang="he" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={dateTo} onChange={iso => setDateTo(iso)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           {shifts.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

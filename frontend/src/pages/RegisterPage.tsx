@@ -8,6 +8,7 @@ import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicEx
 import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
 import Combobox from "../components/Combobox";
+import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import { queryKeys } from "../queryKeys";
 
@@ -221,14 +222,14 @@ export default function RegisterPage() {
             )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
-                <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  value={form[key] as string} onChange={e => set(key, e.target.value)} />
+                <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={form[key] as string} onChange={iso => set(key, iso)} />
               </label>
             ))}
             {form.is_officer && (
               <label className="block text-sm">אל&quot;ל אחרון
-                <input type="date" lang="he" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                  value={form.last_alal_date} onChange={e => set("last_alal_date", e.target.value)} />
+                <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  value={form.last_alal_date} onChange={iso => set("last_alal_date", iso)} />
               </label>
             )}
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
@@ -270,10 +271,10 @@ export default function RegisterPage() {
                   }}
                   placeholder="סוג פטור"
                 />
-                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
-                  onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: e.target.value}; set("exemption_requests", rows); }} />
-                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
-                  onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: e.target.value}; set("exemption_requests", rows); }} />
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.start_date}
+                  onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], start_date: iso}; set("exemption_requests", rows); }} />
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.end_date}
+                  onChange={iso => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], end_date: iso}; set("exemption_requests", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={er.reason}
                   onChange={e => { const rows = [...form.exemption_requests]; rows[i] = {...rows[i], reason: e.target.value}; set("exemption_requests", rows); }} />
                 <button className="text-red-600 text-xs" onClick={() => set("exemption_requests", form.exemption_requests.filter((_,j) => j !== i))}>{t("register.remove")}</button>
@@ -301,10 +302,10 @@ export default function RegisterPage() {
             <h2 className="font-semibold">{t("register.step_constraints")}</h2>
             {form.personal_constraints.map((pc, i) => (
               <div key={i} className="border rounded p-2 space-y-1 text-sm">
-                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
-                  onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], start_date: e.target.value}; set("personal_constraints", rows); }} />
-                <input type="date" lang="he" className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
-                  onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: e.target.value}; set("personal_constraints", rows); }} />
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.start_date}
+                  onChange={iso => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], start_date: iso}; set("personal_constraints", rows); }} />
+                <DateInput className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.end_date}
+                  onChange={iso => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], end_date: iso}; set("personal_constraints", rows); }} />
                 <input placeholder={t("register.reason")} className="block w-full border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={pc.reason}
                   onChange={e => { const rows = [...form.personal_constraints]; rows[i] = {...rows[i], reason: e.target.value}; set("personal_constraints", rows); }} />
                 <button className="text-red-600 text-xs" onClick={() => set("personal_constraints", form.personal_constraints.filter((_,j) => j !== i))}>{t("register.remove")}</button>

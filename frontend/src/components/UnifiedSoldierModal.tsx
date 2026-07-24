@@ -8,6 +8,7 @@ import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
 import DutyHistoryPanel from "./DutyHistoryPanel";
 import SoldierLink from "./SoldierLink";
+import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate } from "../utils/formatDate";
 
@@ -332,11 +333,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {t("transparency.enrolled_at")}
                   </label>
-                  <input
-                    type="date" lang="he"
+                  <DateInput
                     className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                     value={enrolledAt}
-                    onChange={(e) => setEnrolledAt(e.target.value)}
+                    onChange={setEnrolledAt}
                     data-testid="enrolled-at-input"
                   />
                 </div>
@@ -407,16 +407,16 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.enlistment_date")}</span>
-                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={(e) => setProfileEnlistment(e.target.value)} />
+                <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileEnlistment} onChange={setProfileEnlistment} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.mandatory_end_date")}</span>
-                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={(e) => setProfileMandEnd(e.target.value)} />
+                <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMandEnd} onChange={setProfileMandEnd} />
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.discharge_date")}</span>
                 <div className="flex gap-1 items-center">
-                  <input type="date" lang="he" className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={(e) => setProfileDischarge(e.target.value)} />
+                  <DateInput className="border rounded p-1 flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileDischarge} onChange={setProfileDischarge} />
                   {profileDischarge && (
                     <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => setProfileDischarge("")}>{t("soldier_profile.clear")}</button>
                   )}
@@ -424,12 +424,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               </label>
               <label className="block">
                 <span className="text-xs">{t("soldier_profile.last_mitvahim_date")}</span>
-                <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={(e) => setProfileMitvahim(e.target.value)} />
+                <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileMitvahim} onChange={setProfileMitvahim} />
               </label>
               {soldierData.is_officer && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.last_alal_date")}</span>
-                  <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={(e) => setProfileAlal(e.target.value)} />
+                  <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profileAlal} onChange={setProfileAlal} />
                 </label>
               )}
               <label className="flex items-center gap-2 mt-1">
@@ -439,8 +439,8 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               {profileHasLicense && (
                 <label className="block">
                   <span className="text-xs">{t("soldier_profile.driving_license_expiry")}</span>
-                  <input type="date" lang="he" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                    value={profileLicenseExpiry} onChange={(e) => setProfileLicenseExpiry(e.target.value)} />
+                  <DateInput className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={profileLicenseExpiry} onChange={setProfileLicenseExpiry} />
                 </label>
               )}
               {isAdmin && (

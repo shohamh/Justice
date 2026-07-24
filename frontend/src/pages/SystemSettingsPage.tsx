@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import changelogRaw from "../../CHANGELOG.md?raw";
 import { queryKeys } from "../queryKeys";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import DateInput from "../components/DateInput";
 
 interface SettingDef {
   key: string;
@@ -464,12 +465,10 @@ export function SystemSettingsContent() {
                       ))}
                     </select>
                   ) : def.type === "date" ? (
-                    <input
-                      type="date" lang="he"
+                    <DateInput
                       value={String(value ?? "")}
-                      onChange={e => setValue(def.key, e.target.value)}
+                      onChange={isoValue => setValue(def.key, isoValue)}
                       className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-2 focus:ring-indigo-300 outline-none"
-                      dir="ltr"
                     />
                   ) : def.type === "text" ? (
                     <input

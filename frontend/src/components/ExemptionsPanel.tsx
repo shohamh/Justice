@@ -12,6 +12,7 @@ import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
 import { DaysBadge } from "./DaysBadge";
 import ReasonPromptModal from "./ReasonPromptModal";
+import DateInput from "../components/DateInput";
 
 export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyManagerStep }: { soldierId: string; canManage: boolean; canApproveDutyManagerStep: boolean }) {
   const { t } = useTranslation();
@@ -287,13 +288,12 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
             placeholder={t("exemptions.type")}
             testId="grant-type"
           />
-          <input type="date" lang="he" className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(e) => setStart(e.target.value)} required data-testid="grant-start" />
+          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(v) => setStart(v)} required data-testid="grant-start" />
           <div className="flex items-center gap-2">
-            <input
-              type="date" lang="he"
+            <DateInput
               className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
               value={indefinite ? "" : end}
-              onChange={(e) => setEnd(e.target.value)}
+              onChange={(v) => setEnd(v)}
               disabled={indefinite}
               data-testid="grant-end"
             />
