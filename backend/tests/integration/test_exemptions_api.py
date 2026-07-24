@@ -381,3 +381,35 @@ def test_upload_exemption_file_rejects_content_type_mismatch(client, admin_sessi
     )
     assert r.status_code == 400
     assert r.json()["detail"] == "invalid_file_type"
+
+
+def test_pending_exemption_flags_dm_below_minimum_level_as_unable_to_approve(client, admin_session):
+    from app.db.models import HierarchyLevelType
+    from sqlalchemy import delete
+    admin_session.execute(delete(HierarchyLevelType))
+    admin_session.flush()
+    admin_session.add_all([
+        HierarchyLevelType(key="מרכז", label="מרכז", rank=1),
+        HierarchyLevelType(key="מדור", label="מדור", rank=2),
+    ])
+    admin_session.commit()
+
+    mador = create_node(admin_session, level="מדור", name="ex_flag_mador")
+    dm = create_soldier(admin_session, personal_number="ex_flag_dm", role="duty_manager", hierarchy_node_id=mador.id)
+    soldier = create_soldier(admin_session, personal_number="ex_flag_sol", hierarchy_node_id=mador.id)
+    admin_session.commit()
+
+    et = ExemptionType(name="ex-flag-type", is_medical=False)
+    admin_session.add(et)
+    admin_session.flush()
+    req = ExemptionRequest(
+        soldier_id=soldier.id, exemption_type_id=et.id, status="pending_duty_manager", start_date=date(2026, 1, 1),
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    r = client.get("/api/exemption-requests/pending", headers=auth_headers(dm))
+    assert r.status_code == 200
+    items = [i for i in r.json() if i["id"] == str(req.id)]
+    assert len(items) == 1
+    assert items[0]["can_approve_duty_manager_step"] is False

@@ -131,6 +131,7 @@ class FieldUpdateOut(BaseModel):
     created_at: Any
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
+    can_approve: bool = True
 
 
 class TimelineEventOut(BaseModel):
@@ -211,6 +212,7 @@ def _out(
 def _fu_out(
     u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None, include_values: bool = True,
     nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
+    can_approve: bool = True,
 ) -> FieldUpdateOut:
     redact = not include_values and u.field_name in PRIVATE_FIELD_NAMES
     return FieldUpdateOut(
@@ -228,6 +230,7 @@ def _fu_out(
         created_at=u.created_at,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
+        can_approve=can_approve,
     )
 
 
@@ -374,6 +377,7 @@ def list_all_pending_field_updates(
                 _fu_out(
                     upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
                     nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                    can_approve=True,
                 )
             )
         return result
@@ -395,10 +399,18 @@ def list_all_pending_field_updates(
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
                 nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
+                decide_action = (
+                    Action.MILITARY_LICENSE_DECIDE if upd.field_name == "military_driving_license" else Action.SOLDIER_UPDATE
+                )
+                can_approve = can(
+                    user, decide_action, target_node=node, roots=roots,
+                    is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+                )
                 result.append(
                     _fu_out(
                         upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
                         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                        can_approve=can_approve,
                     )
                 )
     return result

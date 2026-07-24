@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import (
-    Action, authorize, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
+    Action, authorize, can, can_see_private, can_view_medical_document, forbid_self_target, is_commander,
     is_duty_manager, scope_root_ids,
 )
 from app.rate_limit import limiter
@@ -69,6 +69,8 @@ class ExemptionRequestOut(BaseModel):
     enrollment_request_id: uuid.UUID | None = None
     nearest_commander: NearestApproverOut | None = None
     nearest_duty_manager: NearestApproverOut | None = None
+    can_approve_commander_step: bool = True
+    can_approve_duty_manager_step: bool = True
 
 
 class CreateExemptionRequest(BaseModel):
@@ -106,6 +108,8 @@ def _out(
     include_sensitive: bool = True,
     nearest_commander: NearestApproverOut | None = None,
     nearest_duty_manager: NearestApproverOut | None = None,
+    can_approve_commander_step: bool = True,
+    can_approve_duty_manager_step: bool = True,
 ) -> ExemptionRequestOut:
     return ExemptionRequestOut(
         id=req.id,
@@ -124,7 +128,40 @@ def _out(
         enrollment_request_id=req.enrollment_request_id,
         nearest_commander=nearest_commander,
         nearest_duty_manager=nearest_duty_manager,
+        can_approve_commander_step=can_approve_commander_step,
+        can_approve_duty_manager_step=can_approve_duty_manager_step,
     )
+
+
+def _exemption_approval_flags(
+    session: Session, user: Soldier, target_node: HierarchyNode | None
+) -> tuple[bool, bool]:
+    """Mirror the authorization checks in approve_exemption_request_commander_step
+    and approve_exemption_request_duty_manager_step, so pending-list responses can
+    tell the frontend whether the current viewer's approve buttons would actually
+    succeed, instead of failing 403 only after the click.
+
+    Commander-step mirrors `authorize(session, user, Action.CONSTRAINT_APPROVE, ...)`
+    exactly via `can()` — note CONSTRAINT_APPROVE is in both _DM_ACTIONS and
+    _COMMANDER_ACTIONS, so an in-scope duty manager (not just a commander) can
+    also successfully call approve-commander; using a bare `is_commander(...)`
+    check here would produce a false negative (hide a button that would actually
+    succeed) for that case.
+    """
+    if user.role == "admin":
+        return True, True
+    roots = scope_root_ids(session, user)
+    user_is_commander = is_commander(session, user.id)
+    user_is_duty_manager = is_duty_manager(session, user.id)
+    can_commander_step = can(
+        user, Action.CONSTRAINT_APPROVE, target_node=target_node, roots=roots,
+        is_commander=user_is_commander, is_duty_manager=user_is_duty_manager,
+    )
+    can_dm_step = user_is_duty_manager and dm_scope_covers_target(
+        session, scope_root_ids=roots, target_node=target_node,
+        required_level_key=REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY,
+    )
+    return can_commander_step, can_dm_step
 
 
 def _nearest_approvers(
@@ -269,17 +306,16 @@ def get_pending_exemption_requests(
             continue
         s = soldiers_by_id.get(r.soldier_id)
         soldier_name = s.full_name if s else str(r.soldier_id)[:8]
-        node_name = (
-            nodes_by_id[s.hierarchy_node_id].name
-            if s and s.hierarchy_node_id and s.hierarchy_node_id in nodes_by_id
-            else None
-        )
+        node = nodes_by_id.get(s.hierarchy_node_id) if s and s.hierarchy_node_id else None
+        node_name = node.name if node else None
         include_sensitive = s is not None and can_see_private(session, user, s)
         nearest_commander, nearest_duty_manager = _nearest_approvers(session, r.soldier_id)
+        can_commander_step, can_dm_step = _exemption_approval_flags(session, user, node)
         result.append(
             _out(
                 r, soldier_name=soldier_name, node_name=node_name, files=files_by_req.get(r.id, []),
                 include_sensitive=include_sensitive, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                can_approve_commander_step=can_commander_step, can_approve_duty_manager_step=can_dm_step,
             )
         )
     return result
@@ -631,10 +667,15 @@ def get_soldier_exemption_request_history(
             ExemptionFileOut(id=f.id, file_name=f.file_name, content_type=f.content_type, created_at=f.created_at.isoformat())
         )
     nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    target_node = (
+        session.get(HierarchyNode, target_soldier.hierarchy_node_id) if target_soldier.hierarchy_node_id else None
+    )
+    can_commander_step, can_dm_step = _exemption_approval_flags(session, user, target_node)
     return [
         _out(
             r, soldier_name=target_soldier.full_name, files=files_by_req.get(r.id, []), include_sensitive=include_sensitive,
             nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+            can_approve_commander_step=can_commander_step, can_approve_duty_manager_step=can_dm_step,
         )
         for r in reqs
     ]
