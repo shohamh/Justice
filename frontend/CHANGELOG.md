@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-07-25
+
+### Features
+- Approvals data can now be exported to Excel and re-imported: 6 new sheets (exemptions, constraints, swap requests, enrollment requests, field updates, hierarchy transfers) with a dedicated export button and matching import-review tabs.
+- Swap approval rosters and constraint/exemption/field-update/enrollment approval cards now show the nearest commander/duty-manager per row, computed live instead of from a stale snapshot, along with per-row rejection attribution.
+- Exemption types can now be scoped to specific duty types/locations via a new eligibility matrix editor on the Duty Config page, enforced by the CP-SAT scheduling algorithm and required to be reviewed before creating a new exemption or duty type.
+- Medical exemption documents can now be previewed in-app (PDF/image) with a download button; viewing them requires a configurable minimum command/duty-manager level, and the commander-exemption minimum command level is now configurable too.
+- All date inputs across the app now use Israeli dd/mm/yyyy formatting and prevent picking a from-date after the to-date.
+- Forced-callup routes/nav are now gated behind a `forced_callup.enabled` setting.
+- The Potential page gained duty-type filter pills.
+- Approve buttons across the Approvals page and soldier-profile modal now only appear for requests the current viewer can actually approve, computed server-side instead of guessed from a coarse role check.
+
+### Fixes
+- Clicking an exemption-request attachment no longer fails — the download URL was hitting `/api/api/...` due to a duplicate prefix.
+- The profile page's military-license expiry date field now has its own label.
+- File uploads (exemption attachments, gimelim attachments, Excel imports) now validate real file content (not just the declared MIME type) both client- and server-side, enforce size limits, and sanitize stored filenames.
+- Plain soldiers can now view another soldier's basic profile (read-only, privacy-redacted) instead of hitting a permission error.
+- Backend error codes are now translated instead of leaking raw English strings into the Hebrew UI.
+- Fixed a swap-override scope leak and an enrollment-approval confirm-dialog reliance issue.
+- Eligibility exclusions now respect the caller's reference date instead of always using today's date.
+- Approvals export/import: privacy redaction is now applied to export sheets, override-approval decisions surface correctly in the swap manager roster, and re-importing no longer wipes an existing decision-note reason when the redacted export sends a blank value.
+- Unit calendar duty cells for full-day duty types now render/block correctly.
+- Fixed a missing effect dependency in the shift-generation modal.
+
+### Chores
+- Removed a dead edit-mode exemption-map prefetch in the duty-type form modal.
+
 ## 2026-07-23
 
 ### Features
