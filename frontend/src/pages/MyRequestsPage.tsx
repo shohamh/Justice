@@ -16,7 +16,7 @@ import {
   listMyConstraints,
   submitConstraint,
 } from "../api/constraints";
-import { formatDate } from "../utils/formatDate";
+import { formatDate, isDateRangeValid } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import {
   listMyExemptionRequests,
@@ -102,6 +102,10 @@ export default function MyRequestsPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!isDateRangeValid(start, end)) {
+      setError(t("errors.date_range_invalid"));
+      return;
+    }
     setSubmitting(true);
     try {
       await submitConstraint({
@@ -129,6 +133,10 @@ export default function MyRequestsPage() {
   async function onErSubmit(e: FormEvent) {
     e.preventDefault();
     setErError(null);
+    if (!isDateRangeValid(erStart, erEnd)) {
+      setErError(t("errors.date_range_invalid"));
+      return;
+    }
     setErSubmitting(true);
     try {
       const createdReq = await submitExemptionRequest({
@@ -185,10 +193,10 @@ export default function MyRequestsPage() {
           </p>
         )}
         <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2 border-b dark:border-gray-600 pb-4">
-          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(iso) => setStart(iso)} required data-testid="req-start" />
-          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(iso) => setEnd(iso)} required data-testid="req-end" />
+          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(iso) => setStart(iso)} max={end || undefined} required data-testid="req-start" />
+          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={end} onChange={(iso) => setEnd(iso)} min={start || undefined} required data-testid="req-end" />
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("my_requests.reason")} required data-testid="req-reason" />
-          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting || enrollmentPending} data-testid="req-submit">
+          <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" disabled={submitting || enrollmentPending || !isDateRangeValid(start, end)} data-testid="req-submit">
             {submitting ? t("app.loading") : t("my_requests.send")}
           </button>
         </form>
@@ -280,11 +288,11 @@ export default function MyRequestsPage() {
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.start_date")}</label>
-                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(iso) => setErStart(iso)} required data-testid="er-start" />
+                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erStart} onChange={(iso) => setErStart(iso)} max={erEnd || undefined} required data-testid="er-start" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.end_date")}</label>
-                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(iso) => setErEnd(iso)} data-testid="er-end" />
+                <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={erEnd} onChange={(iso) => setErEnd(iso)} min={erStart || undefined} data-testid="er-end" />
               </div>
               <div className="flex flex-col gap-1 flex-1 min-w-32">
                 <label className="text-xs text-gray-500 dark:text-gray-400">{t("exemption_requests.reason")}</label>
@@ -382,7 +390,7 @@ export default function MyRequestsPage() {
             <button
               type="submit"
               className="bg-indigo-600 text-white px-4 py-1.5 rounded disabled:opacity-50 text-sm"
-              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending}
+              disabled={erSubmitting || !erTypeId || (isMedical && uploadFiles.length === 0) || enrollmentPending || !isDateRangeValid(erStart, erEnd)}
               data-testid="er-submit"
             >
               {erSubmitting ? t("app.loading") : t("exemption_requests.send")}

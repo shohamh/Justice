@@ -15,6 +15,17 @@ export function formatDate(d: string | Date): string {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+/**
+ * True if `from` is not after `to` (ISO yyyy-mm-dd strings compare correctly
+ * lexicographically). A missing value on either side is treated as "not yet
+ * chosen" and never makes the range invalid — combine with the caller's own
+ * required-field checks.
+ */
+export function isDateRangeValid(from: string | undefined, to: string | undefined): boolean {
+  if (!from || !to) return true;
+  return from <= to;
+}
+
 export function formatDateRange(start: string | Date, end: string | Date): string {
   if (typeof start === "string" && typeof end === "string" && start === end)
     return formatDate(start);

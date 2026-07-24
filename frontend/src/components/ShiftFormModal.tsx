@@ -7,7 +7,7 @@ import { getPublicSettings } from "../api/publicSettings";
 import { submitJob, getAlgorithmDefaults, SolverSettings } from "../api/algorithm";
 import Combobox from "./Combobox";
 import SubHierarchySelector from "./SubHierarchySelector";
-import { lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
+import { isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "./DateInput";
 
@@ -235,6 +235,7 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
     if (!locId) errors.locId = t("shifts.validation_required");
     if (!startDate) errors.startDate = t("shifts.validation_required");
     if (!endDate) errors.endDate = t("shifts.validation_required");
+    if (startDate && endDate && !isDateRangeValid(startDate, endDate)) errors.endDate = t("errors.date_range_invalid");
     if (!count || count < 1) errors.count = t("shifts.validation_required");
     return errors;
   }
@@ -351,12 +352,12 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
           )}
           <label className="block text-sm">
             {t("shifts.start_date")}
-            <DateInput value={startDate} onChange={iso => { setStartDate(iso); setFieldErrors((prev) => ({ ...prev, startDate: "" })); }} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={startDate} onChange={iso => { setStartDate(iso); setFieldErrors((prev) => ({ ...prev, startDate: "", endDate: "" })); }} max={endDate || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.startDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.startDate}</p>}
           </label>
           <label className="block text-sm">
             {t("shifts.end_date")}
-            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={endDate} onChange={iso => { setEndDate(iso); setFieldErrors((prev) => ({ ...prev, endDate: "" })); }} min={startDate || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
             {fieldErrors.endDate && <p className="text-red-500 text-xs mt-0.5">{fieldErrors.endDate}</p>}
           </label>
           <label className="block text-sm">

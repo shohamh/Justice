@@ -5,6 +5,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Combobox, { type ComboboxItem } from "../components/Combobox";
 import DateInput from "../components/DateInput";
+import { isDateRangeValid } from "../utils/formatDate";
 import Layout from "../components/Layout";
 import DutyTypeFormModal from "../components/DutyTypeFormModal";
 import AddRootNodeDialog from "../components/AddRootNodeDialog";
@@ -806,7 +807,11 @@ export default function ImportSessionReviewPage() {
                           <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.start_date}
-                            onBlur={(iso) => setFieldOverride("duty_shifts", row.row, "start_date", iso)}
+                            max={row.end_date || undefined}
+                            onBlur={(iso) => {
+                              if (!isDateRangeValid(iso, row.end_date)) { alert(t("errors.date_range_invalid")); return; }
+                              setFieldOverride("duty_shifts", row.row, "start_date", iso);
+                            }}
                           />
                         )}
                       </td>
@@ -815,7 +820,11 @@ export default function ImportSessionReviewPage() {
                           <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.end_date}
-                            onBlur={(iso) => setFieldOverride("duty_shifts", row.row, "end_date", iso)}
+                            min={row.start_date || undefined}
+                            onBlur={(iso) => {
+                              if (!isDateRangeValid(row.start_date, iso)) { alert(t("errors.date_range_invalid")); return; }
+                              setFieldOverride("duty_shifts", row.row, "end_date", iso);
+                            }}
                           />
                         )}
                       </td>
@@ -1271,7 +1280,11 @@ export default function ImportSessionReviewPage() {
                           <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.start_date}
-                            onBlur={(iso) => setFieldOverride("assignments", row.row, "start_date", iso)}
+                            max={row.end_date || undefined}
+                            onBlur={(iso) => {
+                              if (!isDateRangeValid(iso, row.end_date)) { alert(t("errors.date_range_invalid")); return; }
+                              setFieldOverride("assignments", row.row, "start_date", iso);
+                            }}
                           />
                         )}
                       </td>
@@ -1280,7 +1293,11 @@ export default function ImportSessionReviewPage() {
                           <DateInput
                             className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                             defaultValue={row.end_date}
-                            onBlur={(iso) => setFieldOverride("assignments", row.row, "end_date", iso)}
+                            min={row.start_date || undefined}
+                            onBlur={(iso) => {
+                              if (!isDateRangeValid(row.start_date, iso)) { alert(t("errors.date_range_invalid")); return; }
+                              setFieldOverride("assignments", row.row, "end_date", iso);
+                            }}
                           />
                         )}
                       </td>

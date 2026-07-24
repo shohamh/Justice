@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { escalateCommanderExemption, grantCommanderExemption } from "../api/exemptions";
 import DateInput from "../components/DateInput";
+import { isDateRangeValid } from "../utils/formatDate";
 
 interface Props {
   soldierId: string;
@@ -32,6 +33,10 @@ export default function CommanderExemptionGrantForm({
     }
     if (escalate && !officialTypeId) {
       setError("יש לבחור סוג פטור רשמי לבקשה");
+      return;
+    }
+    if (!isDateRangeValid(startDate, endDate)) {
+      setError("טווח תאריכים לא תקין");
       return;
     }
     setError(null);
@@ -78,8 +83,8 @@ export default function CommanderExemptionGrantForm({
           <option key={t.id} value={t.id}>{t.name}</option>
         ))}
       </select>
-      <DateInput value={startDate} onChange={v => setStartDate(v)} className="border rounded p-1 w-full" data-testid="commander-exemption-start" />
-      <DateInput value={endDate} onChange={v => setEndDate(v)} className="border rounded p-1 w-full" data-testid="commander-exemption-end" />
+      <DateInput value={startDate} onChange={v => setStartDate(v)} max={endDate || undefined} className="border rounded p-1 w-full" data-testid="commander-exemption-start" />
+      <DateInput value={endDate} onChange={v => setEndDate(v)} min={startDate || undefined} className="border rounded p-1 w-full" data-testid="commander-exemption-end" />
       <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="סיבה (חובה)" className="border rounded p-1 w-full" data-testid="commander-exemption-reason" />
 
       <label className="flex items-center gap-2 text-sm cursor-pointer">

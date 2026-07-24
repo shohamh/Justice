@@ -7,7 +7,7 @@ import {
   listExemptionRequestsForSoldier, approveExemptionRequestCommanderStep,
   approveExemptionRequestDutyManagerStep, rejectExemptionRequest,
 } from "../api/exemptions";
-import { formatDate } from "../utils/formatDate";
+import { formatDate, isDateRangeValid } from "../utils/formatDate";
 import Combobox from "./Combobox";
 import CommanderExemptionGrantForm from "./CommanderExemptionGrantForm";
 import { DaysBadge } from "./DaysBadge";
@@ -69,6 +69,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
 
   async function onGrant(e: FormEvent) {
     e.preventDefault();
+    if (!isDateRangeValid(start, end)) return;
     await grantExemption(soldierId, {
       exemption_type_id: typeId,
       start_date: start,
@@ -288,12 +289,13 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
             placeholder={t("exemptions.type")}
             testId="grant-type"
           />
-          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(v) => setStart(v)} required data-testid="grant-start" />
+          <DateInput className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={start} onChange={(v) => setStart(v)} max={!indefinite && end ? end : undefined} required data-testid="grant-start" />
           <div className="flex items-center gap-2">
             <DateInput
               className={`border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 ${indefinite ? "opacity-40 cursor-not-allowed" : ""}`}
               value={indefinite ? "" : end}
               onChange={(v) => setEnd(v)}
+              min={start || undefined}
               disabled={indefinite}
               data-testid="grant-end"
             />
@@ -311,7 +313,7 @@ export default function ExemptionsPanel({ soldierId, canManage, canApproveDutyMa
             </label>
           </div>
           <input className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("exemptions.reason")} data-testid="grant-reason" />
-          <button type="submit" disabled={!typeId} className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" data-testid="grant-submit">{t("exemptions.grant")}</button>
+          <button type="submit" disabled={!typeId || !isDateRangeValid(start, end)} className="bg-indigo-600 text-white px-3 py-1 rounded disabled:opacity-50" data-testid="grant-submit">{t("exemptions.grant")}</button>
         </form>
       )}
 

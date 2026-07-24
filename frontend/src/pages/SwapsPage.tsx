@@ -674,7 +674,11 @@ export default function SwapsPage() {
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_from")}</label>
                   <DateInput
                     value={boardFilters.dateFrom ?? ""}
-                    onChange={iso => applyFilters({ dateFrom: iso || undefined })}
+                    onChange={iso => applyFilters({
+                      dateFrom: iso || undefined,
+                      ...(iso && boardFilters.dateTo && iso > boardFilters.dateTo ? { dateTo: iso } : {}),
+                    })}
+                    max={boardFilters.dateTo || undefined}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                 </div>
@@ -682,7 +686,11 @@ export default function SwapsPage() {
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_date_to")}</label>
                   <DateInput
                     value={boardFilters.dateTo ?? ""}
-                    onChange={iso => applyFilters({ dateTo: iso || undefined })}
+                    onChange={iso => applyFilters({
+                      dateTo: iso || undefined,
+                      ...(iso && boardFilters.dateFrom && iso < boardFilters.dateFrom ? { dateFrom: iso } : {}),
+                    })}
+                    min={boardFilters.dateFrom || undefined}
                     className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   />
                 </div>

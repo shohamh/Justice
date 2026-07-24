@@ -112,11 +112,11 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
       <div className="grid grid-cols-2 gap-4">
         <label className="block">
           {t("shifts.filter_from")}
-          <DateInput value={dateFrom} onChange={v => setDateFrom(v)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+          <DateInput value={dateFrom} onChange={v => { setDateFrom(v); if (v && dateTo && v > dateTo) setDateTo(v); }} max={dateTo || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
         <label className="block">
           {t("shifts.filter_to")}
-          <DateInput value={dateTo} onChange={v => setDateTo(v)} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+          <DateInput value={dateTo} onChange={v => { setDateTo(v); if (v && dateFrom && v < dateFrom) setDateFrom(v); }} min={dateFrom || undefined} className="mt-1 block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
         </label>
       </div>
 

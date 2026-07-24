@@ -148,6 +148,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
           <DateInput
             value={from}
             onChange={iso => { setFrom(iso); resetResult(); }}
+            max={to || undefined}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
@@ -156,6 +157,7 @@ function BulkDeletePanel({ onDeleted, onClearedAll }: { onDeleted: () => void; o
           <DateInput
             value={to}
             onChange={iso => { setTo(iso); resetResult(); }}
+            min={from || undefined}
             className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
           />
         </label>
@@ -724,11 +726,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         <div className="flex flex-wrap gap-x-4 gap-y-2 items-center text-sm">
           <label className="flex items-center gap-2">
             {t("shifts.filter_from")}
-            <DateInput value={dateFrom} onChange={iso => setDateFrom(iso)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={dateFrom} onChange={iso => { setDateFrom(iso); if (iso && dateTo && iso > dateTo) setDateTo(iso); }} max={dateTo || undefined} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           <label className="flex items-center gap-2">
             {t("shifts.filter_to")}
-            <DateInput value={dateTo} onChange={iso => setDateTo(iso)} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            <DateInput value={dateTo} onChange={iso => { setDateTo(iso); if (iso && dateFrom && iso < dateFrom) setDateFrom(iso); }} min={dateFrom || undefined} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
           {shifts.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
