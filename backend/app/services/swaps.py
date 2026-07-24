@@ -12,6 +12,7 @@ from app.db.models import (
     DutyAssignment, HierarchyNode, NotificationType, Soldier, SwapManagerApproval, SwapRequest,
 )
 from app.services import assignments as assignments_svc
+from app.services.approval_scope import commander_chain_for_soldier, duty_manager_chain_for_soldier
 from app.services.notifications import create_notification
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 from app.services.reserves import check_reserve_cap
@@ -216,96 +217,36 @@ def _require_duty_manager_approval(session: Session) -> bool:
         return True  # safe default: require approval
 
 
-def duty_manager_ids(session: Session) -> list[uuid.UUID]:
-    return list(session.execute(select(Soldier.id).where(Soldier.role == "duty_manager")).scalars().all())
-
-
-def commander_chain_for_soldier(session: Session, soldier_id: uuid.UUID) -> list[uuid.UUID]:
-    """Every distinct commander from the soldier's own node up to the root of
-    the hierarchy, excluding the soldier themself if they command their own node.
-
-    Ordered NEAREST-commander-first: chain[0] is the closest ancestor (or the
-    soldier's own node) that has a commander, and the list walks outward to
-    the root from there. `node.path_ids` is materialized root-first (see
-    `hierarchy.py`: `node.path_ids = [*parent.path_ids, node.id]`), so we
-    reorder via `reversed(node.path_ids)` rather than relying on the `IN (...)`
-    query's row order, which SQL does not guarantee to match the list order.
-    """
-    soldier = session.get(Soldier, soldier_id)
-    if soldier is None or soldier.hierarchy_node_id is None:
-        return []
-    node = session.get(HierarchyNode, soldier.hierarchy_node_id)
-    if node is None or not node.path_ids:
-        return []
-    nodes_by_id = {
-        n.id: n
-        for n in session.execute(
-            select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
-        ).scalars().all()
-    }
-    seen: set[uuid.UUID] = set()
-    chain: list[uuid.UUID] = []
-    for node_id in reversed(node.path_ids):
-        n = nodes_by_id.get(node_id)
-        if n is None:
-            continue
-        if n.commander_id and n.commander_id != soldier_id and n.commander_id not in seen:
-            seen.add(n.commander_id)
-            chain.append(n.commander_id)
-    return chain
-
-
-def _create_manager_approval_rows(session: Session, *, req: SwapRequest) -> None:
-    """Populate swap_manager_approvals for both sides: one row per chain
-    commander, plus (if swaps.require_duty_manager_approval) one row per
-    duty manager. Called once, when a swap enters pending_approval with a
-    known covering soldier."""
-    dm_ids = duty_manager_ids(session) if _require_duty_manager_approval(session) else []
-    for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
-        if soldier_id is None:
-            continue
-        for idx, commander_id in enumerate(commander_chain_for_soldier(session, soldier_id)):
-            session.add(SwapManagerApproval(
-                swap_request_id=req.id, side=side, commander_id=commander_id,
-                chain_order=idx, approver_kind="commander",
-            ))
-        for idx, dm_id in enumerate(dm_ids):
-            session.add(SwapManagerApproval(
-                swap_request_id=req.id, side=side, commander_id=dm_id,
-                chain_order=idx, approver_kind="duty_manager",
-            ))
-    session.flush()
+def _has_decision(session: Session, request_id: uuid.UUID, side: str, kind: str, *, approved: bool) -> bool:
+    return session.execute(
+        select(SwapManagerApproval.id).where(
+            SwapManagerApproval.swap_request_id == request_id,
+            SwapManagerApproval.side == side,
+            SwapManagerApproval.approver_kind == kind,
+            SwapManagerApproval.approved == approved,  # noqa: E712
+        ).limit(1)
+    ).first() is not None
 
 
 def _all_approved(session: Session, req: SwapRequest) -> bool:
-    """Both soldiers must have approved, and — for each (side, approver_kind)
-    combination that has at least one required row — at least one of that
-    combination's rows must be approved (any single required approver of
-    that kind suffices; a combination with zero rows is trivially satisfied,
-    e.g. no duty manager exists, or a side has no commander in its chain)."""
+    """Both soldiers must have approved (auto-set on claim/cover_offer), and
+    — for each (side, kind) whose LIVE chain is non-empty — at least one
+    approved decision-log row must exist for that (side, kind). A (side,
+    kind) with an empty live chain (no commander at all, duty-manager
+    approval off, or no duty manager currently in scope) is vacuously
+    satisfied. Live chain membership only gates NEW clicks and what's
+    displayed as required — a decision already recorded stays valid even if
+    the org changes afterward."""
     if not (req.requester_side_approved and req.covering_side_approved):
         return False
-    for side in ("requester", "covering"):
-        for kind in ("commander", "duty_manager"):
-            has_rows = session.execute(
-                select(SwapManagerApproval.id).where(
-                    SwapManagerApproval.swap_request_id == req.id,
-                    SwapManagerApproval.side == side,
-                    SwapManagerApproval.approver_kind == kind,
-                ).limit(1)
-            ).first()
-            if has_rows is None:
-                continue
-            has_approved = session.execute(
-                select(SwapManagerApproval.id).where(
-                    SwapManagerApproval.swap_request_id == req.id,
-                    SwapManagerApproval.side == side,
-                    SwapManagerApproval.approver_kind == kind,
-                    SwapManagerApproval.approved == True,  # noqa: E712
-                ).limit(1)
-            ).first()
-            if has_approved is None:
-                return False
+    require_dm = _require_duty_manager_approval(session)
+    for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
+        if soldier_id is None:
+            return False
+        if commander_chain_for_soldier(session, soldier_id) and not _has_decision(session, req.id, side, "commander", approved=True):
+            return False
+        if require_dm and duty_manager_chain_for_soldier(session, soldier_id) and not _has_decision(session, req.id, side, "duty_manager", approved=True):
+            return False
     return True
 
 
@@ -357,97 +298,114 @@ def approve_soldier_side(
 def is_chain_commander_for_side(
     session: Session, *, request_id: uuid.UUID, side: str, commander_id: uuid.UUID
 ) -> bool:
-    """Is `commander_id` one of the required chain commanders for this side at
-    all — regardless of whether they've already approved. (Answers "is this
-    person in the chain", not "...and haven't they approved yet" — a commander
-    who already approved is still a chain commander, so a second click stays
-    on the idempotent chain-approval path instead of rerouting into the
-    override path meant for people outside the chain.)"""
-    return session.execute(
-        select(SwapManagerApproval.id).where(
+    """Is `commander_id` CURRENTLY (live) a required commander-in-scope or
+    duty-manager-in-scope for this side — regardless of whether they've
+    already approved. Used to route between the chain-member path
+    (approve_manager_row) and the broader-authorization override path
+    (approve_manager_side_override)."""
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        return False
+    soldier_id = req.requesting_soldier_id if side == "requester" else req.covering_soldier_id
+    if soldier_id is None:
+        return False
+    if commander_id in commander_chain_for_soldier(session, soldier_id):
+        return True
+    if _require_duty_manager_approval(session) and commander_id in duty_manager_chain_for_soldier(session, soldier_id):
+        return True
+    return False
+
+
+def _qualifying_rows_for_actor(session: Session, req: SwapRequest, actor_id: uuid.UUID) -> list[tuple[str, str]]:
+    """Every (side, kind) `actor_id` is CURRENTLY (live) a required approver
+    for on this request — spans both sides and both kinds in one pass, so a
+    single approve/reject call resolves everything this person is eligible
+    for at once (same person commander of both soldiers, or duty-manager of
+    both, or both roles for one or both soldiers — no special-casing)."""
+    require_dm = _require_duty_manager_approval(session)
+    out: list[tuple[str, str]] = []
+    for side, soldier_id in (("requester", req.requesting_soldier_id), ("covering", req.covering_soldier_id)):
+        if soldier_id is None:
+            continue
+        if actor_id in commander_chain_for_soldier(session, soldier_id):
+            out.append((side, "commander"))
+        if require_dm and actor_id in duty_manager_chain_for_soldier(session, soldier_id):
+            out.append((side, "duty_manager"))
+    return out
+
+
+def _get_or_create_row(session: Session, *, request_id: uuid.UUID, side: str, actor_id: uuid.UUID, kind: str) -> SwapManagerApproval:
+    row = session.execute(
+        select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == request_id,
             SwapManagerApproval.side == side,
-            SwapManagerApproval.commander_id == commander_id,
+            SwapManagerApproval.commander_id == actor_id,
+            SwapManagerApproval.approver_kind == kind,
         )
-    ).first() is not None
+    ).scalar_one_or_none()
+    if row is None:
+        row = SwapManagerApproval(swap_request_id=request_id, side=side, commander_id=actor_id, approver_kind=kind)
+        session.add(row)
+    return row
 
 
-def approve_manager_row(
-    session: Session, *, request_id: uuid.UUID, side: str, commander_id: uuid.UUID, actor_id: uuid.UUID
-) -> SwapRequest:
-    """Approve `commander_id`'s own row for this side. Idempotent: if the row
-    is already approved (e.g. this same commander clicking approve twice),
-    this is a harmless no-op — the original approver/timestamp are kept, but
-    _try_finalize still runs in case the swap wasn't finalized yet for some
-    other reason (e.g. the other side just approved). Raises
-    SwapError("not_required_approver") only if there is no row at all for
-    (request_id, side, commander_id) — i.e. this person isn't in the chain.
-
-    This lookup does not filter by approver_kind, so it would raise
-    MultipleResultsFound if the same person ever held both a "commander" row
-    and a "duty_manager" row for the same (request_id, side). That can't
-    happen today: _create_manager_approval_rows sources commander rows from
-    commander_chain_for_soldier (HierarchyNode.commander_id) and duty_manager
-    rows from duty_manager_ids (Soldier.role == "duty_manager"), and
-    recompute_role() (app/services/dm_scope.py) gives commander priority over
-    duty_manager — is_commander() being true forces role="commander", which
-    duty_manager_ids() excludes. So the two ID sets are always disjoint as
-    long as role stays in sync, which recompute_role is called to maintain
-    whenever chain/scope assignments change."""
+def approve_manager_row(session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID) -> SwapRequest:
+    """Approve every (side, kind) row `actor_id` currently qualifies for on
+    this request, in one call. Idempotent: rows already approved are left
+    untouched (original approver/timestamp kept). Raises
+    SwapError("not_required_approver") if `actor_id` doesn't currently
+    qualify for anything on this request."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "pending_approval":
         raise SwapError("not_pending")
-    row = session.execute(
-        select(SwapManagerApproval).where(
-            SwapManagerApproval.swap_request_id == request_id,
-            SwapManagerApproval.side == side,
-            SwapManagerApproval.commander_id == commander_id,
-        )
-    ).scalar_one_or_none()
-    if row is None:
+    qualifying = _qualifying_rows_for_actor(session, req, actor_id)
+    if not qualifying:
         raise SwapError("not_required_approver")
-    if not row.approved:
-        row.approved = True
-        row.approved_by = actor_id
-        row.approved_at = datetime.utcnow()
-        write_audit(
-            session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
-            entity_id=req.id, after={"side": side, "commander_id": str(commander_id)},
-        )
-        # Same person may be the required approver for both sides at once
-        # (one commander over both soldiers, or the org's one duty manager)
-        # — approving once should satisfy both sides instead of asking for
-        # a second click. Filtered by approver_kind == row.approver_kind:
-        # same reasoning as the primary `row` lookup above (commander vs.
-        # duty_manager ID sets are disjoint via role priority, so this is
-        # not reachable today either) — but `row.approver_kind` is already
-        # in hand here for free, so filtering by it costs nothing and keeps
-        # this cascade explicitly scoped to "same kind of requirement" by
-        # construction rather than by an invariant living elsewhere.
-        other_side = "covering" if side == "requester" else "requester"
-        other_row = session.execute(
-            select(SwapManagerApproval).where(
-                SwapManagerApproval.swap_request_id == request_id,
-                SwapManagerApproval.side == other_side,
-                SwapManagerApproval.commander_id == commander_id,
-                SwapManagerApproval.approver_kind == row.approver_kind,
-                SwapManagerApproval.approved == False,  # noqa: E712
-            )
-        ).scalar_one_or_none()
-        if other_row is not None:
-            other_row.approved = True
-            other_row.approved_by = actor_id
-            other_row.approved_at = row.approved_at
+    now = datetime.utcnow()
+    for side, kind in qualifying:
+        row = _get_or_create_row(session, request_id=request_id, side=side, actor_id=actor_id, kind=kind)
+        if not row.approved:
+            row.approved = True
+            row.approved_by = actor_id
+            row.approved_at = now
             write_audit(
                 session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
-                entity_id=req.id, after={"side": other_side, "commander_id": str(commander_id), "cascaded": True},
+                entity_id=req.id, after={"side": side, "kind": kind},
             )
-        session.flush()
+    session.flush()
     _try_finalize(session, req, actor_id)
     session.flush()
     return req
+
+
+def reject_manager_row(
+    session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID, decision_note: str | None = None,
+) -> SwapRequest:
+    """Stamp rejected on every (side, kind) row `actor_id` currently
+    qualifies for on this request (if any), then kill the whole request via
+    the existing reject_request path — same overall effect as today (any
+    required approver rejecting still ends the swap immediately), now with
+    per-row attribution for display. Permissive: if `actor_id` doesn't
+    qualify for any specific row (e.g. a broader-authorization override
+    actor, not a literal chain member), this simply skips row-stamping and
+    still proceeds to reject_request — the route is responsible for having
+    already authorized the caller before reaching this function."""
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise SwapError("request_not_found")
+    if req.status != "pending_approval":
+        raise SwapError("not_pending")
+    now = datetime.utcnow()
+    for side, kind in _qualifying_rows_for_actor(session, req, actor_id):
+        row = _get_or_create_row(session, request_id=request_id, side=side, actor_id=actor_id, kind=kind)
+        if not row.rejected:
+            row.rejected = True
+            row.rejected_by = actor_id
+            row.rejected_at = now
+    session.flush()
+    return reject_request(session, request_id=request_id, decision_note=decision_note, actor_id=actor_id)
 
 
 def approve_manager_side(
@@ -471,9 +429,7 @@ def approve_manager_side(
     Raises SwapError("forbidden") if neither applies.
     """
     if is_chain_commander_for_side(session, request_id=request_id, side=side, commander_id=actor_id):
-        return approve_manager_row(
-            session, request_id=request_id, side=side, commander_id=actor_id, actor_id=actor_id
-        )
+        return approve_manager_row(session, request_id=request_id, actor_id=actor_id)
     authorized = is_authorized_override() if callable(is_authorized_override) else is_authorized_override
     if not authorized:
         raise SwapError("forbidden")
@@ -509,39 +465,45 @@ def approve_manager_side_override(
     session: Session, *, request_id: uuid.UUID, side: str, actor_id: uuid.UUID
 ) -> SwapRequest:
     """Used when the acting user is authorized (admin / duty-manager / broader
-    commander scope) but isn't literally one of the required chain commanders —
-    clears every outstanding row of the kind(s) they're authorized for, on
-    that side (see `_override_authorized_kinds`)."""
+    commander scope) but isn't literally one of the required chain
+    commanders/duty-managers — inserts (or updates) an approved row for every
+    LIVE-required kind on that side THAT THE ACTOR IS AUTHORIZED FOR (see
+    `_override_authorized_kinds`: a commander overriding must not also
+    silently satisfy a separate duty-manager requirement, and vice versa —
+    only admins clear both), attributed to actor_id."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "pending_approval":
         raise SwapError("not_pending")
     soldier_id = req.requesting_soldier_id if side == "requester" else req.covering_soldier_id
+    if soldier_id is None:
+        raise SwapError("no_soldier_for_side")
     side_node = None
-    if soldier_id is not None:
-        soldier = session.get(Soldier, soldier_id)
-        if soldier is not None and soldier.hierarchy_node_id is not None:
-            side_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is not None and soldier.hierarchy_node_id is not None:
+        side_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
     allowed_kinds = _override_authorized_kinds(session, actor_id=actor_id, side_node=side_node)
     if not allowed_kinds:
         raise SwapError("forbidden")
-    rows = session.execute(
-        select(SwapManagerApproval).where(
-            SwapManagerApproval.swap_request_id == request_id,
-            SwapManagerApproval.side == side,
-            SwapManagerApproval.approved == False,  # noqa: E712
-            SwapManagerApproval.approver_kind.in_(allowed_kinds),
-        )
-    ).scalars().all()
+    kinds_needed = []
+    if commander_chain_for_soldier(session, soldier_id):
+        kinds_needed.append("commander")
+    if _require_duty_manager_approval(session) and duty_manager_chain_for_soldier(session, soldier_id):
+        kinds_needed.append("duty_manager")
+    kinds_to_clear = [k for k in kinds_needed if k in allowed_kinds]
     now = datetime.utcnow()
-    for row in rows:
-        row.approved = True
-        row.approved_by = actor_id
-        row.approved_at = now
+    cleared = 0
+    for kind in kinds_to_clear:
+        row = _get_or_create_row(session, request_id=request_id, side=side, actor_id=actor_id, kind=kind)
+        if not row.approved:
+            row.approved = True
+            row.approved_by = actor_id
+            row.approved_at = now
+            cleared += 1
     write_audit(
         session, actor_id=actor_id, action="swap.manager_approve_override", entity_type="swap_request",
-        entity_id=req.id, after={"side": side, "rows_cleared": len(rows)},
+        entity_id=req.id, after={"side": side, "rows_cleared": cleared},
     )
     session.flush()
     _try_finalize(session, req, actor_id)
@@ -609,9 +571,8 @@ def claim_request(
     before_status = req.status
     if _require_approval(session):
         req.status = "pending_approval"
-        req.requester_side_approved = None
-        req.covering_side_approved = None
-        _create_manager_approval_rows(session, req=req)
+        req.requester_side_approved = True   # asking already implied consent
+        req.covering_side_approved = True    # covering (claiming) already implied consent
         create_notification(session, soldier_id=req.requesting_soldier_id,
                             type=NotificationType.swap_offer,
                             title="הייתה הצעת החלפה",
@@ -687,6 +648,7 @@ def reject_request(
     before = {"status": req.status}
     req.status = "rejected"
     req.decision_note = decision_note
+    req.rejected_by = actor_id
     create_notification(session, soldier_id=req.requesting_soldier_id,
                         type=NotificationType.swap_rejected,
                         title="בקשת ההחלפה נדחתה",
@@ -700,7 +662,8 @@ def reject_request(
                             actor_id=actor_id)
     write_audit(
         session, actor_id=actor_id, action="swap.reject", entity_type="swap_request",
-        entity_id=req.id, before=before, after={"status": "rejected", "decision_note": decision_note},
+        entity_id=req.id, before=before,
+        after={"status": "rejected", "decision_note": decision_note, "rejected_by": str(actor_id) if actor_id else None},
     )
     session.flush()
     return req
@@ -861,9 +824,8 @@ def cover_offer(
 
     if _require_approval(session):
         req.status = "pending_approval"
-        req.requester_side_approved = None
-        req.covering_side_approved = None
-        _create_manager_approval_rows(session, req=req)
+        req.requester_side_approved = True   # asking already implied consent
+        req.covering_side_approved = True    # covering (claiming) already implied consent
         create_notification(
             session,
             soldier_id=req.requesting_soldier_id,

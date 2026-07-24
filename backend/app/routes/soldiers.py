@@ -111,6 +111,11 @@ class FieldUpdateDecisionRequest(BaseModel):
     decision_note: str | None = None
 
 
+class NearestApproverOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class FieldUpdateOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
@@ -124,6 +129,8 @@ class FieldUpdateOut(BaseModel):
     decided_at: Any
     decision_note: str | None
     created_at: Any
+    nearest_commander: NearestApproverOut | None = None
+    nearest_duty_manager: NearestApproverOut | None = None
 
 
 class TimelineEventOut(BaseModel):
@@ -201,7 +208,10 @@ def _out(
     )
 
 
-def _fu_out(u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None, include_values: bool = True) -> FieldUpdateOut:
+def _fu_out(
+    u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None = None, include_values: bool = True,
+    nearest_commander: NearestApproverOut | None = None, nearest_duty_manager: NearestApproverOut | None = None,
+) -> FieldUpdateOut:
     redact = not include_values and u.field_name in PRIVATE_FIELD_NAMES
     return FieldUpdateOut(
         id=u.id,
@@ -216,6 +226,23 @@ def _fu_out(u: SoldierFieldUpdate, soldier_name: str = "", node_name: str | None
         decided_at=u.decided_at,
         decision_note=u.decision_note,
         created_at=u.created_at,
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
+    )
+
+
+def _nearest_approvers(
+    session: Session, soldier_id: uuid.UUID
+) -> tuple[NearestApproverOut | None, NearestApproverOut | None]:
+    from app.services.approval_scope import nearest_commander_for_soldier, nearest_duty_manager_for_soldier
+
+    cmd_id = nearest_commander_for_soldier(session, soldier_id)
+    dm_id = nearest_duty_manager_for_soldier(session, soldier_id)
+    cmd = session.get(Soldier, cmd_id) if cmd_id else None
+    dm = session.get(Soldier, dm_id) if dm_id else None
+    return (
+        NearestApproverOut(id=cmd.id, name=cmd.full_name) if cmd else None,
+        NearestApproverOut(id=dm.id, name=dm.full_name) if dm else None,
     )
 
 
@@ -342,7 +369,13 @@ def list_all_pending_field_updates(
                 else None
             )
             include_values = s is not None and can_see_private(session, user, s)
-            result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values))
+            nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
+            result.append(
+                _fu_out(
+                    upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
+                    nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                )
+            )
         return result
     roots = scope_root_ids(session, user)
     if not roots:
@@ -361,7 +394,13 @@ def list_all_pending_field_updates(
                 soldier_name = s.full_name
                 node_name = node.name if node else None
                 include_values = can_see_private(session, user, s)
-                result.append(_fu_out(upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values))
+                nearest_commander, nearest_duty_manager = _nearest_approvers(session, upd.soldier_id)
+                result.append(
+                    _fu_out(
+                        upd, soldier_name=soldier_name, node_name=node_name, include_values=include_values,
+                        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+                    )
+                )
     return result
 
 
@@ -583,7 +622,8 @@ def create_field_update(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
     session.refresh(req)
-    return _fu_out(req)
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return _fu_out(req, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
 
 
 @router.get("/{soldier_id}/field-updates", response_model=list[FieldUpdateOut])
@@ -600,7 +640,11 @@ def list_field_updates(
         .order_by(SoldierFieldUpdate.created_at.desc())
     ).scalars().all()
     include_values = can_see_private(session, user, s)
-    return [_fu_out(r, include_values=include_values) for r in rows]
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return [
+        _fu_out(r, include_values=include_values, nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager)
+        for r in rows
+    ]
 
 
 @router.post("/{soldier_id}/field-updates/{update_id}/approve", response_model=FieldUpdateOut)
@@ -622,7 +666,11 @@ def approve_update(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
-    return _fu_out(upd, include_values=can_see_private(session, user, s))
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return _fu_out(
+        upd, include_values=can_see_private(session, user, s),
+        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+    )
 
 
 @router.post("/{soldier_id}/field-updates/{update_id}/reject", response_model=FieldUpdateOut)
@@ -644,7 +692,11 @@ def reject_update(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     session.commit()
     session.refresh(upd)
-    return _fu_out(upd, include_values=can_see_private(session, user, s))
+    nearest_commander, nearest_duty_manager = _nearest_approvers(session, soldier_id)
+    return _fu_out(
+        upd, include_values=can_see_private(session, user, s),
+        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+    )
 
 
 @router.post("/{soldier_id}/reset-password")

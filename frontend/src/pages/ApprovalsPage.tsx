@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
-import { api } from "../api/client";
+import { api, getAccessToken } from "../api/client";
 import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
@@ -47,6 +47,19 @@ import {
 import { DaysBadge } from "../components/DaysBadge";
 import i18n from "../i18n";
 import { translateApiError } from "../utils/translateApiError";
+
+async function handleExportApprovals() {
+  const resp = await fetch("/api/approvals/export", {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+  });
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "approvals_export.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function describeError(err: unknown): string {
   const fallback = "שגיאה בביצוע הפעולה";
@@ -96,6 +109,35 @@ function SwapKindApproval({
       )}
     </div>
   );
+}
+
+/**
+ * Adapts the live-computed `nearest_commander`/`nearest_duty_manager` fields
+ * (constraints/exemption-requests/field-updates/enrollment-requests) into the
+ * row shape `DirectCommanderApproval`/`groupByKind` expect. Unlike swaps,
+ * these 4 types only ever need a single decision total, so both rows share
+ * the same overall `status` — this is purely a display adapter, not a second
+ * independent approval gate.
+ */
+function nearestApproversToRows(
+  nearestCommander: { id: string; name: string } | null,
+  nearestDutyManager: { id: string; name: string } | null,
+  status: "pending" | "approved" | "rejected",
+): DirectCommanderApprovalRow[] {
+  const rows: DirectCommanderApprovalRow[] = [];
+  if (nearestCommander) {
+    rows.push({
+      commander_id: nearestCommander.id, commander_name: nearestCommander.name,
+      approved: status === "approved", rejected: status === "rejected", approver_kind: "commander",
+    });
+  }
+  if (nearestDutyManager) {
+    rows.push({
+      commander_id: nearestDutyManager.id, commander_name: nearestDutyManager.name,
+      approved: status === "approved", rejected: status === "rejected", approver_kind: "duty_manager",
+    });
+  }
+  return rows;
 }
 
 type Tab = "constraints" | "exemptions" | "field_updates" | "swaps" | "enrollment" | "transfers";
@@ -322,7 +364,16 @@ export default function ApprovalsPage() {
   return (
     <Layout>
       <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
-        <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">{t("approvals.title")}{total > 0 ? ` (${total})` : ""}</h2>
+          <button
+            type="button"
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+            onClick={() => void handleExportApprovals()}
+          >
+            ייצוא
+          </button>
+        </div>
 
         {actionError && (
           <div className="bg-red-50 dark:bg-red-950 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 text-sm rounded p-2 flex items-center justify-between" dir="rtl">
@@ -381,6 +432,7 @@ export default function ApprovalsPage() {
             {items.length === 0 && <p className="text-sm text-gray-500">{t("approvals.none")}</p>}
             <ul className="space-y-3" data-testid="approvals-list">
               {items.map((c) => {
+                const grouped = groupByKind(nearestApproversToRows(c.nearest_commander, c.nearest_duty_manager, c.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={c.id} className="border dark:border-gray-600 rounded p-3" data-testid={`approval-row-${c.id}`}>
                   <div className="flex items-center gap-2 mb-1">
@@ -392,6 +444,10 @@ export default function ApprovalsPage() {
                     <DaysBadge start={c.start_date} end={c.end_date} />
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{c.reason ?? "מידע פרטי"}</p>
+                  <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap mb-2">
+                    {grouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={grouped.commander} /></span>}
+                    {grouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={grouped.duty_manager} /></span>}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => onApprove(c.id)} data-testid={`approve-${c.id}`}>
                       {t("approvals.approve")}
@@ -424,6 +480,10 @@ export default function ApprovalsPage() {
             {erItems.length === 0 && <p className="text-sm text-gray-500">{t("approvals.exemption_none")}</p>}
             <ul className="space-y-3" data-testid="er-approvals-list">
               {erItems.map((er) => {
+                const erGrouped = groupByKind(nearestApproversToRows(
+                  er.nearest_commander, er.nearest_duty_manager,
+                  er.status === "approved" ? "approved" : er.status === "rejected" ? "rejected" : "pending",
+                ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
                 return (
                 <li key={er.id} className="border dark:border-gray-600 rounded p-3" data-testid={`er-approval-row-${er.id}`}>
                   <div className="flex items-center gap-2 mb-1">
@@ -445,6 +505,10 @@ export default function ApprovalsPage() {
                     <DaysBadge start={er.start_date} end={er.end_date} />
                   </p>
                   <p className="text-xs text-gray-500 mb-2">{er.reason ?? "מידע פרטי"}</p>
+                  <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap mb-2">
+                    {erGrouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={erGrouped.commander} /></span>}
+                    {erGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={erGrouped.duty_manager} /></span>}
+                  </div>
                   {er.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {er.files.map(f => (
@@ -497,6 +561,7 @@ export default function ApprovalsPage() {
           <div className="space-y-3" dir="rtl">
             {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuItems.map(item => {
+              const fuGrouped = groupByKind(nearestApproversToRows(item.nearest_commander, item.nearest_duty_manager, item.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               return (
               <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">
@@ -507,6 +572,10 @@ export default function ApprovalsPage() {
                 </div>
                 <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.previous_value, t)}</span></div>
                 <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.new_value, t)}</strong></div>
+                <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
+                  {fuGrouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={fuGrouped.commander} /></span>}
+                  {fuGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={fuGrouped.duty_manager} /></span>}
+                </div>
                 <div className="flex gap-2 items-center">
                   <button onClick={() => onFuApprove(item)} className="bg-green-600 text-white px-2 py-1 rounded text-xs">{t("approvals.approve")}</button>
                   <input
@@ -603,6 +672,10 @@ export default function ApprovalsPage() {
             {enrollItems.length === 0 && <p className="text-gray-500 text-sm">{t("enrollment.none")}</p>}
             {enrollItems.map(req => {
               const nodeName = req.requested_node_name ?? req.requested_node_id.slice(0, 8);
+              const enrollGrouped = groupByKind(nearestApproversToRows(
+                req.nearest_commander, req.nearest_duty_manager,
+                req.status === "approved" ? "approved" : req.status === "rejected" ? "rejected" : "pending",
+              ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               return (
                 <div key={req.id} className="border rounded p-3 text-sm space-y-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => setSelectedEnrollment(req)}>
                   <div className="flex items-center gap-2">
@@ -610,6 +683,10 @@ export default function ApprovalsPage() {
                     <span className="text-xs text-gray-400">{t("enrollment.click_to_view_profile")}</span>
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
+                  <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap" onClick={e => e.stopPropagation()}>
+                    {enrollGrouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={enrollGrouped.commander} /></span>}
+                    {enrollGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={enrollGrouped.duty_manager} /></span>}
+                  </div>
                   <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => onEnrollApprove(req.id)}
                       className="bg-green-600 text-white px-2 py-1 rounded text-xs">

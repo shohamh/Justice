@@ -17,6 +17,11 @@ from app.services import enrollment as svc
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
 
 
+class NearestApproverOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
 class EnrollmentExemptionOut(BaseModel):
     id: uuid.UUID
     exemption_type_id: uuid.UUID | None
@@ -48,6 +53,8 @@ class EnrollmentRequestOut(BaseModel):
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
     exemption_requests: list[EnrollmentExemptionOut] = []
+    nearest_commander: NearestApproverOut | None = None
+    nearest_duty_manager: NearestApproverOut | None = None
 
 
 class DecisionBody(BaseModel):
@@ -70,11 +77,69 @@ class PatchEnrollmentBody(BaseModel):
     last_alal_date: str | None = None
 
 
+def _nearest_approvers_for_node(
+    session: Session, node_id: uuid.UUID
+) -> tuple[NearestApproverOut | None, NearestApproverOut | None]:
+    """Nearest commander/duty-manager for an enrollment request.
+
+    Enrollment requests reference a soldier who has not been placed into the
+    hierarchy yet — `Soldier.hierarchy_node_id` stays unset until the request
+    is fully approved (see `app.services.enrollment.try_activate`) — so the
+    shared `nearest_commander_for_soldier`/`nearest_duty_manager_for_soldier`
+    helpers (which key off `soldier.hierarchy_node_id`) would always return
+    None for a pending request. Walk the *requested* node's path instead,
+    mirroring the same nearest-first logic in `app.services.approval_scope`.
+    """
+    from app.db.models import DutyManagerScope
+
+    node = session.get(HierarchyNode, node_id)
+    if node is None or not node.path_ids:
+        return None, None
+    nodes_by_id = {
+        n.id: n
+        for n in session.execute(
+            select(HierarchyNode).where(HierarchyNode.id.in_(node.path_ids))
+        ).scalars().all()
+    }
+    cmd_id: uuid.UUID | None = None
+    for nid in reversed(node.path_ids):
+        n = nodes_by_id.get(nid)
+        if n and n.commander_id:
+            cmd_id = n.commander_id
+            break
+
+    scopes = session.execute(
+        select(DutyManagerScope).where(DutyManagerScope.hierarchy_node_id.in_(node.path_ids))
+    ).scalars().all()
+    by_node: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for sc in scopes:
+        by_node.setdefault(sc.hierarchy_node_id, []).append(sc.duty_manager_id)
+    dm_id: uuid.UUID | None = None
+    for nid in reversed(node.path_ids):
+        ids = by_node.get(nid, [])
+        if ids:
+            names_by_id = {
+                s.id: s.full_name
+                for s in session.execute(select(Soldier).where(Soldier.id.in_(ids))).scalars().all()
+            }
+            dm_id = sorted(ids, key=lambda i: names_by_id.get(i, ""))[0]
+            break
+
+    cmd = session.get(Soldier, cmd_id) if cmd_id else None
+    dm = session.get(Soldier, dm_id) if dm_id else None
+    return (
+        NearestApproverOut(id=cmd.id, name=cmd.full_name) if cmd else None,
+        NearestApproverOut(id=dm.id, name=dm.full_name) if dm else None,
+    )
+
+
 def _soldier_to_out(
     r: SoldierEnrollmentRequest,
     s: Soldier,
     node_name: str | None,
     exemptions: list[ExemptionRequest],
+    nearest_commander: NearestApproverOut | None = None,
+    nearest_duty_manager: NearestApproverOut | None = None,
 ) -> EnrollmentRequestOut:
     return EnrollmentRequestOut(
         id=r.id, soldier_id=r.soldier_id,
@@ -102,6 +167,8 @@ def _soldier_to_out(
             )
             for er in exemptions
         ],
+        nearest_commander=nearest_commander,
+        nearest_duty_manager=nearest_duty_manager,
     )
 
 
@@ -139,7 +206,13 @@ def _load_reqs(
         if not s:
             continue
         node_name = nodes[r.requested_node_id].name if r.requested_node_id in nodes else None
-        result.append(_soldier_to_out(r, s, node_name, exemptions_by_enrollment.get(r.id, [])))
+        nearest_commander, nearest_duty_manager = _nearest_approvers_for_node(session, r.requested_node_id)
+        result.append(
+            _soldier_to_out(
+                r, s, node_name, exemptions_by_enrollment.get(r.id, []),
+                nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+            )
+        )
     return result
 
 
@@ -212,7 +285,11 @@ def patch_enrollment(
         select(ExemptionRequest).where(ExemptionRequest.enrollment_request_id == req.id)
     ).scalars().all()
     node = session.get(HierarchyNode, req.requested_node_id)
-    return _soldier_to_out(req, s, node.name if node else None, list(exemptions))
+    nearest_commander, nearest_duty_manager = _nearest_approvers_for_node(session, req.requested_node_id)
+    return _soldier_to_out(
+        req, s, node.name if node else None, list(exemptions),
+        nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
+    )
 
 
 @router.post("/{request_id}/approve")

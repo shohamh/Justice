@@ -338,7 +338,9 @@ def test_resolve_and_score_includes_all_expected_keys(app_session):
 
     expected_keys = {
         "soldiers", "duty_shifts", "shift_templates", "assignments", "duty_locations",
-        "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings"
+        "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings",
+        "personal_constraints", "soldier_field_updates", "soldier_enrollment_requests",
+        "soldier_exemptions", "exemption_requests", "swap_requests",
     }
     assert set(result.keys()) == expected_keys
 

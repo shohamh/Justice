@@ -157,6 +157,111 @@ export interface ExemptionTypeImportRow extends RowBase {
   existing_id: string | null;
 }
 
+export interface PersonalConstraintImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
+  decided_by_personal_number: string | null;
+  resolved_decided_by_id: string | null;
+  decision_note: string | null;
+  existing_id: string | null;
+}
+
+export interface SoldierFieldUpdateImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  field_name: string;
+  new_value: string;
+  previous_value: string | null;
+  status: string;
+  decided_by_personal_number: string | null;
+  resolved_decided_by_id: string | null;
+  decision_note: string | null;
+  existing_id: string | null;
+}
+
+export interface SoldierEnrollmentRequestImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  requested_node_name: string;
+  resolved_node_id: string | null;
+  status: string;
+  decided_by_personal_number: string | null;
+  resolved_decided_by_id: string | null;
+  decision_note: string | null;
+  existing_id: string | null;
+}
+
+export interface SoldierExemptionImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  exemption_type_name: string;
+  resolved_exemption_type_id: string | null;
+  start_date: string;
+  end_date: string | null;
+  reason: string | null;
+  granted_by_personal_number: string | null;
+  resolved_granted_by_id: string | null;
+  revoked: boolean;
+  revoke_reason: string | null;
+  existing_id: string | null;
+}
+
+export interface ExemptionRequestImportRow extends RowBase {
+  id: string | null;
+  soldier_personal_number: string;
+  resolved_soldier_id: string | null;
+  exemption_type_name: string;
+  resolved_exemption_type_id: string | null;
+  start_date: string;
+  end_date: string | null;
+  reason: string | null;
+  status: string;
+  commander_approved_by_personal_number: string | null;
+  resolved_commander_approved_by_id: string | null;
+  decided_by_personal_number: string | null;
+  resolved_decided_by_id: string | null;
+  decision_note: string | null;
+  files: string | null;
+  existing_id: string | null;
+}
+
+export interface SwapRequestApprovalLogEntry {
+  side: "requester" | "covering";
+  kind: "commander" | "duty_manager";
+  person_pn: string;
+  outcome: "approved" | "rejected";
+  at: string;
+  resolved_person_id: string;
+}
+
+export interface SwapRequestImportRow extends RowBase {
+  id: string | null;
+  requesting_personal_number: string;
+  resolved_requesting_soldier_id: string | null;
+  target_personal_number: string | null;
+  resolved_target_soldier_id: string | null;
+  covering_personal_number: string | null;
+  resolved_covering_soldier_id: string | null;
+  duty_date: string;
+  status: string;
+  reason: string | null;
+  requester_side_approved: boolean | null;
+  covering_side_approved: boolean | null;
+  rejected_by_personal_number: string | null;
+  resolved_rejected_by_id: string | null;
+  decision_note: string | null;
+  approval_log: SwapRequestApprovalLogEntry[];
+  existing_id: string | null;
+}
+
 export interface ParsedState {
   soldiers: SoldierRow[];
   duty_shifts: DutyShiftRow[];
@@ -166,6 +271,12 @@ export interface ParsedState {
   hierarchy: HierarchyImportRow[];
   duty_types: DutyTypeImportRow[];
   exemption_types: ExemptionTypeImportRow[];
+  personal_constraints: PersonalConstraintImportRow[];
+  soldier_field_updates: SoldierFieldUpdateImportRow[];
+  soldier_enrollment_requests: SoldierEnrollmentRequestImportRow[];
+  soldier_exemptions: SoldierExemptionImportRow[];
+  exemption_requests: ExemptionRequestImportRow[];
+  swap_requests: SwapRequestImportRow[];
   parser_id: string;
   parser_warnings: string[];
 }
@@ -183,6 +294,12 @@ export interface SessionSummary {
     hierarchy: number;
     duty_types: number;
     exemption_types: number;
+    personal_constraints: number;
+    soldier_field_updates: number;
+    soldier_enrollment_requests: number;
+    soldier_exemptions: number;
+    exemption_requests: number;
+    swap_requests: number;
   };
 }
 

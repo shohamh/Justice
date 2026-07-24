@@ -533,6 +533,9 @@ class SwapRequest(Base):
         UUID(as_uuid=True), ForeignKey("duty_day_overrides.id", ondelete="SET NULL"), nullable=True, default=None
     )
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    rejected_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     offered_assignment_ids: Mapped[list[Any]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), default_factory=list
     )
@@ -572,10 +575,21 @@ class SwapManagerApproval(Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    rejected: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    rejected_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     # "commander" | "duty_manager" -- which approval requirement this row satisfies.
     approver_kind: Mapped[str] = mapped_column(Text, server_default=text("'commander'"), default="commander")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "swap_request_id", "side", "commander_id", "approver_kind",
+            name="uq_swap_manager_approval_request_side_person_kind",
+        ),
     )
 
 

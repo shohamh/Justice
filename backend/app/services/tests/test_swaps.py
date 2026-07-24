@@ -72,7 +72,7 @@ def _make_assignment(session, *, soldier, node):
 
 
 def test_commander_chain_walks_to_root(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     root = create_node(admin_session, level="division", name=f"root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"rc_{_uid()}", role="commander")
@@ -91,7 +91,7 @@ def test_commander_chain_orders_nearest_first(admin_session):
     """The soldier's own node has no commander; mid has commander B; root has
     commander A. The chain must come back nearest-first: [B, A] — not [A, B]
     and not merely the same set."""
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     root = create_node(admin_session, level="division", name=f"root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"rc2_{_uid()}", role="commander")
@@ -108,7 +108,7 @@ def test_commander_chain_orders_nearest_first(admin_session):
 
 
 def test_commander_chain_excludes_soldier_commanding_own_node(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     node = create_node(admin_session, level="unit", name=f"self_cmd_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id, role="commander")
@@ -120,7 +120,7 @@ def test_commander_chain_excludes_soldier_commanding_own_node(admin_session):
 
 
 def test_commander_chain_empty_when_no_commanders(admin_session):
-    from app.services.swaps import commander_chain_for_soldier
+    from app.services.approval_scope import commander_chain_for_soldier
 
     node = create_node(admin_session, level="unit", name=f"no_cmd_{_uid()}")
     soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
@@ -157,16 +157,16 @@ def _setup_pending_swap(session, *, with_commanders: bool):
 
 
 def test_claim_creates_manager_approval_rows_for_both_chains(admin_session):
+    """Renamed premise under the lazy decision-log model: rows are no longer
+    pre-populated the moment a swap enters pending_approval — they only get
+    created when someone actually approves/rejects. Verify no rows exist yet
+    right after claim."""
     req, requester, covering, requester_cmd, covering_cmd = _setup_pending_swap(admin_session, with_commanders=True)
 
     rows = admin_session.execute(
         select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == req.id)
     ).scalars().all()
-    by_side = {"requester": [], "covering": []}
-    for r in rows:
-        by_side[r.side].append(r.commander_id)
-    assert by_side["requester"] == [requester_cmd.id]
-    assert by_side["covering"] == [covering_cmd.id]
+    assert rows == []
 
 
 def test_finalize_requires_both_soldiers_and_all_managers(admin_session):
@@ -184,12 +184,12 @@ def test_finalize_requires_both_soldiers_and_all_managers(admin_session):
     admin_session.refresh(req)
     assert req.status == "pending_approval"  # managers haven't approved yet
 
-    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=requester_cmd.id, actor_id=requester_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=requester_cmd.id)
     admin_session.commit()
     admin_session.refresh(req)
     assert req.status == "pending_approval"  # covering-side manager still pending
 
-    approve_manager_row(admin_session, request_id=req.id, side="covering", commander_id=covering_cmd.id, actor_id=covering_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=covering_cmd.id)
     admin_session.commit()
     admin_session.refresh(req)
     assert req.status == "applied"
@@ -199,9 +199,18 @@ def test_finalize_with_no_commanders_needs_only_soldiers(admin_session):
     from app.services.swaps import approve_soldier_side
 
     req, requester, covering, _, _ = _setup_pending_swap(admin_session, with_commanders=False)
+    # claim_request now auto-approves both soldier sides (asking/covering
+    # already implies consent) — reset to None here so this test still
+    # exercises the "not both approved yet" branch of _all_approved.
+    req.requester_side_approved = None
+    req.covering_side_approved = None
+    admin_session.commit()
 
     approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id)
     admin_session.commit()
+    admin_session.refresh(req)
+    assert req.status == "pending_approval"  # covering side not approved yet
+
     approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id)
     admin_session.commit()
     admin_session.refresh(req)
@@ -225,7 +234,7 @@ def test_approve_manager_row_rejects_wrong_commander(admin_session):
     stranger = create_soldier(admin_session, personal_number=f"str2_{_uid()}")
 
     with pytest.raises(SwapError, match="not_required_approver"):
-        approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=stranger.id, actor_id=stranger.id)
+        approve_manager_row(admin_session, request_id=req.id, actor_id=stranger.id)
 
 
 def _setup_pending_swap_with_chain(session):
@@ -268,19 +277,23 @@ def test_any_one_chain_commander_approval_suffices_for_side(admin_session):
     assert req.status == "pending_approval"  # no chain commander has approved yet
 
     # Only the mid-level commander approves — the root commander's row stays untouched.
-    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id, actor_id=mid_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=mid_cmd.id)
     admin_session.commit()
     admin_session.refresh(req)
     assert req.status == "applied"  # one approval on the side was enough
 
+    # Under the lazy decision-log model, no row is ever created for the root
+    # commander at all — they never acted, and one approval anywhere in the
+    # chain already satisfied the side, so a row for root_cmd never gets
+    # written (proving "left untouched", not "cleared").
     root_row = admin_session.execute(
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == req.id,
             SwapManagerApproval.side == "requester",
             SwapManagerApproval.commander_id == root_cmd.id,
         )
-    ).scalar_one()
-    assert root_row.approved is False  # left untouched, not cleared
+    ).scalar_one_or_none()
+    assert root_row is None
 
 
 def test_same_commander_reapproving_is_a_harmless_noop(admin_session):
@@ -297,7 +310,7 @@ def test_same_commander_reapproving_is_a_harmless_noop(admin_session):
     approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id)
     admin_session.commit()
 
-    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=requester_cmd.id, actor_id=requester_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=requester_cmd.id)
     admin_session.commit()
     admin_session.refresh(req)
     assert req.status == "pending_approval"  # covering side's commander still pending
@@ -314,7 +327,7 @@ def test_same_commander_reapproving_is_a_harmless_noop(admin_session):
 
     # Second click by the same commander: no error, original approval record
     # untouched, swap still not finalized (covering side still pending).
-    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=requester_cmd.id, actor_id=requester_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=requester_cmd.id)
     admin_session.commit()
     admin_session.refresh(row)
     admin_session.refresh(req)
@@ -329,7 +342,7 @@ def test_is_chain_commander_for_side_true_regardless_of_approval_state(admin_ses
     req, requester, covering, mid_cmd, root_cmd = _setup_pending_swap_with_chain(admin_session)
 
     assert is_chain_commander_for_side(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id)
-    approve_manager_row(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id, actor_id=mid_cmd.id)
+    approve_manager_row(admin_session, request_id=req.id, actor_id=mid_cmd.id)
     admin_session.commit()
     # Still True after approving — chain membership, not "still pending".
     assert is_chain_commander_for_side(admin_session, request_id=req.id, side="requester", commander_id=mid_cmd.id)
@@ -377,17 +390,158 @@ def test_approve_manager_side_override_clears_all_rows_for_side(admin_session):
     assert req.status == "applied"
 
 
+def test_finalize_with_scoped_duty_manager_not_org_wide(admin_session):
+    from app.db.models import DutyManagerScope
+    from app.services.approval_scope import duty_manager_chain_for_soldier
+
+    node = create_node(admin_session, level="unit", name=f"n_{_uid()}")
+    other_node = create_node(admin_session, level="unit", name=f"other_{_uid()}")
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}", hierarchy_node_id=node.id)
+    in_scope_dm = create_soldier(admin_session, personal_number=f"in_dm_{_uid()}", role="duty_manager")
+    out_of_scope_dm = create_soldier(admin_session, personal_number=f"out_dm_{_uid()}", role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=in_scope_dm.id, hierarchy_node_id=node.id))
+    admin_session.add(DutyManagerScope(duty_manager_id=out_of_scope_dm.id, hierarchy_node_id=other_node.id))
+    admin_session.commit()
+
+    assert out_of_scope_dm.id not in duty_manager_chain_for_soldier(admin_session, soldier.id)
+    assert in_scope_dm.id in duty_manager_chain_for_soldier(admin_session, soldier.id)
+
+
+def test_one_click_approves_every_qualifying_row_across_sides_and_kinds(admin_session):
+    """A person who is both the commander AND the (properly-scoped)
+    duty-manager for BOTH the requester's and covering soldier's node needs
+    exactly one approve_manager_row call to satisfy all four requirements."""
+    from app.db.models import DutyManagerScope
+
+    node = create_node(admin_session, level="unit", name=f"n_{_uid()}")
+    node.commander_id = None  # set after creating the dual-role person below
+    requester = create_soldier(admin_session, personal_number=f"req_{_uid()}", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}", hierarchy_node_id=node.id)
+    dual = create_soldier(admin_session, personal_number=f"dual_{_uid()}")
+    node.commander_id = dual.id
+    admin_session.add(DutyManagerScope(duty_manager_id=dual.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+
+    assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, covering_soldier_id=covering.id, status="pending_approval",
+        requester_side_approved=True, covering_side_approved=True,
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    from app.services.swaps import approve_manager_row, _all_approved
+
+    approve_manager_row(admin_session, request_id=req.id, actor_id=dual.id)
+    admin_session.commit()
+
+    assert _all_approved(admin_session, req) is True
+    rows = admin_session.execute(
+        select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == req.id)
+    ).scalars().all()
+    # 2 sides x 2 kinds = 4 rows, all approved by the same dual-role person in one call
+    assert len(rows) == 4
+    assert all(r.approved and r.approved_by == dual.id for r in rows)
+
+
+def test_stranger_still_cannot_approve(admin_session):
+    node = create_node(admin_session, level="unit", name=f"n_{_uid()}")
+    commander = create_soldier(admin_session, personal_number=f"c_{_uid()}")
+    node.commander_id = commander.id
+    requester = create_soldier(admin_session, personal_number=f"r_{_uid()}", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number=f"str_{_uid()}")
+    admin_session.commit()
+
+    assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="pending_approval",
+        requester_side_approved=True, covering_side_approved=True,
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    from app.services.swaps import approve_manager_row, SwapError
+    with pytest.raises(SwapError, match="not_required_approver"):
+        approve_manager_row(admin_session, request_id=req.id, actor_id=stranger.id)
+
+
+def test_reject_manager_row_stamps_the_specific_row_then_kills_whole_request(admin_session):
+    node = create_node(admin_session, level="unit", name=f"n_{_uid()}")
+    commander = create_soldier(admin_session, personal_number=f"c_{_uid()}")
+    node.commander_id = commander.id
+    requester = create_soldier(admin_session, personal_number=f"r_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="pending_approval",
+        requester_side_approved=True, covering_side_approved=True,
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    from app.services.swaps import reject_manager_row
+
+    reject_manager_row(admin_session, request_id=req.id, actor_id=commander.id, decision_note="לא מתאים")
+    admin_session.commit()
+    admin_session.refresh(req)
+
+    assert req.status == "rejected"
+    assert req.rejected_by == commander.id
+    row = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == req.id, SwapManagerApproval.commander_id == commander.id,
+        )
+    ).scalar_one()
+    assert row.rejected is True
+    assert row.rejected_by == commander.id
+
+
+def test_claim_auto_approves_both_soldier_sides(admin_session):
+    node = create_node(admin_session, level="unit", name=f"n_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"r_{_uid()}", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number=f"cov_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+
+    assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="open",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    from app.services.swaps import claim_request
+
+    claim_request(admin_session, request_id=req.id, covering_soldier_id=covering.id)
+    admin_session.commit()
+    admin_session.refresh(req)
+
+    assert req.requester_side_approved is True
+    assert req.covering_side_approved is True
+    assert req.status == "pending_approval"
+
+
 def test_override_by_broader_commander_does_not_clear_duty_manager_rows(admin_session):
     """A commander who reaches the override path (e.g. reassigned as the
     node's commander after the swap was already claimed, so they hold no
     chain row of their own) may only clear the commander-kind requirement —
-    not silently satisfy the separate duty-manager requirement too."""
+    not silently satisfy the separate duty-manager requirement too. Under the
+    lazy decision-log model, this means no duty_manager-kind row is created
+    at all until an actor authorized for that kind acts — there is no
+    pre-populated row to leave in a "not yet approved" state."""
+    from app.db.models import DutyManagerScope
     from app.services.swaps import approve_manager_side_override, approve_soldier_side, claim_request
 
     node = create_node(admin_session, level="unit", name=f"ovr_{_uid()}")
     original_cmd = create_soldier(admin_session, personal_number=f"ovr_orig_{_uid()}", role="commander")
     node.commander_id = original_cmd.id
-    dm = create_soldier(admin_session, personal_number=f"ovr_dm_{_uid()}", role="duty_manager", hierarchy_node_id=node.id)
+    dm = create_soldier(admin_session, personal_number=f"ovr_dm_{_uid()}", role="duty_manager")
+    admin_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=node.id))
     admin_session.commit()
 
     requester = create_soldier(admin_session, personal_number=f"ovr_req_{_uid()}", hierarchy_node_id=node.id)
@@ -399,6 +553,7 @@ def test_override_by_broader_commander_does_not_clear_duty_manager_rows(admin_se
     )
     admin_session.add(req)
     admin_session.commit()
+
     req = claim_request(admin_session, request_id=req.id, covering_soldier_id=covering.id)
     admin_session.commit()
 
@@ -423,8 +578,9 @@ def test_override_by_broader_commander_does_not_clear_duty_manager_rows(admin_se
     by_kind = {r.approver_kind: r for r in rows}
     assert by_kind["commander"].approved is True
     assert by_kind["commander"].approved_by == new_cmd.id
-    assert by_kind["duty_manager"].approved is False, (
-        "a broader commander's override must not satisfy the duty-manager requirement"
+    assert "duty_manager" not in by_kind, (
+        "a broader commander's override must not satisfy the duty-manager requirement — "
+        "under the lazy model, no row is created at all for a kind the override actor isn't authorized for"
     )
 
     admin_session.refresh(req)
@@ -434,7 +590,11 @@ def test_override_by_broader_commander_does_not_clear_duty_manager_rows(admin_se
     # commander requirement either.
     approve_manager_side_override(admin_session, request_id=req.id, side="requester", actor_id=dm.id)
     admin_session.commit()
-    admin_session.refresh(by_kind["duty_manager"])
-    admin_session.refresh(by_kind["commander"])
+    rows = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == req.id, SwapManagerApproval.side == "requester"
+        )
+    ).scalars().all()
+    by_kind = {r.approver_kind: r for r in rows}
     assert by_kind["duty_manager"].approved is True
     assert by_kind["commander"].approved is True  # already cleared above, unaffected

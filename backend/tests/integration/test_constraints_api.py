@@ -148,3 +148,37 @@ def test_reject_requires_note(client: TestClient, admin_session: Session):
     )
     assert r.status_code == 200
     assert r.json()["status"] == "rejected"
+
+
+def test_constraint_list_includes_nearest_commander_and_duty_manager(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d-nearest")
+    b = create_node(admin_session, level="branch", name="b-nearest", parent=d)
+    cmd = create_soldier(admin_session, personal_number="7500013", role="commander")
+    b.commander_id = cmd.id
+    admin_session.commit()
+    dm = create_soldier(admin_session, personal_number="7500014", role="duty_manager", hierarchy_node_id=d.id)
+    target = create_soldier(admin_session, personal_number="7500015", hierarchy_node_id=b.id)
+    c = client.post(
+        "/api/me/constraints",
+        headers=auth_headers(target),
+        json={
+            "start_date": (date.today() + timedelta(days=5)).isoformat(),
+            "end_date": (date.today() + timedelta(days=10)).isoformat(),
+            "reason": "חופשה",
+        },
+    ).json()
+    assert c["nearest_commander"]["id"] == str(cmd.id)
+    assert c["nearest_duty_manager"]["id"] == str(dm.id)
+    r = client.get("/api/me/constraints", headers=auth_headers(target))
+    items = r.json()
+    assert len(items) == 1
+    assert items[0]["nearest_commander"]["id"] == str(cmd.id)
+    assert items[0]["nearest_commander"]["name"] == cmd.full_name
+    assert items[0]["nearest_duty_manager"]["id"] == str(dm.id)
+    assert items[0]["nearest_duty_manager"]["name"] == dm.full_name
+    r2 = client.get("/api/constraints/pending", headers=auth_headers(cmd))
+    pending_items = r2.json()
+    assert any(i["id"] == c["id"] for i in pending_items)
+    match = next(i for i in pending_items if i["id"] == c["id"])
+    assert match["nearest_commander"]["id"] == str(cmd.id)
+    assert match["nearest_duty_manager"]["id"] == str(dm.id)
