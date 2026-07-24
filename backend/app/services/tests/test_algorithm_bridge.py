@@ -261,6 +261,29 @@ def test_load_soldier_inputs_unassigned_soldier_has_empty_path_ids(admin_session
     assert by_id[soldier.id].path_ids == []
 
 
+def test_load_soldier_inputs_resolves_duty_location_exemptions(admin_session):
+    from datetime import timedelta as _timedelta
+    from app.db.models import DutyLocation, ExemptionDutyLocationMap, ExemptionType, SoldierExemption
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_soldier
+
+    loc = DutyLocation(name=f"algo_loc_{uuid.uuid4().hex[:8]}")
+    et = ExemptionType(name=f"algo_loc_et_{uuid.uuid4().hex[:8]}")
+    admin_session.add_all([loc, et])
+    admin_session.flush()
+    admin_session.add(ExemptionDutyLocationMap(exemption_type_id=et.id, duty_location_id=loc.id))
+
+    soldier = create_soldier(admin_session, personal_number=f"algo_loc_s_{uuid.uuid4().hex[:8]}")
+    admin_session.add(SoldierExemption(
+        soldier_id=soldier.id, exemption_type_id=et.id, start_date=date.today() - _timedelta(days=1),
+    ))
+    admin_session.commit()
+
+    inputs = load_soldier_inputs(admin_session, as_of=date.today())
+    soldier_input = next(s for s in inputs if s.id == soldier.id)
+    assert soldier_input.exempted_duty_location_ids == {loc.id}
+
+
 def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
     from tests.helpers import create_node
 

@@ -6,12 +6,14 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import Soldier
+from app.db.models import DutyType, Soldier
 from app.services.eligibility import (
     DutyTypeRequirements,
     _is_eligible,
+    compute_eligibility_exclusions,
     inferred_service_type,
 )
+from tests.helpers import create_soldier
 
 
 def _soldier(**kwargs) -> Soldier:
@@ -165,3 +167,32 @@ def test_military_driving_license_past_expiry_blocks():
     s = _soldier(has_military_driving_license=True, military_driving_license_expiry=TODAY - timedelta(days=1))
     reqs = DutyTypeRequirements(requires_military_driving_license=True)
     assert not _is_eligible(s, reqs, mitvahim_months=6, alal_months=3, today=TODAY)
+
+
+def test_compute_eligibility_exclusions_respects_reference_date(admin_session):
+    """A soldier whose mitvahim (shooting range qualification) will have
+    expired by a FUTURE reference date, but hasn't expired yet as of today,
+    must be excluded when evaluated as-of that future date — not as-of
+    today's date."""
+    dt = DutyType(
+        name=f"ref_date_dt_{uuid.uuid4().hex[:8]}", score_per_day=1,
+        requirements={"requires_mitvahim": True},
+    )
+    admin_session.add(dt)
+    admin_session.flush()
+
+    soldier = create_soldier(admin_session, personal_number=f"ref_date_s_{uuid.uuid4().hex[:8]}")
+    soldier.last_mitvahim_date = date.today() - timedelta(days=170)  # ~5.5 months ago
+    admin_session.commit()
+
+    # As of today (6-month default window), still eligible.
+    today_exclusions = compute_eligibility_exclusions(
+        admin_session, [soldier], mitvahim_months=6, alal_months=3, reference_date=date.today(),
+    )
+    assert dt.id not in today_exclusions.get(soldier.id, set())
+
+    # As of 60 days in the future, the mitvahim will be ~7.8 months stale — excluded.
+    future_exclusions = compute_eligibility_exclusions(
+        admin_session, [soldier], mitvahim_months=6, alal_months=3, reference_date=date.today() + timedelta(days=60),
+    )
+    assert dt.id in future_exclusions.get(soldier.id, set())

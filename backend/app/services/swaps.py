@@ -480,22 +480,58 @@ def approve_manager_side(
     return approve_manager_side_override(session, request_id=request_id, side=side, actor_id=actor_id)
 
 
+def _override_authorized_kinds(
+    session: Session, *, actor_id: uuid.UUID, side_node: HierarchyNode | None
+) -> set[str]:
+    """Which approver kinds `actor_id` may clear via the override path for a
+    side whose soldier belongs to `side_node`.
+
+    An override only satisfies the kind(s) the actor actually holds authority
+    for: a commander with broad hierarchy scope (but no chain row of their
+    own, e.g. reassigned to the node after the swap was claimed) may clear
+    the commander requirement, but must not silently satisfy the separate
+    duty-manager requirement — and vice versa. Only admins clear both."""
+    from app.auth.authz import _node_in_scope, is_commander, is_duty_manager, scope_root_ids
+
+    actor = session.get(Soldier, actor_id)
+    if actor is not None and actor.role == "admin":
+        return {"commander", "duty_manager"}
+    kinds: set[str] = set()
+    if is_duty_manager(session, actor_id):
+        kinds.add("duty_manager")
+    if actor is not None and is_commander(session, actor_id):
+        if _node_in_scope(side_node, scope_root_ids(session, actor)):
+            kinds.add("commander")
+    return kinds
+
+
 def approve_manager_side_override(
     session: Session, *, request_id: uuid.UUID, side: str, actor_id: uuid.UUID
 ) -> SwapRequest:
     """Used when the acting user is authorized (admin / duty-manager / broader
     commander scope) but isn't literally one of the required chain commanders —
-    clears every outstanding row for that side at once."""
+    clears every outstanding row of the kind(s) they're authorized for, on
+    that side (see `_override_authorized_kinds`)."""
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "pending_approval":
         raise SwapError("not_pending")
+    soldier_id = req.requesting_soldier_id if side == "requester" else req.covering_soldier_id
+    side_node = None
+    if soldier_id is not None:
+        soldier = session.get(Soldier, soldier_id)
+        if soldier is not None and soldier.hierarchy_node_id is not None:
+            side_node = session.get(HierarchyNode, soldier.hierarchy_node_id)
+    allowed_kinds = _override_authorized_kinds(session, actor_id=actor_id, side_node=side_node)
+    if not allowed_kinds:
+        raise SwapError("forbidden")
     rows = session.execute(
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == request_id,
             SwapManagerApproval.side == side,
             SwapManagerApproval.approved == False,  # noqa: E712
+            SwapManagerApproval.approver_kind.in_(allowed_kinds),
         )
     ).scalars().all()
     now = datetime.utcnow()

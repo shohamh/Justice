@@ -196,6 +196,60 @@ def can_see_private(session: Session, viewer: Soldier, target: Soldier) -> bool:
     return can_see_private_node(session, viewer, node)
 
 
+def can_view_medical_document(session: Session, viewer: Soldier, target: Soldier) -> bool:
+    """Stricter than can_see_private: viewing the medical DOCUMENT itself (not just
+    the exemption's other fields) requires the viewer be a commander at or above a
+    configured minimum level in the target's own command chain, or a duty manager
+    at or above a separate configured minimum level in their scope over that chain.
+    Plain scope containment (as can_see_private_node checks) is not enough.
+    """
+    if viewer.id == target.id:
+        return True
+    node = session.get(HierarchyNode, target.hierarchy_node_id) if target.hierarchy_node_id else None
+    if node is None:
+        return False
+
+    from app.services.authority import dm_scope_covers_target
+    from app.services.settings_loader import SettingNotFound, get_setting
+
+    def _min_level(key: str, default_level: str) -> str:
+        try:
+            value = get_setting(session, key)
+            return str(value) if value else default_level
+        except SettingNotFound:
+            return default_level
+
+    if is_commander(session, viewer.id):
+        commander_roots = set(
+            session.execute(
+                select(HierarchyNode.id).where(HierarchyNode.commander_id == viewer.id)
+            )
+            .scalars()
+            .all()
+        )
+        required_level = _min_level("exemptions.medical_doc_min_commander_level", "מדור")
+        if dm_scope_covers_target(
+            session, scope_root_ids=commander_roots, target_node=node, required_level_key=required_level
+        ):
+            return True
+    if is_duty_manager(session, viewer.id):
+        dm_roots = set(
+            session.execute(
+                select(DutyManagerScope.hierarchy_node_id).where(
+                    DutyManagerScope.duty_manager_id == viewer.id
+                )
+            )
+            .scalars()
+            .all()
+        )
+        required_level = _min_level("exemptions.medical_doc_min_duty_manager_level", "מרכז")
+        if dm_scope_covers_target(
+            session, scope_root_ids=dm_roots, target_node=node, required_level_key=required_level
+        ):
+            return True
+    return False
+
+
 def authorize(
     session: Session, user: Soldier, action: str, *, target_node: HierarchyNode | None
 ) -> None:

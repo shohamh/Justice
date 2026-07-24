@@ -17,6 +17,11 @@ vi.mock("../auth/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+const mockUsePublicSettings = vi.fn(() => ({} as Record<string, unknown> | null));
+vi.mock("../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => mockUsePublicSettings(),
+}));
+
 vi.mock("../api/constraints", () => ({
   getPendingCount: vi.fn(() => Promise.resolve(0)),
 }));
@@ -36,8 +41,14 @@ vi.mock("../api/algorithm", () => ({
 }));
 
 vi.mock("./NavSheet", () => ({
-  default: ({ open, testId }: { open: boolean; testId?: string }) =>
-    open ? <div data-testid={testId ?? "nav-sheet-open"} /> : null,
+  default: ({ open, testId, items }: { open: boolean; testId?: string; items?: { testId?: string }[] }) =>
+    open ? (
+      <div data-testid={testId ?? "nav-sheet-open"}>
+        {items?.map((item) => (
+          <div key={item.testId} data-testid={item.testId} />
+        ))}
+      </div>
+    ) : null,
 }));
 
 const mockSeedSeenIds = vi.fn();
@@ -72,6 +83,8 @@ function job(status: string, mode: string, error_message: string | null = null, 
 beforeEach(() => {
   mockListJobs.mockReset();
   mockListJobs.mockResolvedValue({ items: [], total: 0 });
+  mockUsePublicSettings.mockReset();
+  mockUsePublicSettings.mockReturnValue({});
   mockSeedSeenIds.mockReset();
   mockUseSeenJobs.mockReset();
   mockUseSeenJobs.mockImplementation(() => ({
@@ -246,5 +259,25 @@ describe("UnifiedNav — dual-role soldier (commander label, also a duty manager
     render(<UnifiedNav />);
     expect(screen.getAllByTestId("nav-commander").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("nav-planning").length).toBeGreaterThan(0);
+  });
+});
+
+describe("UnifiedNav — forced-callup (hakpaza) gating", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "commander", is_commander: true, is_duty_manager: false } });
+  });
+
+  test("shows hakpaza item in commander sheet when forced_callup.enabled is not false", () => {
+    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": true });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-commander")[0]);
+    expect(screen.getByTestId("nav-hakpaza")).toBeInTheDocument();
+  });
+
+  test("hides hakpaza item in commander sheet when forced_callup.enabled is false", () => {
+    mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": false });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-commander")[0]);
+    expect(screen.queryByTestId("nav-hakpaza")).not.toBeInTheDocument();
   });
 });

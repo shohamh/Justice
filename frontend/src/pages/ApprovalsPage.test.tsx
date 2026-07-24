@@ -34,6 +34,10 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "viewer-1", role: "admin" } }),
+}));
+
 const swap = {
   id: "s1",
   duty_assignment_id: "da1",
@@ -161,7 +165,7 @@ describe("ApprovalsPage - action error banner", () => {
     );
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
-    const approveBtn = await screen.findByText("approvals.approve (swaps.requester)");
+    const approveBtn = await screen.findByText("approvals.approve");
     fireEvent.click(approveBtn);
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
@@ -238,7 +242,7 @@ describe("ApprovalsPage - transfers tab", () => {
 });
 
 describe("ApprovalsPage - exemption file links", () => {
-  it("opens exemption files via an authenticated blob fetch, not a raw href", async () => {
+  it("opens exemption files via an authenticated blob fetch and previews them in-app", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
     vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
     const blob = new Blob(["data"], { type: "application/pdf" });
@@ -248,7 +252,6 @@ describe("ApprovalsPage - exemption file links", () => {
     const originalRevokeObjectURL = URL.revokeObjectURL;
     URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
     URL.revokeObjectURL = vi.fn();
-    const openSpy = vi.spyOn(window, "open").mockReturnValue({ addEventListener: vi.fn() } as unknown as Window);
 
     try {
       const queryClient = new QueryClient({
@@ -276,11 +279,15 @@ describe("ApprovalsPage - exemption file links", () => {
         );
       });
       expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
-      expect(openSpy).toHaveBeenCalledWith("blob:mock-url", "_blank");
+      const downloadLink = await screen.findByRole("link", { name: /הורדה/ });
+      expect(downloadLink).toHaveAttribute("href", "blob:mock-url");
+      expect(downloadLink).toHaveAttribute("download", "note.pdf");
+
+      fireEvent.click(screen.getByRole("button", { name: "✕" }));
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
     } finally {
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
-      openSpy.mockRestore();
     }
   });
 

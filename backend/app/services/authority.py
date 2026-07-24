@@ -9,9 +9,20 @@ from sqlalchemy.orm import Session
 from app.db.models import HierarchyNode
 from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 from app.services.hierarchy import get_level_rank
+from app.services.settings_loader import SettingNotFound, get_setting
 
-COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"
+COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
+
+
+def _commander_exemption_min_level(session: Session) -> str:
+    try:
+        value = get_setting(session, "exemptions.commander_exemption_min_level")
+        if value:
+            return str(value)
+    except SettingNotFound:
+        pass
+    return COMMANDER_EXEMPTION_MIN_LEVEL_KEY
 
 
 def dm_scope_covers_level(session: Session, *, scope_node: HierarchyNode, required_level_key: str) -> bool:
@@ -53,7 +64,7 @@ def commander_can_grant_commander_exemption(
     at level 'מדור' or above (closer to root)."""
     if commander_rank and commander_rank in RANKS_RASAN_AND_ABOVE:
         return True
-    mador_rank = get_level_rank(session, COMMANDER_EXEMPTION_MIN_LEVEL_KEY)
+    mador_rank = get_level_rank(session, _commander_exemption_min_level(session))
     if mador_rank is None:
         return False
     commanded_nodes = session.execute(

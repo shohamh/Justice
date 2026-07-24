@@ -34,6 +34,7 @@ from app.db.models import (
     DutyShift,
     DutyShiftNodeQuota,
     DutyType,
+    ExemptionDutyLocationMap,
     ExemptionDutyTypeMap,
     ExemptionType,
     HierarchyNode,
@@ -162,6 +163,13 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     ).all():
         etid_to_dtids.setdefault(etid, set()).add(dtid)
 
+    # Build exemption type → duty location ids map (one query)
+    etid_to_locids: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for etid, locid in session.execute(
+        select(ExemptionDutyLocationMap.exemption_type_id, ExemptionDutyLocationMap.duty_location_id)
+    ).all():
+        etid_to_locids.setdefault(etid, set()).add(locid)
+
     # Global exemption types (is_global=True) cover ALL active duty types
     global_etids: set[uuid.UUID] = set(
         session.execute(
@@ -187,6 +195,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
 
     # Per-soldier: duty-type exemptions and full-coverage exempt date sets
     soldier_exempt_dtype_ids: dict[uuid.UUID, set[uuid.UUID]] = {}
+    soldier_exempt_locids: dict[uuid.UUID, set[uuid.UUID]] = {}
     soldier_full_exempt_dates: dict[uuid.UUID, set[date]] = {}
 
     for ex in all_exemptions:
@@ -194,6 +203,9 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
         if ex.start_date <= as_of and (ex.end_date is None or ex.end_date >= as_of):
             dtids = etid_to_dtids.get(ex.exemption_type_id, set())
             soldier_exempt_dtype_ids.setdefault(ex.soldier_id, set()).update(dtids)
+            soldier_exempt_locids.setdefault(ex.soldier_id, set()).update(
+                etid_to_locids.get(ex.exemption_type_id, set())
+            )
 
         # Full-coverage exempt dates (for active_days calculation)
         if ex.exemption_type_id in full_coverage_etids:
@@ -217,7 +229,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
     alal_months = _setting_int("eligibility.alal_months", 3)
 
     eligibility_exclusions = compute_eligibility_exclusions(
-        session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months
+        session, soldiers, mitvahim_months=mitvahim_months, alal_months=alal_months, reference_date=as_of
     )
 
     # Approved personal constraints per soldier (one query)
@@ -257,6 +269,7 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
                 path_ids=node_path_map.get(s.hierarchy_node_id, []) if s.hierarchy_node_id else [],
                 approved_constraint_dates=soldier_constraints.get(s.id, []),
                 exempted_duty_type_ids=combined_exempt,
+                exempted_duty_location_ids=soldier_exempt_locids.get(s.id, set()),
             )
         )
     return result

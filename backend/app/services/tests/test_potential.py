@@ -346,6 +346,27 @@ def test_fully_exempt_soldier_not_counted_as_partial(app_session):
     assert result.partial_exemption_count == 0
 
 
+def test_compute_potential_includes_eligible_duty_type_ids(app_session):
+    node = create_node(app_session, level="team", name="Test Co DT", parent_id=None)
+    app_session.flush()
+    male_only = DutyType(
+        name="male_only", score_per_day=Decimal("1.0"),
+        requirements={"allowed_genders": ["m"]},
+    )
+    unrestricted = DutyType(name="any", score_per_day=Decimal("1.0"), requirements={})
+    app_session.add_all([male_only, unrestricted])
+    app_session.flush()
+
+    s = _make_soldier(app_session, node_id=node.id, gender="f")
+    app_session.commit()
+
+    result = compute_potential(app_session, node_id=node.id, reference_date=date(2026, 7, 3))
+    detail = result.soldiers[0]
+    assert s.id == detail.soldier_id
+    assert unrestricted.id in detail.eligible_duty_type_ids
+    assert male_only.id not in detail.eligible_duty_type_ids
+
+
 def test_compute_potential_ignores_revoked_exemption(app_session):
     from datetime import datetime, timezone
 

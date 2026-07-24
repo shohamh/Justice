@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.db.models import (
-    DutyAssignment, DutyLocation, DutyType, ExemptionDutyTypeMap,
+    DutyAssignment, DutyLocation, DutyType, ExemptionDutyLocationMap, ExemptionDutyTypeMap,
     ExemptionType, PersonalConstraint, Soldier, SoldierExemption,
 )
 from app.services.eligibility import check_soldier_for_assignment
@@ -76,6 +76,22 @@ def test_blocked_by_duty_type_exemption(admin_session):
     ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
     assert ok is False
     assert reason == "פטור מסוג תורנות זו"
+
+
+def test_blocked_by_duty_location_exemption(admin_session):
+    _owner, cover, _dt, loc, a = _base(admin_session)
+    et = ExemptionType(name="פטור עמדה", is_global=False)
+    admin_session.add(et)
+    admin_session.flush()
+    admin_session.add(ExemptionDutyLocationMap(exemption_type_id=et.id, duty_location_id=loc.id))
+    admin_session.add(SoldierExemption(
+        soldier_id=cover.id, exemption_type_id=et.id,
+        start_date=date(2026, 7, 1), end_date=date(2026, 7, 31),
+    ))
+    admin_session.flush()
+    ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
+    assert ok is False
+    assert reason == "פטור ממיקום תורנות זה"
 
 
 def test_not_blocked_by_expired_exemption(admin_session):

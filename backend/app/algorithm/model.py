@@ -290,6 +290,10 @@ def build_model(
     for s in soldier_list:
         exempt_map[s.id] = s.exempted_duty_type_ids
 
+    location_exempt_map: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for s in soldier_list:
+        location_exempt_map[s.id] = s.exempted_duty_location_ids
+
     constraint_map: dict[uuid.UUID, set[date]] = {}
     for s in soldier_list:
         dates: set[date] = set()
@@ -322,6 +326,8 @@ def build_model(
     for di, d in enumerate(duty_list):
         for si, s in enumerate(soldier_list):
             if d.duty_type_id in exempt_map.get(s.id, set()):
+                continue
+            if d.duty_location_id in location_exempt_map.get(s.id, set()):
                 continue
             constrained_dates = constraint_map.get(s.id, set())
             if duty_dates_cache[di] & constrained_dates:
