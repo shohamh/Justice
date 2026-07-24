@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.authz import can_see_private
 from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
     ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode,
@@ -29,23 +30,33 @@ def _soldier_label(soldiers_by_id: dict, soldier_id) -> tuple[str, str]:
     return (s.personal_number, s.full_name) if s else ("", "")
 
 
-def _write_personal_constraints(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_personal_constraints(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("personal_constraints")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "start_date", "end_date",
         "reason", "status", "decided_by_personal_number", "decision_note", "created_at",
     ])
     soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    visibility_cache: dict = {}
     for c in session.execute(select(PersonalConstraint)).scalars():
         pn, name = _soldier_label(soldiers_by_id, c.soldier_id)
         decided_pn = _soldier_label(soldiers_by_id, c.decided_by)[0] if c.decided_by else ""
+        soldier = soldiers_by_id.get(c.soldier_id)
+        if soldier is None:
+            include_reason = False
+        elif c.soldier_id in visibility_cache:
+            include_reason = visibility_cache[c.soldier_id]
+        else:
+            include_reason = can_see_private(session, actor, soldier)
+            visibility_cache[c.soldier_id] = include_reason
+        reason = c.reason if include_reason else None
         ws.append([
             str(c.id), pn, name, c.start_date.isoformat(), c.end_date.isoformat(),
-            c.reason, c.status, decided_pn, c.decision_note, c.created_at.isoformat(),
+            reason, c.status, decided_pn, c.decision_note, c.created_at.isoformat(),
         ])
 
 
-def _write_soldier_field_updates(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_soldier_field_updates(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("soldier_field_updates")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "field_name", "new_value",
@@ -61,7 +72,7 @@ def _write_soldier_field_updates(wb: openpyxl.Workbook, session: Session) -> Non
         ])
 
 
-def _write_soldier_enrollment_requests(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_soldier_enrollment_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("soldier_enrollment_requests")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "requested_node_name",
@@ -79,7 +90,7 @@ def _write_soldier_enrollment_requests(wb: openpyxl.Workbook, session: Session) 
         ])
 
 
-def _write_soldier_exemptions(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_soldier_exemptions(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("soldier_exemptions")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "exemption_type_name",
@@ -101,7 +112,7 @@ def _write_soldier_exemptions(wb: openpyxl.Workbook, session: Session) -> None:
         ])
 
 
-def _write_exemption_requests(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_exemption_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("exemption_requests")
     ws.append([
         "id", "soldier_personal_number", "soldier_name", "exemption_type_name",
@@ -114,20 +125,30 @@ def _write_exemption_requests(wb: openpyxl.Workbook, session: Session) -> None:
     files_by_request: dict = {}
     for f in session.execute(select(ExemptionRequestFile)).scalars():
         files_by_request.setdefault(f.exemption_request_id, []).append(f.file_name)
+    visibility_cache: dict = {}
     for r in session.execute(select(ExemptionRequest)).scalars():
         pn, name = _soldier_label(soldiers_by_id, r.soldier_id)
         et = exemption_types_by_id.get(r.exemption_type_id)
         commander_pn = _soldier_label(soldiers_by_id, r.commander_approved_by)[0] if r.commander_approved_by else ""
         decided_pn = _soldier_label(soldiers_by_id, r.decided_by)[0] if r.decided_by else ""
         files = ", ".join(files_by_request.get(r.id, []))
+        soldier = soldiers_by_id.get(r.soldier_id)
+        if soldier is None:
+            include_sensitive = False
+        elif r.soldier_id in visibility_cache:
+            include_sensitive = visibility_cache[r.soldier_id]
+        else:
+            include_sensitive = can_see_private(session, actor, soldier)
+            visibility_cache[r.soldier_id] = include_sensitive
+        reason = r.reason if include_sensitive else None
         ws.append([
             str(r.id), pn, name, et.name if et else "",
             r.start_date.isoformat(), r.end_date.isoformat() if r.end_date else "",
-            r.reason, r.status, commander_pn, decided_pn, r.decision_note, files, r.created_at.isoformat(),
+            reason, r.status, commander_pn, decided_pn, r.decision_note, files, r.created_at.isoformat(),
         ])
 
 
-def _write_swap_requests(wb: openpyxl.Workbook, session: Session) -> None:
+def _write_swap_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
     ws = wb.create_sheet("swap_requests")
     ws.append([
         "id", "requesting_personal_number", "requesting_name", "target_personal_number",
@@ -185,7 +206,7 @@ def export_approvals(
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     for sheet_name in requested:
-        _WRITERS[sheet_name](wb, session)
+        _WRITERS[sheet_name](wb, session, actor)
 
     buf = io.BytesIO()
     wb.save(buf)

@@ -9,6 +9,7 @@ import openpyxl
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
+    DutyManagerScope,
     DutyType,
     ExemptionRequest,
     ExemptionType,
@@ -33,7 +34,15 @@ def _token(soldier) -> str:
 
 def test_export_personal_constraints_sheet(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(
+        admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id
+    )
+    # Give the admin actor duty-manager scope over the soldier's node so
+    # can_see_private grants visibility — the export writer now applies the
+    # same privacy redaction as the interactive read endpoints, and a bare
+    # admin role is deliberately NOT a blanket bypass for private fields.
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
     constraint = PersonalConstraint(
         soldier_id=soldier.id,
         start_date=date(2026, 1, 1),
@@ -69,6 +78,39 @@ def test_export_personal_constraints_sheet(client, admin_session):
     assert row[6] == "approved"
     assert row[7] == admin.personal_number
     assert row[8] == "ok"
+
+
+def test_export_personal_constraints_sheet_redacts_reason_when_actor_out_of_scope(client, admin_session):
+    """An admin export actor with no commander/duty-manager scope over the
+    soldier's node must NOT see the private `reason` text — matching the
+    same `can_see_private` policy the interactive constraints endpoints
+    enforce (see app/routes/constraints.py). Admin role alone is not a
+    blanket bypass for this field."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(
+        admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id
+    )
+    constraint = PersonalConstraint(
+        soldier_id=soldier.id,
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 5),
+        reason="חופשה",
+        status="approved",
+    )
+    admin_session.add(constraint)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/approvals/export?sheets=personal_constraints",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    ws = wb["personal_constraints"]
+    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    row = next(r for r in rows if r[0] == str(constraint.id))
+    assert row[5] is None
 
 
 def test_export_swap_requests_sheet(client, admin_session):
@@ -246,7 +288,11 @@ def test_export_soldier_exemptions_sheet(client, admin_session):
 
 def test_export_exemption_requests_sheet(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    soldier = create_soldier(admin_session, personal_number=f"sld_{_uid()}")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(
+        admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id
+    )
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
     et = ExemptionType(name=f"et_{_uid()}", is_global=False, is_medical=False, is_commander_exemption=False)
     admin_session.add(et)
     admin_session.flush()
@@ -271,3 +317,37 @@ def test_export_exemption_requests_sheet(client, admin_session):
     assert row[3] == et.name
     assert row[6] == "בדיקה רפואית"
     assert row[7] == "pending"
+
+
+def test_export_exemption_requests_sheet_redacts_reason_when_actor_out_of_scope(client, admin_session):
+    """Same privacy policy as constraints: an export actor with no
+    commander/duty-manager scope over the soldier's node must not see the
+    private `reason` text (mirrors exemption_requests.py's include_sensitive
+    check, which is also driven by can_see_private)."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    node = create_hierarchy_node(admin_session, level="group", name=f"מדור_{_uid()}", parent_id=None)
+    soldier = create_soldier(
+        admin_session, personal_number=f"sld_{_uid()}", hierarchy_node_id=node.id
+    )
+    et = ExemptionType(name=f"et_{_uid()}", is_global=False, is_medical=False, is_commander_exemption=False)
+    admin_session.add(et)
+    admin_session.flush()
+    req = ExemptionRequest(
+        soldier_id=soldier.id,
+        exemption_type_id=et.id,
+        start_date=date(2026, 3, 1),
+        reason="בדיקה רפואית",
+        status="pending",
+    )
+    admin_session.add(req)
+    admin_session.commit()
+
+    resp = client.get(
+        "/api/approvals/export?sheets=exemption_requests",
+        headers={"Authorization": f"Bearer {_token(admin)}"},
+    )
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+    rows = list(wb["exemption_requests"].iter_rows(min_row=2, values_only=True))
+    row = next(r for r in rows if r[0] == str(req.id))
+    assert row[1] == soldier.personal_number
+    assert row[6] is None

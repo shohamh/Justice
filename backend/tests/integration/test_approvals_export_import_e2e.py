@@ -10,6 +10,7 @@ import app.services.import_parsers.v1_standard  # noqa: F401 -- registers the v1
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
+    DutyManagerScope,
     DutyType,
     ExemptionRequest,
     ExemptionType,
@@ -65,7 +66,8 @@ def _export(client, admin: Soldier, sheet: str):
 
 
 def test_personal_constraint_export_import_round_trip(admin_session, client):
-    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    node = create_node(admin_session, level="group", name=f"n_{_uid()}", parent_id=None)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
     original = PersonalConstraint(
         soldier_id=soldier.id, start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
@@ -76,6 +78,13 @@ def test_personal_constraint_export_import_round_trip(admin_session, client):
     admin_session.commit()
 
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    # Export applies the same reason-visibility redaction as the interactive
+    # constraint endpoints (can_see_private): give the admin actor
+    # duty-manager scope over the soldier's node so the reason round-trips
+    # instead of being (correctly) redacted to None and then blanking the
+    # existing DB value on re-import.
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
+    admin_session.commit()
     xlsx_bytes = _export(client, admin, "personal_constraints")
 
     sess = create_session(admin_session, filename="roundtrip.xlsx", content=xlsx_bytes, actor=admin, parser_id="v1_standard")
@@ -201,7 +210,8 @@ def test_soldier_exemption_export_import_round_trip(admin_session, client):
 
 
 def test_exemption_request_export_import_round_trip(admin_session, client):
-    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}")
+    node = create_node(admin_session, level="group", name=f"n_{_uid()}", parent_id=None)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
     commander = create_soldier(admin_session, personal_number=f"cmd_{_uid()}")
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
     et = ExemptionType(name=f"et_{_uid()}", is_global=False, is_medical=True, is_commander_exemption=False)
@@ -216,6 +226,10 @@ def test_exemption_request_export_import_round_trip(admin_session, client):
     admin_session.commit()
 
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    # Same redaction policy as constraints (can_see_private) — grant scope so
+    # the reason round-trips instead of being blanked on re-import.
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
+    admin_session.commit()
     xlsx_bytes = _export(client, admin, "exemption_requests")
 
     sess = create_session(admin_session, filename="roundtrip.xlsx", content=xlsx_bytes, actor=admin, parser_id="v1_standard")
