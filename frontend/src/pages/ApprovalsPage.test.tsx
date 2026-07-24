@@ -244,7 +244,7 @@ describe("ApprovalsPage - transfers tab", () => {
 describe("ApprovalsPage - exemption file links", () => {
   it("opens exemption files via an authenticated blob fetch and previews them in-app", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
+    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
     const blob = new Blob(["data"], { type: "application/pdf" });
     vi.mocked(api.get).mockResolvedValue({ data: blob });
 
@@ -274,7 +274,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/api/exemption-requests/er1/files/f1",
+          "/exemption-requests/er1/files/f1",
           expect.objectContaining({ responseType: "blob" }),
         );
       });
@@ -293,7 +293,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
   it("shows an error message when the exemption file fetch fails", async () => {
     vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
-    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/api/exemption-requests/er1/files/f1");
+    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
     vi.mocked(api.get).mockRejectedValue({
       response: { status: 404, data: { detail: "file_not_found" } },
     });

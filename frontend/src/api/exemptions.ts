@@ -137,7 +137,7 @@ export async function listExemptionFiles(requestId: string): Promise<ExemptionFi
 }
 
 export function exemptionFileDownloadUrl(requestId: string, fileId: string): string {
-  return `/api/exemption-requests/${requestId}/files/${fileId}`;
+  return `/exemption-requests/${requestId}/files/${fileId}`;
 }
 
 export async function grantCommanderExemption(soldierId: string, input: {
