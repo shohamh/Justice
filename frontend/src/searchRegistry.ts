@@ -13,7 +13,7 @@ function canApprove(user: SearchUser | null): boolean {
 }
 
 function canPlan(user: SearchUser | null): boolean {
-  return user?.role === "admin" || user?.role === "duty_manager";
+  return user?.role === "admin" || !!user?.is_duty_manager;
 }
 
 export interface PageEntry {

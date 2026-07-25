@@ -16,6 +16,13 @@ describe("searchRegistry pages", () => {
     expect(planning.canAccess(admin)).toBe(true);
   });
 
+  test("duty manager with role soldier can access planning pages", () => {
+    const dutyManagerWithSoldierRole: SearchUser = { role: "soldier", is_commander: false, is_duty_manager: true };
+    const entries = getPageEntries();
+    const planning = entries.find((e) => e.id === "page-planning-shifts")!;
+    expect(planning.canAccess(dutyManagerWithSoldierRole)).toBe(true);
+  });
+
   test("plain soldier can access home and my-duties", () => {
     const entries = getPageEntries();
     expect(entries.find((e) => e.id === "page-home")!.canAccess(soldier)).toBe(true);
