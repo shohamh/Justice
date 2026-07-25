@@ -48,6 +48,7 @@ class MeResponse(BaseModel):
     profile_picture_url: str | None = None
     is_career: bool = False
     enrollment_pending: bool = False
+    theme_preference: str = "system"
 
 
 class SetEmailRequest(BaseModel):
@@ -128,6 +129,7 @@ def me(
         profile_picture_url=user.profile_picture_url,
         is_career=user.is_career,
         enrollment_pending=enrollment_pending,
+        theme_preference=user.theme_preference,
     )
 
 

@@ -41,6 +41,9 @@ class Soldier(Base):
     phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     email: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     email_verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    theme_preference: Mapped[str] = mapped_column(
+        Text, server_default=text("'system'"), default="system"
+    )
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), default=False
     )
