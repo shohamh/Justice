@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import MyRequestsPage from "./MyRequestsPage";
@@ -97,5 +97,42 @@ describe("MyRequestsPage - day-count badges", () => {
     renderPage();
     await screen.findByTestId("constraints-remaining");
     expect(constraintsApi.getRemainingConstraintDays).toHaveBeenCalled();
+  });
+});
+
+describe("MyRequestsPage - constraint start date cannot be in the past", () => {
+  it("disables the submit button and blocks submission for a past start date", async () => {
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+
+    fireEvent.change(screen.getByTestId("req-start"), { target: { value: "01012020" } });
+    fireEvent.change(screen.getByTestId("req-end"), { target: { value: "05012020" } });
+    fireEvent.change(screen.getByTestId("req-reason"), { target: { value: "סיבה" } });
+
+    expect(screen.getByTestId("req-submit")).toBeDisabled();
+
+    fireEvent.submit(screen.getByTestId("req-submit").closest("form")!);
+
+    expect(await screen.findByText("errors.start_date_in_past")).toBeInTheDocument();
+    expect(constraintsApi.submitConstraint).not.toHaveBeenCalled();
+  });
+
+  it("allows submission for a start date of today or later", async () => {
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+
+    const future = "31122030"; // dd/mm/yyyy digits, as DateInput expects while typing
+    fireEvent.change(screen.getByTestId("req-start"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-end"), { target: { value: future } });
+    fireEvent.change(screen.getByTestId("req-reason"), { target: { value: "סיבה" } });
+
+    expect(screen.getByTestId("req-submit")).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("req-submit"));
+
+    await screen.findByTestId("constraints-remaining");
+    expect(constraintsApi.submitConstraint).toHaveBeenCalledWith(
+      expect.objectContaining({ start_date: "2030-12-31" }),
+    );
   });
 });

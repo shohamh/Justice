@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { formatDutyRange, isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "./formatDate";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatDutyRange, isDateInPast, isDateRangeValid, lastDutyDay, todayIso, toExclusiveEndDate } from "./formatDate";
 
 describe("isDateRangeValid", () => {
   it("is valid when from is before to", () => {
@@ -22,6 +22,39 @@ describe("isDateRangeValid", () => {
   it("treats a missing to as valid (not yet chosen)", () => {
     expect(isDateRangeValid("2026-01-01", undefined)).toBe(true);
     expect(isDateRangeValid("2026-01-01", "")).toBe(true);
+  });
+});
+
+describe("todayIso / isDateInPast", () => {
+  beforeEach(() => {
+    // Local noon avoids any timezone edge landing on the wrong calendar day.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 15, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("todayIso returns the local calendar date", () => {
+    expect(todayIso()).toBe("2026-06-15");
+  });
+
+  it("treats yesterday as in the past", () => {
+    expect(isDateInPast("2026-06-14")).toBe(true);
+  });
+
+  it("treats today as not in the past", () => {
+    expect(isDateInPast("2026-06-15")).toBe(false);
+  });
+
+  it("treats tomorrow as not in the past", () => {
+    expect(isDateInPast("2026-06-16")).toBe(false);
+  });
+
+  it("treats a missing value as not in the past (not yet chosen)", () => {
+    expect(isDateInPast(undefined)).toBe(false);
+    expect(isDateInPast("")).toBe(false);
   });
 });
 

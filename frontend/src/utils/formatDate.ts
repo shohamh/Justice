@@ -26,6 +26,29 @@ export function isDateRangeValid(from: string | undefined, to: string | undefine
   return from <= to;
 }
 
+/**
+ * Today's date as a yyyy-mm-dd string in the browser's local timezone (not
+ * UTC — `Date#toISOString()` would shift the calendar day near local
+ * midnight for timezones ahead of UTC).
+ */
+export function todayIso(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * True if `dateIso` (yyyy-mm-dd) is strictly before today's local date.
+ * Mirrors the backend's `start_date < date.today()` rule for personal
+ * constraints, so the same case can be caught client-side before submit.
+ */
+export function isDateInPast(dateIso: string | undefined): boolean {
+  if (!dateIso) return false;
+  return dateIso < todayIso();
+}
+
 export function formatDateRange(start: string | Date, end: string | Date): string {
   if (typeof start === "string" && typeof end === "string" && start === end)
     return formatDate(start);
