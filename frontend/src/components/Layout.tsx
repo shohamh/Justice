@@ -1,8 +1,9 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { CircleUser, Settings, HelpCircle } from "lucide-react";
+import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useTheme } from "../theme/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
@@ -12,6 +13,12 @@ import JusticeLogo from "./JusticeLogo";
 export default function Layout({ children }: { children: ReactNode | ((openHelp: (tab?: string) => void) => ReactNode) }) {
   const { t } = useTranslation();
   const { logout, user } = useAuth();
+  const { theme, cycleTheme } = useTheme();
+  const themeIcon = theme === "light" ? <Sun size={22} /> : theme === "dark" ? <Moon size={22} /> : <Monitor size={22} />;
+  const themeLabel =
+    theme === "light" ? "מצב תאורה: בהיר (לחץ למעבר לכהה)" :
+    theme === "dark" ? "מצב תאורה: כהה (לחץ למעבר לפי מערכת)" :
+    "מצב תאורה: לפי מערכת (לחץ למעבר לבהיר)";
   const isAdmin = user?.role === "admin";
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
@@ -50,6 +57,15 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
           <JusticeLogo size="sm" />
           {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
+            <button
+              onClick={cycleTheme}
+              aria-label={themeLabel}
+              title={themeLabel}
+              data-testid="theme-toggle-button"
+              className="text-gray-500 hover:text-indigo-600"
+            >
+              {themeIcon}
+            </button>
             <button
               onClick={() => openHelp()}
               aria-label="עזרה"
