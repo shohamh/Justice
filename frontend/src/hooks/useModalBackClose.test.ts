@@ -86,6 +86,28 @@ describe("useModalBackClose", () => {
     expect(onCloseA).not.toHaveBeenCalled();
   });
 
+  test("does not consume a newer history entry pushed by something else while open", async () => {
+    // Simulates HeaderSearch: selecting a result calls navigate() (pushing a
+    // new entry) and then closes the panel in the same handler. The hook's
+    // cleanup must not blindly call history.back() in that case — its own
+    // entry is no longer on top, so back() would undo the navigation instead.
+    const onClose = vi.fn();
+    const { unmount } = renderHook(() => useModalBackClose(onClose));
+    expect(isOnModalEntry()).toBe(true);
+
+    window.history.pushState(null, "", "/somewhere-else");
+
+    unmount();
+
+    // A buggy cleanup calling history.back() here applies asynchronously
+    // (see the file-level comment on goBack()) — waitFor() would resolve
+    // the instant it first observes the correct pathname, before that async
+    // reversion has a chance to land, masking the bug. Wait out a real tick
+    // instead, then assert the navigation is still intact.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(location.pathname).toBe("/somewhere-else");
+  });
+
   test("enabled=false keeps the hook inert, for always-mounted components gated on their own `open` prop", () => {
     const onClose = vi.fn();
     renderHook(() => useModalBackClose(onClose, false));

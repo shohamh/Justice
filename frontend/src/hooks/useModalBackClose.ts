@@ -41,7 +41,13 @@ export function useModalBackClose(onClose: () => void, enabled = true): void {
 
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      if (ownEntryOnTop) {
+      // Only consume our own entry if it's still the current one. If
+      // something else pushed a new entry while we were open (e.g. a search
+      // result's navigate() call, closing the panel in the same handler),
+      // our entry is no longer on top — calling back() here would undo that
+      // navigation instead of popping our own state.
+      const stillOnOwnEntry = (window.history.state as { __modal?: boolean } | null)?.__modal === true;
+      if (ownEntryOnTop && stillOnOwnEntry) {
         window.history.back();
       }
     };
