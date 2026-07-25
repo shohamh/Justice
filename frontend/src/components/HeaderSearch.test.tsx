@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import HeaderSearch from "./HeaderSearch";
-import { search } from "../api/search";
+import { search, type SearchResponseDTO } from "../api/search";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -120,6 +120,62 @@ describe("HeaderSearch", () => {
     expect(options[0]).toHaveClass("bg-gray-100");
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
     expect(options[1]).toHaveClass("bg-gray-100");
+  });
+
+  test("ignores a stale response that resolves after a newer one", async () => {
+    vi.useFakeTimers();
+    const mockedSearch = vi.mocked(search);
+    mockedSearch.mockClear();
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => {
+        resolve = res;
+      });
+      return { promise, resolve };
+    }
+
+    const abDeferred = deferred<Awaited<ReturnType<typeof search>>>();
+    const abcDeferred = deferred<Awaited<ReturnType<typeof search>>>();
+
+    mockedSearch.mockImplementation((q: string) => {
+      if (q === "ab") return abDeferred.promise;
+      if (q === "abc") return abcDeferred.promise;
+      return Promise.resolve({ soldiers: [], duties: [], units: [] });
+    });
+
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ab" } });
+    vi.advanceTimersByTime(200);
+    expect(mockedSearch).toHaveBeenCalledWith("ab");
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "abc" } });
+    vi.advanceTimersByTime(200);
+    expect(mockedSearch).toHaveBeenCalledWith("abc");
+
+    vi.useRealTimers();
+
+    // The newer request ("abc") resolves first...
+    abcDeferred.resolve({
+      soldiers: [{ id: "1", full_name: "Abc Soldier" } as SearchResponseDTO["soldiers"][number]],
+      duties: [],
+      units: [],
+    });
+    await screen.findByText("Abc Soldier");
+
+    // ...then the stale request ("ab") resolves late and must be ignored.
+    abDeferred.resolve({
+      soldiers: [{ id: "2", full_name: "Ab Soldier" } as SearchResponseDTO["soldiers"][number]],
+      duties: [],
+      units: [],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.getByText("Abc Soldier")).toBeInTheDocument();
+    expect(screen.queryByText("Ab Soldier")).not.toBeInTheDocument();
   });
 
   test("graceful degradation: backend failure keeps local groups working", async () => {

@@ -34,6 +34,7 @@ export default function HeaderSearch() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestQueryRef = useRef<string>("");
 
   const accessiblePages = useMemo(() => getPageEntries().filter((e) => e.canAccess(user)), [user]);
   const accessibleActions = useMemo(() => getQuickActionEntries().filter((e) => e.canAccess(user)), [user]);
@@ -54,17 +55,21 @@ export default function HeaderSearch() {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!trimmed) {
+      latestQueryRef.current = "";
       setBackendResults({ soldiers: [], duties: [], units: [] });
       setBackendError(false);
       return;
     }
     debounceRef.current = setTimeout(() => {
+      latestQueryRef.current = trimmed;
       search(trimmed)
         .then((res) => {
+          if (latestQueryRef.current !== trimmed) return;
           setBackendResults(res);
           setBackendError(false);
         })
         .catch(() => {
+          if (latestQueryRef.current !== trimmed) return;
           setBackendResults({ soldiers: [], duties: [], units: [] });
           setBackendError(true);
         });
