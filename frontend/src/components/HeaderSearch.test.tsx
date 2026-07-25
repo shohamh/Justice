@@ -216,7 +216,7 @@ describe("HeaderSearch", () => {
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "algorithm" } });
-    fireEvent.click(screen.getByText("search.help.algorithm"));
+    fireEvent.click(screen.getByText("search.categories.help > search.help.algorithm"));
     expect(mockOpenHelp).toHaveBeenCalledWith("algorithm");
   });
 
@@ -269,5 +269,29 @@ describe("HeaderSearch", () => {
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     fireEvent.click(screen.getByText("search.pages.profile"));
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  test("typing a tab keyword surfaces it with a 'Page > Tab' label", () => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "קודי הזמנה" } });
+    expect(screen.getByText("search.pages.admin_settings > nav.admin_invite_codes")).toBeInTheDocument();
+  });
+
+  test("selecting a tab result navigates to the page with the tab query param", () => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "קודי הזמנה" } });
+    fireEvent.click(screen.getByText("search.pages.admin_settings > nav.admin_invite_codes"));
+    expect(mockNavigate).toHaveBeenCalledWith("/admin/settings?tab=1");
+  });
+
+  test("tab results are excluded for a user without page access", () => {
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "קודי הזמנה" } });
+    expect(screen.queryByText("search.pages.admin_settings > nav.admin_invite_codes")).not.toBeInTheDocument();
   });
 });

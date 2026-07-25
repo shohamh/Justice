@@ -10,15 +10,18 @@ import {
   getPageEntries,
   getQuickActionEntries,
   getHelpTopicEntries,
+  getTabEntries,
   type PageEntry,
   type QuickActionEntry,
   type HelpTopicEntry,
+  type TabEntry,
 } from "../searchRegistry";
 
 type FlatResult =
   | { kind: "page"; key: string; entry: PageEntry }
   | { kind: "action"; key: string; entry: QuickActionEntry }
   | { kind: "help"; key: string; entry: HelpTopicEntry }
+  | { kind: "tab"; key: string; entry: TabEntry }
   | { kind: "soldier"; key: string; entry: SearchResponseDTO["soldiers"][number] }
   | { kind: "duty"; key: string; entry: SearchResponseDTO["duties"][number] }
   | { kind: "unit"; key: string; entry: SearchResponseDTO["units"][number] };
@@ -44,15 +47,18 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
     () => getHelpTopicEntries(gimelimEnabled).filter((e) => e.canAccess(user)),
     [user, gimelimEnabled],
   );
+  const accessibleTabs = useMemo(() => getTabEntries().filter((e) => e.canAccess(user)), [user]);
 
   const pageFuse = useMemo(() => new Fuse(accessiblePages, { keys: ["keywords"], threshold: 0.4 }), [accessiblePages]);
   const actionFuse = useMemo(() => new Fuse(accessibleActions, { keys: ["keywords"], threshold: 0.4 }), [accessibleActions]);
   const helpFuse = useMemo(() => new Fuse(accessibleHelp, { keys: ["keywords"], threshold: 0.4 }), [accessibleHelp]);
+  const tabFuse = useMemo(() => new Fuse(accessibleTabs, { keys: ["keywords"], threshold: 0.4 }), [accessibleTabs]);
 
   const trimmed = query.trim();
   const pageResults = trimmed ? pageFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
   const actionResults = trimmed ? actionFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
   const helpResults = trimmed ? helpFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
+  const tabResults = trimmed ? tabFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -86,6 +92,7 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
     ...pageResults.map((entry) => ({ kind: "page" as const, key: `page-${entry.id}`, entry })),
     ...actionResults.map((entry) => ({ kind: "action" as const, key: `action-${entry.id}`, entry })),
     ...helpResults.map((entry) => ({ kind: "help" as const, key: `help-${entry.id}`, entry })),
+    ...tabResults.map((entry) => ({ kind: "tab" as const, key: `tab-${entry.id}`, entry })),
     ...backendResults.soldiers.map((entry) => ({ kind: "soldier" as const, key: `soldier-${entry.id}`, entry })),
     ...backendResults.duties.map((entry) => ({ kind: "duty" as const, key: `duty-${entry.id}`, entry })),
     ...backendResults.units.map((entry) => ({ kind: "unit" as const, key: `unit-${entry.id}`, entry })),
@@ -111,6 +118,9 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
         break;
       case "help":
         openHelp(r.entry.id);
+        break;
+      case "tab":
+        navigate(`${r.entry.path}?tab=${r.entry.tabParam}`);
         break;
       case "soldier":
         navigate("/team");
@@ -149,7 +159,9 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
       case "action":
         return t(r.entry.labelKey);
       case "help":
-        return t(r.entry.labelKey);
+        return `${t("search.categories.help")} > ${t(r.entry.labelKey)}`;
+      case "tab":
+        return `${t(r.entry.pageLabelKey)} > ${t(r.entry.labelKey)}`;
       case "soldier":
         return r.entry.full_name;
       case "duty":
@@ -192,6 +204,7 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
     { titleKey: "search.categories.page", icon: "📄", items: flatResults.filter((r) => r.kind === "page") },
     { titleKey: "search.categories.action", icon: "⚡", items: flatResults.filter((r) => r.kind === "action") },
     { titleKey: "search.categories.help", icon: "❓", items: flatResults.filter((r) => r.kind === "help") },
+    { titleKey: "search.categories.tab", icon: "📑", items: flatResults.filter((r) => r.kind === "tab") },
     { titleKey: "search.categories.soldier", icon: "👤", items: flatResults.filter((r) => r.kind === "soldier") },
     { titleKey: "search.categories.duty", icon: "📅", items: flatResults.filter((r) => r.kind === "duty") },
     { titleKey: "search.categories.unit", icon: "🏛️", items: flatResults.filter((r) => r.kind === "unit") },
