@@ -19,6 +19,7 @@ function canPlan(user: SearchUser | null): boolean {
 export interface PageEntry {
   id: string;
   labelKey: string;
+  keywords: string[];
   descriptionKey?: string;
   path: string;
   canAccess: (user: SearchUser | null) => boolean;
@@ -27,6 +28,7 @@ export interface PageEntry {
 export interface QuickActionEntry {
   id: string;
   labelKey: string;
+  keywords: string[];
   path: string;
   canAccess: (user: SearchUser | null) => boolean;
 }
@@ -42,32 +44,32 @@ const authenticated = (user: SearchUser | null): boolean => user !== null;
 
 export function getPageEntries(): PageEntry[] {
   return [
-    { id: "page-home", labelKey: "search.pages.home", path: "/", canAccess: authenticated },
-    { id: "page-team", labelKey: "search.pages.team", path: "/team", canAccess: authenticated },
-    { id: "page-transparency", labelKey: "search.pages.transparency", path: "/transparency", canAccess: authenticated },
-    { id: "page-my-duties", labelKey: "search.pages.my_duties", path: "/my-duties", canAccess: authenticated },
-    { id: "page-my-requests", labelKey: "search.pages.my_requests", path: "/my-requests", canAccess: authenticated },
-    { id: "page-approvals", labelKey: "search.pages.approvals", path: "/approvals", canAccess: canApprove },
-    { id: "page-unit-calendar", labelKey: "search.pages.unit_calendar", path: "/unit-calendar", canAccess: authenticated },
-    { id: "page-swaps", labelKey: "search.pages.swaps", path: "/swaps", canAccess: authenticated },
-    { id: "page-profile", labelKey: "search.pages.profile", path: "/profile", canAccess: authenticated },
-    { id: "page-command-dashboard", labelKey: "search.pages.command_dashboard", path: "/command-dashboard", canAccess: canApprove },
-    { id: "page-notifications", labelKey: "search.pages.notifications", path: "/notifications", canAccess: authenticated },
-    { id: "page-planning-shifts", labelKey: "search.pages.planning_shifts", path: "/planning/shifts", canAccess: canPlan },
-    { id: "page-planning-config", labelKey: "search.pages.planning_config", path: "/planning/config", canAccess: canPlan },
-    { id: "page-planning-score-adjustments", labelKey: "search.pages.planning_score_adjustments", path: "/planning/score-adjustments", canAccess: canPlan },
-    { id: "page-planning-export", labelKey: "search.pages.planning_export", path: "/planning/export", canAccess: canPlan },
-    { id: "page-planning-potential", labelKey: "search.pages.planning_potential", path: "/planning/potential", canAccess: canPlan },
-    { id: "page-admin-settings", labelKey: "search.pages.admin_settings", path: "/admin/settings", canAccess: isAdmin },
-    { id: "page-import", labelKey: "search.pages.import", path: "/import", canAccess: canPlan },
+    { id: "page-home", labelKey: "search.pages.home", keywords: ["ראשי"], path: "/", canAccess: authenticated },
+    { id: "page-team", labelKey: "search.pages.team", keywords: ["אנשי צוות והיררכיה"], path: "/team", canAccess: authenticated },
+    { id: "page-transparency", labelKey: "search.pages.transparency", keywords: ["שקיפות"], path: "/transparency", canAccess: authenticated },
+    { id: "page-my-duties", labelKey: "search.pages.my_duties", keywords: ["התורנויות שלי"], path: "/my-duties", canAccess: authenticated },
+    { id: "page-my-requests", labelKey: "search.pages.my_requests", keywords: ["הבקשות שלי"], path: "/my-requests", canAccess: authenticated },
+    { id: "page-approvals", labelKey: "search.pages.approvals", keywords: ["אישורים"], path: "/approvals", canAccess: canApprove },
+    { id: "page-unit-calendar", labelKey: "search.pages.unit_calendar", keywords: ["לוח שנה יחידתי"], path: "/unit-calendar", canAccess: authenticated },
+    { id: "page-swaps", labelKey: "search.pages.swaps", keywords: ["החלפות"], path: "/swaps", canAccess: authenticated },
+    { id: "page-profile", labelKey: "search.pages.profile", keywords: ["פרופיל"], path: "/profile", canAccess: authenticated },
+    { id: "page-command-dashboard", labelKey: "search.pages.command_dashboard", keywords: ["דשבורד מפקד"], path: "/command-dashboard", canAccess: canApprove },
+    { id: "page-notifications", labelKey: "search.pages.notifications", keywords: ["התראות"], path: "/notifications", canAccess: authenticated },
+    { id: "page-planning-shifts", labelKey: "search.pages.planning_shifts", keywords: ["ניהול משמרות"], path: "/planning/shifts", canAccess: canPlan },
+    { id: "page-planning-config", labelKey: "search.pages.planning_config", keywords: ["הגדרות תכנון"], path: "/planning/config", canAccess: canPlan },
+    { id: "page-planning-score-adjustments", labelKey: "search.pages.planning_score_adjustments", keywords: ["התאמות ניקוד"], path: "/planning/score-adjustments", canAccess: canPlan },
+    { id: "page-planning-export", labelKey: "search.pages.planning_export", keywords: ["ייצוא"], path: "/planning/export", canAccess: canPlan },
+    { id: "page-planning-potential", labelKey: "search.pages.planning_potential", keywords: ["פוטנציאל"], path: "/planning/potential", canAccess: canPlan },
+    { id: "page-admin-settings", labelKey: "search.pages.admin_settings", keywords: ["הגדרות מערכת"], path: "/admin/settings", canAccess: isAdmin },
+    { id: "page-import", labelKey: "search.pages.import", keywords: ["ייבוא"], path: "/import", canAccess: canPlan },
   ];
 }
 
 export function getQuickActionEntries(): QuickActionEntry[] {
   return [
-    { id: "action-approvals", labelKey: "search.actions.approvals", path: "/approvals", canAccess: canApprove },
-    { id: "action-new-shift", labelKey: "search.actions.new_shift", path: "/planning/shifts", canAccess: canPlan },
-    { id: "action-import-upload", labelKey: "search.actions.import_upload", path: "/import/upload", canAccess: canPlan },
+    { id: "action-approvals", labelKey: "search.actions.approvals", keywords: ["עבור לאישורים"], path: "/approvals", canAccess: canApprove },
+    { id: "action-new-shift", labelKey: "search.actions.new_shift", keywords: ["יצירת משמרת חדשה"], path: "/planning/shifts", canAccess: canPlan },
+    { id: "action-import-upload", labelKey: "search.actions.import_upload", keywords: ["העלאת קובץ ייבוא"], path: "/import/upload", canAccess: canPlan },
   ];
 }
 

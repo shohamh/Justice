@@ -36,11 +36,11 @@ export default function HeaderSearch() {
   );
 
   const pageFuse = useMemo(
-    () => new Fuse(accessiblePages, { keys: ["labelKey"], threshold: 0.4 }),
+    () => new Fuse(accessiblePages, { keys: ["labelKey", "keywords"], threshold: 0.4 }),
     [accessiblePages],
   );
   const actionFuse = useMemo(
-    () => new Fuse(accessibleActions, { keys: ["labelKey"], threshold: 0.4 }),
+    () => new Fuse(accessibleActions, { keys: ["labelKey", "keywords"], threshold: 0.4 }),
     [accessibleActions],
   );
   const helpFuse = useMemo(

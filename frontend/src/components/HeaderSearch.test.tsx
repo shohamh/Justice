@@ -78,6 +78,13 @@ describe("HeaderSearch", () => {
     expect(screen.getByText("search.pages.admin_settings")).toBeInTheDocument();
   });
 
+  test("typing a real Hebrew label matches via keywords, not just the i18n key", () => {
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
+    expect(screen.getByText("search.pages.profile")).toBeInTheDocument();
+  });
+
   test("no-results message shown when nothing matches", () => {
     render(<HeaderSearch />);
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
