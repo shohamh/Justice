@@ -11,6 +11,11 @@
 - Forced-callup routes/nav are now gated behind a `forced_callup.enabled` setting.
 - The Potential page gained duty-type filter pills.
 - Approve buttons across the Approvals page and soldier-profile modal now only appear for requests the current viewer can actually approve, computed server-side instead of guessed from a coarse role check.
+- New global header search (Ctrl/Cmd+K or the header icon): fuzzy search across pages, soldiers, duties, units, quick actions, help topics, and in-page tabs (admin settings, approvals, swaps, transparency), fully RBAC-scoped server-side.
+- New dark mode: a sun/moon/system toggle in the header, persisted per soldier and applied instantly on load with no flash.
+- New in-app bug/feedback reporting: a floating trigger captures a screenshot and lets any soldier submit a bug report with a description and severity; admins get a dedicated review tab (list, detail, screenshot, status).
+- The header logo now links back to the homepage; the header layout no longer overflows on mobile, and open modals/dialogs now close on the mobile/browser back button instead of navigating away.
+- Personal constraint requests can no longer be submitted with a start date in the past — the date picker, submit button, and an inline error now all enforce it client-side, matching the existing server-side rule.
 
 ### Fixes
 - Clicking an exemption-request attachment no longer fails — the download URL was hitting `/api/api/...` due to a duplicate prefix.
@@ -23,9 +28,15 @@
 - Approvals export/import: privacy redaction is now applied to export sheets, override-approval decisions surface correctly in the swap manager roster, and re-importing no longer wipes an existing decision-note reason when the redacted export sends a blank value.
 - Unit calendar duty cells for full-day duty types now render/block correctly.
 - Fixed a missing effect dependency in the shift-generation modal.
+- Cumulative, score-per-day, and normalised scores are now rounded to 3 decimals.
+- A duty manager whose account role isn't literally `duty_manager` (the common case — the `is_duty_manager` flag is what actually grants it) was incorrectly hidden from planning-page search results.
+- Header search polish: fuzzy matching no longer floods results on short Latin-letter queries, the selection highlight is now visible in dark mode, Ctrl/Cmd+K now works under non-Latin keyboard layouts, and soldier/duty/unit results now show a subtitle (rank, date, or level).
+- Bug-report screenshot capture no longer clamps to viewport height (the full page is captured), now has a timeout so a hang can't disable the trigger permanently, and its JSON mirror/payload size are hardened.
+- Dark mode now applies via a CSS class instead of only following the OS media query at load, and now updates live if the OS theme preference changes while the app is open.
 
 ### Chores
 - Removed a dead edit-mode exemption-map prefetch in the duty-type form modal.
+- Stubbed `matchMedia` in the App test environment (needed once dark-mode detection was added) to fix a test that had started failing.
 
 ## 2026-07-23
 
