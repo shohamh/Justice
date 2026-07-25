@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import scope_root_ids
 from app.db.models import HierarchyNode, Soldier
 
 
