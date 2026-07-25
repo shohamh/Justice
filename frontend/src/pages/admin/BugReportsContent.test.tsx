@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BugReportsContent } from "./BugReportsContent";
 import * as bugReportsApi from "../../api/bugReports";
@@ -66,5 +66,29 @@ describe("BugReportsContent", () => {
     await waitFor(() => expect(bugReportsApi.listBugReports).toHaveBeenLastCalledWith(
       expect.objectContaining({ severity: "high" }),
     ));
+  });
+
+  it("revokes screenshot blob URLs on unmount", async () => {
+    const reportWithScreenshot = { ...SAMPLE_REPORT, has_screenshot: true };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [reportWithScreenshot], total: 1 });
+    vi.mocked(bugReportsApi.fetchBugReportScreenshot).mockResolvedValue(new Blob(["fake"]));
+
+    if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake-url");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalled());
+
+    cleanup();
+
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:fake-url");
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
   });
 });

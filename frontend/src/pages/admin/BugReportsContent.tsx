@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   listBugReports,
@@ -26,6 +26,17 @@ export function BugReportsContent() {
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const limit = 20;
+
+  // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
+  // accumulated without re-registering the effect on every fetch.
+  const screenshotUrlByIdRef = useRef(screenshotUrlById);
+  screenshotUrlByIdRef.current = screenshotUrlById;
+
+  useEffect(() => {
+    return () => {
+      Object.values(screenshotUrlByIdRef.current).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   const query = useQuery({
     queryKey: ["bug-reports", severityFilter, statusFilter, offset],
