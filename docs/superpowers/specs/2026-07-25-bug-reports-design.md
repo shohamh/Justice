@@ -30,8 +30,11 @@ Flow:
    audit-log data itself — the backend attaches those server-side using the
    authenticated session, since the audit log isn't otherwise exposed to the
    frontend and server-attached data is more trustworthy than client-supplied data.
-5. Backend writes a JSON file to `logs/bug_reports/{id}_{timestamp}.json` **first**,
-   then attempts a DB insert. If the DB insert fails, the JSON file is still on disk
+5. Backend writes a JSON file to `{LOG_DIR}/bug_reports/{id}_{timestamp}.json`
+   **first** (reusing the same `LOG_DIR`-resolution logic as
+   `backend/app/logging_config.py`, so this stays consistent with the Docker
+   deployment's `/app/logs` mount rather than a hardcoded repo-root path), then
+   attempts a DB insert. If the DB insert fails, the JSON file is still on disk
    and the endpoint still reports success to the user; the DB failure is logged
    server-side. If both writes fail, the endpoint returns a real error.
 6. Frontend shows a success toast and closes the modal.
@@ -68,18 +71,22 @@ New `BugReport` table in `backend/app/db/models.py`:
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | PK | |
-| `reporter_id` | FK → soldiers/users | |
-| `description` | text | |
+| `id` | UUID PK | |
+| `reporter_id` | UUID FK → `soldiers.id` | |
+| `description` | text | capped at 2000 chars, enforced in the Pydantic request schema |
 | `severity` | enum: `low` / `medium` / `high` | |
 | `status` | enum: `open` / `in_progress` / `resolved` | default `open` |
-| `screenshot` | text | base64 PNG |
+| `screenshot` | `LargeBinary`, nullable | raw PNG bytes, not base64 — matches the existing upload pattern (`ExemptionRequestFile`, `GimelimAttachment` both use `LargeBinary`); null if client-side capture failed. Frontend downsizes/caps the PNG before upload (e.g. clamp to viewport dimensions) so one report can't blow past request-size limits. |
 | `route` | str | page the report was filed from |
 | `nav_history` | JSONB | recent route visits |
 | `audit_snapshot` | JSONB | last 20 `AuditLog` rows for this user, captured at submit time |
 | `user_snapshot` | JSONB | reporter's name/rank/role/id at time of filing (survives later user changes) |
-| `json_file_path` | str | path to the mirrored JSON file |
+| `json_file_path` | str, nullable | path to the mirrored JSON file; null if the JSON write failed but the DB insert still succeeded |
 | `created_at` / `updated_at` | timestamp | |
+
+Retention: rows and mirrored JSON files (which contain PII — screenshots, audit-log
+entries, user snapshots) are kept indefinitely; no automatic cleanup job is in scope
+for this feature.
 
 New Alembic migration for this table.
 
@@ -90,7 +97,9 @@ New Alembic migration for this table.
   writes the JSON file, then attempts the DB insert per the error-handling rules
   above.
 - `GET /admin/bug-reports` (admin only, `require_roles("admin")`) — paginated
-  (offset/limit), filterable by `severity` and `status`.
+  (`limit`/`offset` `Query` params, same pattern as `algorithm.py`'s and
+  `notifications.py`'s existing list endpoints — no new pagination pattern needed),
+  filterable by `severity` and `status`.
 - `GET /admin/bug-reports/{id}/json` (admin only) — returns the raw JSON file
   content, for the admin "view JSON" option.
 - `PATCH /admin/bug-reports/{id}` (admin only) — update `status`.
@@ -110,8 +119,7 @@ calls `updateBugReportStatus`), short description preview. Rows expand inline to
 show: full description, screenshot (`<img>`), nav history list, audit snapshot list,
 user snapshot, and a "view JSON" toggle that fetches and pretty-prints the raw file
 via `getBugReportJson`. Filter bar for severity/status; simple offset/limit
-pagination controls (no existing pagination pattern in the app to reuse — this
-introduces a small reusable one).
+pagination controls matching the backend's existing `limit`/`offset` convention.
 
 ## Error Handling
 
