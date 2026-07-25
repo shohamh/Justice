@@ -68,6 +68,44 @@ describe("BugReportsContent", () => {
     ));
   });
 
+  it("shows an inline error and does not crash when the status update fails", async () => {
+    vi.mocked(bugReportsApi.updateBugReportStatus).mockRejectedValue(new Error("network error"));
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-r1")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("bug-report-status-r1"), { target: { value: "resolved" } });
+
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-error-r1")).toBeInTheDocument());
+  });
+
+  it("shows a loading state while the report list is fetching", async () => {
+    vi.mocked(bugReportsApi.listBugReports).mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<BugReportsContent />);
+    expect(screen.getByTestId("bug-reports-loading")).toBeInTheDocument();
+  });
+
+  it("shows an error state when the report list fails to load", async () => {
+    vi.mocked(bugReportsApi.listBugReports).mockRejectedValue(new Error("network error"));
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-reports-error")).toBeInTheDocument());
+  });
+
+  it("shows the route and user snapshot fields when a row is expanded", async () => {
+    const fullReport = {
+      ...SAMPLE_REPORT,
+      user_snapshot: { full_name: "Test Soldier", rank: "סמל", role: "soldier", personal_number: "12345" },
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [fullReport], total: 1 });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+
+    expect(screen.getByText("/calendar")).toBeInTheDocument();
+    expect(screen.getByText(/סמל/)).toBeInTheDocument();
+    expect(screen.getByText(/12345/)).toBeInTheDocument();
+  });
+
   it("revokes screenshot blob URLs on unmount", async () => {
     const reportWithScreenshot = { ...SAMPLE_REPORT, has_screenshot: true };
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [reportWithScreenshot], total: 1 });

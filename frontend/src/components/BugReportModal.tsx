@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { toPng } from "html-to-image";
 import { translateApiError } from "../utils/translateApiError";
 import { submitBugReport } from "../api/bugReports";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
@@ -14,26 +13,21 @@ const SEVERITIES: { value: Severity; label: string }[] = [
   { value: "high", label: "גבוהה" },
 ];
 
-export default function BugReportModal({ onClose }: { onClose: () => void }) {
+interface BugReportModalProps {
+  screenshot: string | null;
+  capturing: boolean;
+  onClose: () => void;
+}
+
+export default function BugReportModal({ screenshot, capturing, onClose }: BugReportModalProps) {
   const { t } = useTranslation();
   const location = useLocation();
   const navHistory = useNavigationHistory();
-  const [screenshot, setScreenshot] = useState<string | null>(null);
-  const [capturing, setCapturing] = useState(true);
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<Severity>("medium");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [succeeded, setSucceeded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    toPng(document.body)
-      .then((dataUrl) => { if (!cancelled) setScreenshot(dataUrl); })
-      .catch(() => { /* non-fatal: submission proceeds without a screenshot */ })
-      .finally(() => { if (!cancelled) setCapturing(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   async function handleSubmit() {
     if (!description.trim()) return;

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   listBugReports,
   updateBugReportStatus,
@@ -9,6 +10,7 @@ import {
   BugReportSeverity,
   BugReportStatus,
 } from "../../api/bugReports";
+import { translateApiError } from "../../utils/translateApiError";
 
 const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
@@ -19,12 +21,16 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
 const STATUS_LABELS: Record<BugReportStatus, string> = { open: "פתוח", in_progress: "בטיפול", resolved: "טופל" };
 
 export function BugReportsContent() {
+  const { t } = useTranslation();
   const [severityFilter, setSeverityFilter] = useState<BugReportSeverity | "">("");
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
   const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
+  const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
+  const [jsonErrorById, setJsonErrorById] = useState<Record<string, string>>({});
+  const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
   const limit = 20;
 
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
@@ -54,14 +60,30 @@ export function BugReportsContent() {
   const pages = Math.ceil(total / limit);
 
   async function handleStatusChange(id: string, status: BugReportStatus) {
-    await updateBugReportStatus(id, status);
-    await query.refetch();
+    setStatusErrorById((prev) => ({ ...prev, [id]: "" }));
+    try {
+      await updateBugReportStatus(id, status);
+      await query.refetch();
+    } catch (err: unknown) {
+      setStatusErrorById((prev) => ({
+        ...prev,
+        [id]: translateApiError(err, t, "שגיאה בעדכון הסטטוס"),
+      }));
+    }
   }
 
   async function loadScreenshot(id: string) {
     if (screenshotUrlById[id]) return;
-    const blob = await fetchBugReportScreenshot(id);
-    setScreenshotUrlById((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+    setScreenshotErrorById((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const blob = await fetchBugReportScreenshot(id);
+      setScreenshotUrlById((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+    } catch (err: unknown) {
+      setScreenshotErrorById((prev) => ({
+        ...prev,
+        [id]: translateApiError(err, t, "שגיאה בטעינת צילום המסך"),
+      }));
+    }
   }
 
   function toggleExpand(report: BugReportSummary) {
@@ -75,8 +97,16 @@ export function BugReportsContent() {
 
   async function loadJson(id: string) {
     if (jsonById[id]) return;
-    const data = await getBugReportJson(id);
-    setJsonById((prev) => ({ ...prev, [id]: JSON.stringify(data, null, 2) }));
+    setJsonErrorById((prev) => ({ ...prev, [id]: "" }));
+    try {
+      const data = await getBugReportJson(id);
+      setJsonById((prev) => ({ ...prev, [id]: JSON.stringify(data, null, 2) }));
+    } catch (err: unknown) {
+      setJsonErrorById((prev) => ({
+        ...prev,
+        [id]: translateApiError(err, t, "שגיאה בטעינת ה-JSON"),
+      }));
+    }
   }
 
   return (
@@ -106,6 +136,13 @@ export function BugReportsContent() {
         </select>
       </div>
 
+      {query.isLoading && (
+        <p className="text-sm text-gray-500 p-4" data-testid="bug-reports-loading">טוען...</p>
+      )}
+      {query.isError && (
+        <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error">שגיאה בטעינת הדיווחים</p>
+      )}
+      {!query.isLoading && !query.isError && (
       <table className="w-full text-sm">
         <thead>
           <tr className="text-right border-b dark:border-gray-700">
@@ -142,6 +179,11 @@ export function BugReportsContent() {
                     <option value="in_progress">{STATUS_LABELS.in_progress}</option>
                     <option value="resolved">{STATUS_LABELS.resolved}</option>
                   </select>
+                  {statusErrorById[report.id] && (
+                    <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
+                      {statusErrorById[report.id]}
+                    </p>
+                  )}
                 </td>
                 <td className="p-2 truncate max-w-xs">{report.description}</td>
               </tr>
@@ -149,6 +191,7 @@ export function BugReportsContent() {
                 <tr className="border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
                   <td colSpan={5} className="p-4">
                     <p className="mb-2"><strong>תיאור מלא:</strong> {report.description}</p>
+                    <p className="mb-2"><strong>מסלול:</strong> {report.route}</p>
                     {report.has_screenshot && screenshotUrlById[report.id] && (
                       <img
                         src={screenshotUrlById[report.id]}
@@ -156,6 +199,17 @@ export function BugReportsContent() {
                         className="max-w-md rounded border dark:border-gray-600 mb-2"
                       />
                     )}
+                    {screenshotErrorById[report.id] && (
+                      <p className="text-xs text-red-500 mb-2" data-testid={`bug-report-screenshot-error-${report.id}`}>
+                        {screenshotErrorById[report.id]}
+                      </p>
+                    )}
+                    <p className="mb-1"><strong>תמונת מצב משתמש:</strong></p>
+                    <ul className="list-disc pr-5 mb-2 text-xs">
+                      <li>דרגה: {(report.user_snapshot?.rank as string) ?? "—"}</li>
+                      <li>תפקיד: {(report.user_snapshot?.role as string) ?? "—"}</li>
+                      <li>מספר אישי: {(report.user_snapshot?.personal_number as string) ?? "—"}</li>
+                    </ul>
                     <p className="mb-1"><strong>מסלול ניווט:</strong></p>
                     <ul className="list-disc pr-5 mb-2 text-xs">
                       {(report.nav_history ?? []).map((h, i) => <li key={i}>{h.path} — {h.timestamp}</li>)}
@@ -173,6 +227,11 @@ export function BugReportsContent() {
                     >
                       הצג JSON
                     </button>
+                    {jsonErrorById[report.id] && (
+                      <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
+                        {jsonErrorById[report.id]}
+                      </p>
+                    )}
                     {jsonById[report.id] && (
                       <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2 overflow-x-auto">
                         {jsonById[report.id]}
@@ -185,6 +244,7 @@ export function BugReportsContent() {
           ))}
         </tbody>
       </table>
+      )}
 
       {pages > 1 && (
         <div className="flex justify-center gap-2 mt-4">
