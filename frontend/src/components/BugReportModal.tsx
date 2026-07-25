@@ -15,11 +15,10 @@ const SEVERITIES: { value: Severity; label: string }[] = [
 
 interface BugReportModalProps {
   screenshot: string | null;
-  capturing: boolean;
   onClose: () => void;
 }
 
-export default function BugReportModal({ screenshot, capturing, onClose }: BugReportModalProps) {
+export default function BugReportModal({ screenshot, onClose }: BugReportModalProps) {
   const { t } = useTranslation();
   const location = useLocation();
   const navHistory = useNavigationHistory();
@@ -70,9 +69,7 @@ export default function BugReportModal({ screenshot, capturing, onClose }: BugRe
         ) : (
           <>
             <div className="mb-3">
-              {capturing ? (
-                <p className="text-xs text-gray-500">מצלם צילום מסך...</p>
-              ) : screenshot ? (
+              {screenshot ? (
                 <img src={screenshot} alt="" className="w-full rounded border dark:border-gray-600" />
               ) : (
                 <p className="text-xs text-gray-500">לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו</p>
