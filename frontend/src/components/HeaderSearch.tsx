@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import Fuse from "fuse.js";
 import { useAuth } from "../auth/AuthContext";
@@ -22,8 +23,9 @@ type FlatResult =
   | { kind: "duty"; key: string; entry: SearchResponseDTO["duties"][number] }
   | { kind: "unit"; key: string; entry: SearchResponseDTO["units"][number] };
 
-export default function HeaderSearch() {
+export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) => void }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const settings = usePublicSettings();
   const gimelimEnabled = settings?.["gimalim.enabled"] !== false;
@@ -101,6 +103,26 @@ export default function HeaderSearch() {
     setSelectedIndex(-1);
   }
 
+  function handleSelect(r: FlatResult) {
+    switch (r.kind) {
+      case "page":
+      case "action":
+        navigate(r.entry.path);
+        break;
+      case "help":
+        openHelp(r.entry.id);
+        break;
+      case "soldier":
+        navigate("/team");
+        break;
+      case "duty":
+      case "unit":
+        navigate("/unit-calendar");
+        break;
+    }
+    closePanel();
+  }
+
   useEffect(() => {
     setSelectedIndex(-1);
   }, [trimmed]);
@@ -146,6 +168,10 @@ export default function HeaderSearch() {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const selected = flatResults[selectedIndex];
+      if (selected) handleSelect(selected);
     }
   }
 
@@ -197,6 +223,7 @@ export default function HeaderSearch() {
                               key={r.key}
                               role="option"
                               aria-selected={flatIndex === selectedIndex}
+                              onClick={() => handleSelect(r)}
                               className={`px-2 py-1 ${flatIndex === selectedIndex ? "bg-gray-100" : ""}`}
                             >
                               {labelFor(r)}

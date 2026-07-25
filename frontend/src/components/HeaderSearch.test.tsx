@@ -1,7 +1,18 @@
 import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, test, vi } from "vitest";
 import HeaderSearch from "./HeaderSearch";
 import { search, type SearchResponseDTO } from "../api/search";
+
+const mockOpenHelp = vi.fn();
+
+function renderHeaderSearch() {
+  return render(
+    <MemoryRouter>
+      <HeaderSearch openHelp={mockOpenHelp} />
+    </MemoryRouter>,
+  );
+}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -28,44 +39,44 @@ beforeEach(() => {
 
 describe("HeaderSearch", () => {
   test("panel is closed by default", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   test("clicking the trigger opens the panel and focuses the input", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     expect(screen.getByRole("combobox")).toHaveFocus();
   });
 
   test("Ctrl+K opens the panel from anywhere", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
   test("Escape closes the panel", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   test("empty query shows no results section", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     expect(screen.queryByText("search.no_results")).not.toBeInTheDocument();
   });
 
   test("typing filters the pages registry via fuzzy match", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
     expect(screen.getByText("search.pages.profile")).toBeInTheDocument();
   });
 
   test("role-gated registry entries are excluded for a plain soldier", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
     expect(screen.queryByText("search.pages.admin_settings")).not.toBeInTheDocument();
@@ -73,21 +84,21 @@ describe("HeaderSearch", () => {
 
   test("role-gated registry entries are included for an admin", () => {
     mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
     expect(screen.getByText("search.pages.admin_settings")).toBeInTheDocument();
   });
 
   test("typing a real Hebrew label matches via keywords, not just the i18n key", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     expect(screen.getByText("search.pages.profile")).toBeInTheDocument();
   });
 
   test("no-results message shown when nothing matches", () => {
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "zzz-no-such-thing-zzz" } });
     expect(screen.getByText("search.no_results")).toBeInTheDocument();
@@ -97,7 +108,7 @@ describe("HeaderSearch", () => {
     vi.useFakeTimers();
     const mockedSearch = vi.mocked(search);
     mockedSearch.mockClear();
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "yo" } });
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "yos" } });
@@ -111,7 +122,7 @@ describe("HeaderSearch", () => {
 
   test("ArrowDown moves the roving selection across groups", async () => {
     vi.mocked(search).mockResolvedValue({ soldiers: [], duties: [], units: [] });
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages" } });
     const options = await screen.findAllByRole("option");
@@ -144,7 +155,7 @@ describe("HeaderSearch", () => {
       return Promise.resolve({ soldiers: [], duties: [], units: [] });
     });
 
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "ab" } });
@@ -180,7 +191,7 @@ describe("HeaderSearch", () => {
 
   test("graceful degradation: backend failure keeps local groups working", async () => {
     vi.mocked(search).mockRejectedValue(new Error("network error"));
-    render(<HeaderSearch />);
+    renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
     vi.useFakeTimers();
