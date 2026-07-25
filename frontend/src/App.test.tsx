@@ -27,6 +27,12 @@ vi.mock("./hooks/usePublicSettings", () => ({
 
 beforeEach(() => {
   mockUsePublicSettings.mockReset();
+  vi.stubGlobal("matchMedia", vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  })));
 });
 
 describe("App - forced callup gating", () => {
