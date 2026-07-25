@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -53,6 +53,14 @@ class MeResponse(BaseModel):
 
 class SetEmailRequest(BaseModel):
     email: str | None = Field(default=None, max_length=200)
+
+
+class ThemePreferenceRequest(BaseModel):
+    theme_preference: Literal["light", "dark", "system"]
+
+
+class ThemePreferenceResponse(BaseModel):
+    theme_preference: str
 
 
 def _direct_commander(session: Session, s: Soldier) -> Soldier | None:
@@ -148,3 +156,14 @@ def set_email(
         ev_svc.request_verification(session, soldier=user)
     session.commit()
     return {"email_verified": user.email_verified}
+
+
+@router.patch("/theme-preference", response_model=ThemePreferenceResponse)
+def set_theme_preference(
+    body: ThemePreferenceRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> ThemePreferenceResponse:
+    user.theme_preference = body.theme_preference
+    session.commit()
+    return ThemePreferenceResponse(theme_preference=user.theme_preference)
