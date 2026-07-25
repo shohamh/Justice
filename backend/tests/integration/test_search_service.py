@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 
+from app.db.models import DutyAssignment, DutyLocation, DutyShift, DutyType
 from app.services.search import search_soldiers
 from tests.helpers import create_node, create_soldier
 
@@ -67,3 +70,57 @@ def test_search_soldiers_respects_limit(admin_session: Session):
     results = search_soldiers(admin_session, user=admin, query="7300", limit=3)
 
     assert len(results) == 3
+
+
+def _make_shift(session: Session, *, duty_type_name: str, start_date, end_date, soldier=None) -> DutyShift:
+    dt = DutyType(name=duty_type_name, score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="מוצב-search")
+    session.add_all([dt, loc])
+    session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id, start_date=start_date, end_date=end_date
+    )
+    session.add(shift)
+    session.flush()
+    if soldier is not None:
+        session.add(
+            DutyAssignment(
+                soldier_id=soldier.id, duty_type_id=dt.id, duty_location_id=loc.id,
+                start_date=start_date, end_date=end_date, duty_shift_id=shift.id,
+            )
+        )
+    session.commit()
+    return shift
+
+
+def test_search_duties_admin_matches_duty_type_name(admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="7300001", role="admin")
+    from datetime import date
+    shift = _make_shift(admin_session, duty_type_name="שמירה-search-unique", start_date=date(2026, 8, 1), end_date=date(2026, 8, 2))
+
+    from app.services.search import search_duties
+    results = search_duties(admin_session, user=admin, query="search-unique")
+
+    assert any(r["id"] == str(shift.id) for r in results)
+
+
+def test_search_duties_plain_soldier_only_sees_own_scope_shifts(admin_session: Session):
+    from datetime import date
+    from app.services.search import search_duties
+
+    dept = create_node(admin_session, level="department", name="duty-search-dept")
+    other_dept = create_node(admin_session, level="department", name="duty-search-dept-2")
+    plain = create_soldier(admin_session, personal_number="7300010", role="soldier", hierarchy_node_id=dept.id)
+    other = create_soldier(admin_session, personal_number="7300011", role="soldier", hierarchy_node_id=other_dept.id)
+    in_scope_shift = _make_shift(
+        admin_session, duty_type_name="שמירה-scope-a", start_date=date(2026, 8, 3), end_date=date(2026, 8, 4), soldier=plain,
+    )
+    out_of_scope_shift = _make_shift(
+        admin_session, duty_type_name="שמירה-scope-b", start_date=date(2026, 8, 5), end_date=date(2026, 8, 6), soldier=other,
+    )
+
+    results = search_duties(admin_session, user=plain, query="שמירה-scope")
+
+    ids = {r["id"] for r in results}
+    assert str(in_scope_shift.id) in ids
+    assert str(out_of_scope_shift.id) not in ids
