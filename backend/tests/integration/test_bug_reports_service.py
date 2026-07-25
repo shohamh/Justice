@@ -45,6 +45,31 @@ def test_write_bug_report_persists_row_and_json_mirror(admin_session: Session, t
     assert mirrored["user_snapshot"]["id"] == str(reporter.id)
 
 
+def test_write_bug_report_json_mirror_roundtrips_hebrew_and_emoji(admin_session: Session, tmp_path, monkeypatch):
+    # Regression test for a UnicodeEncodeError that used to escape _write_json_mirror's
+    # error handling on platforms whose default text encoding can't represent Hebrew or
+    # emoji (e.g. cp1255 on Windows). The write must succeed and the file must round-trip
+    # the exact text.
+    monkeypatch.setattr(svc, "LOG_DIR", tmp_path)
+    reporter = create_soldier(admin_session, personal_number="bugsvc004")
+    description = "התקלה קורית כשלוחצים על הכפתור \U0001f41e"  # Hebrew text + bug emoji
+
+    result = svc.write_bug_report(
+        admin_session,
+        reporter=reporter,
+        description=description,
+        severity="medium",
+        screenshot=None,
+        route="/duty",
+        nav_history=[],
+    )
+    admin_session.commit()
+
+    assert result.json_file_path is not None
+    mirrored = json.loads(Path(result.json_file_path).read_text(encoding="utf-8"))
+    assert mirrored["description"] == description
+
+
 def test_write_bug_report_includes_recent_audit_log_entries(admin_session: Session, tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "LOG_DIR", tmp_path)
     reporter = create_soldier(admin_session, personal_number="bugsvc002")

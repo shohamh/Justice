@@ -23,16 +23,16 @@ _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
 class NavHistoryEntry(BaseModel):
-    path: str
-    timestamp: str
+    path: str = Field(max_length=500)
+    timestamp: str = Field(max_length=64)
 
 
 class BugReportSubmitBody(BaseModel):
     description: str = Field(min_length=1, max_length=2000)
     severity: Literal["low", "medium", "high"]
-    screenshot: str | None = None
-    route: str
-    nav_history: list[NavHistoryEntry] = Field(default_factory=list)
+    screenshot: str | None = Field(default=None, max_length=7 * 1024 * 1024)
+    route: str = Field(max_length=500)
+    nav_history: list[NavHistoryEntry] = Field(default_factory=list, max_length=15)
 
 
 def _decode_screenshot(b64: str) -> bytes | None:
@@ -146,7 +146,7 @@ def get_bug_report_json(
     path = Path(report.json_file_path)
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_json_not_found")
-    return Response(content=path.read_text(), media_type="application/json")
+    return Response(content=path.read_text(encoding="utf-8"), media_type="application/json")
 
 
 @router.get("/admin/bug-reports/{report_id}/screenshot")

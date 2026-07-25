@@ -57,9 +57,12 @@ def _write_json_mirror(report_id: uuid.UUID, created_at: datetime, payload: dict
     try:
         json_dir.mkdir(parents=True, exist_ok=True)
         file_path = json_dir / f"{report_id}_{created_at.strftime('%Y%m%dT%H%M%S')}.json"
-        file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default))
+        file_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default),
+            encoding="utf-8",
+        )
         return str(file_path)
-    except OSError:
+    except (OSError, UnicodeError):
         logger.exception("bug_report_json_write_failed", extra={"report_id": str(report_id)})
         return None
 

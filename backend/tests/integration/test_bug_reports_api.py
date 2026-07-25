@@ -90,6 +90,38 @@ def test_submit_bug_report_drops_invalid_screenshot_data(client: TestClient, adm
     assert row.screenshot is None
 
 
+def test_submit_bug_report_rejects_oversized_screenshot(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number="bugapi006")
+    oversized_b64 = "A" * (7 * 1024 * 1024 + 1)
+    resp = client.post(
+        "/api/bug-reports",
+        json={"description": "x", "severity": "low", "route": "/", "screenshot": oversized_b64},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 422
+
+
+def test_submit_bug_report_rejects_oversized_route(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number="bugapi007")
+    resp = client.post(
+        "/api/bug-reports",
+        json={"description": "x", "severity": "low", "route": "/" + "a" * 501},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 422
+
+
+def test_submit_bug_report_rejects_too_many_nav_history_entries(client: TestClient, admin_session: Session):
+    soldier = create_soldier(admin_session, personal_number="bugapi008")
+    nav_history = [{"path": "/", "timestamp": "2026-07-25T10:00:00Z"} for _ in range(16)]
+    resp = client.post(
+        "/api/bug-reports",
+        json={"description": "x", "severity": "low", "route": "/", "nav_history": nav_history},
+        headers=auth_headers(soldier),
+    )
+    assert resp.status_code == 422
+
+
 def _submit(client: TestClient, reporter, **overrides):
     body = {"description": "x", "severity": "low", "route": "/"}
     body.update(overrides)
