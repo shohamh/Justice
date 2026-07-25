@@ -118,3 +118,22 @@ def search_duties(
         }
         for shift, duty_type, location in rows
     ]
+
+
+def search_units(
+    session: Session, *, user: Soldier, query: str, limit: int = 8
+) -> list[dict]:
+    q = query.strip()
+    if not q:
+        return []
+
+    stmt = select(HierarchyNode).where(HierarchyNode.name.ilike(f"%{q}%"))
+    rows = session.execute(stmt).scalars().all()
+
+    if user.role != "admin":
+        roots = scope_root_ids(session, user)
+        scoped_node_ids = _scoped_node_ids(session, roots)
+        rows = [n for n in rows if n.id in scoped_node_ids]
+
+    rows = rows[:limit]
+    return [{"id": str(n.id), "name": n.name, "level": n.level} for n in rows]

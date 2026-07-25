@@ -124,3 +124,28 @@ def test_search_duties_plain_soldier_only_sees_own_scope_shifts(admin_session: S
     ids = {r["id"] for r in results}
     assert str(in_scope_shift.id) in ids
     assert str(out_of_scope_shift.id) not in ids
+
+
+from app.services.search import search_units
+
+
+def test_search_units_admin_matches_any_node(admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="7400001", role="admin")
+    node = create_node(admin_session, level="department", name="unit-search-unique")
+
+    results = search_units(admin_session, user=admin, query="unit-search-unique")
+
+    assert any(r["id"] == str(node.id) for r in results)
+
+
+def test_search_units_plain_soldier_sees_only_own_subtree(admin_session: Session):
+    dept = create_node(admin_session, level="department", name="unit-scope-dept")
+    branch = create_node(admin_session, level="branch", name="unit-scope-branch", parent=dept)
+    other_dept = create_node(admin_session, level="department", name="unit-scope-other")
+    plain = create_soldier(admin_session, personal_number="7400010", role="soldier", hierarchy_node_id=branch.id)
+    admin_session.commit()
+
+    results = search_units(admin_session, user=plain, query="unit-scope")
+
+    ids = {r["id"] for r in results}
+    assert str(other_dept.id) not in ids
