@@ -85,3 +85,30 @@ export function getHelpTopicEntries(gimelimEnabled: boolean): HelpTopicEntry[] {
   }
   return topics;
 }
+
+export interface TabEntry {
+  id: string;
+  pageLabelKey: string;
+  labelKey: string;
+  keywords: string[];
+  path: string;
+  tabParam: string;
+  canAccess: (user: SearchUser | null) => boolean;
+}
+
+export function getTabEntries(): TabEntry[] {
+  return [
+    { id: "tab-admin-invite-codes", pageLabelKey: "search.pages.admin_settings", labelKey: "nav.admin_invite_codes", keywords: ["קודי הזמנה", "הזמנות", "הרשמה"], path: "/admin/settings", tabParam: "1", canAccess: isAdmin },
+    { id: "tab-admin-changelog", pageLabelKey: "search.pages.admin_settings", labelKey: "nav.admin_changelog", keywords: ["יומן שינויים", "עדכונים", "גרסאות"], path: "/admin/settings", tabParam: "2", canAccess: isAdmin },
+    { id: "tab-admin-bug-reports", pageLabelKey: "search.pages.admin_settings", labelKey: "nav.admin_bug_reports", keywords: ["דיווחי באגים", "באגים", "תקלות"], path: "/admin/settings", tabParam: "3", canAccess: isAdmin },
+    { id: "tab-approvals-exemptions", pageLabelKey: "search.pages.approvals", labelKey: "approvals.tab_exemptions", keywords: ["בקשות פטור", "פטורים"], path: "/approvals", tabParam: "exemptions", canAccess: canApprove },
+    { id: "tab-approvals-field-updates", pageLabelKey: "search.pages.approvals", labelKey: "soldier_profile.field_updates_tab", keywords: ["עדכוני פרופיל", "שינויי פרטים"], path: "/approvals", tabParam: "field_updates", canAccess: canApprove },
+    { id: "tab-approvals-swaps", pageLabelKey: "search.pages.approvals", labelKey: "swaps.title", keywords: ["בקשות החלפה", "אישור החלפות"], path: "/approvals", tabParam: "swaps", canAccess: canApprove },
+    { id: "tab-approvals-enrollment", pageLabelKey: "search.pages.approvals", labelKey: "enrollment.tab", keywords: ["הצטרפויות", "גיוס", "קליטה"], path: "/approvals", tabParam: "enrollment", canAccess: canApprove },
+    { id: "tab-approvals-transfers", pageLabelKey: "search.pages.approvals", labelKey: "approvals.tab_transfers", keywords: ["העברות", "מעבר יחידה"], path: "/approvals", tabParam: "transfers", canAccess: canApprove },
+    { id: "tab-swaps-board", pageLabelKey: "search.pages.swaps", labelKey: "swaps.tab_board", keywords: ["מרקטפלייס", "לוח החלפות"], path: "/swaps", tabParam: "board", canAccess: authenticated },
+    { id: "tab-swaps-incoming", pageLabelKey: "search.pages.swaps", labelKey: "swaps.tab_incoming", keywords: ["בקשות אליי", "בקשות נכנסות"], path: "/swaps", tabParam: "incoming", canAccess: authenticated },
+    { id: "tab-swaps-pending", pageLabelKey: "search.pages.swaps", labelKey: "swaps.tab_pending", keywords: ["ממתינים לאישור", "החלפות בהמתנה"], path: "/swaps", tabParam: "pending", canAccess: authenticated },
+    { id: "tab-transparency-sub-units", pageLabelKey: "search.pages.transparency", labelKey: "search.tabs.transparency_sub_units", keywords: ["תתי יחידות", "יחידות משנה"], path: "/transparency", tabParam: "sub_units", canAccess: authenticated },
+  ];
+}

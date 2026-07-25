@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getPageEntries, getQuickActionEntries, getHelpTopicEntries } from "./searchRegistry";
+import { getPageEntries, getQuickActionEntries, getHelpTopicEntries, getTabEntries } from "./searchRegistry";
 import type { SearchUser } from "./searchRegistry";
 
 const soldier: SearchUser = { role: "soldier", is_commander: false, is_duty_manager: false };
@@ -60,5 +60,43 @@ describe("searchRegistry help topics", () => {
   test("all non-gimelim topics are accessible to every authenticated user", () => {
     const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim");
     expect(entries.every((e) => e.canAccess(soldier))).toBe(true);
+  });
+});
+
+describe("searchRegistry tabs", () => {
+  test("returns exactly 12 tab entries", () => {
+    expect(getTabEntries().length).toBe(12);
+  });
+
+  test("admin settings tabs require admin role", () => {
+    const entries = getTabEntries();
+    const inviteCodes = entries.find((e) => e.id === "tab-admin-invite-codes")!;
+    expect(inviteCodes.canAccess(soldier)).toBe(false);
+    expect(inviteCodes.canAccess(admin)).toBe(true);
+  });
+
+  test("approvals tabs require approval capability", () => {
+    const entries = getTabEntries();
+    const exemptions = entries.find((e) => e.id === "tab-approvals-exemptions")!;
+    expect(exemptions.canAccess(soldier)).toBe(false);
+    expect(exemptions.canAccess(commander)).toBe(true);
+    expect(exemptions.canAccess(dutyManager)).toBe(true);
+  });
+
+  test("swaps and transparency tabs are accessible to any authenticated user", () => {
+    const entries = getTabEntries();
+    expect(entries.find((e) => e.id === "tab-swaps-board")!.canAccess(soldier)).toBe(true);
+    expect(entries.find((e) => e.id === "tab-transparency-sub-units")!.canAccess(soldier)).toBe(true);
+  });
+
+  test("no tab entry is accessible with a null user", () => {
+    expect(getTabEntries().every((e) => e.canAccess(null) === false)).toBe(true);
+  });
+
+  test("each tab entry within the same page has a distinct tabParam", () => {
+    const entries = getTabEntries();
+    const approvalsTabs = entries.filter((e) => e.path === "/approvals");
+    const params = approvalsTabs.map((e) => e.tabParam);
+    expect(new Set(params).size).toBe(params.length);
   });
 });
