@@ -48,12 +48,16 @@ describe("BugReportModal", () => {
     ));
   });
 
-  test("disables submit until a description is entered", () => {
+  test("disables submit until a description is entered", async () => {
     render(
       <MemoryRouter initialEntries={["/duty"]}>
         <BugReportModal onClose={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId("bug-report-submit")).toBeDisabled();
+
+    // Let the mocked toPng() promise resolve inside act() before the test ends,
+    // so the effect's setScreenshot/setCapturing updates aren't left dangling.
+    await waitFor(() => expect(screen.queryByText("מצלם צילום מסך...")).not.toBeInTheDocument());
   });
 });
