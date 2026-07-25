@@ -5,6 +5,7 @@ import HeaderSearch from "./HeaderSearch";
 import { search, type SearchResponseDTO } from "../api/search";
 
 const mockOpenHelp = vi.fn();
+const mockNavigate = vi.fn();
 
 function renderHeaderSearch() {
   return render(
@@ -17,6 +18,14 @@ function renderHeaderSearch() {
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 const mockUseAuth = vi.fn();
 vi.mock("../auth/AuthContext", () => ({
@@ -35,6 +44,8 @@ beforeEach(() => {
   mockUseAuth.mockReturnValue({
     user: { role: "soldier", is_commander: false, is_duty_manager: false },
   });
+  mockOpenHelp.mockClear();
+  mockNavigate.mockClear();
 });
 
 describe("HeaderSearch", () => {
@@ -199,5 +210,64 @@ describe("HeaderSearch", () => {
     vi.useRealTimers();
     expect(await screen.findByText("search.pages.profile")).toBeInTheDocument();
     expect(await screen.findByText("search.error")).toBeInTheDocument();
+  });
+
+  test("clicking a help-topic result calls openHelp with that topic's id", () => {
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "algorithm" } });
+    fireEvent.click(screen.getByText("search.help.algorithm"));
+    expect(mockOpenHelp).toHaveBeenCalledWith("algorithm");
+  });
+
+  test("pressing Enter on the selected result navigates the same as a click", () => {
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalledWith("/profile");
+  });
+
+  test("selecting a soldier result navigates to /team", async () => {
+    vi.mocked(search).mockResolvedValue({
+      soldiers: [{ id: "1", full_name: "Yossi Cohen" } as SearchResponseDTO["soldiers"][number]],
+      duties: [],
+      units: [],
+    });
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "yossi" } });
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    const soldierResult = await screen.findByText("Yossi Cohen");
+    fireEvent.click(soldierResult);
+    expect(mockNavigate).toHaveBeenCalledWith("/team");
+  });
+
+  test("selecting a duty result navigates to /unit-calendar", async () => {
+    vi.mocked(search).mockResolvedValue({
+      soldiers: [],
+      duties: [{ id: "1", duty_type_name: "Guard Duty" } as SearchResponseDTO["duties"][number]],
+      units: [],
+    });
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "guard" } });
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    const dutyResult = await screen.findByText("Guard Duty");
+    fireEvent.click(dutyResult);
+    expect(mockNavigate).toHaveBeenCalledWith("/unit-calendar");
+  });
+
+  test("selecting a result closes the panel", () => {
+    renderHeaderSearch();
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.click(screen.getByText("search.pages.profile"));
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });
