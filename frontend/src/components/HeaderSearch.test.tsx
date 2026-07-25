@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import HeaderSearch from "./HeaderSearch";
+import { search } from "../api/search";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -90,5 +91,46 @@ describe("HeaderSearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "zzz-no-such-thing-zzz" } });
     expect(screen.getByText("search.no_results")).toBeInTheDocument();
+  });
+
+  test("debounces the backend call by ~200ms", async () => {
+    vi.useFakeTimers();
+    const mockedSearch = vi.mocked(search);
+    mockedSearch.mockClear();
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "yo" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "yos" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "yossi" } });
+    expect(mockedSearch).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(mockedSearch).toHaveBeenCalledTimes(1);
+    expect(mockedSearch).toHaveBeenCalledWith("yossi");
+    vi.useRealTimers();
+  });
+
+  test("ArrowDown moves the roving selection across groups", async () => {
+    vi.mocked(search).mockResolvedValue({ soldiers: [], duties: [], units: [] });
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages" } });
+    const options = await screen.findAllByRole("option");
+    expect(options.length).toBeGreaterThan(1);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect(options[0]).toHaveClass("bg-gray-100");
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    expect(options[1]).toHaveClass("bg-gray-100");
+  });
+
+  test("graceful degradation: backend failure keeps local groups working", async () => {
+    vi.mocked(search).mockRejectedValue(new Error("network error"));
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    expect(await screen.findByText("search.pages.profile")).toBeInTheDocument();
+    expect(await screen.findByText("search.error")).toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import Fuse from "fuse.js";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { search, type SearchResponseDTO } from "../api/search";
 import {
   getPageEntries,
   getQuickActionEntries,
@@ -13,6 +14,14 @@ import {
   type HelpTopicEntry,
 } from "../searchRegistry";
 
+type FlatResult =
+  | { kind: "page"; key: string; entry: PageEntry }
+  | { kind: "action"; key: string; entry: QuickActionEntry }
+  | { kind: "help"; key: string; entry: HelpTopicEntry }
+  | { kind: "soldier"; key: string; entry: SearchResponseDTO["soldiers"][number] }
+  | { kind: "duty"; key: string; entry: SearchResponseDTO["duties"][number] }
+  | { kind: "unit"; key: string; entry: SearchResponseDTO["units"][number] };
+
 export default function HeaderSearch() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -20,40 +29,62 @@ export default function HeaderSearch() {
   const gimelimEnabled = settings?.["gimalim.enabled"] !== false;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [backendResults, setBackendResults] = useState<SearchResponseDTO>({ soldiers: [], duties: [], units: [] });
+  const [backendError, setBackendError] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const accessiblePages = useMemo(
-    () => getPageEntries().filter((e) => e.canAccess(user)),
-    [user],
-  );
-  const accessibleActions = useMemo(
-    () => getQuickActionEntries().filter((e) => e.canAccess(user)),
-    [user],
-  );
+  const accessiblePages = useMemo(() => getPageEntries().filter((e) => e.canAccess(user)), [user]);
+  const accessibleActions = useMemo(() => getQuickActionEntries().filter((e) => e.canAccess(user)), [user]);
   const accessibleHelp = useMemo(
     () => getHelpTopicEntries(gimelimEnabled).filter((e) => e.canAccess(user)),
     [user, gimelimEnabled],
   );
 
-  const pageFuse = useMemo(
-    () => new Fuse(accessiblePages, { keys: ["labelKey", "keywords"], threshold: 0.4 }),
-    [accessiblePages],
-  );
-  const actionFuse = useMemo(
-    () => new Fuse(accessibleActions, { keys: ["labelKey", "keywords"], threshold: 0.4 }),
-    [accessibleActions],
-  );
-  const helpFuse = useMemo(
-    () => new Fuse(accessibleHelp, { keys: ["labelKey", "keywords"], threshold: 0.4 }),
-    [accessibleHelp],
-  );
+  const pageFuse = useMemo(() => new Fuse(accessiblePages, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessiblePages]);
+  const actionFuse = useMemo(() => new Fuse(accessibleActions, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessibleActions]);
+  const helpFuse = useMemo(() => new Fuse(accessibleHelp, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessibleHelp]);
 
   const trimmed = query.trim();
-  const pageResults: PageEntry[] = trimmed ? pageFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
-  const actionResults: QuickActionEntry[] = trimmed ? actionFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
-  const helpResults: HelpTopicEntry[] = trimmed ? helpFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
+  const pageResults = trimmed ? pageFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
+  const actionResults = trimmed ? actionFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
+  const helpResults = trimmed ? helpFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
 
-  const hasAnyResults = pageResults.length > 0 || actionResults.length > 0 || helpResults.length > 0;
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!trimmed) {
+      setBackendResults({ soldiers: [], duties: [], units: [] });
+      setBackendError(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      search(trimmed)
+        .then((res) => {
+          setBackendResults(res);
+          setBackendError(false);
+        })
+        .catch(() => {
+          setBackendResults({ soldiers: [], duties: [], units: [] });
+          setBackendError(true);
+        });
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmed]);
+
+  const flatResults: FlatResult[] = [
+    ...pageResults.map((entry) => ({ kind: "page" as const, key: `page-${entry.id}`, entry })),
+    ...actionResults.map((entry) => ({ kind: "action" as const, key: `action-${entry.id}`, entry })),
+    ...helpResults.map((entry) => ({ kind: "help" as const, key: `help-${entry.id}`, entry })),
+    ...backendResults.soldiers.map((entry) => ({ kind: "soldier" as const, key: `soldier-${entry.id}`, entry })),
+    ...backendResults.duties.map((entry) => ({ kind: "duty" as const, key: `duty-${entry.id}`, entry })),
+    ...backendResults.units.map((entry) => ({ kind: "unit" as const, key: `unit-${entry.id}`, entry })),
+  ];
+
+  const hasAnyResults = flatResults.length > 0;
 
   function openPanel() {
     setOpen(true);
@@ -62,12 +93,15 @@ export default function HeaderSearch() {
   function closePanel() {
     setOpen(false);
     setQuery("");
+    setSelectedIndex(-1);
   }
 
   useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-    }
+    setSelectedIndex(-1);
+  }, [trimmed]);
+
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
@@ -81,13 +115,47 @@ export default function HeaderSearch() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  function labelFor(r: FlatResult): string {
+    switch (r.kind) {
+      case "page":
+        return t(r.entry.labelKey);
+      case "action":
+        return t(r.entry.labelKey);
+      case "help":
+        return t(r.entry.labelKey);
+      case "soldier":
+        return r.entry.full_name;
+      case "duty":
+        return r.entry.duty_type_name;
+      case "unit":
+        return r.entry.name;
+    }
+  }
+
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      closePanel();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.min(i + 1, flatResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, -1));
+    }
+  }
+
+  const groups: { titleKey: string; icon: string; items: FlatResult[] }[] = [
+    { titleKey: "search.categories.page", icon: "📄", items: flatResults.filter((r) => r.kind === "page") },
+    { titleKey: "search.categories.action", icon: "⚡", items: flatResults.filter((r) => r.kind === "action") },
+    { titleKey: "search.categories.help", icon: "❓", items: flatResults.filter((r) => r.kind === "help") },
+    { titleKey: "search.categories.soldier", icon: "👤", items: flatResults.filter((r) => r.kind === "soldier") },
+    { titleKey: "search.categories.duty", icon: "📅", items: flatResults.filter((r) => r.kind === "duty") },
+    { titleKey: "search.categories.unit", icon: "🏛️", items: flatResults.filter((r) => r.kind === "unit") },
+  ];
+
   return (
     <>
-      <button
-        onClick={openPanel}
-        aria-label={t("search.placeholder")}
-        className="text-gray-500 hover:text-indigo-600"
-      >
+      <button onClick={openPanel} aria-label={t("search.placeholder")} className="text-gray-500 hover:text-indigo-600">
         <Search size={22} />
       </button>
       {open && (
@@ -104,44 +172,36 @@ export default function HeaderSearch() {
               placeholder={t("search.placeholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") closePanel();
-              }}
+              onKeyDown={handleInputKeyDown}
               className="w-full border rounded px-3 py-2 bg-transparent dark:text-gray-100"
             />
             {trimmed !== "" && (
               <div className="mt-2 max-h-96 overflow-y-auto">
-                {pageResults.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-400 px-1">{t("search.categories.page")}</div>
-                    {pageResults.map((r) => (
-                      <div key={r.id} role="option" className="px-2 py-1">
-                        {t(r.labelKey)}
-                      </div>
-                    ))}
-                  </div>
+                {backendError && (
+                  <div className="text-sm text-red-500 px-1 py-1">{t("search.error")}</div>
                 )}
-                {actionResults.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-400 px-1">{t("search.categories.action")}</div>
-                    {actionResults.map((r) => (
-                      <div key={r.id} role="option" className="px-2 py-1">
-                        {t(r.labelKey)}
+                {groups.map(
+                  (g) =>
+                    g.items.length > 0 && (
+                      <div key={g.titleKey}>
+                        <div className="text-xs text-gray-400 px-1">{g.icon} {t(g.titleKey)}</div>
+                        {g.items.map((r) => {
+                          const flatIndex = flatResults.indexOf(r);
+                          return (
+                            <div
+                              key={r.key}
+                              role="option"
+                              aria-selected={flatIndex === selectedIndex}
+                              className={`px-2 py-1 ${flatIndex === selectedIndex ? "bg-gray-100" : ""}`}
+                            >
+                              {labelFor(r)}
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
+                    ),
                 )}
-                {helpResults.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-400 px-1">{t("search.categories.help")}</div>
-                    {helpResults.map((r) => (
-                      <div key={r.id} role="option" className="px-2 py-1">
-                        {t(r.labelKey)}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!hasAnyResults && (
+                {!hasAnyResults && !backendError && (
                   <div className="text-sm text-gray-500 px-1">{t("search.no_results")}</div>
                 )}
               </div>
