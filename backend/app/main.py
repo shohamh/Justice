@@ -50,6 +50,7 @@ from app.routes import import_sessions as import_sessions_routes
 from app.routes import gimelim as gimelim_routes
 from app.routes import public_settings as public_settings_routes
 from app.routes import potential as potential_routes
+from app.routes import search as search_routes
 from app.settings import get_settings
 
 # Importing v1_standard registers it in the import-parser registry as a
@@ -179,6 +180,7 @@ def create_app() -> FastAPI:
     app.include_router(gimelim_routes.router, prefix="/api")
     app.include_router(public_settings_routes.router, prefix="/api")
     app.include_router(potential_routes.router, prefix="/api")
+    app.include_router(search_routes.router, prefix="/api")
     return app
 
 
