@@ -136,6 +136,26 @@ describe("TransparencyPage exemptions column", () => {
   });
 });
 
+describe("TransparencyPage cumulative score column", () => {
+  it("rounds the cumulative score to 3 decimal places", async () => {
+    const out: TransparencyOut = {
+      rows: [makeRow({ cumulative_score: "9.029999999999999" })],
+      can_see_exemption_aggregates: true,
+    };
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByText("חייל בדיקה")).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText("9.030").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("9.029999999999999")).not.toBeInTheDocument();
+    expect(screen.queryByText((text) => text.includes("9.0299"))).not.toBeInTheDocument();
+  });
+});
+
 describe("TransparencyPage sub-units exemption aggregates", () => {
   it("redacts the three aggregate columns as חסוי when can_see_exemption_aggregates is false", async () => {
     const row = makeRow({ node_id: "node-1", node_name: "יחידה 1" });

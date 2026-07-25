@@ -580,7 +580,11 @@ export default function TransparencyPage() {
       cell: (r) => r.shift_count,
       sortValue: (r) => r.shift_count,
     },
-    { id: "cumulative", header: t("transparency.cumulative"), cell: (r) => r.cumulative_score, sortValue: (r) => Number(r.cumulative_score) },
+    {
+      id: "cumulative", header: t("transparency.cumulative"),
+      cell: (r) => { const n = Number(r.cumulative_score); return isNaN(n) ? r.cumulative_score : n.toFixed(3); },
+      sortValue: (r) => Number(r.cumulative_score),
+    },
     {
       id: "score_per_day", header: t("transparency.score_per_day"),
       headerTooltip: (

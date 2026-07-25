@@ -149,9 +149,21 @@ export default function ExportPage() {
     { id: "active_days", header: "ימים פעילים", cell: (r) => r.active_days, sortValue: (r) => r.active_days },
     { id: "rank", header: "דרגה", cell: (r) => r.rank ?? "—", sortValue: (r) => r.rank ?? "" },
     { id: "shift_count", header: "כמות משמרות", cell: (r) => r.shift_count, sortValue: (r) => r.shift_count },
-    { id: "cumulative", header: "ניקוד מצטבר", cell: (r) => r.cumulative_score, sortValue: (r) => Number(r.cumulative_score) },
-    { id: "score_per_day", header: "ניקוד ליום", cell: (r) => r.score_per_day, sortValue: (r) => Number(r.score_per_day) },
-    { id: "normalised", header: "ניקוד מנורמל", cell: (r) => r.normalised_score, sortValue: (r) => Number(r.normalised_score) },
+    {
+      id: "cumulative", header: "ניקוד מצטבר",
+      cell: (r) => { const n = Number(r.cumulative_score); return isNaN(n) ? r.cumulative_score : n.toFixed(3); },
+      sortValue: (r) => Number(r.cumulative_score),
+    },
+    {
+      id: "score_per_day", header: "ניקוד ליום",
+      cell: (r) => { const n = Number(r.score_per_day); return isNaN(n) ? r.score_per_day : n.toFixed(3); },
+      sortValue: (r) => Number(r.score_per_day),
+    },
+    {
+      id: "normalised", header: "ניקוד מנורמל",
+      cell: (r) => { const n = Number(r.normalised_score); return isNaN(n) ? r.normalised_score : n.toFixed(3); },
+      sortValue: (r) => Number(r.normalised_score),
+    },
   ];
 
   const subCols: ColDef<SubRow>[] = [
