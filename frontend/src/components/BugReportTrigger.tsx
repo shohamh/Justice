@@ -15,14 +15,17 @@ export default function BugReportTrigger() {
     try {
       // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio, which is
       // often the single biggest driver of an oversized PNG on retina/high-DPI
-      // displays. Capture happens BEFORE the modal opens/mounts, so the modal's own
+      // displays. width clamps the PNG to viewport width. Omitting height allows
+      // the full document height to be captured regardless of scroll offset —
+      // including height clamped to window.innerHeight caused screenshots on
+      // scrolled pages to show only the header region instead of the visible content.
+      // Capture happens BEFORE the modal opens/mounts, so the modal's own
       // dimming overlay and empty form are never present in document.body while
       // toPng reads it — otherwise the screenshot would show the modal itself
       // instead of the page the user is reporting a bug about.
       const dataUrl = await toPng(document.body, {
         pixelRatio: 1,
         width: window.innerWidth,
-        height: window.innerHeight,
       });
       setScreenshot(dataUrl);
     } catch {
