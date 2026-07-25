@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
 import { toPng } from "html-to-image";
@@ -56,5 +56,54 @@ describe("BugReportTrigger", () => {
       expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull(),
     );
     expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
+  });
+
+  test("shows a spinner on the trigger while capturing, and disables it", async () => {
+    let releaseCapture: (url: string) => void = () => {};
+    vi.mocked(toPng).mockReturnValueOnce(
+      new Promise((resolve) => { releaseCapture = resolve; }),
+    );
+
+    render(
+      <MemoryRouter>
+        <BugReportTrigger />
+      </MemoryRouter>,
+    );
+
+    const trigger = screen.getByTestId("bug-report-trigger");
+    fireEvent.click(trigger);
+
+    expect(trigger).toBeDisabled();
+    expect(screen.getByTestId("bug-report-trigger-spinner")).toBeInTheDocument();
+
+    releaseCapture("data:image/png;base64,AAA");
+
+    await waitFor(() => expect(trigger).not.toBeDisabled());
+    expect(screen.queryByTestId("bug-report-trigger-spinner")).not.toBeInTheDocument();
+  });
+
+  test("gives up and opens the modal without a screenshot if capture hangs past the timeout", async () => {
+    vi.useFakeTimers();
+    // A promise that never settles on its own — simulates toPng() hanging
+    // (e.g. inlining large fonts/images on a content-heavy page) instead of
+    // rejecting, which a plain try/catch around toPng() would never recover from.
+    vi.mocked(toPng).mockReturnValueOnce(new Promise(() => {}));
+
+    render(
+      <MemoryRouter>
+        <BugReportTrigger />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+    expect(screen.getByTestId("bug-report-trigger")).toBeDisabled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+
+    expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).not.toBeNull();
+    expect(screen.getByText("לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-trigger")).not.toBeDisabled();
+
+    vi.useRealTimers();
   });
 });
