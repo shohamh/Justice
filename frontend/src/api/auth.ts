@@ -18,6 +18,7 @@ export interface Me {
   telegram_linked: boolean;
   telegram_required: boolean;
   enrollment_pending: boolean;
+  theme_preference: "light" | "dark" | "system";
   phone?: string | null;
   gender?: string | null;
   is_officer?: boolean | null;
