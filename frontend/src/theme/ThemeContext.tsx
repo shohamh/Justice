@@ -36,9 +36,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, next);
     applyThemeClass(next);
     if (sync) {
-      updateThemePreference(next).catch(() => {
+      updateThemePreference(next).catch((err) => {
         // Optimistic: choice already persisted locally for this device;
         // a failed sync just means it isn't saved to the profile yet.
+        console.warn("Failed to sync theme preference to profile:", err);
       });
     }
   }, []);
