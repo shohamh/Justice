@@ -11,7 +11,7 @@ function Probe() {
 
 function NavCapture({ navigateRef }: { navigateRef: { current: ((path: string) => void) | null } }) {
   const navigate = useNavigate();
-  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate, navigateRef]);
   return <Probe />;
 }
 
