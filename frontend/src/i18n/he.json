@@ -1200,5 +1200,50 @@
       "token_expired": "קישור האימות פג תוקף, יש לבקש קישור חדש",
       "email_taken": "כתובת האימייל כבר מאומתת עבור חייל אחר"
     }
+  },
+  "search": {
+    "placeholder": "חיפוש...",
+    "no_results": "לא נמצאו תוצאות",
+    "error": "שגיאה בטעינת תוצאות",
+    "categories": {
+      "page": "עמוד",
+      "soldier": "חייל",
+      "duty": "תורנויות",
+      "unit": "יחידה",
+      "action": "פעולה מהירה",
+      "help": "עזרה"
+    },
+    "pages": {
+      "home": "ראשי",
+      "team": "אנשי צוות והיררכיה",
+      "transparency": "שקיפות",
+      "my_duties": "התורנויות שלי",
+      "my_requests": "הבקשות שלי",
+      "approvals": "אישורים",
+      "unit_calendar": "לוח שנה יחידתי",
+      "swaps": "החלפות",
+      "profile": "פרופיל",
+      "command_dashboard": "דשבורד מפקד",
+      "notifications": "התראות",
+      "planning_shifts": "ניהול משמרות",
+      "planning_config": "הגדרות תכנון",
+      "planning_score_adjustments": "התאמות ניקוד",
+      "planning_export": "ייצוא",
+      "planning_potential": "פוטנציאל",
+      "admin_settings": "הגדרות מערכת",
+      "import": "ייבוא"
+    },
+    "actions": {
+      "approvals": "עבור לאישורים",
+      "new_shift": "יצירת משמרת חדשה",
+      "import_upload": "העלאת קובץ ייבוא"
+    },
+    "help": {
+      "swaps": "🔄 החלפות",
+      "algorithm": "⚙️ האלגוריתם",
+      "fairness": "⚖️ הוגנות ושקיפות",
+      "deep": "🔬 מאחורי הקלעים",
+      "gimelim": "🏥 גימלים"
+    }
   }
 }

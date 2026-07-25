@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
+import HeaderSearch from "./HeaderSearch";
 import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
@@ -52,6 +53,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
           <JusticeLogo size="sm" />
           {/* Right side: help + notification bell + logout */}
           <div className="flex items-center gap-4">
+            <HeaderSearch openHelp={openHelp} />
             <button
               onClick={() => openHelp()}
               aria-label="עזרה"
