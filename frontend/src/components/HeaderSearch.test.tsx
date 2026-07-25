@@ -55,4 +55,33 @@ describe("HeaderSearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
     expect(screen.queryByText("search.no_results")).not.toBeInTheDocument();
   });
+
+  test("typing filters the pages registry via fuzzy match", () => {
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    expect(screen.getByText("search.pages.profile")).toBeInTheDocument();
+  });
+
+  test("role-gated registry entries are excluded for a plain soldier", () => {
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
+    expect(screen.queryByText("search.pages.admin_settings")).not.toBeInTheDocument();
+  });
+
+  test("role-gated registry entries are included for an admin", () => {
+    mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
+    expect(screen.getByText("search.pages.admin_settings")).toBeInTheDocument();
+  });
+
+  test("no-results message shown when nothing matches", () => {
+    render(<HeaderSearch />);
+    fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "zzz-no-such-thing-zzz" } });
+    expect(screen.getByText("search.no_results")).toBeInTheDocument();
+  });
 });
