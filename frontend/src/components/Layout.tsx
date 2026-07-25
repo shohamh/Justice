@@ -67,9 +67,9 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
             </button>
           </div>
           {/* Center: app logo */}
-          <div className="min-w-0 shrink overflow-hidden">
+          <Link to="/" aria-label={t("nav.home")} className="min-w-0 shrink overflow-hidden">
             <JusticeLogo size="sm" />
-          </div>
+          </Link>
           {/* Right side (DOM order): search + help + notification bell + logout.
               This renders on the screen's visual LEFT edge, since the app is RTL. */}
           <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">

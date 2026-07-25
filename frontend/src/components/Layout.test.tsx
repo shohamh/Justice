@@ -41,3 +41,17 @@ describe("Layout theme toggle", () => {
     expect(mockCycleTheme).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Layout logo", () => {
+  it("links the header logo to the homepage", async () => {
+    const { default: Layout } = await import("./Layout");
+    render(
+      <MemoryRouter>
+        <Layout>children</Layout>
+      </MemoryRouter>,
+    );
+
+    const logoLink = document.querySelector('a[href="/"]');
+    expect(logoLink).not.toBeNull();
+  });
+});
