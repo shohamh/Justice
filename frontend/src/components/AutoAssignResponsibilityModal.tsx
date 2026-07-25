@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DutyShift, ResponsibilityAssignment, getAutoAssignResponsibilityPreview, updateShift } from "../api/shifts";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   selectedShifts: DutyShift[];
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function AutoAssignResponsibilityModal({ selectedShifts, onApplied, onClose, dtName, locName }: Props) {
+  useModalBackClose(onClose);
   const [assignments, setAssignments] = useState<ResponsibilityAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
@@ -1009,6 +1010,7 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
 }
 
 export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
+  useModalBackClose(onClose);
   const [activeTab, setActiveTab] = useState(initialTab ?? "swaps");
   const TABS = buildTabs(gimelimEnabled);
 

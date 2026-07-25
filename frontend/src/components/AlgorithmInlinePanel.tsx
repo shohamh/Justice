@@ -4,6 +4,7 @@ import { SolverSettings, submitJob, getAlgorithmDefaults } from "../api/algorith
 import SubHierarchySelector from "./SubHierarchySelector";
 import AlgorithmModeHelpModal from "./AlgorithmModeHelpModal";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   selectedShiftIds: string[];
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS: SolverSettings = {
 };
 
 export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [mode, setMode] = useState<"draft" | "direct_publish">("draft");
   const [showModeHelp, setShowModeHelp] = useState(false);

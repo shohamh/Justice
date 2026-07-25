@@ -6,6 +6,7 @@ import Fuse from "fuse.js";
 import { useAuth } from "../auth/AuthContext";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { search, type SearchResponseDTO } from "../api/search";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   getPageEntries,
   getQuickActionEntries,
@@ -102,6 +103,8 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
     setQuery("");
     setSelectedIndex(-1);
   }
+
+  useModalBackClose(closePanel, open);
 
   function handleSelect(r: FlatResult) {
     switch (r.kind) {
@@ -200,12 +203,12 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
   return (
     <>
       <button onClick={openPanel} aria-label={t("search.placeholder")} className="text-gray-500 hover:text-indigo-600">
-        <Search size={22} />
+        <Search size={20} />
       </button>
       {open && (
         <div className="fixed inset-0 z-50 bg-black/30" onClick={closePanel}>
           <div
-            className="bg-white dark:bg-gray-800 mx-auto mt-16 max-w-xl rounded-lg shadow-lg p-4"
+            className="bg-white dark:bg-gray-800 mx-3 sm:mx-auto mt-16 max-w-xl rounded-lg shadow-lg p-4"
             onClick={(e) => e.stopPropagation()}
           >
             <input

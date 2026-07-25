@@ -6,6 +6,7 @@ import { createSwap, takeDutyFree, listMySwaps, SwapRequest, EligibilityResult, 
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   targetSoldierId: string;
@@ -38,6 +39,7 @@ export default function OfferSwapModal({
   onClose,
   onDone,
 }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
   const [mode, setMode] = useState<"swap" | "free">("swap");

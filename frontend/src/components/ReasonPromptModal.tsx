@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   title: string;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ReasonPromptModal({ title, description, confirmLabel, onConfirm, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);

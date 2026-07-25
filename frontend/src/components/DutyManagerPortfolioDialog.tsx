@@ -4,6 +4,7 @@ import { NodeDTO } from "../api/hierarchy";
 import { assignDmScope, DmScopeEntry, listDmScope, removeDmScope } from "../api/dmScope";
 import Combobox from "./Combobox";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   soldierId: string;
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function DutyManagerPortfolioDialog({ soldierId, soldierName, nodes, onClose, onChanged }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [entries, setEntries] = useState<DmScopeEntry[]>([]);
   const [addNodeId, setAddNodeId] = useState("");

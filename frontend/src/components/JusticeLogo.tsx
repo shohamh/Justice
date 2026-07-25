@@ -23,7 +23,7 @@ export default function JusticeLogo({ size = "md" }: Props) {
   const { svgSize, textClass, badgeClass } = SIZE_MAP[size];
 
   return (
-    <div className="flex items-start gap-3" data-testid="justice-logo">
+    <div className="flex items-start gap-1.5 sm:gap-3" data-testid="justice-logo">
       <svg
         width={svgSize}
         height={svgSize}

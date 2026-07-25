@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SwapRequest, submitCoverOffer, checkCoverEligibility, CoverEligibilityResult } from "../api/swaps";
 import { EffectiveDuty } from "../api/assignments";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   swap: SwapRequest;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function CoverOfferModal({ swap, myDuties, dutyTypes, onClose, onDone }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [mode, setMode] = useState<"free" | "trade">("free");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

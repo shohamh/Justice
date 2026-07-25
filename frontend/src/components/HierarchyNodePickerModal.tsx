@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { NodeDTO, fetchFullTree } from "../api/hierarchy";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
@@ -24,6 +25,7 @@ function flatten(nodes: NodeDTO[]): FlatNode[] {
 }
 
 export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
+  useModalBackClose(onClose);
   const [nodes, setNodes] = useState<FlatNode[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);

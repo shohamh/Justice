@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   createExemptionType, ExemptionType, DutyType, DutyLocation,
   listDutyTypes, listLocations, setExemptionDutyTypes, setExemptionDutyLocations,
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function ExemptionTypeFormModal({ onSaved, onClose }: Props) {
+  useModalBackClose(onClose);
   const [name, setName] = useState("");
   const [isGlobal, setIsGlobal] = useState(false);
   const [isMedical, setIsMedical] = useState(false);

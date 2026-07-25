@@ -12,6 +12,7 @@ import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);

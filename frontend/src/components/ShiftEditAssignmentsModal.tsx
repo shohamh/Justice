@@ -6,6 +6,7 @@ import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   shift: DutyShift;
@@ -28,6 +29,7 @@ function hierarchyDistance(pathA: string[], pathB: string[]): number {
 type ReserveCandidate = ShiftCandidate & { dist: number; coveringNames: string[]; coveringPrimarySoldierId: string | null };
 
 export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [shiftDetail, setShiftDetail] = useState<CalendarShift | null>(null);
   const [candidates, setCandidates] = useState<ShiftCandidate[]>([]);

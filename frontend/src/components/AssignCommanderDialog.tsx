@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, updateNode } from "../api/hierarchy";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   node: NodeDTO;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function AssignCommanderDialog({ node, onClose, onAssigned }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [selectedId, setSelectedId] = useState(node.commander_id ?? "");

@@ -4,6 +4,7 @@ import { createNode } from "../api/hierarchy";
 import { useLevelTypes } from "../hooks/useLevelTypes";
 import Combobox, { type ComboboxItem } from "./Combobox";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface ParentNode {
   id: string;
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function AddRootNodeDialog({ onClose, onCreated, initialName = "", parentItems, parentNodes }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState(initialName);
   const { levelTypes } = useLevelTypes();

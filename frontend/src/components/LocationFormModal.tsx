@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyLocation, createLocation } from "../api/dutyConfig";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onCreated: (loc: DutyLocation) => void;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function LocationFormModal({ onCreated, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);

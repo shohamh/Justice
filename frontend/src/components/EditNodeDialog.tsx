@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   DndContext,
   DragEndEvent,
@@ -82,6 +83,7 @@ export default function EditNodeDialog({
   onClose,
   onRenamed,
 }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState(currentName);
   const [level, setLevel] = useState(currentLevel);

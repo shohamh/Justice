@@ -1,5 +1,6 @@
 import DutyTypeRequirementsEditor from "./DutyTypeRequirementsEditor";
 import SubHierarchySelector from "./SubHierarchySelector";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface DutyTypeMultiSelect {
   label: string;
@@ -31,6 +32,7 @@ export default function ImportRowFieldsModal({
   requirements,
   dutyTypeMultiSelect,
 }: Props) {
+  useModalBackClose(onClose);
   function toggleDutyType(id: string) {
     if (!dutyTypeMultiSelect) return;
     const { value, onChange } = dutyTypeMultiSelect;

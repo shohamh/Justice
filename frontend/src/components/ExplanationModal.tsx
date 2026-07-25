@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   CandidateInfo,
   DmExplanation,
@@ -41,6 +42,7 @@ function isEnriched(e: SoldierExplanation): e is EnrichedSoldierExplanation {
 }
 
 export default function ExplanationModal({ jobId, assignmentId, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [data, setData] = useState<SoldierExplanation | DmExplanation | null>(null);
   const [loading, setLoading] = useState(true);

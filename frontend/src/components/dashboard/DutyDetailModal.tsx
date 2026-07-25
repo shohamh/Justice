@@ -6,6 +6,7 @@ import { formatDutyRange } from "../../utils/formatDate";
 import { useAuth } from "../../auth/AuthContext";
 import { useSoldierModal } from "../../contexts/SoldierModalContext";
 import ShiftDetailPanel from "../ShiftDetailPanel";
+import { useModalBackClose } from "../../hooks/useModalBackClose";
 
 interface Props {
   duty: EffectiveDuty | null;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function DutyDetailModal({ duty, typeNames, locationNames, onClose, onRequestSwap }: Props) {
+  useModalBackClose(onClose);
   const { user } = useAuth();
   const { openSoldierModal } = useSoldierModal();
   const [shift, setShift] = useState<CalendarShift | null>(null);

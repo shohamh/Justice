@@ -4,6 +4,7 @@ import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { SoldierDTO } from "../api/soldiers";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import Combobox from "./Combobox";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   soldier: SoldierDTO;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function SoldierEditModal({ soldier, onSave, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [fullName, setFullName] = useState(soldier.full_name);
   const [phone, setPhone] = useState(soldier.phone ?? "");

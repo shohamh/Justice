@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 export type BadgeColor = "red" | "blue" | "yellow" | "green";
 
@@ -25,6 +26,7 @@ interface NavSheetProps {
 }
 
 export default function NavSheet({ open, onClose, items, testId }: NavSheetProps) {
+  useModalBackClose(onClose, open);
   if (!open) return null;
 
   return (

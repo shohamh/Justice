@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DutyShift, updateShift } from "../api/shifts";
 import SubHierarchySelector from "./SubHierarchySelector";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   selectedShifts: DutyShift[];
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function SetResponsibleUnitsModal({ selectedShifts, onApplied, onClose }: Props) {
+  useModalBackClose(onClose);
   const [nodeIds, setNodeIds] = useState<string[]>([]);
   const [stage, setStage] = useState<"pick" | "preview">("pick");
   const [applying, setApplying] = useState(false);

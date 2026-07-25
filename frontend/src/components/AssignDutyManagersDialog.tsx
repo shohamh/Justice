@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { NodeDTO } from "../api/hierarchy";
 import { assignDmScope, removeDmScope } from "../api/dmScope";
 import { SoldierDTO, listSoldiers } from "../api/soldiers";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   node: NodeDTO;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function AssignDutyManagersDialog({ node, onClose, onChanged }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [soldiers, setSoldiers] = useState<SoldierDTO[]>([]);
   const [inputText, setInputText] = useState("");

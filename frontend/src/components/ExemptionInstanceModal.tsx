@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ExemptionDetail, getExemptionDetail } from "../api/exemptions";
 import { formatDdMmYyyy } from "../utils/formatDate";
 import { DaysBadge } from "./DaysBadge";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   soldierId: string;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ExemptionInstanceModal({ soldierId, exemptionId, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [detail, setDetail] = useState<ExemptionDetail | null>(null);
   const [forbidden, setForbidden] = useState(false);

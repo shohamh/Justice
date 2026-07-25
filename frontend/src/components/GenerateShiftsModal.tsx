@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { PreviewRow, generateShifts, previewGeneration } from "../api/shiftTemplates";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "../components/DateInput";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   open: boolean;
@@ -16,6 +17,7 @@ function toDateStr(d: Date): string {
 }
 
 export default function GenerateShiftsModal({ open, templateId, onClose, onGenerated }: Props) {
+  useModalBackClose(onClose, open);
   const { t } = useTranslation();
 
   const [fromDate, setFromDate] = useState(() => toDateStr(new Date()));

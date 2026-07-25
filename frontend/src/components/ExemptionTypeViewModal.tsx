@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DutyType, ExemptionType, setExemptionDutyTypes, updateExemptionType } from "../api/dutyConfig";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   exemptionType: ExemptionType;
@@ -15,6 +16,7 @@ interface Props {
 export default function ExemptionTypeViewModal({
   exemptionType, mappedDutyTypeIds, dutyTypes, canEdit, onClose, onSaved,
 }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(exemptionType.name);

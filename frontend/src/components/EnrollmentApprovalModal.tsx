@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 // Rank lists for the rank selector
 const RANKS_ENLISTED = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
+  useModalBackClose(onClose);
 
   const [fullName, setFullName] = useState(req.soldier_name);
   const [personalNumber, setPersonalNumber] = useState(req.soldier_personal_number);

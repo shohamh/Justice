@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeDTO, createNode } from "../api/hierarchy";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   parent: NodeDTO;
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function AddChildNodeDialog({ parent, onClose, onCreated }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const { levelTypes } = useLevelTypes();

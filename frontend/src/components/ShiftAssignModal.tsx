@@ -5,6 +5,7 @@ import { DutyType } from "../api/dutyConfig";
 import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   shift: DutyShift;
@@ -29,6 +30,7 @@ function hierarchyDistance(pathA: string[], pathB: string[]): number {
 type ReserveCandidate = ShiftCandidate & { dist: number; coveringNames: string[] };
 
 export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [candidates, setCandidates] = useState<ShiftCandidate[]>([]);
   const [loading, setLoading] = useState(true);

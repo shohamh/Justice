@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   DutyType,
   ExemptionType,
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function DutyTypeFormModal({ initial, initialName, onSaved, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [name, setName] = useState(initial?.name ?? initialName ?? "");
   const [score, setScore] = useState(initial?.score_per_day ?? "1.00");

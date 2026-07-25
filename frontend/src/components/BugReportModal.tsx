@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { translateApiError } from "../utils/translateApiError";
 import { submitBugReport } from "../api/bugReports";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 type Severity = "low" | "medium" | "high";
 
@@ -19,6 +21,7 @@ interface BugReportModalProps {
 }
 
 export default function BugReportModal({ screenshot, onClose }: BugReportModalProps) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const location = useLocation();
   const navHistory = useNavigationHistory();
@@ -61,7 +64,14 @@ export default function BugReportModal({ screenshot, onClose }: BugReportModalPr
       >
         <div className="flex justify-between items-center mb-3">
           <h3 className="text-lg font-semibold">מצאתי באג</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700" data-testid="bug-report-modal-close">✕</button>
+          <button
+            onClick={onClose}
+            className="p-1 -m-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            aria-label="סגור"
+            data-testid="bug-report-modal-close"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {succeeded ? (

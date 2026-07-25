@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { DutyShift, TwoLevelSplitEntry, getTwoLevelSplitPreview, setShiftQuotas } from "../api/shifts";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   selectedShifts: DutyShift[];
@@ -16,6 +17,7 @@ interface ShiftPreview {
 }
 
 export default function SplitInUnitModal({ selectedShifts, onApplied, onClose, dtName, locName }: Props) {
+  useModalBackClose(onClose);
   const [previews, setPreviews] = useState<ShiftPreview[]>([]);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);

@@ -59,13 +59,14 @@ export default function BugReportTrigger() {
       <button
         onClick={() => { void handleClick(); }}
         aria-label={capturing ? "מצלם צילום מסך..." : "מצאתי באג"}
-        className="fixed bottom-20 left-4 md:bottom-4 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60"
+        className="fixed bottom-20 left-2 md:bottom-4 md:left-4 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60"
         data-testid="bug-report-trigger"
         disabled={capturing}
       >
         {capturing
           ? <Loader2 size={22} className="animate-spin" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
           : <Bug size={22} />}
+        <span className="text-[10px] leading-none">פידבק</span>
       </button>
       {open && <BugReportModal screenshot={screenshot} onClose={() => setOpen(false)} />}
     </>,

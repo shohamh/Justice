@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   CreateTemplateInput,
   RecurrenceType,
@@ -149,6 +150,7 @@ export default function ShiftTemplateFormModal({
   onSubmit,
   onClose,
 }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
 
   const [localDutyTypes, setLocalDutyTypes] = useState(propDutyTypes);

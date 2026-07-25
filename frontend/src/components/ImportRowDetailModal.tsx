@@ -1,3 +1,5 @@
+import { useModalBackClose } from "../hooks/useModalBackClose";
+
 export interface DetailField {
   key: string;
   label: string;
@@ -23,6 +25,7 @@ function formatReadOnly(value: unknown): string {
 }
 
 export default function ImportRowDetailModal({ title, fields, onClose }: Props) {
+  useModalBackClose(onClose);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div

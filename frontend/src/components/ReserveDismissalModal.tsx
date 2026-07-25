@@ -5,6 +5,7 @@ import { CalendarShift, CalendarShiftAssignee, dismissReserve } from "../api/cal
 import { ReserveCandidate, getReserveCandidates } from "../api/reserves";
 import Combobox from "./Combobox";
 import { translateApiError } from "../utils/translateApiError";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   shift: CalendarShift;
@@ -16,6 +17,7 @@ interface Props {
 const DAY_NAMES = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 
 export default function ReserveDismissalModal({ shift, reserve, onClose, onDone }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const qc = useQueryClient();
 

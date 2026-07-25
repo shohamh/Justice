@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function DocumentPreviewModal({ fileUrl, fileName, contentType, onClose }: Props) {
+  useModalBackClose(onClose);
   const [numPages, setNumPages] = useState<number | null>(null);
   const isPdf = contentType === "application/pdf";
 

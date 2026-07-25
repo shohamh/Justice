@@ -11,6 +11,7 @@ import SoldierLink from "./SoldierLink";
 import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate } from "../utils/formatDate";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 function SoldierAvatar({ url, name, size = 10 }: { url?: string | null; name: string; size?: number }) {
   const initials = name.split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("");
@@ -44,6 +45,7 @@ const ALL_TABS = ["details", "profile", "exemptions", "constraints", "duty_histo
 type TabKey = (typeof ALL_TABS)[number];
 
 export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, onRefresh, initialEditing = false }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
   const isSelf = user?.personal_number === soldier.personal_number;

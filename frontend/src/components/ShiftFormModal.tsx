@@ -10,6 +10,7 @@ import SubHierarchySelector from "./SubHierarchySelector";
 import { isDateRangeValid, lastDutyDay, toExclusiveEndDate } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "./DateInput";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface QuotaRow {
   hierarchy_node_id: string;
@@ -82,6 +83,7 @@ interface Props {
 }
 
 export default function ShiftFormModal({ dutyTypes, locations: initialLocations, existing, onSaved, onClose }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [locations, setLocations] = useState<DutyLocation[]>(initialLocations);
   const [dtId, setDtId] = useState(existing?.duty_type_id ?? dutyTypes[0]?.id ?? "");

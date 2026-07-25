@@ -1,8 +1,11 @@
+import { useModalBackClose } from "../hooks/useModalBackClose";
+
 interface Props {
   onClose: () => void;
 }
 
 export default function AlgorithmModeHelpModal({ onClose }: Props) {
+  useModalBackClose(onClose);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import { dismissAndReallocate } from "../api/reserves";
+import { useModalBackClose } from "../hooks/useModalBackClose";
 import {
   previewGimelim,
   commitGimelim,
@@ -38,6 +39,7 @@ export default function DismissalModal({
   onClose,
   onDone,
 }: Props) {
+  useModalBackClose(onClose);
   const { t } = useTranslation();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
