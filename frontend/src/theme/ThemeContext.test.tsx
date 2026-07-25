@@ -67,4 +67,30 @@ describe("ThemeContext", () => {
     expect(localStorage.getItem("theme")).toBe("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
+
+  it("updates resolvedTheme live when the OS preference changes while in system mode", async () => {
+    localStorage.setItem("theme", "system");
+    let changeHandler: (() => void) | undefined;
+    const mql = {
+      matches: false,
+      media: "(prefers-color-scheme: dark)",
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        if (event === "change") changeHandler = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal("matchMedia", vi.fn().mockImplementation(() => mql));
+
+    render(<ThemeProvider><Probe /></ThemeProvider>);
+
+    await waitFor(() => expect(screen.getByTestId("theme").textContent).toBe("system"));
+    expect(screen.getByTestId("resolved").textContent).toBe("light");
+    expect(changeHandler).toBeDefined();
+
+    mql.matches = true;
+    act(() => changeHandler!());
+
+    await waitFor(() => expect(screen.getByTestId("resolved").textContent).toBe("dark"));
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
 });

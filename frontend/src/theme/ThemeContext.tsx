@@ -29,6 +29,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
   });
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(resolveSystemPrefersDark);
 
   const setTheme = useCallback((next: ThemePreference, sync: boolean) => {
     setThemeState(next);
@@ -51,14 +52,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.theme_preference]);
 
-  // Live-follow OS changes while in "system" mode.
+  // Track the OS preference live, regardless of current theme mode, so
+  // resolvedTheme can react as soon as we switch into "system" mode too.
   useEffect(() => {
-    if (theme !== "system") return;
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => applyThemeClass("system");
+    const handler = () => setSystemPrefersDark(mql.matches);
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
-  }, [theme]);
+  }, []);
+
+  // Keep the DOM class in sync whenever the mode is "system" and either the
+  // mode itself or the live OS preference changes.
+  useEffect(() => {
+    if (theme !== "system") return;
+    applyThemeClass("system");
+  }, [theme, systemPrefersDark]);
 
   const cycleTheme = useCallback(() => {
     const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
@@ -66,8 +74,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme, setTheme]);
 
   const resolvedTheme: "light" | "dark" = useMemo(
-    () => (theme === "dark" || (theme === "system" && resolveSystemPrefersDark()) ? "dark" : "light"),
-    [theme],
+    () => (theme === "dark" || (theme === "system" && systemPrefersDark) ? "dark" : "light"),
+    [theme, systemPrefersDark],
   );
 
   const value = useMemo<ThemeContextValue>(
