@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor } from "lucide-react";
+import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor, LogOut } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 import NotificationBell from "./NotificationBell";
@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   const { t } = useTranslation();
   const { logout, user } = useAuth();
   const { theme, cycleTheme } = useTheme();
-  const themeIcon = theme === "light" ? <Sun size={22} /> : theme === "dark" ? <Moon size={22} /> : <Monitor size={22} />;
+  const themeIcon = theme === "light" ? <Sun size={20} /> : theme === "dark" ? <Moon size={20} /> : <Monitor size={20} />;
   const themeLabel =
     theme === "light" ? "מצב תאורה: בהיר (לחץ למעבר לכהה)" :
     theme === "dark" ? "מצב תאורה: כהה (לחץ למעבר לפי מערכת)" :
@@ -44,23 +44,18 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
       <BugReportTrigger />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} initialTab={helpTab} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
-        <div className="px-4 py-3 flex items-center justify-between">
-          {/* Left side: profile icon + optional gear icon */}
-          <div className="flex items-center gap-3">
+        <div className="px-2 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-1">
+          {/* Left side (DOM order): profile icon + optional gear icon + theme toggle.
+              This renders on the screen's visual RIGHT edge, since the app is RTL. */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <Link to="/profile" aria-label={t("nav.profile")} className="text-gray-500 hover:text-indigo-600">
-              <CircleUser size={22} />
+              <CircleUser size={20} />
             </Link>
             {isAdmin && (
               <Link to="/admin/settings" aria-label={t("nav.admin_settings")} className="text-gray-500 hover:text-indigo-600">
-                <Settings size={22} />
+                <Settings size={20} />
               </Link>
             )}
-          </div>
-          {/* Center: app logo */}
-          <JusticeLogo size="sm" />
-          {/* Right side: help + notification bell + logout */}
-          <div className="flex items-center gap-4">
-            <HeaderSearch openHelp={openHelp} />
             <button
               onClick={cycleTheme}
               aria-label={themeLabel}
@@ -70,17 +65,35 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
             >
               {themeIcon}
             </button>
+          </div>
+          {/* Center: app logo */}
+          <div className="min-w-0 shrink overflow-hidden">
+            <JusticeLogo size="sm" />
+          </div>
+          {/* Right side (DOM order): search + help + notification bell + logout.
+              This renders on the screen's visual LEFT edge, since the app is RTL. */}
+          <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+            <HeaderSearch openHelp={openHelp} />
             <button
               onClick={() => openHelp()}
               aria-label="עזרה"
               className="text-gray-500 hover:text-indigo-600"
             >
-              <HelpCircle size={22} />
+              <HelpCircle size={20} />
             </button>
             <NotificationBell />
             <button
               onClick={() => logout()}
-              className="text-sm text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200"
+              aria-label={t("home.logout")}
+              title={t("home.logout")}
+              className="sm:hidden text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200"
+              data-testid="logout-button-mobile"
+            >
+              <LogOut size={20} />
+            </button>
+            <button
+              onClick={() => logout()}
+              className="hidden sm:inline text-sm whitespace-nowrap text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200"
               data-testid="logout-button"
             >
               {t("home.logout")}
