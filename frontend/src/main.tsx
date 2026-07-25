@@ -8,6 +8,7 @@ import "./i18n";
 import "./styles/globals.css";
 import "katex/dist/katex.min.css";
 import { AlgorithmSeenProvider } from "./contexts/AlgorithmSeenContext";
+import { NavigationHistoryProvider } from "./hooks/useNavigationHistory";
 
 const queryClient = new QueryClient();
 
@@ -15,9 +16,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AlgorithmSeenProvider>
-          <App />
-        </AlgorithmSeenProvider>
+        <NavigationHistoryProvider>
+          <AlgorithmSeenProvider>
+            <App />
+          </AlgorithmSeenProvider>
+        </NavigationHistoryProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

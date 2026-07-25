@@ -1159,3 +1159,34 @@ class ForcedCallup(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+
+
+class BugReport(Base):
+    __tablename__ = "bug_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    reporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    description: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(
+        Enum("low", "medium", "high", name="bug_report_severity")
+    )
+    route: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        Enum("open", "in_progress", "resolved", name="bug_report_status"),
+        server_default="open", default="open",
+    )
+    screenshot: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
+    nav_history: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
+    audit_snapshot: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True, default=None)
+    user_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
+    json_file_path: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )

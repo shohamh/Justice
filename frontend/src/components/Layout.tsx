@@ -8,6 +8,7 @@ import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
 import { getPublicSettings } from "../api/publicSettings";
 import JusticeLogo from "./JusticeLogo";
+import BugReportTrigger from "./BugReportTrigger";
 
 export default function Layout({ children }: { children: ReactNode | ((openHelp: (tab?: string) => void) => ReactNode) }) {
   const { t } = useTranslation();
@@ -32,6 +33,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   return (
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
+      <BugReportTrigger />
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} initialTab={helpTab} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-4 py-3 flex items-center justify-between">

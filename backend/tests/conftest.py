@@ -98,6 +98,8 @@ _AREA_MARKERS: dict[str, str] = {
     "test_audit_append_only": "misc",
     "test_settings_loader": "misc",
     "test_logging_config": "misc",
+    "test_bug_reports_service": "misc",
+    "test_bug_reports_api": "misc",
 }
 
 
@@ -129,6 +131,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 # All data tables in dependency order (referenced-by-FK tables first so CASCADE handles the rest)
 _ALL_DATA_TABLES = [
     "audit_log",
+    "bug_reports",
     "duty_day_overrides",
     "duty_dismissals",
     "score_adjustments",
