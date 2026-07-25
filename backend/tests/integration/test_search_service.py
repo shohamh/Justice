@@ -72,6 +72,26 @@ def test_search_soldiers_respects_limit(admin_session: Session):
     assert len(results) == 3
 
 
+def test_search_soldiers_commander_sees_descendant_subtree_soldier(admin_session: Session):
+    """A commander's scope_root_ids expands to the whole subtree under the node they
+    command, not just that exact node — this exercises the `_scoped_node_ids` descendant
+    expansion (via `any(r in target.path_ids for r in roots)`) with a real non-empty
+    `roots` set, which was previously never hit by any test."""
+    commander = create_soldier(admin_session, personal_number="7500001", role="soldier")
+    parent = create_node(admin_session, level="department", name="cmd-scope-parent-s", commander_id=commander.id)
+    child = create_node(admin_session, level="team", name="cmd-scope-child-s", parent=parent)
+    target = create_soldier(admin_session, personal_number="7500002", role="soldier", hierarchy_node_id=child.id)
+    sibling_node = create_node(admin_session, level="team", name="cmd-scope-sibling-s")
+    sibling = create_soldier(admin_session, personal_number="7500003", role="soldier", hierarchy_node_id=sibling_node.id)
+    admin_session.commit()
+
+    results = search_soldiers(admin_session, user=commander, query="750000")
+
+    ids = {r["id"] for r in results}
+    assert str(target.id) in ids
+    assert str(sibling.id) not in ids
+
+
 def _make_shift(session: Session, *, duty_type_name: str, start_date, end_date, soldier=None) -> DutyShift:
     dt = DutyType(name=duty_type_name, score_per_day=Decimal("1.00"))
     loc = DutyLocation(name="מוצב-search")
@@ -126,6 +146,33 @@ def test_search_duties_plain_soldier_only_sees_own_scope_shifts(admin_session: S
     assert str(out_of_scope_shift.id) not in ids
 
 
+def test_search_duties_commander_sees_descendant_subtree_duty(admin_session: Session):
+    """Same descendant-expansion coverage as above, but for search_duties: the target
+    shift's assigned soldier sits under a child of the node the commander commands."""
+    from datetime import date
+    from app.services.search import search_duties
+
+    commander = create_soldier(admin_session, personal_number="7500010", role="soldier")
+    parent = create_node(admin_session, level="department", name="cmd-duty-parent", commander_id=commander.id)
+    child = create_node(admin_session, level="team", name="cmd-duty-child", parent=parent)
+    target_soldier = create_soldier(admin_session, personal_number="7500011", role="soldier", hierarchy_node_id=child.id)
+    sibling_node = create_node(admin_session, level="team", name="cmd-duty-sibling")
+    sibling_soldier = create_soldier(admin_session, personal_number="7500012", role="soldier", hierarchy_node_id=sibling_node.id)
+
+    in_scope_shift = _make_shift(
+        admin_session, duty_type_name="שמירה-cmdscope-a", start_date=date(2026, 8, 7), end_date=date(2026, 8, 8), soldier=target_soldier,
+    )
+    out_of_scope_shift = _make_shift(
+        admin_session, duty_type_name="שמירה-cmdscope-b", start_date=date(2026, 8, 9), end_date=date(2026, 8, 10), soldier=sibling_soldier,
+    )
+
+    results = search_duties(admin_session, user=commander, query="שמירה-cmdscope")
+
+    ids = {r["id"] for r in results}
+    assert str(in_scope_shift.id) in ids
+    assert str(out_of_scope_shift.id) not in ids
+
+
 from app.services.search import search_units
 
 
@@ -149,3 +196,19 @@ def test_search_units_plain_soldier_sees_only_own_subtree(admin_session: Session
 
     ids = {r["id"] for r in results}
     assert str(other_dept.id) not in ids
+
+
+def test_search_units_commander_sees_descendant_subtree_node(admin_session: Session):
+    """Same descendant-expansion coverage as above, but for search_units: the target
+    node is a child of the node the commander commands, not the commanded node itself."""
+    commander = create_soldier(admin_session, personal_number="7500020", role="soldier")
+    parent = create_node(admin_session, level="department", name="cmd-unit-parent", commander_id=commander.id)
+    child = create_node(admin_session, level="team", name="cmd-unit-child", parent=parent)
+    sibling = create_node(admin_session, level="team", name="cmd-unit-sibling")
+    admin_session.commit()
+
+    results = search_units(admin_session, user=commander, query="cmd-unit")
+
+    ids = {r["id"] for r in results}
+    assert str(child.id) in ids
+    assert str(sibling.id) not in ids

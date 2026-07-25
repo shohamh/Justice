@@ -62,7 +62,7 @@ describe("HeaderSearch", () => {
 
   test("Ctrl+K opens the panel from anywhere", () => {
     renderHeaderSearch();
-    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "k", code: "KeyK", ctrlKey: true });
     expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 
@@ -82,14 +82,14 @@ describe("HeaderSearch", () => {
   test("typing filters the pages registry via fuzzy match", () => {
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     expect(screen.getByText("search.pages.profile")).toBeInTheDocument();
   });
 
   test("role-gated registry entries are excluded for a plain soldier", () => {
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "הגדרות מערכת" } });
     expect(screen.queryByText("search.pages.admin_settings")).not.toBeInTheDocument();
   });
 
@@ -97,7 +97,7 @@ describe("HeaderSearch", () => {
     mockUseAuth.mockReturnValue({ user: { role: "admin", is_commander: false, is_duty_manager: false } });
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.admin_settings" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "הגדרות מערכת" } });
     expect(screen.getByText("search.pages.admin_settings")).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe("HeaderSearch", () => {
     vi.mocked(search).mockResolvedValue({ soldiers: [], duties: [], units: [] });
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "החלפות" } });
     const options = await screen.findAllByRole("option");
     expect(options.length).toBeGreaterThan(1);
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
@@ -204,7 +204,7 @@ describe("HeaderSearch", () => {
     vi.mocked(search).mockRejectedValue(new Error("network error"));
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     vi.useFakeTimers();
     vi.advanceTimersByTime(200);
     vi.useRealTimers();
@@ -223,7 +223,7 @@ describe("HeaderSearch", () => {
   test("pressing Enter on the selected result navigates the same as a click", () => {
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
     expect(mockNavigate).toHaveBeenCalledWith("/profile");
@@ -266,7 +266,7 @@ describe("HeaderSearch", () => {
   test("selecting a result closes the panel", () => {
     renderHeaderSearch();
     fireEvent.click(screen.getByRole("button", { name: "search.placeholder" }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "search.pages.profile" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "פרופיל" } });
     fireEvent.click(screen.getByText("search.pages.profile"));
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });

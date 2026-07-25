@@ -45,9 +45,9 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
     [user, gimelimEnabled],
   );
 
-  const pageFuse = useMemo(() => new Fuse(accessiblePages, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessiblePages]);
-  const actionFuse = useMemo(() => new Fuse(accessibleActions, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessibleActions]);
-  const helpFuse = useMemo(() => new Fuse(accessibleHelp, { keys: ["labelKey", "keywords"], threshold: 0.4 }), [accessibleHelp]);
+  const pageFuse = useMemo(() => new Fuse(accessiblePages, { keys: ["keywords"], threshold: 0.4 }), [accessiblePages]);
+  const actionFuse = useMemo(() => new Fuse(accessibleActions, { keys: ["keywords"], threshold: 0.4 }), [accessibleActions]);
+  const helpFuse = useMemo(() => new Fuse(accessibleHelp, { keys: ["keywords"], threshold: 0.4 }), [accessibleHelp]);
 
   const trimmed = query.trim();
   const pageResults = trimmed ? pageFuse.search(trimmed).map((r) => r.item).slice(0, 8) : [];
@@ -133,7 +133,7 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      if ((e.ctrlKey || e.metaKey) && e.code === "KeyK") {
         e.preventDefault();
         openPanel();
       }
@@ -156,6 +156,19 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
         return r.entry.duty_type_name;
       case "unit":
         return r.entry.name;
+    }
+  }
+
+  function subtitleFor(r: FlatResult): string | null {
+    switch (r.kind) {
+      case "soldier":
+        return r.entry.subtitle ?? null;
+      case "duty":
+        return `${r.entry.start_date} · ${r.entry.location_name}`;
+      case "unit":
+        return r.entry.level;
+      default:
+        return null;
     }
   }
 
@@ -224,9 +237,12 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
                               role="option"
                               aria-selected={flatIndex === selectedIndex}
                               onClick={() => handleSelect(r)}
-                              className={`px-2 py-1 ${flatIndex === selectedIndex ? "bg-gray-100" : ""}`}
+                              className={`px-2 py-1 ${flatIndex === selectedIndex ? "bg-gray-100 dark:bg-gray-700" : ""}`}
                             >
                               {labelFor(r)}
+                              {subtitleFor(r) && (
+                                <div className="text-xs text-gray-400">{subtitleFor(r)}</div>
+                              )}
                             </div>
                           );
                         })}
