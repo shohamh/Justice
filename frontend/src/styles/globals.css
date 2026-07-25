@@ -22,12 +22,10 @@ body {
   color: #0f172a;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #111827;
-    color: #f9fafb;
-    color-scheme: dark;
-  }
+.dark body {
+  background-color: #111827;
+  color: #f9fafb;
+  color-scheme: dark;
 }
 
 /* KaTeX formulas must always render LTR regardless of page direction */
@@ -64,143 +62,139 @@ body {
 }
 
 /* Details/summary disclosure marker in dark mode */
-@media (prefers-color-scheme: dark) {
-  details > summary {
-    list-style: none;
-  }
-  details > summary::before {
-    content: "▶";
-    display: inline-block;
-    margin-left: 0.4em;
-    font-size: 0.65em;
-    color: #9ca3af;
-    transition: transform 0.15s;
-  }
-  details[open] > summary::before {
-    transform: rotate(90deg);
-  }
-  details > summary::-webkit-details-marker {
-    display: none;
-  }
+.dark details > summary {
+  list-style: none;
+}
+.dark details > summary::before {
+  content: "▶";
+  display: inline-block;
+  margin-left: 0.4em;
+  font-size: 0.65em;
+  color: #9ca3af;
+  transition: transform 0.15s;
+}
+.dark details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.dark details > summary::-webkit-details-marker {
+  display: none;
 }
 
 /* FullCalendar dark mode overrides */
-@media (prefers-color-scheme: dark) {
-  /* Toolbar */
-  .fc .fc-toolbar {
-    background: transparent;
-  }
-  .fc .fc-toolbar-title {
-    color: #f9fafb;
-  }
+/* Toolbar */
+.dark .fc .fc-toolbar {
+  background: transparent;
+}
+.dark .fc .fc-toolbar-title {
+  color: #f9fafb;
+}
 
-  /* Nav buttons */
-  .fc .fc-button-primary {
-    background-color: #374151;
-    border-color: #4b5563;
-    color: #f9fafb;
-  }
-  .fc .fc-button-primary:hover {
-    background-color: #4b5563;
-    border-color: #6b7280;
-  }
-  .fc .fc-button-primary:not(:disabled).fc-button-active,
-  .fc .fc-button-primary:not(:disabled):active {
-    background-color: #4338ca;
-    border-color: #4f46e5;
-  }
-  .fc .fc-button-primary:disabled {
-    background-color: #374151;
-    border-color: #4b5563;
-    color: #6b7280;
-  }
+/* Nav buttons */
+.dark .fc .fc-button-primary {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+.dark .fc .fc-button-primary:hover {
+  background-color: #4b5563;
+  border-color: #6b7280;
+}
+.dark .fc .fc-button-primary:not(:disabled).fc-button-active,
+.dark .fc .fc-button-primary:not(:disabled):active {
+  background-color: #4338ca;
+  border-color: #4f46e5;
+}
+.dark .fc .fc-button-primary:disabled {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #6b7280;
+}
 
-  /* Grid borders */
-  .fc .fc-scrollgrid,
-  .fc .fc-scrollgrid-sync-table,
-  .fc td,
-  .fc th {
-    border-color: #374151 !important;
-  }
+/* Grid borders */
+.dark .fc .fc-scrollgrid,
+.dark .fc .fc-scrollgrid-sync-table,
+.dark .fc td,
+.dark .fc th {
+  border-color: #374151 !important;
+}
 
-  /* Column headers (day names: Sun Mon Tue …) */
-  .fc .fc-col-header-cell {
-    background-color: #1f2937;
-  }
-  .fc .fc-col-header-cell-cushion {
-    color: #d1d5db;
-  }
+/* Column headers (day names: Sun Mon Tue …) */
+.dark .fc .fc-col-header-cell {
+  background-color: #1f2937;
+}
+.dark .fc .fc-col-header-cell-cushion {
+  color: #d1d5db;
+}
 
-  /* Day cells */
-  .fc .fc-daygrid-day {
-    background-color: #1f2937;
-  }
-  .fc .fc-daygrid-day:hover {
-    background-color: #374151;
-  }
-  .fc .fc-daygrid-day-number {
-    color: #d1d5db;
-  }
+/* Day cells */
+.dark .fc .fc-daygrid-day {
+  background-color: #1f2937;
+}
+.dark .fc .fc-daygrid-day:hover {
+  background-color: #374151;
+}
+.dark .fc .fc-daygrid-day-number {
+  color: #d1d5db;
+}
 
-  /* Today highlight */
-  .fc .fc-daygrid-day.fc-day-today {
-    background-color: #312e81 !important;
-  }
-  .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
-    color: #a5b4fc;
-    font-weight: 600;
-  }
+/* Today highlight */
+.dark .fc .fc-daygrid-day.fc-day-today {
+  background-color: #312e81 !important;
+}
+.dark .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  color: #a5b4fc;
+  font-weight: 600;
+}
 
-  /* Days outside current month */
-  .fc .fc-daygrid-day.fc-day-other {
-    background-color: #111827;
-  }
-  .fc .fc-daygrid-day.fc-day-other .fc-daygrid-day-number {
-    color: #6b7280;
-  }
+/* Days outside current month */
+.dark .fc .fc-daygrid-day.fc-day-other {
+  background-color: #111827;
+}
+.dark .fc .fc-daygrid-day.fc-day-other .fc-daygrid-day-number {
+  color: #6b7280;
+}
 
-  /* Popover ("+X more") */
-  .fc .fc-popover {
-    background-color: #1f2937;
-    border-color: #374151;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-  }
-  .fc .fc-popover-header {
-    background-color: #374151;
-    color: #f9fafb;
-  }
-  .fc .fc-popover-body {
-    background-color: #1f2937;
-  }
+/* Popover ("+X more") */
+.dark .fc .fc-popover {
+  background-color: #1f2937;
+  border-color: #374151;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+.dark .fc .fc-popover-header {
+  background-color: #374151;
+  color: #f9fafb;
+}
+.dark .fc .fc-popover-body {
+  background-color: #1f2937;
+}
 
-  /* "+X more" link */
-  .fc .fc-more-link {
-    color: #818cf8;
-  }
+/* "+X more" link */
+.dark .fc .fc-more-link {
+  color: #818cf8;
+}
 
-  /* Time grid (week/day views) */
-  .fc .fc-timegrid-slot {
-    background-color: #1f2937;
-    border-color: #374151;
-  }
-  .fc .fc-timegrid-slot-label {
-    color: #9ca3af;
-  }
-  .fc .fc-timegrid-axis {
-    background-color: #1f2937;
-    border-color: #374151;
-  }
+/* Time grid (week/day views) */
+.dark .fc .fc-timegrid-slot {
+  background-color: #1f2937;
+  border-color: #374151;
+}
+.dark .fc .fc-timegrid-slot-label {
+  color: #9ca3af;
+}
+.dark .fc .fc-timegrid-axis {
+  background-color: #1f2937;
+  border-color: #374151;
+}
 
-  /* List view */
-  .fc .fc-list-day-cushion {
-    background-color: #374151;
-    color: #f9fafb;
-  }
-  .fc .fc-list-event:hover td {
-    background-color: #374151;
-  }
-  .fc .fc-list-empty {
-    background-color: #1f2937;
-    color: #9ca3af;
-  }
+/* List view */
+.dark .fc .fc-list-day-cushion {
+  background-color: #374151;
+  color: #f9fafb;
+}
+.dark .fc .fc-list-event:hover td {
+  background-color: #374151;
+}
+.dark .fc .fc-list-empty {
+  background-color: #1f2937;
+  color: #9ca3af;
 }
