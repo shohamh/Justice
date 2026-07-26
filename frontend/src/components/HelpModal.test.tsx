@@ -132,3 +132,22 @@ it("fairness tab recomputes effort_score live when the what-if slider changes", 
   fireEvent.change(slider, { target: { value: "2" } });
   expect(await screen.findByText(/עומס לאחר התוספת/)).toBeInTheDocument();
 });
+
+it("Algorithm tab shows draft/publish mode section only for canPlan roles", () => {
+  setUser("soldier");
+  const { rerender } = render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="algorithm" />);
+  expect(screen.queryByText(/מצב פרסום ישיר/)).not.toBeInTheDocument();
+  setUser("duty_manager", { is_duty_manager: true });
+  rerender(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="algorithm" />);
+  expect(screen.getByText(/מצב פרסום ישיר/)).toBeInTheDocument();
+});
+
+it("Deep Dive worked example toggles between assignment A and B instead of showing both at once", () => {
+  setUser("admin");
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="deep" />);
+  expect(screen.getByText(/שיבוץ א׳/)).toBeInTheDocument();
+  expect(screen.queryByText(/סה"כ = 520,000/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("שיבוץ ב׳ (גרוע יותר)"));
+  expect(screen.getByText(/סה"כ = 520,000/)).toBeInTheDocument();
+  expect(screen.queryByText(/סה"כ = 213,333/)).not.toBeInTheDocument();
+});

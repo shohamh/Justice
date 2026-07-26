@@ -170,7 +170,7 @@ function SwapsTab() {
   );
 }
 
-function AlgorithmTab() {
+function AlgorithmTab({ user }: { user: PermissionUser | null }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך האלגוריתם מחלק תורנויות?</h3>
@@ -225,6 +225,24 @@ function AlgorithmTab() {
           </div>
         ))}
       </div>
+
+      {canPlan(user) && (
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-3">
+          <p className="font-semibold text-gray-800 dark:text-gray-200">🚦 מצבי הרצה (למי שמריץ את האלגוריתם)</p>
+          <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
+            <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">מצב טיוטה (ברירת מחדל)</p>
+            <p className="text-amber-700 dark:text-amber-300 text-xs">
+              תוצאות האלגוריתם נשמרות כטיוטה בלבד. החיילים לא רואים שינוי. אפשר לסקור את השיבוצים המוצעים, לדחות חלקם, ולפרסם רק אחרי אישור. מומלץ לשימוש רגיל.
+            </p>
+          </div>
+          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800">
+            <p className="font-medium text-green-800 dark:text-green-200 mb-1">מצב פרסום ישיר</p>
+            <p className="text-green-700 dark:text-green-300 text-xs">
+              תוצאות האלגוריתם מתפרסמות מיד ללא שלב ביניים. החיילים רואים את השיבוצים החדשים מיידית. השתמש רק כאשר אתה בטוח בתוצאות מראש.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
@@ -522,6 +540,7 @@ function GimelimTab() {
 }
 
 function DeepDiveTab() {
+  const [shownAssignment, setShownAssignment] = useState<"a" | "b">("a");
   return (
     <div className="space-y-5 text-sm leading-relaxed" dir="rtl">
 
@@ -888,33 +907,53 @@ function DeepDiveTab() {
           בקוד האמיתי μ מחושב פעם אחת לפני הפותר (ולא לכל שיבוץ בנפרד) — הדוגמה מפשטת זאת לצורך הבנה.
         </p>
 
+        {/* Assignment toggle */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShownAssignment("a")}
+            className={`text-xs px-2 py-1 rounded border ${shownAssignment === "a" ? "bg-green-600 text-white border-green-600" : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"}`}
+          >
+            שיבוץ א׳ (הפותר יבחר בזה)
+          </button>
+          <button
+            type="button"
+            onClick={() => setShownAssignment("b")}
+            className={`text-xs px-2 py-1 rounded border ${shownAssignment === "b" ? "bg-red-600 text-white border-red-600" : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"}`}
+          >
+            שיבוץ ב׳ (גרוע יותר)
+          </button>
+        </div>
+
         {/* Assignment A */}
-        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-2">
-          <p className="font-semibold text-green-800 dark:text-green-200">שיבוץ א׳ (הפותר יבחר בזה): תורנות 1→דן, תורנות 2→רוני</p>
-          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+        {shownAssignment === "a" && (
+          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-2">
+            <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 0     =       0   ( 0%)
 projected[רוני]= 80,000 + 40  × 2,500 = 180,000  (18%)`}</pre>
-          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 0 + 180,000) / 3 ≈ 106,667
+            <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 0 + 180,000) / 3 ≈ 106,667
 dev[דן]  = |140,000 − 106,667| =  33,333
 dev[יעל] = |      0 − 106,667| = 106,667
 dev[רוני]= |180,000 − 106,667| =  73,333
 ──────────────────────────────────────────
 סה"כ = 213,333`}</pre>
-        </div>
+          </div>
+        )}
 
         {/* Assignment B */}
-        <div className="bg-red-50 dark:bg-red-950 rounded-lg p-3 border border-red-200 dark:border-red-800 text-xs space-y-2">
-          <p className="font-semibold text-red-800 dark:text-red-200">שיבוץ ב׳ (גרוע יותר): תורנות 1→דן, תורנות 2→יעל</p>
-          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+        {shownAssignment === "b" && (
+          <div className="bg-red-50 dark:bg-red-950 rounded-lg p-3 border border-red-200 dark:border-red-800 text-xs space-y-2">
+            <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 2,500 = 500,000  (50%)  ← זינוק!
 projected[רוני]=      80,000           =  80,000  ( 8%)`}</pre>
-          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 500,000 + 80,000) / 3 = 240,000
+            <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 500,000 + 80,000) / 3 = 240,000
 dev[דן]  = |140,000 − 240,000| = 100,000
 dev[יעל] = |500,000 − 240,000| = 260,000
 dev[רוני]= | 80,000 − 240,000| = 160,000
 ──────────────────────────────────────────
 סה"כ = 520,000  ← פי ~2.4 יותר גרוע!`}</pre>
-        </div>
+          </div>
+        )}
 
         <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
           <p className="font-semibold text-indigo-800 dark:text-indigo-200">🔑 תובנה מפתח</p>
@@ -1341,7 +1380,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {activeTab === "swaps" && <SwapsTab />}
-          {activeTab === "algorithm" && <AlgorithmTab />}
+          {activeTab === "algorithm" && <AlgorithmTab user={user as PermissionUser | null} />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "approvals" && <ApprovalsTab />}
