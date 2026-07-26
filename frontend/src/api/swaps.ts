@@ -14,19 +14,27 @@ export interface SwapManagerApproval {
   approver_kind: "commander" | "duty_manager";
 }
 
+export interface SwapCandidate {
+  id: string;
+  soldier_id: string;
+  soldier_name: string | null;
+  source: "invited" | "marketplace";
+  status: "pending" | "declined" | "accepted" | "applied" | "cancelled";
+  soldier_side_approved: boolean | null;
+  offered_assignment_ids: string[];
+  manager_approvals: SwapManagerApproval[];
+}
+
 export interface SwapRequest {
   id: string;
   duty_assignment_id: string;
   duty_date: string;
   requesting_soldier_id: string;
-  target_soldier_id: string | null;
-  covering_soldier_id: string | null;
-  status: "open" | "pending_approval" | "applied" | "rejected" | "cancelled";
+  open_to_marketplace: boolean;
+  status: "open" | "applied" | "rejected" | "cancelled";
   reason: string | null;
   requester_side_approved: boolean | null;
-  covering_side_approved: boolean | null;
   decision_note: string | null;
-  offered_assignment_ids: string[];
   created_at: string;
   duty_type_name: string | null;
   duty_location_name: string | null;
@@ -37,17 +45,17 @@ export interface SwapRequest {
   duty_shift_id: string | null;
   warnings?: string[];
   requesting_soldier_name?: string | null;
-  covering_soldier_name?: string | null;
   requesting_commander_name?: string | null;
-  covering_commander_name?: string | null;
   requesting_soldier_node_name?: string | null;
   requester_manager_approvals: SwapManagerApproval[];
-  covering_manager_approvals: SwapManagerApproval[];
+  candidates: SwapCandidate[];
 }
 
 export interface CreateSwapInput {
   duty_assignment_id: string;
   target_soldier_id?: string | null;
+  target_soldier_ids?: string[];
+  open_to_marketplace?: boolean;
   reason?: string | null;
 }
 
@@ -62,12 +70,6 @@ export async function listEligibleTargets(dutyAssignmentId: string): Promise<Eli
   return (await api.get<EligibleTarget[]>("/swaps/eligible-targets", {
     params: { duty_assignment_id: dutyAssignmentId },
   })).data;
-}
-
-export async function createBulkSwap(input: {
-  duty_assignment_id: string; target_soldier_ids: string[]; reason: string | null;
-}): Promise<SwapRequest[]> {
-  return (await api.post<SwapRequest[]>("/me/swaps/bulk", input)).data;
 }
 
 export async function listMySwaps(): Promise<SwapRequest[]> {
@@ -116,12 +118,12 @@ export async function soldierRejectSwap(id: string, decision_note?: string): Pro
   return (await api.post<SwapRequest>(`/me/swaps/${id}/reject`, { decision_note })).data;
 }
 
-export async function managerApproveSwap(id: string, side: "requester" | "covering"): Promise<SwapRequest> {
-  return (await api.post<SwapRequest>(`/swaps/${id}/manager-approve`, { side })).data;
+export async function managerApproveSwap(id: string, side: "requester" | "covering", candidateId?: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/swaps/${id}/manager-approve`, { side, candidate_id: candidateId ?? null })).data;
 }
 
-export async function managerRejectSwap(id: string, decision_note?: string): Promise<SwapRequest> {
-  return (await api.post<SwapRequest>(`/swaps/${id}/manager-reject`, { decision_note })).data;
+export async function managerRejectSwap(id: string, decision_note?: string, candidateId?: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/swaps/${id}/manager-reject`, { decision_note, candidate_id: candidateId ?? null })).data;
 }
 
 export async function getIncomingSwapCount(): Promise<number> {
