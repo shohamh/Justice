@@ -28,6 +28,7 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "hierarchy", label: "🌳 היררכיה וכשירות", visible: (u) => authenticated(u) },
   { id: "hakpaza", label: "📣 הקפצה פיקודית", visible: (u) => canApprove(u) },
   { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
+  { id: "import", label: "📥 ייבוא", visible: (u) => canPlan(u) },
 ];
 
 function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean): HelpTabDef[] {
@@ -1135,6 +1136,42 @@ function ApprovalsTab() {
   );
 }
 
+function ImportTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">📥 ייבוא מקובץ אקסל</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        ייבוא מאפשר להזין או לעדכן חיילים, שיבוצים והגדרות ממקור אקסל חיצוני, בשלושה שלבים:
+      </p>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
+        <FlowStep icon="📤" text="העלאת קובץ" color="indigo" />
+        <Arrow />
+        <FlowStep icon="🔍" text="סקירת שורות: חדש / עדכון / שגיאה / מחוץ לתחום / דילוג" color="blue" />
+        <Arrow />
+        <FlowStep icon="🛠️" text="מיפוי שמות ותיקוני שדות ידניים לפי הצורך" color="amber" />
+        <Arrow />
+        <FlowStep icon="✅" text="ביצוע (commit)" color="green" />
+      </div>
+      <div className="space-y-2">
+        {[
+          { icon: "🔄", title: "מה ההבדל בין 'חדש' ל'עדכון'?", desc: "שורה מזוהה לפי מספר אישי קיים במערכת: אם נמצא — זו 'עדכון' (שדות קיימים יידרסו בערכים מהקובץ); אם לא נמצא — 'חדש' (רשומה נוצרת מאפס)." },
+          { icon: "⚠️", title: "שורות שגיאה ומחוץ לתחום", desc: "שורה עם שגיאה לא תיובא כלל עד לתיקון. שורה 'מחוץ לתחום' שייכת ליחידה שאין לכם הרשאה לנהל — היא מדולגת אוטומטית ולא תשפיע על היחידות שלכם." },
+          { icon: "🗂️", title: "מיפוי שמות", desc: "אם שם סוג תורנות או שם צומת בקובץ לא תואם בדיוק למה שקיים במערכת, ניתן למפות אותו ידנית לפני הביצוע — כדי למנוע יצירת כפילויות בטעות." },
+          { icon: "↩️", title: "לפני שמבצעים סופית", desc: "שום שינוי לא נכנס לתוקף עד לשלב הביצוע (commit) המפורש — סקירת השורות היא שלב תצוגה מקדימה בלבד וניתן לבטל בכל שלב לפני הביצוע." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function flattenNodes(nodes: NodeDTO[]): NodeDTO[] {
   const out: NodeDTO[] = [];
   for (const n of nodes) {
@@ -1227,6 +1264,12 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
     initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : (TABS[0]?.id ?? "swaps")
   );
 
+  useEffect(() => {
+    if (!TABS.some((t) => t.id === activeTab)) {
+      setActiveTab(TABS[0]?.id ?? "swaps");
+    }
+  }, [TABS, activeTab]);
+
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
@@ -1275,6 +1318,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
           {activeTab === "hierarchy" && <HierarchyEligibilityTab user={user as PermissionUser | null} />}
           {activeTab === "hakpaza" && <HakpazaTab />}
           {activeTab === "gimelim" && <GimelimTab />}
+          {activeTab === "import" && <ImportTab />}
         </div>
       </div>
     </div>

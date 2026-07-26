@@ -113,3 +113,12 @@ it("Hakpaza tab is visible to commander, hidden from soldier", () => {
   expect(screen.queryByRole("button", { name: /הקפצה פיקודית/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: /הקפצה פיקודית/ })).not.toBeInTheDocument();
 });
+
+it("Import tab is visible to duty_manager, hidden from commander", () => {
+  setUser("duty_manager", { is_duty_manager: true });
+  const { rerender } = render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="import" />);
+  expect(screen.getByText(/ייבוא מקובץ אקסל/)).toBeInTheDocument();
+  setUser("commander", { is_commander: true });
+  rerender(<HelpModal onClose={() => {}} gimelimEnabled={false} />);
+  expect(screen.queryByText(/ייבוא מקובץ אקסל/)).not.toBeInTheDocument();
+});

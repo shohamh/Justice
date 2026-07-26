@@ -66,6 +66,7 @@ export function getHelpTopicEntries(gimelimEnabled: boolean): HelpTopicEntry[] {
     { id: "approvals", labelKey: "search.help.approvals", keywords: ["אישורים", "approvals"], canAccess: canApprove },
     { id: "hierarchy", labelKey: "search.help.hierarchy", keywords: ["היררכיה", "כשירות", "hierarchy"], canAccess: authenticated },
     { id: "hakpaza", labelKey: "search.help.hakpaza", keywords: ["הקפצה", "הקפצה פיקודית", "hakpaza"], canAccess: canApprove },
+    { id: "import", labelKey: "search.help.import", keywords: ["ייבוא", "אקסל", "import"], canAccess: canPlan },
   ];
   if (gimelimEnabled) {
     topics.push({ id: "gimelim", labelKey: "search.help.gimelim", keywords: ["גימלים", "gimelim"], canAccess: authenticated });

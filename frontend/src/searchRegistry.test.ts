@@ -57,8 +57,8 @@ describe("searchRegistry help topics", () => {
     expect(getHelpTopicEntries(false).some((e) => e.id === "gimelim")).toBe(false);
   });
 
-  test("all non-gimelim, non-approvals, non-hakpaza topics are accessible to every authenticated user", () => {
-    const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim" && e.id !== "approvals" && e.id !== "hakpaza");
+  test("all non-gimelim, non-approvals, non-hakpaza, non-import topics are accessible to every authenticated user", () => {
+    const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim" && e.id !== "approvals" && e.id !== "hakpaza" && e.id !== "import");
     expect(entries.every((e) => e.canAccess(soldier))).toBe(true);
   });
 });
