@@ -314,3 +314,41 @@ def test_finalize_immediate_when_manager_approval_not_required(admin_session):
 
     admin_session.refresh(req)
     assert req.status == "applied"
+
+
+def test_cancel_request_cascades_to_all_live_candidates(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-9")
+    requester = create_soldier(admin_session, personal_number="7710020", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710021", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="7710022", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id, b.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    svc.cancel_request(admin_session, request_id=req.id, actor_id=requester.id)
+    admin_session.flush()
+
+    admin_session.refresh(req)
+    assert req.status == "cancelled"
+    for sid in (a.id, b.id):
+        cand = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=sid).one()
+        assert cand.status == "cancelled"
+
+
+def test_take_free_creates_one_applied_candidate(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-10")
+    owner = create_soldier(admin_session, personal_number="7710023", hierarchy_node_id=node.id)
+    taker = create_soldier(admin_session, personal_number="7710024", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=owner.id, node_id=node.id)
+
+    req, warnings = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=taker.id, actor_id=taker.id)
+    admin_session.flush()
+
+    assert req.status == "applied"
+    cand = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).one()
+    assert cand.soldier_id == taker.id
+    assert cand.source == "marketplace"
+    assert cand.status == "applied"

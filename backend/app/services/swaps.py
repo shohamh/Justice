@@ -686,23 +686,30 @@ def reject_request(
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
-    if req.status not in ("open", "pending_approval"):
+    if req.status != "open":
         raise SwapError("not_rejectable")
     before = {"status": req.status}
     req.status = "rejected"
     req.decision_note = decision_note
     req.rejected_by = actor_id
-    create_notification(session, soldier_id=req.requesting_soldier_id,
-                        type=NotificationType.swap_rejected,
-                        title="בקשת ההחלפה נדחתה",
-                        reference_type="swap_request", reference_id=req.id,
-                        actor_id=actor_id)
-    if req.covering_soldier_id is not None:
-        create_notification(session, soldier_id=req.covering_soldier_id,
-                            type=NotificationType.swap_rejected,
-                            title="בקשת ההחלפה נדחתה",
-                            reference_type="swap_request", reference_id=req.id,
-                            actor_id=actor_id)
+    create_notification(
+        session, soldier_id=req.requesting_soldier_id, type=NotificationType.swap_rejected,
+        title="בקשת ההחלפה נדחתה", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+    )
+    live_candidates = session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == request_id,
+            SwapCandidate.status.in_(["pending", "accepted"]),
+        )
+    ).scalars().all()
+    now = datetime.utcnow()
+    for candidate in live_candidates:
+        candidate.status = "cancelled"
+        candidate.decided_at = now
+        create_notification(
+            session, soldier_id=candidate.soldier_id, type=NotificationType.swap_rejected,
+            title="בקשת ההחלפה נדחתה", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+        )
     write_audit(
         session, actor_id=actor_id, action="swap.reject", entity_type="swap_request",
         entity_id=req.id, before=before,
@@ -721,16 +728,24 @@ def cancel_request(
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
-    if req.status not in ("open", "pending_approval"):
+    if req.status != "open":
         raise SwapError("not_cancellable")
     before = {"status": req.status}
     req.status = "cancelled"
-    if req.covering_soldier_id is not None:
-        create_notification(session, soldier_id=req.covering_soldier_id,
-                            type=NotificationType.swap_rejected,
-                            title="בקשת ההחלפה בוטלה ע\"י המבקש",
-                            reference_type="swap_request", reference_id=req.id,
-                            actor_id=actor_id)
+    live_candidates = session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == request_id,
+            SwapCandidate.status.in_(["pending", "accepted"]),
+        )
+    ).scalars().all()
+    now = datetime.utcnow()
+    for candidate in live_candidates:
+        candidate.status = "cancelled"
+        candidate.decided_at = now
+        create_notification(
+            session, soldier_id=candidate.soldier_id, type=NotificationType.swap_rejected,
+            title="בקשת ההחלפה בוטלה ע\"י המבקש", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+        )
     write_audit(
         session, actor_id=actor_id, action="swap.cancel", entity_type="swap_request",
         entity_id=req.id, before=before, after={"status": "cancelled"},
@@ -804,11 +819,16 @@ def take_free(
         duty_assignment_id=assignment_id,
         duty_date=assignment.start_date,
         requesting_soldier_id=assignment.soldier_id,
-        covering_soldier_id=covering_soldier_id,
-        offered_assignment_ids=[],
         status="open",
+        requester_side_approved=True,
     )
     session.add(req)
+    session.flush()
+    candidate = SwapCandidate(
+        swap_request_id=req.id, soldier_id=covering_soldier_id, source="marketplace",
+        status="accepted", soldier_side_approved=True,
+    )
+    session.add(candidate)
     session.flush()
 
     create_notification(
@@ -821,7 +841,10 @@ def take_free(
         actor_id=actor_id,
     )
 
-    _apply_cover(session, req=req, actor_id=actor_id)
+    _apply_cover(session, req=req, candidate=candidate, actor_id=actor_id)
+    candidate.status = "applied"
+    candidate.decided_at = datetime.utcnow()
+    req.status = "applied"
     write_audit(
         session, actor_id=actor_id, action="swap.take_free",
         entity_type="swap_request", entity_id=req.id,
@@ -844,7 +867,8 @@ def cover_offer(
     offered_assignment_ids: list[uuid.UUID],
     actor_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    """Covering soldier responds to an open swap request (from board or incoming)."""
+    """Covering soldier responds to an open swap request (from board or
+    incoming), optionally attaching a counter-offer of their own assignments."""
     req = session.get(SwapRequest, swap_id)
     if req is None:
         raise SwapError("swap_not_found")
@@ -852,60 +876,42 @@ def cover_offer(
         raise SwapError("swap_not_open")
     if req.requesting_soldier_id == covering_soldier_id:
         raise SwapError("cannot_cover_own_swap")
-    eligible, reason = check_soldier_for_assignment(
-        session, covering_soldier_id, req.duty_assignment_id
-    )
+    eligible, reason = check_soldier_for_assignment(session, covering_soldier_id, req.duty_assignment_id)
     if not eligible:
         raise SwapError(f"cover_not_eligible:{reason}")
     _enforce_hierarchy_level_restriction(
-        session,
-        requesting_soldier_id=req.requesting_soldier_id,
-        other_soldier_id=covering_soldier_id,
+        session, requesting_soldier_id=req.requesting_soldier_id, other_soldier_id=covering_soldier_id,
     )
-    req.covering_soldier_id = covering_soldier_id
-    req.offered_assignment_ids = [str(aid) for aid in offered_assignment_ids]
 
-    if _require_approval(session):
-        req.status = "pending_approval"
-        req.requester_side_approved = True   # asking already implied consent
-        req.covering_side_approved = True    # covering (claiming) already implied consent
-        create_notification(
-            session,
-            soldier_id=req.requesting_soldier_id,
-            type=NotificationType.swap_offer,
-            title="הגיעה הצעה לכיסוי הבקשה שלך",
-            reference_type="swap_request",
-            reference_id=req.id,
-            actor_id=actor_id,
+    candidate = session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == swap_id,
+            SwapCandidate.soldier_id == covering_soldier_id,
         )
-    else:
-        _apply_cover(session, req=req, actor_id=actor_id)
-        create_notification(
-            session, soldier_id=req.requesting_soldier_id,
-            type=NotificationType.swap_accepted,
-            title="בקשת ההחלפה בוצעה",
-            reference_type="swap_request", reference_id=req.id,
-            actor_id=actor_id,
-        )
-        create_notification(
-            session, soldier_id=covering_soldier_id,
-            type=NotificationType.swap_accepted,
-            title="בקשת ההחלפה בוצעה",
-            reference_type="swap_request", reference_id=req.id,
-            actor_id=actor_id,
-        )
+    ).scalar_one_or_none()
+    if candidate is None:
+        if not req.open_to_marketplace:
+            raise SwapError("not_targeted_at_you")
+        candidate = SwapCandidate(swap_request_id=swap_id, soldier_id=covering_soldier_id, source="marketplace")
+        session.add(candidate)
+    elif candidate.status != "pending":
+        raise SwapError("already_pending")
 
+    candidate.offered_assignment_ids = [str(aid) for aid in offered_assignment_ids]
+    candidate.status = "accepted"
+    candidate.soldier_side_approved = True
+    req.requester_side_approved = True
+
+    create_notification(
+        session, soldier_id=req.requesting_soldier_id, type=NotificationType.swap_offer,
+        title="הגיעה הצעה לכיסוי הבקשה שלך", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+    )
     write_audit(
-        session,
-        actor_id=actor_id,
-        action="swap.cover_offer",
-        entity_type="swap_request",
-        entity_id=req.id,
-        after={
-            "covering_soldier_id": str(covering_soldier_id),
-            "status": req.status,
-        },
+        session, actor_id=actor_id, action="swap.cover_offer", entity_type="swap_request",
+        entity_id=req.id, after={"soldier_id": str(covering_soldier_id), "candidate_id": str(candidate.id)},
     )
+    session.flush()
+    _try_finalize(session, req, actor_id)
     session.flush()
     return req
 
