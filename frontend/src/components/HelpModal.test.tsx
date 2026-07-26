@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import HelpModal from "./HelpModal";
 
 const mockUseAuth = vi.fn();
@@ -22,7 +22,7 @@ describe("HelpModal tab visibility", () => {
     render(<HelpModal onClose={() => {}} gimelimEnabled={false} />);
     expect(screen.queryByText(/אישורים/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ייבוא/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /החלפות/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "🔄 החלפות" })).toBeInTheDocument();
   });
 
   it("shows Approvals but not Import to a commander", () => {
@@ -51,4 +51,15 @@ it("shows corrected gimelim reason-visibility copy and undocumented-behavior cal
   setUser("admin");
   render(<HelpModal onClose={() => {}} gimelimEnabled initialTab="gimelim" />);
   expect(screen.getByText(/מנהל תורנויות או מפקד שבתחום אחריותם/)).toBeInTheDocument();
+});
+
+it("expands a swap step's detail on click and collapses on second click", () => {
+  setUser("soldier");
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="swaps" />);
+  const step = screen.getByText(/חייל מגיש בקשת החלפה/);
+  expect(screen.queryByText(/הבקשה יכולה להיות פתוחה/)).not.toBeInTheDocument();
+  fireEvent.click(step);
+  expect(screen.getByText(/הבקשה יכולה להיות פתוחה/)).toBeInTheDocument();
+  fireEvent.click(step);
+  expect(screen.queryByText(/הבקשה יכולה להיות פתוחה/)).not.toBeInTheDocument();
 });

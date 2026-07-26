@@ -29,7 +29,11 @@ function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean): HelpTa
   return TAB_DEFS.filter((t) => t.visible(user, gimelimEnabled));
 }
 
-function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string; color?: string }) {
+function FlowStep({
+  icon, text, color = "indigo", detail, expanded, onToggle,
+}: {
+  icon: string; text: string; color?: string; detail?: string; expanded?: boolean; onToggle?: () => void;
+}) {
   const colors: Record<string, string> = {
     indigo: "bg-indigo-50 dark:bg-indigo-950 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200",
     green: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200",
@@ -38,9 +42,22 @@ function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string
     blue: "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200",
     gray: "bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300",
   };
+  const clickable = !!detail;
   return (
-    <div className={`border rounded-lg px-3 py-2 text-sm font-medium text-center ${colors[color] ?? colors.indigo}`}>
-      {icon} {text}
+    <div>
+      <div
+        className={`border rounded-lg px-3 py-2 text-sm font-medium text-center ${colors[color] ?? colors.indigo} ${clickable ? "cursor-pointer hover:opacity-80" : ""}`}
+        onClick={clickable ? onToggle : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+      >
+        {icon} {text} {clickable && (expanded ? "▲" : "▼")}
+      </div>
+      {clickable && expanded && (
+        <div className="mt-1 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-gray-600 dark:text-gray-300">
+          {detail}
+        </div>
+      )}
     </div>
   );
 }
@@ -64,29 +81,55 @@ function Arrow({ split }: { split?: boolean }) {
 }
 
 function SwapsTab() {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
+
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך עובדות החלפות?</h3>
       <p className="text-gray-700 dark:text-gray-300">
-        מנגנון ההחלפות מאפשר לשני חיילים להחליף ביניהם תורנויות, בכפוף לאישור. כך זה עובד:
+        מנגנון ההחלפות מאפשר לשני חיילים להחליף ביניהם תורנויות, בכפוף לאישור. לחצו על כל שלב כדי לראות מה קורה בפועל ולמה:
       </p>
 
-      {/* Flow diagram */}
       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600">
-        <FlowStep icon="🙋" text="חייל מגיש בקשת החלפה" color="indigo" />
+        <FlowStep
+          icon="🙋" text="חייל מגיש בקשת החלפה" color="indigo"
+          detail="החייל בוחר תורנות שלו ומבקש שמישהו אחר יבצע אותה במקומו. הבקשה יכולה להיות פתוחה (כל חייל יכול להציע עצמו) או ממוקדת לחייל ספציפי."
+          expanded={expanded === "request"} onToggle={() => toggle("request")}
+        />
         <Arrow split />
         <div className="grid grid-cols-2 gap-2">
-          <FlowStep icon="📢" text="מתפרסם בלוח ההחלפות" color="blue" />
-          <FlowStep icon="📩" text="נשלחת הודעה לחייל המבוקש" color="blue" />
+          <FlowStep
+            icon="📢" text="מתפרסם בלוח ההחלפות" color="blue"
+            detail="כל חייל ביחידה יכול לראות את הבקשה ולהציע את עצמו כמחליף — שימושי כשלא ידוע מראש מי פנוי."
+            expanded={expanded === "board"} onToggle={() => toggle("board")}
+          />
+          <FlowStep
+            icon="📩" text="נשלחת הודעה לחייל המבוקש" color="blue"
+            detail="רק החייל שצוין רואה את הבקשה ומחליט אם לאשר או לדחות אותה."
+            expanded={expanded === "targeted"} onToggle={() => toggle("targeted")}
+          />
         </div>
         <Arrow />
-        <FlowStep icon="🤝" text="חייל מציע להחליף ושני הצדדים מאשרים" color="indigo" />
+        <FlowStep
+          icon="🤝" text="חייל מציע להחליף ושני הצדדים מאשרים" color="indigo"
+          detail="שני החיילים חייבים להסכים לפני שהבקשה ממשיכה לשלב האישור הפיקודי."
+          expanded={expanded === "agree"} onToggle={() => toggle("agree")}
+        />
         <Arrow />
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <div className="text-center text-xs text-gray-400">נדרש אישור</div>
-            <FlowStep icon="👮" text="מפקד אחד מהשרשרת מאשר" color="amber" />
-            <FlowStep icon="🗂️" text="אחראי תורנויות מאשר" color="amber" />
+            <FlowStep
+              icon="👮" text="מפקד אחד מהשרשרת מאשר" color="amber"
+              detail="מספיק אישור אחד ממפקד רלוונטי לאחד הצדדים; אם אותו מפקד אחראי על שני הצדדים, האישור שלו מכסה את שניהם בבת אחת."
+              expanded={expanded === "cmd-approve"} onToggle={() => toggle("cmd-approve")}
+            />
+            <FlowStep
+              icon="🗂️" text="אחראי תורנויות מאשר" color="amber"
+              detail="נדרש גם אישור נפרד של אחראי תורנויות — מפקד יכול לדחות גם אם אחראי התורנויות כבר אישר, וההפך."
+              expanded={expanded === "dm-approve"} onToggle={() => toggle("dm-approve")}
+            />
             <Arrow />
             <FlowStep icon="✅" text="ההחלפה בוצעה!" color="green" />
           </div>
