@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
+import { authenticated, PermissionUser } from "../auth/permissions";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
@@ -10,17 +11,22 @@ interface Props {
   initialTab?: string;
 }
 
-function buildTabs(gimelimEnabled: boolean) {
-  const tabs = [
-    { id: "swaps", label: "🔄 החלפות" },
-    { id: "algorithm", label: "⚙️ האלגוריתם" },
-    { id: "fairness", label: "⚖️ הוגנות ושקיפות" },
-    { id: "deep", label: "🔬 מאחורי הקלעים" },
-  ];
-  if (gimelimEnabled) {
-    tabs.push({ id: "gimelim", label: "🏥 גימלים" });
-  }
-  return tabs;
+interface HelpTabDef {
+  id: string;
+  label: string;
+  visible: (user: PermissionUser | null, gimelimEnabled: boolean) => boolean;
+}
+
+const TAB_DEFS: HelpTabDef[] = [
+  { id: "swaps", label: "🔄 החלפות", visible: (u) => authenticated(u) },
+  { id: "algorithm", label: "⚙️ האלגוריתם", visible: (u) => authenticated(u) },
+  { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
+  { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
+  { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
+];
+
+function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean): HelpTabDef[] {
+  return TAB_DEFS.filter((t) => t.visible(user, gimelimEnabled));
 }
 
 function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string; color?: string }) {
@@ -1011,8 +1017,11 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
 
 export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
   useModalBackClose(onClose);
-  const [activeTab, setActiveTab] = useState(initialTab ?? "swaps");
-  const TABS = buildTabs(gimelimEnabled);
+  const { user } = useAuth();
+  const TABS = buildTabs(user as PermissionUser | null, gimelimEnabled);
+  const [activeTab, setActiveTab] = useState(() =>
+    initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : (TABS[0]?.id ?? "swaps")
+  );
 
   return (
     <div
