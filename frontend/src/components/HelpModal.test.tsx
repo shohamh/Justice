@@ -46,3 +46,9 @@ describe("HelpModal tab visibility", () => {
     expect(screen.getByText(/גימלים/)).toBeInTheDocument();
   });
 });
+
+it("shows corrected gimelim reason-visibility copy and undocumented-behavior callouts", () => {
+  setUser("admin");
+  render(<HelpModal onClose={() => {}} gimelimEnabled initialTab="gimelim" />);
+  expect(screen.getByText(/מנהל תורנויות או מפקד שבתחום אחריותם/)).toBeInTheDocument();
+});
