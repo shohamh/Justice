@@ -26,6 +26,7 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
   { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
   { id: "hierarchy", label: "🌳 היררכיה וכשירות", visible: (u) => authenticated(u) },
+  { id: "hakpaza", label: "📣 הקפצה פיקודית", visible: (u) => canApprove(u) },
   { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
 ];
 
@@ -1066,6 +1067,43 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
   );
 }
 
+function HakpazaTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-red-700 dark:text-red-400">📣 מה זו הקפצה פיקודית?</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        הקפצה פיקודית מאפשרת למפקד למשוך חייל מתורנות קיימת ולהחליף אותו במועמד אחר — ללא תלות בבקשת החלפה הדדית. שימושי כשצריך מענה מיידי (למשל חייל שלא הגיע).
+      </p>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
+        <FlowStep icon="🙋" text="מפקד בוחר תורנות וחייל שנמשך ממנה" color="red" />
+        <Arrow />
+        <FlowStep icon="📋" text="המערכת מציעה עד 8 מועמדים מדורגים" color="blue" />
+        <Arrow />
+        <FlowStep icon="✅" text="מפקד בוחר מועמד ומגיש בקשה" color="indigo" />
+        <Arrow />
+        <FlowStep icon="👮" text="נדרש אישור נוסף לפני שההקפצה נכנסת לתוקף" color="amber" />
+        <Arrow />
+        <FlowStep icon="📲" text="שני הצדדים מקבלים הודעה" color="green" />
+      </div>
+      <div className="space-y-2">
+        {[
+          { icon: "📏", title: "דירוג המועמדים", desc: "המועמדים מדורגים לפי קרבה היררכית לחייל שנמשך, עומס נוכחי (score_per_day), ומספר ימי התורנות שנותרו לו — כך שהעומס הנוסף מתחלק בצורה סבירה." },
+          { icon: "⚖️", title: "מניעת שימוש חוזר באותו חייל", desc: "המערכת עוקבת אחרי הקפצות פיקודיות קודמות של כל חייל (עם דעיכה לאורך זמן) ומורידה את הדירוג שלו כמועמד ככל שהוקפץ יותר לאחרונה — כדי למנוע הישענות על אותם חיילים שוב ושוב." },
+          { icon: "🔒", title: "צריך אישור", desc: "הקפצה לא נכנסת לתוקף מיידית — היא ממתינה לאישור נפרד (לרוב של גורם פיקודי נוסף) בדיוק כמו בקשת החלפה, ורק לאחריו התורנות בפועל מתחלפת." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ApprovalsTab() {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
@@ -1235,6 +1273,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
           {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "approvals" && <ApprovalsTab />}
           {activeTab === "hierarchy" && <HierarchyEligibilityTab user={user as PermissionUser | null} />}
+          {activeTab === "hakpaza" && <HakpazaTab />}
           {activeTab === "gimelim" && <GimelimTab />}
         </div>
       </div>
