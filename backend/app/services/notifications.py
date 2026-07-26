@@ -160,7 +160,7 @@ def _enqueue_push(
         if not bool(get_setting(session, "telegram.enabled")):
             return
     except SettingNotFound:
-        pass  # default: enabled
+        return  # default: disabled
 
     link = session.execute(
         select(TelegramLink).where(
