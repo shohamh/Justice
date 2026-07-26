@@ -12,6 +12,7 @@ import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
+import { isValidIsraeliPhone } from "../utils/phoneValidation";
 
 const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
 const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
@@ -189,8 +190,11 @@ export default function RegisterPage() {
                 value={form.full_name} onChange={e => set("full_name", e.target.value)} />
             </label>
             <label className="block text-sm">טלפון <span className="text-red-500">*</span>
-              <input type="tel" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              <input type="tel" dir="ltr" placeholder="05X-XXXXXXX" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 value={form.phone} onChange={e => set("phone", e.target.value)} />
+              {form.phone && !isValidIsraeliPhone(form.phone) && (
+                <span className="text-red-600 text-xs">מספר טלפון לא תקין</span>
+              )}
             </label>
             <label className="block text-sm">אימייל <span className="text-red-500">*</span>
               <input type="email" placeholder={emailPlaceholder} className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -247,7 +251,7 @@ export default function RegisterPage() {
               <button className="flex-1 border py-2 rounded" onClick={() => setStep(1)}>{t("register.back")}</button>
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
                 disabled={
-                  !form.personal_number || !form.full_name || !form.phone || !form.email ||
+                  !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email ||
                   !form.gender || !form.rank || !form.enlistment_date || !form.mandatory_end_date ||
                   !form.discharge_date || !form.last_mitvahim_date ||
                   !passwordValid(form.password) || form.password !== form.confirm_password

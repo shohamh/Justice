@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import ExemptionRequest, HierarchyNode, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
 from app.services import enrollment as svc
+from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
 
@@ -75,6 +76,13 @@ class PatchEnrollmentBody(BaseModel):
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, v: str | None) -> str | None:
+        if v and not is_valid_israeli_phone(v):
+            raise ValueError("invalid_israeli_phone")
+        return v
 
 
 def _nearest_approvers_for_node(
