@@ -3,7 +3,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import Notification, NotificationType
+from app.db.models import Announcement, Notification, NotificationType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -195,3 +195,27 @@ def test_soldier_cannot_broadcast(client: TestClient, admin_session: Session):
     )
     assert resp.status_code == 403
     assert resp.json()["detail"] == "forbidden"
+
+
+def test_read_at_set_on_mark_read(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="9001018")
+    headers = auth_headers(s)
+    n = Notification(soldier_id=s.id, type=NotificationType.announcement, title="Read me too")
+    admin_session.add(n)
+    admin_session.commit()
+    nid = n.id
+    resp = client.patch(f"/api/notifications/{nid}/read", headers=headers)
+    assert resp.status_code == 200
+    admin_session.refresh(n)
+    assert n.read_at is not None
+
+
+def test_announcement_row_can_be_created_directly(admin_session: Session):
+    sender = create_soldier(admin_session, personal_number="9001019", role="admin")
+    a = Announcement(sender_id=sender.id, title="Org update", recipient_count=3, type=NotificationType.system_announcement)
+    admin_session.add(a)
+    admin_session.commit()
+    admin_session.refresh(a)
+    assert a.id is not None
+    assert a.hierarchy_node_ids is None
+    assert a.created_at is not None
