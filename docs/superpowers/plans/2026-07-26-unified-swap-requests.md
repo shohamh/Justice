@@ -45,9 +45,12 @@ from tests.helpers import create_node, create_soldier
 def test_swap_request_no_longer_has_target_or_covering_columns():
     assert not hasattr(SwapRequest, "target_soldier_id")
     assert not hasattr(SwapRequest, "covering_soldier_id")
-    assert not hasattr(SwapRequest, "requester_side_approved")
     assert not hasattr(SwapRequest, "covering_side_approved")
     assert not hasattr(SwapRequest, "offered_assignment_ids")
+    # requester_side_approved is intentionally KEPT on SwapRequest — it's
+    # shared across every candidate (there's one requester), unlike
+    # covering-side approval which becomes per-candidate.
+    assert hasattr(SwapRequest, "requester_side_approved")
 
 
 def test_swap_request_has_open_to_marketplace_column(admin_session):
@@ -178,9 +181,12 @@ In `SwapManagerApproval` (currently starting at line 553, after the class edit a
     # request); required for side="covering" (each candidate has their own
     # commander/duty-manager chain, since they're different soldiers).
     swap_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("swap_candidates.id", ondelete="CASCADE"), nullable=True, default=None
+        UUID(as_uuid=True), ForeignKey("swap_candidates.id", ondelete="CASCADE"), nullable=True, default=None,
+        kw_only=True,
     )
 ```
+
+Note: `kw_only=True` is required here — without it, `MappedAsDataclass` raises `TypeError: non-default argument 'side' follows default argument 'swap_candidate_id'` at import time, since this defaulted field sits before several non-default fields (`side`, `commander_id`) in the class body. `kw_only=True` makes it constructible only by keyword, which matches how every caller in this plan already constructs `SwapManagerApproval` rows (always by keyword, never positionally).
 
 and change `__table_args__` (currently lines 591-596) to:
 
@@ -236,34 +242,120 @@ def upgrade() -> None:
 
     op.add_column("swap_requests", sa.Column("open_to_marketplace", sa.Boolean(), nullable=False, server_default="false"))
 
-    # Backfill: every existing row becomes a parent + exactly one candidate.
-    # (Today's sibling-cancel-on-claim guarantees at most one non-terminal
-    # row per (requester, duty) at any time, so this is a reshape, not a
-    # merge — no row ever needs combining with another.)
-    op.execute("""
-        INSERT INTO swap_candidates (swap_request_id, soldier_id, source, status, offered_assignment_ids, soldier_side_approved, created_at, decided_at)
-        SELECT
-            id,
-            COALESCE(covering_soldier_id, target_soldier_id),
-            CASE WHEN target_soldier_id IS NULL THEN 'marketplace' ELSE 'invited' END,
-            CASE status
-                WHEN 'applied' THEN 'applied'
-                WHEN 'open' THEN CASE WHEN covering_soldier_id IS NULL THEN 'pending' ELSE 'accepted' END
-                ELSE 'cancelled'
-            END,
-            COALESCE(offered_assignment_ids, '[]'::jsonb),
-            covering_side_approved,
-            created_at,
-            CASE WHEN status IN ('applied', 'rejected', 'cancelled') THEN updated_at ELSE NULL END
-        FROM swap_requests
-        WHERE COALESCE(covering_soldier_id, target_soldier_id) IS NOT NULL;
-    """)
+    # Backfill. Terminal-status rows (applied/rejected/cancelled) and rows
+    # that already reached pending_approval each become their own parent +
+    # exactly one candidate — unaffected by consolidation, since the new
+    # partial unique index only applies WHERE status='open'.
+    #
+    # status='open' rows need consolidation: sibling-cancel-on-claim only
+    # fires once a covering soldier is claimed (transitioning the row to
+    # pending_approval or applied) — it never ran at request-creation time,
+    # so a requester who invited N specific targets and/or posted to the
+    # open marketplace, with nobody having claimed yet, genuinely has N
+    # simultaneously-open rows for the same (requester, duty) today. Each
+    # group of open rows for the same (requester, duty) must merge into one
+    # surviving parent (earliest created_at, tie-broken by id) with one
+    # SwapCandidate per non-null target/covering soldier in the group.
+    # status='open' rows never have pre-existing SwapManagerApproval rows —
+    # those are only created once a request reaches pending_approval or
+    # later — so this consolidation never needs to re-point orphaned
+    # approval rows; the re-pointing step below only concerns the
+    # non-open/terminal rows, which keep their own id.
+    conn = op.get_bind()
+    swap_requests_t = sa.table(
+        "swap_requests",
+        sa.column("id", postgresql.UUID(as_uuid=True)),
+        sa.column("requesting_soldier_id", postgresql.UUID(as_uuid=True)),
+        sa.column("duty_assignment_id", postgresql.UUID(as_uuid=True)),
+        sa.column("target_soldier_id", postgresql.UUID(as_uuid=True)),
+        sa.column("covering_soldier_id", postgresql.UUID(as_uuid=True)),
+        sa.column("covering_side_approved", sa.Boolean()),
+        sa.column("offered_assignment_ids", postgresql.JSONB()),
+        sa.column("status", sa.Text()),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+        sa.column("updated_at", sa.DateTime(timezone=True)),
+        sa.column("open_to_marketplace", sa.Boolean()),
+    )
+    swap_candidates_t = sa.table(
+        "swap_candidates",
+        sa.column("swap_request_id", postgresql.UUID(as_uuid=True)),
+        sa.column("soldier_id", postgresql.UUID(as_uuid=True)),
+        sa.column("source", sa.Text()),
+        sa.column("status", sa.Text()),
+        sa.column("offered_assignment_ids", postgresql.JSONB()),
+        sa.column("soldier_side_approved", sa.Boolean()),
+        sa.column("created_at", sa.DateTime(timezone=True)),
+        sa.column("decided_at", sa.DateTime(timezone=True)),
+    )
 
-    op.execute("""
-        UPDATE swap_requests SET open_to_marketplace = true WHERE target_soldier_id IS NULL;
-    """)
+    all_rows = conn.execute(sa.select(swap_requests_t)).mappings().all()
+
+    from collections import defaultdict
+
+    open_groups: dict[tuple, list] = defaultdict(list)
+    other_rows = []
+    for row in all_rows:
+        if row["status"] == "open":
+            open_groups[(row["requesting_soldier_id"], row["duty_assignment_id"])].append(row)
+        else:
+            other_rows.append(row)
+
+    ids_to_delete: list = []
+
+    for group_rows in open_groups.values():
+        survivor = min(group_rows, key=lambda r: (r["created_at"], str(r["id"])))
+        if any(r["target_soldier_id"] is None for r in group_rows):
+            conn.execute(
+                sa.update(swap_requests_t).where(swap_requests_t.c.id == survivor["id"])
+                .values(open_to_marketplace=True)
+            )
+        for row in group_rows:
+            soldier_id = row["covering_soldier_id"] or row["target_soldier_id"]
+            if soldier_id is not None:
+                conn.execute(
+                    sa.insert(swap_candidates_t).values(
+                        swap_request_id=survivor["id"],
+                        soldier_id=soldier_id,
+                        source="marketplace" if row["target_soldier_id"] is None else "invited",
+                        status="pending",
+                        offered_assignment_ids=row["offered_assignment_ids"] or [],
+                        soldier_side_approved=row["covering_side_approved"],
+                        created_at=row["created_at"],
+                        decided_at=None,
+                    )
+                )
+            if row["id"] != survivor["id"]:
+                ids_to_delete.append(row["id"])
+
+    for row in other_rows:
+        soldier_id = row["covering_soldier_id"] or row["target_soldier_id"]
+        if soldier_id is not None:
+            conn.execute(
+                sa.insert(swap_candidates_t).values(
+                    swap_request_id=row["id"],
+                    soldier_id=soldier_id,
+                    source="marketplace" if row["target_soldier_id"] is None else "invited",
+                    status="applied" if row["status"] == "applied" else "cancelled",
+                    offered_assignment_ids=row["offered_assignment_ids"] or [],
+                    soldier_side_approved=row["covering_side_approved"],
+                    created_at=row["created_at"],
+                    decided_at=row["updated_at"],
+                )
+            )
+        if row["target_soldier_id"] is None:
+            conn.execute(
+                sa.update(swap_requests_t).where(swap_requests_t.c.id == row["id"])
+                .values(open_to_marketplace=True)
+            )
+
+    if ids_to_delete:
+        conn.execute(sa.delete(swap_requests_t).where(swap_requests_t.c.id.in_(ids_to_delete)))
 
     # Re-point covering-side SwapManagerApproval rows at the new candidate.
+    # Only ever matters for the `other_rows` path above (rows that reached
+    # pending_approval or later keep their own id, so this join still
+    # resolves correctly) — the open-group consolidation path has nothing
+    # to re-point, per the note above.
     op.add_column("swap_manager_approvals", sa.Column("swap_candidate_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("swap_candidates.id", ondelete="CASCADE"), nullable=True))
     op.execute("""
         UPDATE swap_manager_approvals sma
