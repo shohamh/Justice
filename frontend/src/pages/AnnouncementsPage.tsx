@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
+import { translateApiError } from "../utils/translateApiError";
 import {
   getAnnounceScope,
   postAnnouncement,
@@ -13,6 +15,13 @@ import {
 } from "../api/announcements";
 
 export default function AnnouncementsPage() {
+  const { user } = useAuth();
+  const canAnnounce = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
+  if (!canAnnounce) return <Navigate to="/" replace />;
+  return <AnnouncementsContent />;
+}
+
+function AnnouncementsContent() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -25,6 +34,7 @@ export default function AnnouncementsPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const limit = 20;
@@ -52,6 +62,7 @@ export default function AnnouncementsPage() {
   async function handleSubmit() {
     setSubmitting(true);
     setSuccessMsg(null);
+    setErrorMsg(null);
     try {
       const hierarchy_node_ids = isAdmin
         ? (narrowNodeIds.length > 0 ? narrowNodeIds : undefined)
@@ -64,9 +75,20 @@ export default function AnnouncementsPage() {
       setNarrowNames({});
       setOffset(0);
       await queryClient.invalidateQueries({ queryKey: ["notifications", "announcements"] });
+    } catch (err) {
+      setErrorMsg(translateApiError(err, t, t("announcements.send_error")));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleRemoveNarrow(id: string) {
+    setNarrowNodeIds((prev) => prev.filter((n) => n !== id));
+    setNarrowNames((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }
 
   function handlePicked(nodeId: string, nodeName: string) {
@@ -127,7 +149,7 @@ export default function AnnouncementsPage() {
                     key={id}
                     type="button"
                     className="ms-2 text-xs text-red-500 hover:underline"
-                    onClick={() => setNarrowNodeIds((prev) => prev.filter((n) => n !== id))}
+                    onClick={() => handleRemoveNarrow(id)}
                   >
                     {narrowNames[id]} ✕
                   </button>
@@ -139,6 +161,7 @@ export default function AnnouncementsPage() {
           </div>
 
           {successMsg && <p className="text-sm text-green-600">{successMsg}</p>}
+          {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
 
           <button
             type="button"
@@ -185,7 +208,7 @@ export default function AnnouncementsPage() {
                 </div>
                 {expandedId === a.id && (
                   <div className="mt-2 ps-8 space-y-1">
-                    {(recipientsQuery.data ?? []).map((r) => (
+                    {(recipientsQuery.data?.items ?? []).map((r) => (
                       <div key={r.soldier_id} className="text-sm flex justify-between">
                         <span>{r.full_name}</span>
                         <span className={r.is_read ? "text-green-600" : "text-gray-400"}>

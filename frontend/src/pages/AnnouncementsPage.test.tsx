@@ -13,6 +13,14 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../auth/AuthContext");
+vi.mock("../components/HierarchyNodePickerModal", () => ({
+  default: ({ onPicked }: { onPicked: (id: string, name: string) => void }) => (
+    <div>
+      <button type="button" onClick={() => onPicked("node-a", "יחידה א")}>pick-a</button>
+      <button type="button" onClick={() => onPicked("node-b", "יחידה ב")}>pick-b</button>
+    </div>
+  ),
+}));
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -97,6 +105,44 @@ describe("AnnouncementsPage — admin (org-wide default)", () => {
       })
     );
   });
+
+  it("removes the unit name from the summary after removing a narrowed selection", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "u2", role: "admin", is_commander: false, is_duty_manager: false },
+    } as ReturnType<typeof useAuth>);
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "בחר יחידה ספציפית" }));
+    await user.click(screen.getByRole("button", { name: "pick-a" }));
+    await user.click(screen.getByRole("button", { name: "בחר יחידה ספציפית" }));
+    await user.click(screen.getByRole("button", { name: "pick-b" }));
+    expect(screen.getByText("יחידה א, יחידה ב")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "יחידה א ✕" }));
+
+    expect(screen.queryByText("יחידה א", { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByText("יחידה ב")).toBeInTheDocument();
+  });
+
+  it("shows an error message when the send request fails", async () => {
+    vi.mocked(announcementsApi.postAnnouncement).mockRejectedValue(new Error("network error"));
+    renderPage();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("כותרת"), "הודעה שנכשלת");
+    await user.click(screen.getByRole("button", { name: "שלח הכרזה" }));
+    expect(await screen.findByText("שגיאה בשליחת ההכרזה")).toBeInTheDocument();
+  });
+});
+
+describe("AnnouncementsPage — role gate", () => {
+  it("redirects a plain soldier away from the page", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "u3", role: "soldier", is_commander: false, is_duty_manager: false },
+    } as ReturnType<typeof useAuth>);
+    renderPage();
+    expect(screen.queryByText("הכרזה חדשה")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("כותרת")).not.toBeInTheDocument();
+  });
 });
 
 describe("AnnouncementsPage — history list", () => {
@@ -129,9 +175,10 @@ describe("AnnouncementsPage — history list", () => {
       }],
       total: 1,
     });
-    vi.mocked(announcementsApi.getAnnouncementRecipients).mockResolvedValue([
-      { soldier_id: "s1", full_name: "דני כהן", is_read: false, read_at: null },
-    ]);
+    vi.mocked(announcementsApi.getAnnouncementRecipients).mockResolvedValue({
+      items: [{ soldier_id: "s1", full_name: "דני כהן", is_read: false, read_at: null }],
+      total: 1,
+    });
     renderPage();
     await screen.findByText("עדכון 2");
     const user = userEvent.setup();

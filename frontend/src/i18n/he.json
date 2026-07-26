@@ -1082,6 +1082,7 @@
     "submit": "שלח הכרזה",
     "submitting": "שולח...",
     "sent_success": "ההכרזה נשלחה בהצלחה",
+    "send_error": "שגיאה בשליחת ההכרזה",
     "history_title": "היסטוריית הכרזות",
     "no_history": "עדיין לא נשלחו הכרזות",
     "recipients": "נמענים",

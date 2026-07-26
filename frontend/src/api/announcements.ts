@@ -34,6 +34,11 @@ export interface AnnouncementRecipient {
   read_at: string | null;
 }
 
+export interface PaginatedAnnouncementRecipients {
+  items: AnnouncementRecipient[];
+  total: number;
+}
+
 export function getAnnounceScope(): Promise<ScopeNode[]> {
   return client.get("/notifications/announce/scope").then((r) => r.data);
 }
@@ -50,6 +55,9 @@ export function listAnnouncements(params?: { offset?: number; limit?: number }):
   return client.get("/notifications/announcements", { params }).then((r) => r.data);
 }
 
-export function getAnnouncementRecipients(id: string): Promise<AnnouncementRecipient[]> {
-  return client.get(`/notifications/announcements/${id}/recipients`).then((r) => r.data);
+export function getAnnouncementRecipients(
+  id: string,
+  params?: { offset?: number; limit?: number }
+): Promise<PaginatedAnnouncementRecipients> {
+  return client.get(`/notifications/announcements/${id}/recipients`, { params }).then((r) => r.data);
 }
