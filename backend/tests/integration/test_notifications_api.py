@@ -266,3 +266,74 @@ def test_admin_scoped_announcement_still_uses_scoped_type(client: TestClient, ad
         select(Notification).where(Notification.soldier_id == recipient.id, Notification.title == "admin scoped")
     ).scalar_one()
     assert notif.type == NotificationType.announcement  # scope-driven, not sender-driven
+
+
+def test_announce_scope_returns_own_roots_for_dm(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="ScopeEndpointUnit")
+    dm = create_soldier(admin_session, personal_number="9001026", role="duty_manager", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(dm)
+    resp = client.get("/api/notifications/announce/scope", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["id"] == str(unit_a.id)
+    assert data[0]["name"] == "ScopeEndpointUnit"
+
+
+def test_announce_scope_empty_for_admin(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001027", role="admin")
+    headers = auth_headers(admin)
+    resp = client.get("/api/notifications/announce/scope", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_announce_returns_id_and_sent_count(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001028", role="admin")
+    create_soldier(admin_session, personal_number="9001029")
+    headers = auth_headers(admin)
+    resp = client.post("/api/notifications/announce", headers=headers, json={"title": "count me"})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "id" in data
+    assert data["sent"] >= 2  # admin + the extra soldier created above (and any others in this test DB)
+
+
+def test_list_sent_announcements_history(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001030", role="admin")
+    headers = auth_headers(admin)
+    send_resp = client.post("/api/notifications/announce", headers=headers, json={"title": "history item"})
+    announcement_id = send_resp.json()["id"]
+    resp = client.get("/api/notifications/announcements", headers=headers)
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    match = next(i for i in items if i["id"] == announcement_id)
+    assert match["title"] == "history item"
+    assert match["read_count"] == 0
+    assert match["recipient_count"] >= 1
+
+
+def test_announcement_recipients_endpoint(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001031", role="admin")
+    recipient = create_soldier(admin_session, personal_number="9001032")
+    headers = auth_headers(admin)
+    send_resp = client.post("/api/notifications/announce", headers=headers, json={"title": "recipients test"})
+    announcement_id = send_resp.json()["id"]
+    resp = client.get(f"/api/notifications/announcements/{announcement_id}/recipients", headers=headers)
+    assert resp.status_code == 200
+    rows = resp.json()
+    match = next(r for r in rows if r["soldier_id"] == str(recipient.id))
+    assert match["full_name"] == recipient.full_name
+    assert match["is_read"] is False
+    assert match["read_at"] is None
+
+
+def test_announcement_recipients_404_for_non_owner(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001033", role="admin")
+    other_admin = create_soldier(admin_session, personal_number="9001034", role="admin")
+    headers = auth_headers(admin)
+    send_resp = client.post("/api/notifications/announce", headers=headers, json={"title": "not yours"})
+    announcement_id = send_resp.json()["id"]
+    other_headers = auth_headers(other_admin)
+    resp = client.get(f"/api/notifications/announcements/{announcement_id}/recipients", headers=other_headers)
+    assert resp.status_code == 404
