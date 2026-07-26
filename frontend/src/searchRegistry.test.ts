@@ -57,8 +57,8 @@ describe("searchRegistry help topics", () => {
     expect(getHelpTopicEntries(false).some((e) => e.id === "gimelim")).toBe(false);
   });
 
-  test("all non-gimelim topics are accessible to every authenticated user", () => {
-    const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim");
+  test("all non-gimelim, non-approvals topics are accessible to every authenticated user", () => {
+    const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim" && e.id !== "approvals");
     expect(entries.every((e) => e.canAccess(soldier))).toBe(true);
   });
 });

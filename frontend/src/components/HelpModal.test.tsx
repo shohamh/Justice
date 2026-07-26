@@ -53,6 +53,13 @@ it("shows corrected gimelim reason-visibility copy and undocumented-behavior cal
   expect(screen.getByText(/מנהל תורנויות או מפקד שבתחום אחריותם/)).toBeInTheDocument();
 });
 
+it("Approvals tab explains each approval type for a commander", () => {
+  setUser("commander", { is_commander: true });
+  render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="approvals" />);
+  expect(screen.getByText(/בקשות החלפה/)).toBeInTheDocument();
+  expect(screen.getByText(/בקשות פטור/)).toBeInTheDocument();
+});
+
 it("expands a swap step's detail on click and collapses on second click", () => {
   setUser("soldier");
   render(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="swaps" />);

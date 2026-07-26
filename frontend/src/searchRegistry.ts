@@ -63,6 +63,7 @@ export function getHelpTopicEntries(gimelimEnabled: boolean): HelpTopicEntry[] {
     { id: "algorithm", labelKey: "search.help.algorithm", keywords: ["אלגוריתם", "algorithm"], canAccess: authenticated },
     { id: "fairness", labelKey: "search.help.fairness", keywords: ["הוגנות", "שקיפות", "fairness"], canAccess: authenticated },
     { id: "deep", labelKey: "search.help.deep", keywords: ["מאחורי הקלעים", "deep"], canAccess: authenticated },
+    { id: "approvals", labelKey: "search.help.approvals", keywords: ["אישורים", "approvals"], canAccess: canApprove },
   ];
   if (gimelimEnabled) {
     topics.push({ id: "gimelim", labelKey: "search.help.gimelim", keywords: ["גימלים", "gimelim"], canAccess: authenticated });

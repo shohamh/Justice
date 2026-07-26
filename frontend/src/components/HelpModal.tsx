@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
-import { authenticated, PermissionUser } from "../auth/permissions";
+import { authenticated, canApprove, PermissionUser } from "../auth/permissions";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 
@@ -22,6 +22,7 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "algorithm", label: "⚙️ האלגוריתם", visible: (u) => authenticated(u) },
   { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
+  { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
   { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
 ];
 
@@ -1062,6 +1063,37 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
   );
 }
 
+function ApprovalsTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">תיבת האישורים</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        כל הבקשות שמחכות לאישור שלכם מרוכזות בעמוד <strong>אישורים</strong>, מחולקות לטאבים. אישור או דחייה כאן משפיעים מיידית על שיבוץ החייל — כדאי להבין את ההשפעה לפני שמחליטים:
+      </p>
+      <div className="space-y-2">
+        {[
+          { icon: "🔄", title: "בקשות החלפה", desc: "אישור מבצע את ההחלפה בפועל: מעביר את התורנות בין שני החיילים. דחייה משאירה את השיבוץ המקורי כפי שהיה — שני הצדדים מקבלים הודעה." },
+          { icon: "🚫", title: "בקשות פטור", desc: "אישור מסיר את החייל משיבוץ עתידי לסוגי התורנות שבפטור. פטור רשמי גם מפחית את פוטנציאל היחידה (ראו טאב האלגוריתם) — כלומר אותו מספר תורנויות מתחלק בין פחות חיילים ביחידה." },
+          { icon: "✏️", title: "עדכוני פרופיל", desc: "חייל ביקש לשנות פרט אישי (למשל טלפון או דרגה). אישור מעדכן את הרשומה מיד; דחייה משאירה את הערך הישן." },
+          { icon: "🎓", title: "הצטרפויות/קליטה", desc: "חייל חדש שממתין לשיבוץ ליחידה. אישור קובע את היחידה שלו וממנו והלאה הוא נכנס לחישובי העומס וההוגנות." },
+          { icon: "🔀", title: "העברות", desc: "העברת חייל בין תתי-יחידות. אישור מעביר את החייל וההיסטוריה שלו נשארת אך העומס העתידי נספר תחת היחידה החדשה." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+        ⚠️ בקשות ממתינות זמן רב עלולות לחסום תכנון: תורנות שממתינה לאישור החלפה לא תיחשב &ldquo;סופית&rdquo; עד שהאישור יושלם.
+      </div>
+    </div>
+  );
+}
+
 export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
   useModalBackClose(onClose);
   const { user } = useAuth();
@@ -1114,6 +1146,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
           {activeTab === "algorithm" && <AlgorithmTab />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
+          {activeTab === "approvals" && <ApprovalsTab />}
           {activeTab === "gimelim" && <GimelimTab />}
         </div>
       </div>
