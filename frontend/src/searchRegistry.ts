@@ -1,6 +1,6 @@
-import { SearchUser, isAdmin, canApprove, canPlan, authenticated } from "./auth/permissions";
+import { authenticated, canApprove, canPlan, isAdmin, PermissionUser } from "./auth/permissions";
 
-export type { SearchUser } from "./auth/permissions";
+export type SearchUser = PermissionUser;
 
 export interface PageEntry {
   id: string;

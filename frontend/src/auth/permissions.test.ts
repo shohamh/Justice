@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { isAdmin, canApprove, canPlan, authenticated, SearchUser } from "./permissions";
+import { isAdmin, canApprove, canPlan, authenticated, PermissionUser } from "./permissions";
 
 describe("permissions", () => {
   describe("isAdmin", () => {
     it("returns true for admin user", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "admin",
         is_commander: false,
         is_duty_manager: false,
@@ -13,7 +13,7 @@ describe("permissions", () => {
     });
 
     it("returns false for non-admin user", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: false,
@@ -26,7 +26,7 @@ describe("permissions", () => {
     });
 
     it("returns false for commander", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "commander",
         is_commander: true,
         is_duty_manager: false,
@@ -37,7 +37,7 @@ describe("permissions", () => {
 
   describe("canApprove", () => {
     it("returns true for admin user", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "admin",
         is_commander: false,
         is_duty_manager: false,
@@ -46,7 +46,7 @@ describe("permissions", () => {
     });
 
     it("returns true for commander", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: true,
         is_duty_manager: false,
@@ -55,7 +55,7 @@ describe("permissions", () => {
     });
 
     it("returns true for duty manager", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: true,
@@ -64,7 +64,7 @@ describe("permissions", () => {
     });
 
     it("returns false for regular soldier", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: false,
@@ -79,7 +79,7 @@ describe("permissions", () => {
 
   describe("canPlan", () => {
     it("returns true for admin user", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "admin",
         is_commander: false,
         is_duty_manager: false,
@@ -88,7 +88,7 @@ describe("permissions", () => {
     });
 
     it("returns true for duty manager", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: true,
@@ -97,7 +97,7 @@ describe("permissions", () => {
     });
 
     it("returns false for commander without duty_manager role", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: true,
         is_duty_manager: false,
@@ -106,7 +106,7 @@ describe("permissions", () => {
     });
 
     it("returns false for regular soldier", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: false,
@@ -121,7 +121,7 @@ describe("permissions", () => {
 
   describe("authenticated", () => {
     it("returns true for any user", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "soldier",
         is_commander: false,
         is_duty_manager: false,
@@ -134,7 +134,7 @@ describe("permissions", () => {
     });
 
     it("returns true for admin", () => {
-      const user: SearchUser = {
+      const user: PermissionUser = {
         role: "admin",
         is_commander: false,
         is_duty_manager: false,
