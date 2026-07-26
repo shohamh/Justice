@@ -142,7 +142,7 @@ export default function AnnouncementsPage() {
 
           <button
             type="button"
-            disabled={submitting || !title.trim()}
+            disabled={submitting || !title.trim() || (!isAdmin && scopeQuery.isLoading)}
             onClick={handleSubmit}
             className="bg-indigo-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
           >

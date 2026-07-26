@@ -42,6 +42,23 @@ describe("AnnouncementsPage — commander/DM (scoped)", () => {
     ]);
   });
 
+  it("disables the submit button while the caller's scope is still loading", async () => {
+    let resolveScope!: (value: { id: string; name: string; level: string }[]) => void;
+    vi.mocked(announcementsApi.getAnnounceScope).mockReturnValue(
+      new Promise((resolve) => {
+        resolveScope = resolve;
+      })
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("כותרת"), "בדיקה");
+    expect(screen.getByRole("button", { name: "שלח הכרזה" })).toBeDisabled();
+
+    resolveScope([{ id: "node-1", name: "יחידה א", level: "unit" }]);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "שלח הכרזה" })).not.toBeDisabled());
+  });
+
   it("defaults to sending to the caller's whole scope and submits with that node id", async () => {
     vi.mocked(announcementsApi.postAnnouncement).mockResolvedValue({ id: "ann-1", sent: 5 });
     renderPage();
