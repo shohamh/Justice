@@ -3,7 +3,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import Notification, NotificationType
+from app.db.models import Announcement, Notification, NotificationType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -195,3 +195,14 @@ def test_soldier_cannot_broadcast(client: TestClient, admin_session: Session):
     )
     assert resp.status_code == 403
     assert resp.json()["detail"] == "forbidden"
+
+
+def test_announcement_row_can_be_created_directly(admin_session: Session):
+    sender = create_soldier(admin_session, personal_number="9001019", role="admin")
+    a = Announcement(sender_id=sender.id, title="Org update", recipient_count=3, type=NotificationType.system_announcement)
+    admin_session.add(a)
+    admin_session.commit()
+    admin_session.refresh(a)
+    assert a.id is not None
+    assert a.hierarchy_node_ids is None
+    assert a.created_at is not None

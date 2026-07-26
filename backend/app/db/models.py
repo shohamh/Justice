@@ -940,6 +940,7 @@ class NotificationType(str, _enum.Enum):
     exemption_revoked = "exemption_revoked"
     transfer_request_pending = "transfer_request_pending"
     transfer_request_rejected = "transfer_request_rejected"
+    system_announcement = "system_announcement"
 
 
 class Notification(Base):
@@ -952,6 +953,19 @@ class Notification(Base):
     reference_type: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, default=None)
     is_read: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False)
+    sender_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("soldiers.id"), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name="notification_type"), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    hierarchy_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), init=False)
 
 
