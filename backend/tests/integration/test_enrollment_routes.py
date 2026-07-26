@@ -92,6 +92,32 @@ def test_admin_reject_notifies_soldier(client, admin_session):
     assert notif is not None
 
 
+def test_patch_rejects_invalid_phone(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.patch(f"/api/enrollment-requests/{req.id}",
+                        json={"phone": "not-a-phone-number"}, headers=auth_headers(admin))
+    assert resp.status_code == 422
+
+
+def test_patch_accepts_valid_phone(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.patch(f"/api/enrollment-requests/{req.id}",
+                        json={"phone": "050-1234567"}, headers=auth_headers(admin))
+    assert resp.status_code == 200
+    admin_session.refresh(soldier)
+    assert soldier.phone == "050-1234567"
+
+
 def test_reject_without_note_fails(client, admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)

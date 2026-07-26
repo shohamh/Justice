@@ -61,6 +61,17 @@ def test_register_rejects_missing_phone(client, admin_session):
     assert resp.status_code == 422
 
 
+def test_register_rejects_invalid_phone_format(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id, phone="not-a-phone-number")
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 422
+
+
 def test_register_returns_access_token(client, admin_session):
     holding = _setup_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
