@@ -234,11 +234,11 @@ export default function RegisterPage() {
               </label>
             )}
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
-              <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
+              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
               <PasswordStrengthHint password={form.password} />
             </label>
             <label className="block text-sm">אימות סיסמה <span className="text-red-500">*</span>
-              <input type="password" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
+              <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.confirm_password} onChange={e => set("confirm_password", e.target.value)} />
             </label>
             {form.confirm_password && form.password !== form.confirm_password && (
               <p className="text-red-600 text-sm">הסיסמאות אינן תואמות</p>
