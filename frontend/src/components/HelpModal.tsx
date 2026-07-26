@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
-import { authenticated, canApprove, PermissionUser } from "../auth/permissions";
+import { authenticated, canApprove, canPlan, PermissionUser } from "../auth/permissions";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 
 interface Props {
   onClose: () => void;
@@ -23,6 +25,7 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
   { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
+  { id: "hierarchy", label: "🌳 היררכיה וכשירות", visible: (u) => authenticated(u) },
   { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
 ];
 
@@ -1094,6 +1097,90 @@ function ApprovalsTab() {
   );
 }
 
+function flattenNodes(nodes: NodeDTO[]): NodeDTO[] {
+  const out: NodeDTO[] = [];
+  for (const n of nodes) {
+    out.push(n);
+    if (n.children) out.push(...flattenNodes(n.children));
+  }
+  return out;
+}
+
+function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
+  const [nodes, setNodes] = useState<NodeDTO[]>([]);
+  const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+
+  useEffect(() => {
+    fetchTree().then((tree) => setNodes(flattenNodes(tree))).catch(() => setNodes([]));
+  }, []);
+
+  useEffect(() => {
+    if (!canPlan(user)) return;
+    listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, [user]);
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+  const eligible = selectedNode && selectedTemplate
+    ? !selectedTemplate.eligible_node_ids || selectedTemplate.eligible_node_ids.some((id) => selectedNode.path_ids.includes(id))
+    : null;
+
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">היררכיה וכשירות</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        כל משמרת יכולה להיות מוגבלת לתת-יחידה מסוימת. חייל כשיר אם אחד הצמתים הכשירים של המשמרת נמצא במסלול שלו מהשורש (<code>path_ids</code>) — כלומר הצומת שלו עצמו, או אחד מאבות-הקדמונים שלו.
+      </p>
+
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 space-y-2">
+        <p className="font-medium text-gray-800 dark:text-gray-200">🔎 בדיקת כשירות חיה</p>
+        <label className="block text-xs text-gray-600 dark:text-gray-300">
+          בחר צומת
+          <select
+            aria-label="בחר צומת"
+            className="mt-1 w-full border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+            value={selectedNodeId}
+            onChange={(e) => setSelectedNodeId(e.target.value)}
+          >
+            <option value="">— בחר —</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.name}</option>
+            ))}
+          </select>
+        </label>
+        {canPlan(user) && (
+          <label className="block text-xs text-gray-600 dark:text-gray-300">
+            בחר סוג תורנות
+            <select
+              aria-label="בחר סוג תורנות"
+              className="mt-1 w-full border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+            >
+              <option value="">— בחר —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {eligible !== null && (
+          <p className={eligible ? "text-green-700 dark:text-green-300 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+            {eligible ? "✅ כשיר" : "❌ לא כשיר"}
+          </p>
+        )}
+        {!canPlan(user) && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            בדיקת כשירות מול סוגי תורנות ספציפיים זמינה למנהלי תורנויות ומפקדים בעלי הרשאת תכנון.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
   useModalBackClose(onClose);
   const { user } = useAuth();
@@ -1147,6 +1234,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "approvals" && <ApprovalsTab />}
+          {activeTab === "hierarchy" && <HierarchyEligibilityTab user={user as PermissionUser | null} />}
           {activeTab === "gimelim" && <GimelimTab />}
         </div>
       </div>
