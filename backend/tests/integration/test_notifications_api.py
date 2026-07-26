@@ -1,9 +1,10 @@
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Announcement, Notification, NotificationType
+from app.db.models import Announcement, HierarchyNode, Notification, NotificationType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -206,3 +207,62 @@ def test_announcement_row_can_be_created_directly(admin_session: Session):
     assert a.id is not None
     assert a.hierarchy_node_ids is None
     assert a.created_at is not None
+
+
+def test_read_at_set_on_mark_read(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="9001018")
+    headers = auth_headers(s)
+    n = Notification(soldier_id=s.id, type=NotificationType.announcement, title="Read me too")
+    admin_session.add(n)
+    admin_session.commit()
+    nid = n.id
+    resp = client.patch(f"/api/notifications/{nid}/read", headers=headers)
+    assert resp.status_code == 200
+    admin_session.refresh(n)
+    assert n.read_at is not None
+
+
+def test_broadcast_org_wide_uses_system_announcement_type(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001020", role="admin")
+    headers = auth_headers(admin)
+    recipient = create_soldier(admin_session, personal_number="9001021")
+    resp = client.post("/api/notifications/announce", headers=headers, json={"title": "org wide"})
+    assert resp.status_code == 201
+    notif = admin_session.execute(
+        select(Notification).where(Notification.soldier_id == recipient.id, Notification.title == "org wide")
+    ).scalar_one()
+    assert notif.type == NotificationType.system_announcement
+    assert notif.reference_type == "announcement"
+    assert notif.reference_id == uuid.UUID(resp.json()["id"])
+
+
+def test_broadcast_scoped_uses_announcement_type(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitScopeType")
+    dm = create_soldier(admin_session, personal_number="9001022", role="duty_manager", hierarchy_node_id=unit_a.id)
+    recipient = create_soldier(admin_session, personal_number="9001023", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(dm)
+    resp = client.post(
+        "/api/notifications/announce", headers=headers,
+        json={"title": "scoped", "hierarchy_node_ids": [str(unit_a.id)]},
+    )
+    assert resp.status_code == 201
+    notif = admin_session.execute(
+        select(Notification).where(Notification.soldier_id == recipient.id, Notification.title == "scoped")
+    ).scalar_one()
+    assert notif.type == NotificationType.announcement
+
+
+def test_admin_scoped_announcement_still_uses_scoped_type(client: TestClient, admin_session: Session):
+    unit_a = create_node(admin_session, level="unit", name="UnitAdminScoped")
+    admin = create_soldier(admin_session, personal_number="9001024", role="admin")
+    recipient = create_soldier(admin_session, personal_number="9001025", hierarchy_node_id=unit_a.id)
+    headers = auth_headers(admin)
+    resp = client.post(
+        "/api/notifications/announce", headers=headers,
+        json={"title": "admin scoped", "hierarchy_node_ids": [str(unit_a.id)]},
+    )
+    assert resp.status_code == 201
+    notif = admin_session.execute(
+        select(Notification).where(Notification.soldier_id == recipient.id, Notification.title == "admin scoped")
+    ).scalar_one()
+    assert notif.type == NotificationType.announcement  # scope-driven, not sender-driven
