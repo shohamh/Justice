@@ -260,6 +260,7 @@ function FairnessTab() {
   const { user } = useAuth();
   const [myBreakdown, setMyBreakdown] = useState<EffortBreakdown | null>(null);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [extraDuties, setExtraDuties] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -421,6 +422,35 @@ function FairnessTab() {
           </>
         )}
       </div>
+
+      {myBreakdown && (
+        <div className="bg-blue-50 dark:bg-blue-950 rounded-xl p-4 border border-blue-200 dark:border-blue-800 space-y-2">
+          <p className="font-semibold text-blue-800 dark:text-blue-200">🎚️ מה אם אקבל עוד תורנויות?</p>
+          <label className="block text-xs text-blue-700 dark:text-blue-300">
+            תורנויות נוספות היפותטיות: {extraDuties}
+            <input
+              aria-label="תורנויות נוספות היפותטיות"
+              type="range" min={0} max={10} value={extraDuties}
+              onChange={(e) => setExtraDuties(Number(e.target.value))}
+              className="w-full"
+            />
+          </label>
+          {(() => {
+            const A = parseFloat(myBreakdown.A_i);
+            const W = parseFloat(myBreakdown.W_i);
+            // Each hypothetical duty is treated as one full-weight duty this quarter (active_frac = 1),
+            // contributing 1 unit to both the numerator's share and the denominator's weight — a
+            // simplified, illustrative approximation of the real per-block calculation shown in the
+            // Deep Dive tab, not the exact solver math.
+            const projected = W + extraDuties > 0 ? (A + extraDuties) / (W + extraDuties) : 0;
+            return (
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                עומס לאחר התוספת (הערכה): <span className="font-bold">{(projected * 100).toFixed(2)}%</span>
+              </p>
+            );
+          })()}
+        </div>
+      )}
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
