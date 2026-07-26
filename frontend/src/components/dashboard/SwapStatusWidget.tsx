@@ -8,20 +8,18 @@ interface Props {
 
 const STATUS_CHIPS: Record<string, string> = {
   open: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
-  pending_approval: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
   rejected: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   open: "פתוח",
-  pending_approval: "ממתין לאישור",
   applied: "אושר",
   rejected: "נדחה",
 };
 
 export default function SwapStatusWidget({ swaps }: Props) {
-  const active = swaps.filter((s) => s.status === "open" || s.status === "pending_approval");
+  const active = swaps.filter((s) => s.status === "open");
   if (active.length === 0) return null;
 
   return (

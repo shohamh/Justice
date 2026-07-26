@@ -82,10 +82,10 @@ export default function OfferSwapModal({
       );
       setConflictingDuties(conflicts);
 
-      // Assignments that already have an open/pending swap → can't create another
+      // Assignments that already have an open swap → can't create another
       const busy = new Set(
         mySwaps
-          .filter((s) => s.status === "open" || s.status === "pending_approval")
+          .filter((s) => s.status === "open")
           .map((s) => s.duty_assignment_id)
       );
       setBusyAssignmentIds(busy);
