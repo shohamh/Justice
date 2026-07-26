@@ -1,9 +1,10 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyLocation, DutyType
+from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, DutyType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -140,16 +141,11 @@ def test_calendar_shifts_excludes_shift_with_no_assignees_in_node(
     assert len(r.json()["shifts"]) == 0
 
 
-from datetime import date as _date
-
-from app.db.models import DutyAssignment, DutyDismissal
-
-
 def _create_dismissal(session, assignment_id, reason="בעיה רפואית"):
     d = DutyDismissal(
         duty_assignment_id=assignment_id,
-        dismissed_from=_date(2026, 11, 1),
-        dismissed_to=_date(2026, 11, 2),
+        dismissed_from=date(2026, 11, 1),
+        dismissed_to=date(2026, 11, 2),
         reason=reason,
     )
     session.add(d)
@@ -231,4 +227,54 @@ def test_shift_detail_shows_reason_to_commander_in_scope(client: TestClient, adm
     r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(cmd))
     assert r.status_code == 200, r.text
     assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
+
+
+def test_calendar_shifts_hides_reason_from_outside_soldier(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8300002", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    outsider = create_soldier(admin_session, personal_number="8300003", role="soldier")
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={branch.id}&date_from=2026-11-01&date_to=2026-11-01",
+        headers=auth_headers(outsider),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["shifts"]) == 1
+    assignee = next(a for a in body["shifts"][0]["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] is None
+
+
+def test_calendar_shifts_shows_reason_to_affected_soldier(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8300004", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={branch.id}&date_from=2026-11-01&date_to=2026-11-01",
+        headers=auth_headers(member),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["shifts"]) == 1
+    assignee = next(a for a in body["shifts"][0]["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
+
+
+def test_calendar_shifts_shows_reason_to_commander_in_scope(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8300005", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    cmd = create_soldier(admin_session, personal_number="8300006", role="commander")
+    branch.commander_id = cmd.id
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={branch.id}&date_from=2026-11-01&date_to=2026-11-01",
+        headers=auth_headers(cmd),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["shifts"]) == 1
+    assignee = next(a for a in body["shifts"][0]["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
