@@ -138,3 +138,97 @@ def test_calendar_shifts_excludes_shift_with_no_assignees_in_node(
     )
     assert r.status_code == 200
     assert len(r.json()["shifts"]) == 0
+
+
+from datetime import date as _date
+
+from app.db.models import DutyAssignment, DutyDismissal
+
+
+def _create_dismissal(session, assignment_id, reason="בעיה רפואית"):
+    d = DutyDismissal(
+        duty_assignment_id=assignment_id,
+        dismissed_from=_date(2026, 11, 1),
+        dismissed_to=_date(2026, 11, 2),
+        reason=reason,
+    )
+    session.add(d)
+    session.commit()
+    return d
+
+
+def _setup_shift_with_dismissal(admin_session, client, admin):
+    dept = create_node(admin_session, level="department", name="dep-reason")
+    branch = create_node(admin_session, level="branch", name="br-reason", parent=dept)
+    member = create_soldier(
+        admin_session, personal_number="8200001", role="soldier", hierarchy_node_id=branch.id
+    )
+    admin_session.commit()
+    dt = DutyType(name="שמירה-reason", score_per_day=Decimal("1.00"))
+    loc = DutyLocation(name="מוצב-reason")
+    admin_session.add_all([dt, loc])
+    admin_session.commit()
+    shift_resp = client.post(
+        "/api/shifts",
+        headers=auth_headers(admin),
+        json={
+            "duty_type_id": str(dt.id),
+            "duty_location_id": str(loc.id),
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-02",
+            "required_count": 1,
+        },
+    )
+    assert shift_resp.status_code == 201, shift_resp.text
+    shift_id = shift_resp.json()["id"]
+    assign_resp = client.post(
+        "/api/assignments",
+        headers=auth_headers(admin),
+        json={
+            "soldier_id": str(member.id),
+            "duty_type_id": str(dt.id),
+            "duty_location_id": str(loc.id),
+            "start_date": "2026-11-01",
+            "end_date": "2026-11-02",
+            "duty_shift_id": shift_id,
+        },
+    )
+    assert assign_resp.status_code == 201, assign_resp.text
+    assignment_id = assign_resp.json()["id"]
+    _create_dismissal(admin_session, assignment_id)
+    return branch, member, shift_id
+
+
+def test_shift_detail_hides_reason_from_outside_soldier(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8200002", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    outsider = create_soldier(admin_session, personal_number="8200003", role="soldier")
+    admin_session.commit()
+
+    r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(outsider))
+    assert r.status_code == 200, r.text
+    assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] is None
+
+
+def test_shift_detail_shows_reason_to_affected_soldier(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8200004", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+
+    r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(member))
+    assert r.status_code == 200, r.text
+    assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
+
+
+def test_shift_detail_shows_reason_to_commander_in_scope(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="8200005", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    cmd = create_soldier(admin_session, personal_number="8200006", role="commander")
+    branch.commander_id = cmd.id
+    admin_session.commit()
+
+    r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(cmd))
+    assert r.status_code == 200, r.text
+    assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["dismissals"][0]["reason"] == "בעיה רפואית"
