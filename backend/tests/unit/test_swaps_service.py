@@ -140,3 +140,57 @@ def test_claim_request_creates_marketplace_candidate_without_cancelling_invited(
     assert candidates[invited.id].status == "pending"  # untouched — no more cancel-on-claim
     assert candidates[claimant.id].source == "marketplace"
     assert candidates[claimant.id].soldier_side_approved is True
+
+
+def test_approve_soldier_side_approves_only_the_callers_candidate(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-4")
+    requester = create_soldier(admin_session, personal_number="7710007", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710008", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="7710009", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id, b.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
+    admin_session.flush()
+
+    cands = {c.soldier_id: c for c in admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).all()}
+    assert cands[a.id].soldier_side_approved is True
+    assert cands[a.id].status == "accepted"
+    assert cands[b.id].soldier_side_approved is None
+    assert cands[b.id].status == "pending"
+
+
+def test_approve_soldier_side_requester_shared_across_candidates(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-5")
+    requester = create_soldier(admin_session, personal_number="7710010", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710011", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id, actor_id=requester.id)
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.requester_side_approved is True
+
+
+def test_approve_soldier_side_rejects_for_a_non_party(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-6")
+    requester = create_soldier(admin_session, personal_number="7710012", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number="7710013", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_a_party"):
+        svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=stranger.id, actor_id=stranger.id)

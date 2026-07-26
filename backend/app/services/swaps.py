@@ -261,17 +261,31 @@ def approve_soldier_side(
     req = session.get(SwapRequest, request_id)
     if req is None:
         raise SwapError("request_not_found")
-    if req.status != "pending_approval":
+    if req.status != "open":
         raise SwapError("not_pending")
     if soldier_id == req.requesting_soldier_id:
         req.requester_side_approved = True
-    elif soldier_id == req.covering_soldier_id:
-        req.covering_side_approved = True
-    else:
+        write_audit(
+            session, actor_id=actor_id or soldier_id, action="swap.soldier_approve",
+            entity_type="swap_request", entity_id=req.id, after={"soldier_id": str(soldier_id), "side": "requester"},
+        )
+        session.flush()
+        return req
+    candidate = session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == request_id,
+            SwapCandidate.soldier_id == soldier_id,
+        )
+    ).scalar_one_or_none()
+    if candidate is None:
         raise SwapError("not_a_party")
+    candidate.soldier_side_approved = True
+    if candidate.status == "pending":
+        candidate.status = "accepted"
     write_audit(
         session, actor_id=actor_id or soldier_id, action="swap.soldier_approve",
-        entity_type="swap_request", entity_id=req.id, after={"soldier_id": str(soldier_id)},
+        entity_type="swap_request", entity_id=req.id,
+        after={"soldier_id": str(soldier_id), "side": "covering", "candidate_id": str(candidate.id)},
     )
     session.flush()
     _try_finalize(session, req, actor_id or soldier_id)
