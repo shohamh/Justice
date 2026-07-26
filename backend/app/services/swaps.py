@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -107,7 +108,17 @@ def create_request(
         open_to_marketplace=open_to_marketplace,
     )
     session.add(req)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        # Two concurrent create_request calls for the same (requester, duty)
+        # can both pass the SELECT check above before either commits; the
+        # partial unique index uq_swap_requests_one_open_per_requester_duty
+        # is the real backstop and raises here for whichever insert loses
+        # the race. Translate it to the same domain error the SELECT-based
+        # check raises so callers see one consistent error either way.
+        session.rollback()
+        raise SwapError("already_pending") from None
 
     for target_id in targets:
         _add_invited_candidate(

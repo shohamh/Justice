@@ -66,6 +66,59 @@ def test_create_request_rejects_second_open_request_for_same_duty(admin_session)
         )
 
 
+def test_create_request_translates_integrity_error_from_stale_duplicate_guard(admin_session, monkeypatch):
+    """Covers the TOCTOU gap the SELECT-based duplicate check can't close:
+    two concurrent create_request calls for the same (requester, duty) can
+    both pass the SELECT before either commits, so the real backstop is the
+    partial unique index uq_swap_requests_one_open_per_requester_duty, which
+    raises IntegrityError on whichever insert loses the race.
+
+    We can't spin up real concurrent threads against the per-test session
+    fixture, so instead we simulate the race directly: an open SwapRequest
+    for (requester, duty) already exists, but we force create_request's own
+    SELECT guard to (falsely, as it could under a real race) report "no
+    existing open request". This proves the try/except around
+    session.add(req); session.flush() in create_request correctly catches
+    the resulting IntegrityError and translates it into the same
+    SwapError("already_pending") the SELECT-based check raises normally,
+    instead of letting a raw IntegrityError escape as an unhandled 500. It
+    does not exercise real multi-threaded concurrency.
+    """
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-race")
+    requester = create_soldier(admin_session, personal_number="7710007", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    real_execute = admin_session.execute
+
+    class _FakeNoneResult:
+        def scalar_one_or_none(self):
+            return None
+
+    def _stale_guard_execute(statement, *args, **kwargs):
+        # Only fake out the duplicate-open-request guard query inside
+        # create_request (identifiable by referencing both the
+        # swap_requests table and its status column); every other query
+        # (e.g. the settings lookup for max targets) goes through untouched.
+        sql = str(statement)
+        if "swap_requests" in sql and "status" in sql:
+            return _FakeNoneResult()
+        return real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(admin_session, "execute", _stale_guard_execute)
+
+    with pytest.raises(SwapError, match="already_pending"):
+        svc.create_request(
+            admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+            target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+        )
+
+
 def test_claim_request_creates_marketplace_candidate_without_cancelling_invited(admin_session):
     node = create_node(admin_session, level="unit", name="swap-svc-unit-3")
     requester = create_soldier(admin_session, personal_number="7710004", hierarchy_node_id=node.id)
