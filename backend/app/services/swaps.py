@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from typing import Callable
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -165,18 +165,19 @@ def _add_invited_candidate(
 
 
 def list_open_board(session: Session, *, for_soldier_id: uuid.UUID) -> list[SwapRequest]:
-    """Open postings visible to a soldier: open-to-anyone OR directed at this soldier,
-    excluding their own requests."""
+    """Open postings visible to a soldier: marketplace-visible, excluding
+    their own requests and ones they're already a candidate on."""
+    already_candidate_on = session.execute(
+        select(SwapCandidate.swap_request_id).where(SwapCandidate.soldier_id == for_soldier_id)
+    ).scalars().all()
     return list(
         session.execute(
             select(SwapRequest)
             .where(
                 SwapRequest.status == "open",
                 SwapRequest.requesting_soldier_id != for_soldier_id,
-                or_(
-                    SwapRequest.target_soldier_id.is_(None),
-                    SwapRequest.target_soldier_id == for_soldier_id,
-                ),
+                SwapRequest.open_to_marketplace.is_(True),
+                SwapRequest.id.notin_(already_candidate_on) if already_candidate_on else True,
             )
             .order_by(SwapRequest.duty_date.asc())
         )
@@ -917,10 +918,17 @@ def cover_offer(
 
 
 def list_pending_approval(session: Session) -> list[SwapRequest]:
+    request_ids = session.execute(
+        select(SwapCandidate.swap_request_id).where(
+            SwapCandidate.status.in_(["pending", "accepted"])
+        ).distinct()
+    ).scalars().all()
+    if not request_ids:
+        return []
     return list(
         session.execute(
             select(SwapRequest)
-            .where(SwapRequest.status == "pending_approval")
+            .where(SwapRequest.status == "open", SwapRequest.id.in_(request_ids))
             .order_by(SwapRequest.duty_date.asc())
         )
         .scalars()

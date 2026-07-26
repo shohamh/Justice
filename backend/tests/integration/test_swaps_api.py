@@ -19,7 +19,7 @@ def _uid():
 
 def _setup(session: Session):
     """Build a requester + covering soldier, each under their own commander,
-    and a pending_approval swap between them (via claim)."""
+    and an open swap between them (via claim)."""
     req_node = create_node(session, level="unit", name=f"api_req_{_uid()}")
     cov_node = create_node(session, level="unit", name=f"api_cov_{_uid()}")
     req_cmd = create_soldier(session, personal_number=f"api_rc_{_uid()}", role="commander")
@@ -45,12 +45,19 @@ def _setup(session: Session):
 
     swap_req = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=assignment.start_date,
-        requesting_soldier_id=requester.id, status="open",
+        requesting_soldier_id=requester.id, status="open", open_to_marketplace=True,
     )
     session.add(swap_req)
     session.commit()
 
     return requester, covering, req_cmd, cov_cmd, assignment, swap_req
+
+
+def _candidate_id_for(body: dict, soldier_id) -> str:
+    """Pull the candidate id for a given soldier out of a SwapOut body's
+    `candidates` list."""
+    cand = next(c for c in body["candidates"] if c["soldier_id"] == str(soldier_id))
+    return cand["id"]
 
 
 def test_soldier_can_approve_own_side(client: TestClient, admin_session: Session):
@@ -60,7 +67,7 @@ def test_soldier_can_approve_own_side(client: TestClient, admin_session: Session
     r = client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(requester))
     assert r.status_code == 200, r.text
     assert r.json()["requester_side_approved"] is True
-    assert r.json()["status"] == "pending_approval"
+    assert r.json()["status"] == "open"
 
 
 def test_non_party_soldier_cannot_approve(client: TestClient, admin_session: Session):
@@ -74,12 +81,16 @@ def test_non_party_soldier_cannot_approve(client: TestClient, admin_session: Ses
 
 def test_full_approval_chain_applies_swap(client: TestClient, admin_session: Session):
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
-    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+    claim_body = client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={}).json()
+    candidate_id = _candidate_id_for(claim_body, covering.id)
 
     client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(requester))
     client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(covering))
     client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(req_cmd), json={"side": "requester"})
-    r = client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(cov_cmd), json={"side": "covering"})
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(cov_cmd),
+        json={"side": "covering", "candidate_id": candidate_id},
+    )
 
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "applied"
@@ -93,6 +104,23 @@ def test_wrong_commander_cannot_manager_approve(client: TestClient, admin_sessio
     assert r.status_code == 403
 
 
+def test_manager_approve_requires_candidate_id_for_covering_side(client: TestClient, admin_session: Session):
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    claim_body = client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={}).json()
+    candidate_id = _candidate_id_for(claim_body, covering.id)
+
+    r_missing = client.post(
+        f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(cov_cmd), json={"side": "covering"},
+    )
+    assert r_missing.status_code == 400
+
+    r_ok = client.post(
+        f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(cov_cmd),
+        json={"side": "covering", "candidate_id": candidate_id},
+    )
+    assert r_ok.status_code == 200, r_ok.text
+
+
 def test_manager_reapprove_is_noop_not_override(client: TestClient, admin_session: Session):
     """A chain commander clicking approve a second time should be a harmless
     no-op through the normal (idempotent) path, not silently reroute through
@@ -104,7 +132,7 @@ def test_manager_reapprove_is_noop_not_override(client: TestClient, admin_sessio
     client.post(f"/api/me/swaps/{swap_req.id}/approve", headers=auth_headers(covering))
     r1 = client.post(f"/api/swaps/{swap_req.id}/manager-approve", headers=auth_headers(req_cmd), json={"side": "requester"})
     assert r1.status_code == 200, r1.text
-    assert r1.json()["status"] == "pending_approval"  # covering side's commander hasn't approved yet
+    assert r1.json()["status"] == "open"  # covering side's commander hasn't approved yet
 
     row = admin_session.execute(
         select(SwapManagerApproval).where(
@@ -151,7 +179,7 @@ def test_admin_override_approval_visible_in_manager_approvals(client: TestClient
     assert r.status_code == 200, r.text
     body = r.json()
     # The swap isn't fully finalized yet — covering side's commander hasn't approved.
-    assert body["status"] == "pending_approval"
+    assert body["status"] == "open"
     assert body["requester_side_approved"] is True
 
     requester_approvals = body["requester_manager_approvals"]
@@ -165,9 +193,9 @@ def test_admin_override_approval_visible_in_manager_approvals(client: TestClient
     assert override_row["approved_by"] == str(admin.id)
     assert override_row["approver_kind"] == "commander"
 
-    # Covering side is untouched by the override and still shows as pending.
-    covering_approvals = body["covering_manager_approvals"]
-    assert all(a["commander_id"] != str(admin.id) for a in covering_approvals)
+    # Covering side (the candidate) is untouched by the override and still shows as pending.
+    candidate = next(c for c in body["candidates"] if c["soldier_id"] == str(covering.id))
+    assert all(a["commander_id"] != str(admin.id) for a in candidate["manager_approvals"])
 
     # Fetching the swap again (a fresh GET, not just the mutation response)
     # shows the same override decision — proving it's not a one-off artifact
@@ -191,7 +219,8 @@ def test_swap_out_includes_manager_approvals(client: TestClient, admin_session: 
     assert len(swap_out["requester_manager_approvals"]) == 1
     assert swap_out["requester_manager_approvals"][0]["commander_id"] == str(req_cmd.id)
     assert swap_out["requester_manager_approvals"][0]["approved"] is False
-    assert len(swap_out["covering_manager_approvals"]) == 1
+    assert len(swap_out["candidates"]) == 1
+    assert len(swap_out["candidates"][0]["manager_approvals"]) == 1
 
 
 def test_swap_config_reports_duty_manager_setting(client: TestClient, admin_session: Session):
@@ -210,14 +239,13 @@ def test_swap_config_reports_duty_manager_setting(client: TestClient, admin_sess
 
 def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestClient, admin_session: Session):
     """The requester's node sits under a two-level chain: mid commander (nearest)
-    and root commander (further). requester_manager_approvals is now
-    live-computed from commander_chain_for_soldier (nearest-first) rather than
-    read from persisted rows ordered by chain_order — no SwapManagerApproval
-    rows exist yet at this point (they're created lazily only once someone
-    actually approves/rejects), so this asserts ordering purely from the live
-    chain. Checked via both the single-swap path (/api/me/swaps,
-    _manager_approvals_out) and the bulk path (/api/swaps/pending,
-    _out_bulk -> _manager_approvals_out)."""
+    and root commander (further). requester_manager_approvals is live-computed
+    from commander_chain_for_soldier (nearest-first) rather than read from
+    persisted rows ordered by chain_order — no SwapManagerApproval rows exist
+    yet at this point (they're created lazily only once someone actually
+    approves/rejects), so this asserts ordering purely from the live chain.
+    Checked via both the single-swap path (/api/me/swaps) and the pending-list
+    path (/api/swaps/pending), both of which now go through the same _out."""
     root_node = create_node(admin_session, level="division", name=f"api_root_{_uid()}")
     root_cmd = create_soldier(admin_session, personal_number=f"api_rootc_{_uid()}", role="commander")
     root_node.commander_id = root_cmd.id
@@ -242,7 +270,7 @@ def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestCli
     admin_session.flush()
     swap_req = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=assignment.start_date,
-        requesting_soldier_id=requester.id, status="open",
+        requesting_soldier_id=requester.id, status="open", open_to_marketplace=True,
     )
     admin_session.add(swap_req)
     admin_session.commit()
@@ -272,20 +300,35 @@ def test_manager_approvals_out_order_matches_nearest_first_chain(client: TestCli
     admin = create_soldier(admin_session, personal_number=f"api_chain_adm_{_uid()}", role="admin")
     r = client.get("/api/swaps/pending", headers=auth_headers(admin))
     assert r.status_code == 200, r.text
-    swap_out_bulk = next(s for s in r.json() if s["id"] == str(swap_req.id))
-    approvals_bulk = swap_out_bulk["requester_manager_approvals"]
-    assert len(approvals_bulk) == 2
-    assert approvals_bulk[0]["commander_id"] == str(mid_cmd.id)
-    assert approvals_bulk[1]["commander_id"] == str(root_cmd.id)
+    swap_out_2 = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    approvals_2 = swap_out_2["requester_manager_approvals"]
+    assert len(approvals_2) == 2
+    assert approvals_2[0]["commander_id"] == str(mid_cmd.id)
+    assert approvals_2[1]["commander_id"] == str(root_cmd.id)
 
 
-def test_soldier_reject_kills_swap(client: TestClient, admin_session: Session):
+def test_requester_reject_kills_whole_swap(client: TestClient, admin_session: Session):
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    r = client.post(f"/api/me/swaps/{swap_req.id}/reject", headers=auth_headers(requester), json={"decision_note": "changed my mind"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+
+def test_candidate_reject_only_declines_own_candidacy(client: TestClient, admin_session: Session):
+    """A candidate rejecting via /me/swaps/{id}/reject only declines their own
+    candidacy (svc.decline_candidate) — it does not kill the whole parent
+    request, unlike a requester-initiated reject."""
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
 
     r = client.post(f"/api/me/swaps/{swap_req.id}/reject", headers=auth_headers(covering), json={"decision_note": "no thanks"})
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "rejected"
+    body = r.json()
+    assert body["status"] == "open"
+    candidate = next(c for c in body["candidates"] if c["soldier_id"] == str(covering.id))
+    assert candidate["status"] == "declined"
 
 
 def test_manager_reject_kills_swap(client: TestClient, admin_session: Session):
@@ -303,7 +346,8 @@ def test_manager_reject_records_rejecting_commander_on_row(client: TestClient, a
     rejected=True with rejected_by_name attributing them, and the top-level
     SwapOut should surface who rejected via rejected_by_name."""
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
-    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+    claim_body = client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={}).json()
+    candidate_id = _candidate_id_for(claim_body, covering.id)
 
     r = client.post(
         f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(req_cmd), json={"decision_note": "denied"}
@@ -320,12 +364,45 @@ def test_manager_reject_records_rejecting_commander_on_row(client: TestClient, a
     assert row["rejected_by"] == str(req_cmd.id)
     assert row["rejected_by_name"] == req_cmd.full_name
     assert row["rejected_at"] is not None
-    # The covering side's chain commander never acted — their row stays clean.
+    # The covering side's candidate/chain commander never acted — their row stays clean.
+    candidate = next(c for c in body["candidates"] if str(c["id"]) == candidate_id)
     cov_row = next(
-        a for a in body["covering_manager_approvals"] if a["commander_id"] == str(cov_cmd.id)
+        a for a in candidate["manager_approvals"] if a["commander_id"] == str(cov_cmd.id)
     )
     assert cov_row["rejected"] is False
     assert cov_row["rejected_by"] is None
+
+
+def test_manager_reject_covering_candidate_only(client: TestClient, admin_session: Session):
+    """A covering-side commander rejecting a specific candidate via
+    manager-reject with candidate_id only cancels that candidate — the parent
+    request stays open (e.g. for other candidates or the marketplace)."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    claim_body = client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={}).json()
+    candidate_id = _candidate_id_for(claim_body, covering.id)
+
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(cov_cmd),
+        json={"decision_note": "denied", "candidate_id": candidate_id},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "open"
+    candidate = next(c for c in body["candidates"] if c["id"] == candidate_id)
+    assert candidate["status"] == "cancelled"
+
+
+def test_manager_reject_covering_without_candidate_id_forbidden(client: TestClient, admin_session: Session):
+    """A covering-side commander must supply candidate_id to be recognized as
+    a qualifying approver on this request — without it, they aren't
+    authorized for either side."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(cov_cmd), json={"decision_note": "denied"},
+    )
+    assert r.status_code == 403
 
 
 def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
@@ -334,7 +411,7 @@ def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin
     roster, on each side that has a soldier. SwapManagerApproval rows are no
     longer pre-populated on claim — they're created lazily only once someone
     actually approves/rejects — so this asserts against the live-computed
-    requester_manager_approvals/covering_manager_approvals instead of
+    requester_manager_approvals/candidate manager_approvals instead of
     persisted rows."""
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     # duty_manager_chain_for_soldier is scope-based (DutyManagerScope), not a
@@ -361,14 +438,15 @@ def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin
     r = client.get("/api/me/swaps", headers=auth_headers(requester))
     assert r.status_code == 200, r.text
     swap_out = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    candidate = next(c for c in swap_out["candidates"] if c["soldier_id"] == str(covering.id))
     requester_kinds = {a["approver_kind"] for a in swap_out["requester_manager_approvals"]}
-    covering_kinds = {a["approver_kind"] for a in swap_out["covering_manager_approvals"]}
+    covering_kinds = {a["approver_kind"] for a in candidate["manager_approvals"]}
     assert "commander" in requester_kinds
     assert "duty_manager" in requester_kinds
     assert "commander" in covering_kinds
     assert "duty_manager" in covering_kinds
     assert all(not a["approved"] for a in swap_out["requester_manager_approvals"])
-    assert all(not a["approved"] for a in swap_out["covering_manager_approvals"])
+    assert all(not a["approved"] for a in candidate["manager_approvals"])
 
 
 def test_shared_commander_approval_cascades_to_other_side(admin_session: Session):
@@ -405,20 +483,29 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
     admin_session.flush()
     swap_req = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=assignment.start_date,
-        requesting_soldier_id=requester.id, status="open",
+        requesting_soldier_id=requester.id, status="open", open_to_marketplace=True,
     )
     admin_session.add(swap_req)
     admin_session.commit()
 
     svc.claim_request(admin_session, request_id=swap_req.id, covering_soldier_id=covering.id)
+    from app.db.models import SwapCandidate
+    candidate = admin_session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == swap_req.id, SwapCandidate.soldier_id == covering.id,
+        )
+    ).scalar_one()
 
     svc.approve_soldier_side(admin_session, request_id=swap_req.id, soldier_id=requester.id)
     svc.approve_soldier_side(admin_session, request_id=swap_req.id, soldier_id=covering.id)
-    # New signature: approve_manager_row resolves every (side, kind) the actor
-    # currently qualifies for in one call — no side/commander_id params. Since
-    # shared_cmd commands both requester's and covering's node, one call
-    # cascades to both sides' commander row.
-    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=shared_cmd.id)
+    # approve_manager_row resolves every (side, kind) the actor currently
+    # qualifies for in one call. The requester side is always checked; the
+    # covering side is only resolved for a specific candidate_id (each
+    # candidate is a distinct soldier with their own chain), so the caller
+    # must identify which live candidate they're acting on — here the one
+    # (and only) candidate on this swap. Since shared_cmd commands both
+    # requester's and this candidate's node, one call cascades to both rows.
+    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=shared_cmd.id, candidate_id=candidate.id)
 
     rows = admin_session.execute(
         select(SwapManagerApproval).where(
@@ -428,11 +515,12 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
     ).scalars().all()
     assert len(rows) == 2  # requester side + covering side
     assert all(r.approved for r in rows)  # cascaded to both sides
-    assert admin_session.get(SwapRequest, swap_req.id).status == "pending_approval"  # duty manager still required
+    assert admin_session.get(SwapRequest, swap_req.id).status == "open"  # duty manager still required
 
     # Same for the duty manager: their single scope over shared_node covers
-    # both sides, so one call cascades to both sides' duty_manager row.
-    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=dm.id)
+    # both sides, so one call (with the candidate_id) cascades to both sides'
+    # duty_manager row.
+    svc.approve_manager_row(admin_session, request_id=swap_req.id, actor_id=dm.id, candidate_id=candidate.id)
     dm_rows = admin_session.execute(
         select(SwapManagerApproval).where(
             SwapManagerApproval.swap_request_id == swap_req.id,
@@ -442,3 +530,53 @@ def test_shared_commander_approval_cascades_to_other_side(admin_session: Session
     assert len(dm_rows) == 2
     assert all(r.approved for r in dm_rows)
     assert admin_session.get(SwapRequest, swap_req.id).status == "applied"
+
+
+def test_create_swap_with_both_targets_and_marketplace(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_create_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_create_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_create_tgt_{_uid()}", hierarchy_node_id=node.id)
+    dt = DutyType(name=f"api_create_dt_{_uid()}", score_per_day=1)
+    loc = DutyLocation(name=f"api_create_loc_{_uid()}")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=requester.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.commit()
+
+    r = client.post(
+        "/api/me/swaps", headers=auth_headers(requester),
+        json={
+            "duty_assignment_id": str(assignment.id),
+            "target_soldier_ids": [str(target.id)],
+            "open_to_marketplace": True,
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # A single object, not a list — create_request never fans out anymore.
+    assert isinstance(body, dict)
+    assert "id" in body
+    assert body["open_to_marketplace"] is True
+    assert len(body["candidates"]) == 1
+    assert body["candidates"][0]["soldier_id"] == str(target.id)
+    assert body["candidates"][0]["source"] == "invited"
+    assert body["candidates"][0]["status"] == "pending"
+
+
+def test_swap_out_shape_has_candidates_list_not_flat_covering_fields(client: TestClient, admin_session: Session):
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    r = client.get("/api/me/swaps", headers=auth_headers(requester))
+    assert r.status_code == 200
+    swap_out = next(s for s in r.json() if s["id"] == str(swap_req.id))
+    assert isinstance(swap_out["candidates"], list)
+    assert "covering_soldier_id" not in swap_out
+    assert "target_soldier_id" not in swap_out
+    assert "covering_side_approved" not in swap_out
+    assert "covering_manager_approvals" not in swap_out
