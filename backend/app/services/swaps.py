@@ -328,12 +328,13 @@ def approve_soldier_side(
     if req is None:
         raise SwapError("request_not_found")
     if soldier_id == req.requesting_soldier_id:
-        if req.status != "open":
+        if req.status == "applied":
             # The request may have already finalized (a different candidate
-            # won the race) or been rejected/cancelled by the time this
-            # lands — a late requester-side approval in that case is a
-            # harmless no-op, not an error.
+            # won the race) by the time this lands — a late requester-side
+            # approval in that case is a harmless no-op, not an error.
             return req
+        if req.status != "open":
+            raise SwapError("not_pending")
         req.requester_side_approved = True
         write_audit(
             session, actor_id=actor_id or soldier_id, action="swap.soldier_approve",
