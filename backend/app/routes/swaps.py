@@ -98,6 +98,10 @@ class ClaimRequest(BaseModel):
 
 class RejectRequest(BaseModel):
     decision_note: str | None = Field(default=None, max_length=1000)
+
+
+class ManagerRejectRequest(BaseModel):
+    decision_note: str | None = Field(default=None, max_length=1000)
     candidate_id: uuid.UUID | None = None
 
 
@@ -698,7 +702,7 @@ def manager_approve(
 @router.post("/swaps/{request_id}/manager-reject", response_model=SwapOut)
 def manager_reject(
     request_id: uuid.UUID,
-    body: RejectRequest,
+    body: ManagerRejectRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> SwapOut:
@@ -706,6 +710,19 @@ def manager_reject(
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="swap_not_found")
     req_node = _side_node(session, req, "requester", None)
+
+    def _authorized_via_requester() -> bool:
+        if req_node is None:
+            return False
+        try:
+            authorize(session, user, Action.SWAP_APPROVE, target_node=req_node)
+            return True
+        except HTTPException:
+            return False
+
+    if not _authorized_via_requester() and body.candidate_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="candidate_id_required")
+
     cov_node = _side_node(session, req, "covering", body.candidate_id)
     authorized = False
     for node in (req_node, cov_node):

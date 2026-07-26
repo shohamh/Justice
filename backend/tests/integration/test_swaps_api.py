@@ -331,6 +331,24 @@ def test_candidate_reject_only_declines_own_candidacy(client: TestClient, admin_
     assert candidate["status"] == "declined"
 
 
+def test_soldier_reject_ignores_stray_candidate_id(client: TestClient, admin_session: Session):
+    """Regression check for the RejectRequest/ManagerRejectRequest schema
+    split: /me/swaps/{id}/reject only accepts decision_note now, but extra
+    unknown fields (like a stray candidate_id) are simply ignored by
+    pydantic/FastAPI's default behavior, not rejected — the route still
+    resolves the caller's own candidate server-side."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    r = client.post(
+        f"/api/me/swaps/{swap_req.id}/reject",
+        headers=auth_headers(requester),
+        json={"decision_note": "changed my mind", "candidate_id": str(uuid.uuid4())},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+
 def test_manager_reject_kills_swap(client: TestClient, admin_session: Session):
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
@@ -392,17 +410,22 @@ def test_manager_reject_covering_candidate_only(client: TestClient, admin_sessio
     assert candidate["status"] == "cancelled"
 
 
-def test_manager_reject_covering_without_candidate_id_forbidden(client: TestClient, admin_session: Session):
+def test_manager_reject_covering_without_candidate_id_requires_candidate_id(
+    client: TestClient, admin_session: Session
+):
     """A covering-side commander must supply candidate_id to be recognized as
-    a qualifying approver on this request — without it, they aren't
-    authorized for either side."""
+    a qualifying approver on this request. Without it — and since they don't
+    qualify via the requester side either — the route should surface a 400
+    candidate_id_required, not a generic 403 forbidden (mirrors
+    manager_approve's up-front check for the covering side)."""
     requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
     client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
 
     r = client.post(
         f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(cov_cmd), json={"decision_note": "denied"},
     )
-    assert r.status_code == 403
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "candidate_id_required"
 
 
 def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
