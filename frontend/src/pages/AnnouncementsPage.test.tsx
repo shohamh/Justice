@@ -46,12 +46,12 @@ describe("AnnouncementsPage — commander/DM (scoped)", () => {
       user: { id: "u1", role: "duty_manager", is_commander: false, is_duty_manager: true },
     } as ReturnType<typeof useAuth>);
     vi.mocked(announcementsApi.getAnnounceScope).mockResolvedValue([
-      { id: "node-1", name: "יחידה א", level: "unit" },
+      { id: "node-1", name: "יחידה א", level: "unit", parent_id: null },
     ]);
   });
 
   it("disables the submit button while the caller's scope is still loading", async () => {
-    let resolveScope!: (value: { id: string; name: string; level: string }[]) => void;
+    let resolveScope!: (value: { id: string; name: string; level: string; parent_id: string | null }[]) => void;
     vi.mocked(announcementsApi.getAnnounceScope).mockReturnValue(
       new Promise((resolve) => {
         resolveScope = resolve;
@@ -62,7 +62,7 @@ describe("AnnouncementsPage — commander/DM (scoped)", () => {
     await user.type(screen.getByLabelText("כותרת"), "בדיקה");
     expect(screen.getByRole("button", { name: "שלח הכרזה" })).toBeDisabled();
 
-    resolveScope([{ id: "node-1", name: "יחידה א", level: "unit" }]);
+    resolveScope([{ id: "node-1", name: "יחידה א", level: "unit", parent_id: null }]);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "שלח הכרזה" })).not.toBeDisabled());
   });
@@ -79,6 +79,38 @@ describe("AnnouncementsPage — commander/DM (scoped)", () => {
         title: "בדיקה",
         body: undefined,
         hierarchy_node_ids: ["node-1"],
+      })
+    );
+  });
+
+  it("renders a hierarchy checkbox tree from a multi-level scope", async () => {
+    vi.mocked(announcementsApi.getAnnounceScope).mockResolvedValue([
+      { id: "root-1", name: "פלוגה א", level: "company", parent_id: null },
+      { id: "child-1", name: "כיתה 1", level: "platoon", parent_id: "root-1" },
+    ]);
+    renderPage();
+    expect(await screen.findByText("פלוגה א")).toBeInTheDocument();
+    expect(await screen.findByText("כיתה 1")).toBeInTheDocument();
+  });
+
+  it("submits only the checked descendant when the root is unchecked and the child is checked", async () => {
+    vi.mocked(announcementsApi.getAnnounceScope).mockResolvedValue([
+      { id: "root-1", name: "פלוגה א", level: "company", parent_id: null },
+      { id: "child-1", name: "כיתה 1", level: "platoon", parent_id: "root-1" },
+    ]);
+    vi.mocked(announcementsApi.postAnnouncement).mockResolvedValue({ id: "ann-5", sent: 3 });
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText("פלוגה א");
+    await user.click(screen.getByLabelText("פלוגה א"));
+    await user.click(screen.getByLabelText("כיתה 1"));
+    await user.type(screen.getByLabelText("כותרת"), "בדיקת בן");
+    await user.click(screen.getByRole("button", { name: "שלח הכרזה" }));
+    await waitFor(() =>
+      expect(announcementsApi.postAnnouncement).toHaveBeenCalledWith({
+        title: "בדיקת בן",
+        body: undefined,
+        hierarchy_node_ids: ["child-1"],
       })
     );
   });

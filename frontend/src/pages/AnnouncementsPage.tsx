@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Layout from "../components/Layout";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
+import HierarchyCheckboxTree from "../components/HierarchyCheckboxTree";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import { translateApiError } from "../utils/translateApiError";
@@ -46,6 +47,18 @@ function AnnouncementsContent() {
   });
   const scopeNodes = scopeQuery.data ?? [];
 
+  const [selectedScopeIds, setSelectedScopeIds] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (scopeQuery.data && selectedScopeIds === null) {
+      const nodeIds = new Set(scopeQuery.data.map((n) => n.id));
+      const rootIds = scopeQuery.data
+        .filter((n) => n.parent_id === null || !nodeIds.has(n.parent_id))
+        .map((n) => n.id);
+      setSelectedScopeIds(new Set(rootIds));
+    }
+  }, [scopeQuery.data, selectedScopeIds]);
+
   const historyQuery = useQuery({
     queryKey: queryKeys.announcementsList(offset),
     queryFn: () => listAnnouncements({ offset, limit }),
@@ -66,7 +79,7 @@ function AnnouncementsContent() {
     try {
       const hierarchy_node_ids = isAdmin
         ? (narrowNodeIds.length > 0 ? narrowNodeIds : undefined)
-        : (scopeNodes.length > 0 ? scopeNodes.map((n) => n.id) : undefined);
+        : (selectedScopeIds && selectedScopeIds.size > 0 ? Array.from(selectedScopeIds) : undefined);
       await postAnnouncement({ title, body: body || undefined, hierarchy_node_ids });
       setSuccessMsg(t("announcements.sent_success"));
       setTitle("");
@@ -156,7 +169,16 @@ function AnnouncementsContent() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm">{t("announcements.target_my_scope")}</p>
+              <div className="space-y-2">
+                <p className="text-sm">{t("announcements.target_my_scope")}</p>
+                {scopeNodes.length > 0 && (
+                  <HierarchyCheckboxTree
+                    nodes={scopeNodes}
+                    selectedIds={selectedScopeIds ?? new Set()}
+                    onChange={setSelectedScopeIds}
+                  />
+                )}
+              </div>
             )}
           </div>
 

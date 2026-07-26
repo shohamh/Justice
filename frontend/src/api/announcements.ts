@@ -4,6 +4,7 @@ export interface ScopeNode {
   id: string;
   name: string;
   level: string;
+  parent_id: string | null;
 }
 
 export interface AnnounceResult {
