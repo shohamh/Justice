@@ -177,20 +177,11 @@ class Announcement(Base):
 
 Append to `backend/tests/integration/test_notifications_api.py` (add `Announcement` to the existing `from app.db.models import Notification, NotificationType` import line, making it `from app.db.models import Announcement, Notification, NotificationType`):
 
+Note: this step only proves the schema exists — it deliberately does NOT test
+that `mark_read` sets `read_at` (that behavior isn't implemented until Task 2
+Step 5). A test asserting that belongs in Task 2, not here.
+
 ```python
-def test_read_at_set_on_mark_read(client: TestClient, admin_session: Session):
-    s = create_soldier(admin_session, personal_number="9001018")
-    headers = auth_headers(s)
-    n = Notification(soldier_id=s.id, type=NotificationType.announcement, title="Read me too")
-    admin_session.add(n)
-    admin_session.commit()
-    nid = n.id
-    resp = client.patch(f"/api/notifications/{nid}/read", headers=headers)
-    assert resp.status_code == 200
-    admin_session.refresh(n)
-    assert n.read_at is not None
-
-
 def test_announcement_row_can_be_created_directly(admin_session: Session):
     sender = create_soldier(admin_session, personal_number="9001019", role="admin")
     a = Announcement(sender_id=sender.id, title="Org update", recipient_count=3, type=NotificationType.system_announcement)
@@ -202,12 +193,12 @@ def test_announcement_row_can_be_created_directly(admin_session: Session):
     assert a.created_at is not None
 ```
 
-- [ ] **Step 9: Run the tests to verify they fail (migration not yet applied would error; if the model changes are wrong, these will show it)**
+- [ ] **Step 9: Run the smoke test to verify the schema is correct**
 
 ```bash
-pytest tests/integration/test_notifications_api.py -k "read_at_set_on_mark_read or announcement_row_can_be_created" -v
+pytest tests/integration/test_notifications_api.py -k "announcement_row_can_be_created" -v
 ```
-Expected at this point: PASS (migrations run automatically against the test DB via `tests/conftest.py`'s `alembic upgrade head` — if Steps 1-7 are correct these should already pass). If they fail, re-check the migration `down_revision` chain and the model field additions before proceeding.
+Expected: PASS (migrations run automatically against the test DB via `tests/conftest.py`'s `alembic upgrade head` — if Steps 1-7 are correct this should already pass). If it fails, re-check the migration `down_revision` chain and the model field additions before proceeding.
 
 - [ ] **Step 10: Run the full notifications test area to confirm nothing else broke**
 
@@ -244,6 +235,19 @@ git commit -m "feat: add read_at, system_announcement type, and announcements ta
 Add to `backend/tests/integration/test_notifications_api.py` (extend the existing `from app.db.models import ...` line to include `HierarchyNode`; it's likely not yet imported there — check the top of the file and add it if missing):
 
 ```python
+def test_read_at_set_on_mark_read(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="9001018")
+    headers = auth_headers(s)
+    n = Notification(soldier_id=s.id, type=NotificationType.announcement, title="Read me too")
+    admin_session.add(n)
+    admin_session.commit()
+    nid = n.id
+    resp = client.patch(f"/api/notifications/{nid}/read", headers=headers)
+    assert resp.status_code == 200
+    admin_session.refresh(n)
+    assert n.read_at is not None
+
+
 def test_broadcast_org_wide_uses_system_announcement_type(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="9001020", role="admin")
     headers = auth_headers(admin)
@@ -295,9 +299,9 @@ def test_admin_scoped_announcement_still_uses_scoped_type(client: TestClient, ad
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-pytest tests/integration/test_notifications_api.py -k "system_announcement_type or scoped_uses_announcement_type or admin_scoped_announcement" -v
+pytest tests/integration/test_notifications_api.py -k "system_announcement_type or scoped_uses_announcement_type or admin_scoped_announcement or read_at_set" -v
 ```
-Expected: FAIL — `broadcast_announcement` still always uses `NotificationType.announcement`, and the route doesn't return an `"id"` field yet (this second part will be fixed in Task 3, so for now these tests will fail on the `resp.json()["id"]` line or the type assertion — that's expected; Task 3 makes them fully pass. For this task, focus on getting the `type` assertions right by running a trimmed version without the `reference_id` line if needed, or proceed knowing full green comes after Task 3).
+Expected: FAIL — `broadcast_announcement` still always uses `NotificationType.announcement`, the route doesn't return an `"id"` field yet (fixed in Task 3), and `mark_read` doesn't set `read_at` yet (fixed in Step 5 below). For this task, `test_read_at_set_on_mark_read` should go from FAIL to PASS once Step 5 lands; the three type-selection tests will only fully pass after Task 3 adds the `"id"` field to the response.
 
 - [ ] **Step 3: Update `broadcast_announcement`**
 
