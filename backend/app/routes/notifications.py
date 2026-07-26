@@ -113,6 +113,11 @@ class AnnouncementRecipientOut(BaseModel):
     read_at: datetime | None
 
 
+class PaginatedAnnouncementRecipients(BaseModel):
+    items: list[AnnouncementRecipientOut]
+    total: int
+
+
 class PaginatedNotifications(BaseModel):
     items: list[NotificationOut]
     total: int
@@ -354,19 +359,24 @@ def list_my_announcements(
     return PaginatedAnnouncements(items=items, total=total)
 
 
-@router.get("/notifications/announcements/{announcement_id}/recipients", response_model=list[AnnouncementRecipientOut])
+@router.get("/notifications/announcements/{announcement_id}/recipients", response_model=PaginatedAnnouncementRecipients)
 def announcement_recipients(
     announcement_id: uuid.UUID,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> list[AnnouncementRecipientOut]:
-    result = svc.get_announcement_recipients(session, announcement_id=announcement_id, sender_id=user.id)
+    offset: int = 0,
+    limit: int = 20,
+) -> PaginatedAnnouncementRecipients:
+    result = svc.get_announcement_recipients(session, announcement_id=announcement_id, sender_id=user.id,
+                                              offset=offset, limit=limit)
     if result is None:
         raise _err("not_found", 404)
-    return [
+    rows, total = result
+    items = [
         AnnouncementRecipientOut(soldier_id=s.id, full_name=s.full_name, is_read=is_read, read_at=read_at)
-        for s, is_read, read_at in result
+        for s, is_read, read_at in rows
     ]
+    return PaginatedAnnouncementRecipients(items=items, total=total)
 
 
 @router.post("/telegram/link", response_model=GenerateCodeOut)

@@ -291,9 +291,15 @@ def create_notification(
     write_audit(session, actor_id=actor_id, action="notification.create",
                 entity_type="notification", entity_id=notif.id,
                 after={"soldier_id": str(soldier_id), "type": type.value, "title": title})
-    cascade_to_commanders(session, type=type, title=title, body=body,
-                          reference_type=reference_type, reference_id=reference_id,
-                          actor_id=actor_id, original_soldier_id=soldier_id)
+    # Announcements already include every relevant soldier (commanders included,
+    # since they're Soldier rows too) directly in their recipient list — cascading
+    # to commanders on top would create duplicate Notification rows sharing the
+    # same reference_id, corrupting read_count/recipient_count and the recipient
+    # list for that announcement.
+    if type not in (NotificationType.announcement, NotificationType.system_announcement):
+        cascade_to_commanders(session, type=type, title=title, body=body,
+                              reference_type=reference_type, reference_id=reference_id,
+                              actor_id=actor_id, original_soldier_id=soldier_id)
     soldier = session.get(Soldier, soldier_id)
     if pref is None or pref.push_enabled:
         _enqueue_push(
@@ -783,13 +789,21 @@ def list_sent_announcements(session: Session, *, sender_id: uuid.UUID,
 
 
 def get_announcement_recipients(session: Session, *, announcement_id: uuid.UUID,
-                                sender_id: uuid.UUID) -> list[tuple[Soldier, bool, datetime | None]] | None:
+                                sender_id: uuid.UUID, offset: int = 0, limit: int = 20,
+                                ) -> tuple[list[tuple[Soldier, bool, datetime | None]], int] | None:
     announcement = session.get(Announcement, announcement_id)
     if announcement is None or announcement.sender_id != sender_id:
         return None
-    rows = session.execute(
+    base_q = (
         select(Notification, Soldier)
         .join(Soldier, Soldier.id == Notification.soldier_id)
         .where(Notification.reference_type == "announcement", Notification.reference_id == announcement_id)
-    ).all()
-    return [(soldier, notif.is_read, notif.read_at) for notif, soldier in rows]
+    )
+    total = len(session.execute(
+        select(Notification.id).where(
+            Notification.reference_type == "announcement",
+            Notification.reference_id == announcement_id,
+        )
+    ).scalars().all())
+    rows = session.execute(base_q.offset(offset).limit(limit)).all()
+    return [(soldier, notif.is_read, notif.read_at) for notif, soldier in rows], total

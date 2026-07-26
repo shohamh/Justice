@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Announcement, HierarchyNode, Notification, NotificationType
+from app.db.models import Announcement, CommanderNotificationScope, HierarchyNode, Notification, NotificationType
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -321,7 +321,7 @@ def test_announcement_recipients_endpoint(client: TestClient, admin_session: Ses
     announcement_id = send_resp.json()["id"]
     resp = client.get(f"/api/notifications/announcements/{announcement_id}/recipients", headers=headers)
     assert resp.status_code == 200
-    rows = resp.json()
+    rows = resp.json()["items"]
     match = next(r for r in rows if r["soldier_id"] == str(recipient.id))
     assert match["full_name"] == recipient.full_name
     assert match["is_read"] is False
@@ -337,3 +337,84 @@ def test_announcement_recipients_404_for_non_owner(client: TestClient, admin_ses
     other_headers = auth_headers(other_admin)
     resp = client.get(f"/api/notifications/announcements/{announcement_id}/recipients", headers=other_headers)
     assert resp.status_code == 404
+
+
+def test_announcement_does_not_duplicate_via_commander_cascade(client: TestClient, admin_session: Session):
+    """Regression test for Finding 1/2: broadcast_announcement already includes every
+    relevant soldier (commanders included, since they're Soldier rows too) in its
+    recipient list. create_notification must NOT also cascade_to_commanders() for
+    announcement types, or a commander with a CommanderNotificationScope over the
+    recipient's node gets a duplicate Notification row sharing the same
+    reference_id — corrupting recipient_count/read_count and the recipient list.
+    """
+    node = create_node(admin_session, level="unit", name="CascadeTestUnit")
+    recipient = create_soldier(admin_session, personal_number="9001035", hierarchy_node_id=node.id)
+    commander = create_soldier(admin_session, personal_number="9001036", role="commander")
+    admin_session.add(CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number="9001037", role="admin")
+    headers = auth_headers(admin)
+    send_resp = client.post("/api/notifications/announce", headers=headers, json={"title": "cascade check"})
+    assert send_resp.status_code == 201
+    announcement_id = send_resp.json()["id"]
+
+    # No extra Notification row was created for the commander via the cascade path.
+    commander_notif_count = len(admin_session.execute(
+        select(Notification.id).where(
+            Notification.reference_type == "announcement",
+            Notification.reference_id == uuid.UUID(announcement_id),
+            Notification.soldier_id == commander.id,
+        )
+    ).scalars().all())
+    assert commander_notif_count == 1  # only their own entry as an ordinary recipient
+
+    total_notif_count = len(admin_session.execute(
+        select(Notification.id).where(
+            Notification.reference_type == "announcement",
+            Notification.reference_id == uuid.UUID(announcement_id),
+        )
+    ).scalars().all())
+
+    history_resp = client.get("/api/notifications/announcements", headers=headers)
+    assert history_resp.status_code == 200
+    match = next(i for i in history_resp.json()["items"] if i["id"] == announcement_id)
+    assert match["recipient_count"] == total_notif_count
+    assert match["read_count"] <= match["recipient_count"]
+
+    recipients_resp = client.get(f"/api/notifications/announcements/{announcement_id}/recipients", headers=headers)
+    assert recipients_resp.status_code == 200
+    recipient_ids = [r["soldier_id"] for r in recipients_resp.json()["items"]]
+    # The commander appears at most once in the recipient list (no cascade duplicate).
+    assert recipient_ids.count(str(commander.id)) == 1
+    assert str(recipient.id) in recipient_ids
+
+
+def test_announcement_recipients_endpoint_is_paginated(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="9001038", role="admin")
+    headers = auth_headers(admin)
+    for i in range(25):
+        create_soldier(admin_session, personal_number=f"90010{40 + i}")
+    send_resp = client.post("/api/notifications/announce", headers=headers, json={"title": "paginated recipients"})
+    announcement_id = send_resp.json()["id"]
+
+    page1 = client.get(
+        f"/api/notifications/announcements/{announcement_id}/recipients",
+        headers=headers, params={"offset": 0, "limit": 20},
+    )
+    assert page1.status_code == 200
+    data1 = page1.json()
+    assert len(data1["items"]) == 20
+    assert data1["total"] >= 26  # 25 new soldiers + admin themself
+
+    page2 = client.get(
+        f"/api/notifications/announcements/{announcement_id}/recipients",
+        headers=headers, params={"offset": 20, "limit": 20},
+    )
+    assert page2.status_code == 200
+    data2 = page2.json()
+    assert len(data2["items"]) == data2["total"] - 20
+    # No overlap between the two pages.
+    ids1 = {r["soldier_id"] for r in data1["items"]}
+    ids2 = {r["soldier_id"] for r in data2["items"]}
+    assert ids1.isdisjoint(ids2)
