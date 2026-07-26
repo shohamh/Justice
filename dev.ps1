@@ -135,7 +135,12 @@ $env:DATABASE_URL = $localDbUrl
 $env:DB_ADMIN_URL = $localAdminUrl
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
+$migrationExitCode = $LASTEXITCODE
 Pop-Location
+if ($migrationExitCode -ne 0) {
+    Write-Error "[dev] Migrations failed (exit code $migrationExitCode) — fix the error above before starting services. A partial/failed migration run (e.g. the app DB role from migration 0001 never created) will make the backend fail to connect."
+    exit 1
+}
 Write-Host "[dev] Migrations done." -ForegroundColor Green
 
 # ── Build service list for concurrently ──────────────────────────────────────
