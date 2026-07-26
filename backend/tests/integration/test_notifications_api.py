@@ -278,6 +278,22 @@ def test_announce_scope_returns_own_roots_for_dm(client: TestClient, admin_sessi
     assert len(data) == 1
     assert data[0]["id"] == str(unit_a.id)
     assert data[0]["name"] == "ScopeEndpointUnit"
+    assert data[0]["parent_id"] is None
+
+
+def test_announce_scope_includes_descendants_for_dm(client: TestClient, admin_session: Session):
+    parent = create_node(admin_session, level="company", name="ScopeParentUnit")
+    child = create_node(admin_session, level="platoon", name="ScopeChildUnit", parent=parent)
+    dm = create_soldier(admin_session, personal_number="9001040", role="duty_manager", hierarchy_node_id=parent.id)
+    headers = auth_headers(dm)
+    resp = client.get("/api/notifications/announce/scope", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = {row["id"]: row for row in data}
+    assert str(parent.id) in ids
+    assert str(child.id) in ids
+    assert ids[str(parent.id)]["parent_id"] is None
+    assert ids[str(child.id)]["parent_id"] == str(parent.id)
 
 
 def test_announce_scope_empty_for_admin(client: TestClient, admin_session: Session):

@@ -763,7 +763,9 @@ def scope_nodes_for_announcement(session: Session, user: Soldier) -> list[Hierar
     roots = scope_root_ids(session, user)
     if not roots:
         return []
-    return list(session.execute(select(HierarchyNode).where(HierarchyNode.id.in_(roots))).scalars().all())
+    return list(session.execute(
+        select(HierarchyNode).where(HierarchyNode.path_ids.overlap(list(roots)))
+    ).scalars().all())
 
 
 def list_sent_announcements(session: Session, *, sender_id: uuid.UUID,

@@ -88,6 +88,7 @@ class ScopeNodeOut(BaseModel):
     id: uuid.UUID
     name: str
     level: str
+    parent_id: uuid.UUID | None
 
 
 class AnnouncementOut(BaseModel):
@@ -337,7 +338,7 @@ def announce_scope(
     user: Soldier = Depends(require_password_changed),
 ) -> list[ScopeNodeOut]:
     nodes = svc.scope_nodes_for_announcement(session, user)
-    return [ScopeNodeOut(id=n.id, name=n.name, level=n.level) for n in nodes]
+    return [ScopeNodeOut(id=n.id, name=n.name, level=n.level, parent_id=n.parent_id) for n in nodes]
 
 
 @router.get("/notifications/announcements", response_model=PaginatedAnnouncements)
