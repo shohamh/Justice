@@ -316,6 +316,33 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             all_soldiers.append(s)
             node.commander_id = s.id
 
+        # Branch duty managers — one per branch, scoped (via DutyManagerScope)
+        # to the whole branch subtree, so they can approve swaps/exemptions
+        # for anyone under it. NCO קבע, not in the commander chain.
+        from app.services.dm_scope import assign_dm_scope
+
+        _branch_dm_defs = {
+            "פוקוס":   ("2500001", 'רס"ל', date(2017, 9, 1), date(2029, 9, 1)),  # ~8 yr
+            "אלומות":  ("2500002", 'רס"ל', date(2018, 2, 1), date(2029, 2, 1)),  # ~7 yr
+        }
+        for branch_node in branches:
+            pn_str, rank, enl, disc = _branch_dm_defs[branch_node.name]
+            s = make_soldier(
+                pn_str,
+                f"אחראי תורנויות {branch_node.name}",
+                "soldier",
+                branch_node.id,
+                is_officer=False,
+                rank=rank,
+                bahad1_graduate=False,
+                enlistment_date=enl,
+                mandatory_end_date=_mandatory_end(enl, "male"),
+                discharge_date=disc,
+                gender="male",
+            )
+            all_soldiers.append(s)
+            assign_dm_scope(session, soldier_id=s.id, node_id=branch_node.id, actor_id=s_admin.id)
+
         # Team soldiers (3 per team)
         team_soldiers = []
         team_names_he = {
