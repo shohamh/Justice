@@ -336,6 +336,24 @@ export default function SwapsPage() {
       {swap.decision_note && (
         <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
       )}
+      {swap.status === "open" && swap.requester_side_approved !== true && (
+        <div className="flex gap-2 items-center">
+          <button type="button" onClick={() => handleSoldierApprove(swap.id)}
+            className="bg-green-600 text-white px-2 py-1 rounded text-xs">
+            {t("approvals.approve")}
+          </button>
+          <input
+            placeholder={t("approvals.decision_note")}
+            value={swapRejectNote[swap.id] ?? ""}
+            onChange={(e) => setSwapRejectNote((prev) => ({ ...prev, [swap.id]: e.target.value }))}
+            className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+          />
+          <button type="button" onClick={() => handleSoldierReject(swap.id)}
+            className="bg-red-600 text-white px-2 py-1 rounded text-xs">
+            {t("approvals.reject")}
+          </button>
+        </div>
+      )}
       {swap.candidates.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("swaps.candidates_title")} ({swap.candidates.length})</p>
