@@ -72,6 +72,42 @@ def test_register_rejects_invalid_phone_format(client, admin_session):
     assert resp.status_code == 422
 
 
+def test_register_stores_military_driving_license(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(
+        invite.code, node.id,
+        has_military_driving_license=True,
+        military_driving_license_expiry=(date.today() + timedelta(days=365)).isoformat(),
+    )
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 200
+
+    from app.db.models import Soldier
+    soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
+    assert soldier.has_military_driving_license is True
+    assert soldier.military_driving_license_expiry == date.today() + timedelta(days=365)
+
+
+def test_register_defaults_military_driving_license_to_false(client, admin_session):
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    payload = _payload(invite.code, node.id)
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 200
+
+    from app.db.models import Soldier
+    soldier = admin_session.query(Soldier).filter_by(personal_number=payload["personal_number"]).one()
+    assert soldier.has_military_driving_license is False
+    assert soldier.military_driving_license_expiry is None
+
+
 def test_register_returns_access_token(client, admin_session):
     holding = _setup_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)

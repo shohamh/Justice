@@ -49,6 +49,7 @@ interface FormData {
   gender: string; is_officer: boolean; rank: string; bahad1_graduate: boolean;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
+  has_military_driving_license: boolean; military_driving_license_expiry: string;
   requested_node_id: string;
   exemption_requests: ExemptionRow[];
   personal_constraints: ConstraintRow[];
@@ -59,6 +60,7 @@ const INITIAL: FormData = {
   confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
   bahad1_graduate: false, enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
+  has_military_driving_license: false, military_driving_license_expiry: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
 };
 
@@ -126,6 +128,8 @@ export default function RegisterPage() {
         discharge_date: form.discharge_date || null,
         last_mitvahim_date: form.last_mitvahim_date || null,
         last_alal_date: form.last_alal_date || null,
+        has_military_driving_license: form.has_military_driving_license,
+        military_driving_license_expiry: form.has_military_driving_license ? (form.military_driving_license_expiry || null) : null,
         requested_node_id: form.requested_node_id,
         exemption_requests: form.exemption_requests.filter(er => er.exemption_type_id && er.start_date),
         personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
@@ -237,6 +241,19 @@ export default function RegisterPage() {
                   value={form.last_alal_date} onChange={iso => set("last_alal_date", iso)} />
               </label>
             )}
+            <div className="block text-sm">
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={form.has_military_driving_license}
+                  onChange={e => set("has_military_driving_license", e.target.checked)} />
+                רישיון נהיגה צבאי
+              </label>
+              {form.has_military_driving_license && (
+                <label className="block text-sm mt-1">תוקף הרישיון
+                  <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    value={form.military_driving_license_expiry} onChange={iso => set("military_driving_license_expiry", iso)} />
+                </label>
+              )}
+            </div>
             <label className="block text-sm">סיסמה <span className="text-red-500">*</span>
               <input type="password" dir="ltr" className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={form.password} onChange={e => set("password", e.target.value)} />
               <PasswordStrengthHint password={form.password} />
