@@ -53,12 +53,17 @@ describe("searchRegistry quick actions", () => {
 
 describe("searchRegistry help topics", () => {
   test("gimelim topic only present when gimelimEnabled is true", () => {
-    expect(getHelpTopicEntries(true).some((e) => e.id === "gimelim")).toBe(true);
-    expect(getHelpTopicEntries(false).some((e) => e.id === "gimelim")).toBe(false);
+    expect(getHelpTopicEntries(true, true).some((e) => e.id === "gimelim")).toBe(true);
+    expect(getHelpTopicEntries(false, true).some((e) => e.id === "gimelim")).toBe(false);
+  });
+
+  test("hakpaza topic only present when hakpazaEnabled is true", () => {
+    expect(getHelpTopicEntries(true, true).some((e) => e.id === "hakpaza")).toBe(true);
+    expect(getHelpTopicEntries(true, false).some((e) => e.id === "hakpaza")).toBe(false);
   });
 
   test("all non-gimelim, non-approvals, non-hakpaza, non-import topics are accessible to every authenticated user", () => {
-    const entries = getHelpTopicEntries(true).filter((e) => e.id !== "gimelim" && e.id !== "approvals" && e.id !== "hakpaza" && e.id !== "import");
+    const entries = getHelpTopicEntries(true, true).filter((e) => e.id !== "gimelim" && e.id !== "approvals" && e.id !== "hakpaza" && e.id !== "import");
     expect(entries.every((e) => e.canAccess(soldier))).toBe(true);
   });
 });

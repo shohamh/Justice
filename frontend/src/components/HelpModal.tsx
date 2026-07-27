@@ -6,17 +6,19 @@ import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
+import AlgorithmModeExplainer from "./AlgorithmModeExplainer";
 
 interface Props {
   onClose: () => void;
   gimelimEnabled?: boolean;
+  hakpazaEnabled?: boolean;
   initialTab?: string;
 }
 
 interface HelpTabDef {
   id: string;
   label: string;
-  visible: (user: PermissionUser | null, gimelimEnabled: boolean) => boolean;
+  visible: (user: PermissionUser | null, gimelimEnabled: boolean, hakpazaEnabled: boolean) => boolean;
 }
 
 const TAB_DEFS: HelpTabDef[] = [
@@ -26,13 +28,13 @@ const TAB_DEFS: HelpTabDef[] = [
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
   { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
   { id: "hierarchy", label: "🌳 היררכיה וכשירות", visible: (u) => authenticated(u) },
-  { id: "hakpaza", label: "📣 הקפצה פיקודית", visible: (u) => canApprove(u) },
+  { id: "hakpaza", label: "📣 הקפצה פיקודית", visible: (u, _gimelimEnabled, hakpazaEnabled) => canApprove(u) && hakpazaEnabled },
   { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
   { id: "import", label: "📥 ייבוא", visible: (u) => canPlan(u) },
 ];
 
-function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean): HelpTabDef[] {
-  return TAB_DEFS.filter((t) => t.visible(user, gimelimEnabled));
+function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean, hakpazaEnabled: boolean): HelpTabDef[] {
+  return TAB_DEFS.filter((t) => t.visible(user, gimelimEnabled, hakpazaEnabled));
 }
 
 function FlowStep({
@@ -211,7 +213,7 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
           { icon: "🎖️", title: "פטור פיקודי", desc: "פטור שניתן בשלב אחד בלבד על ידי מפקד בדרגת רס\"ן ומעלה, מפקד תת-יחידה ברמת מדור ומעלה, או קצין תורן. הפטור פוטר את החייל הבודד מתורנויות מסוימות, אך לא מפחית את הפוטנציאל של יחידתו — כלומר אותה כמות תורנויות תתחלק על פחות חיילים ביחידה. יש להשתמש בכלי זה בצמצום ובמקרים חריגים בלבד." },
           { icon: "📈", title: "פוטנציאל", desc: "מספר החיילים הכשירים לפחות לסוג תורנות אחד בכל תת-יחידה. פטורים רשמיים מפחיתים פוטנציאל אם הם מכסים את כל סוגי התורנות של החייל; פטורים פיקודיים ואילוצים אישיים לא משפיעים על הפוטנציאל. הפוטנציאל קובע את חלוקת האחריות היחסית בין תת-יחידות במשמרות חדשות, וניתן לבקר אותו לפי חייל ולראות התאמות ידניות מתועדות." },
-          { icon: "🔁", title: "רענון מכסות תת-יחידה", desc: "אם רכיב לא נפתר במלואו, האלגוריתם מנסה שוב תוך הרפיה חד-פעמית של מכסות תת-היחידה (node quotas) — לפני שהוא עובר לסולם ההרפיה הרגיל (R/T)." },
+          { icon: "🔁", title: "רענון מכסות תת-יחידה", desc: "אם סולם ההרפיה הרגיל (R/T) כבר הצליח למצוא פתרון (מלא או חלקי), האלגוריתם מנסה בנוסף לרענן את מכסות תת-היחידה — כדי לנצל עוד קצת גמישות, כשההגדרה auto_relax_node_quotas מופעלת." },
           { icon: "🧩", title: "אסטרטגיות פתרון חלופיות", desc: "בנוסף לפירוק הרגיל לפי סבבי-עומס, קיימות אסטרטגיות פתרון חלופיות (למשל פתרון משולב על פני כמה משמרות בבת אחת) שהפותר עשוי להשתמש בהן במקרים מסוימים." },
           { icon: "⏹️", title: "עצירה מוקדמת", desc: "אם הפותר לא משפר את הפתרון במשך כ-15 שניות רצופות, הוא עוצר ומחזיר את הטוב ביותר שנמצא — במקום לנצל את כל זמן הריצה המוקצב." },
           { icon: "♻️", title: "גורל הרזרבה בגימלים", desc: "הגדרת מערכת קובעת מה קורה לרזרבה המקורית של חייל שעבר גימלים: נשארת משויכת אליו (\"keep\") או משוחררת (\"release\")." },
@@ -229,18 +231,7 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
       {canPlan(user) && (
         <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-3">
           <p className="font-semibold text-gray-800 dark:text-gray-200">🚦 מצבי הרצה (למי שמריץ את האלגוריתם)</p>
-          <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
-            <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">מצב טיוטה (ברירת מחדל)</p>
-            <p className="text-amber-700 dark:text-amber-300 text-xs">
-              תוצאות האלגוריתם נשמרות כטיוטה בלבד. החיילים לא רואים שינוי. אפשר לסקור את השיבוצים המוצעים, לדחות חלקם, ולפרסם רק אחרי אישור. מומלץ לשימוש רגיל.
-            </p>
-          </div>
-          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800">
-            <p className="font-medium text-green-800 dark:text-green-200 mb-1">מצב פרסום ישיר</p>
-            <p className="text-green-700 dark:text-green-300 text-xs">
-              תוצאות האלגוריתם מתפרסמות מיד ללא שלב ביניים. החיילים רואים את השיבוצים החדשים מיידית. השתמש רק כאשר אתה בטוח בתוצאות מראש.
-            </p>
-          </div>
+          <AlgorithmModeExplainer />
         </div>
       )}
 
@@ -1188,6 +1179,7 @@ function ApprovalsTab() {
           { icon: "✏️", title: "עדכוני פרופיל", desc: "חייל ביקש לשנות פרט אישי (למשל טלפון או דרגה). אישור מעדכן את הרשומה מיד; דחייה משאירה את הערך הישן." },
           { icon: "🎓", title: "הצטרפויות/קליטה", desc: "חייל חדש שממתין לשיבוץ ליחידה. אישור קובע את היחידה שלו וממנו והלאה הוא נכנס לחישובי העומס וההוגנות." },
           { icon: "🔀", title: "העברות", desc: "העברת חייל בין תתי-יחידות. אישור מעביר את החייל וההיסטוריה שלו נשארת אך העומס העתידי נספר תחת היחידה החדשה." },
+          { icon: "📅", title: "בקשות אילוץ אישי", desc: "חייל ביקש שלא לשבץ אותו בתאריכים מסוימים. אישור מחריג אותו מהתאריכים שביקש; דחייה משאירה אותו זמין לשיבוץ כרגיל. זהו הטאב שנפתח כברירת מחדל בעמוד האישורים." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
             <span className="text-xl flex-shrink-0">{icon}</span>
@@ -1199,7 +1191,7 @@ function ApprovalsTab() {
         ))}
       </div>
       <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
-        ⚠️ בקשות ממתינות זמן רב עלולות לחסום תכנון: תורנות שממתינה לאישור החלפה לא תיחשב &ldquo;סופית&rdquo; עד שהאישור יושלם.
+        ⚠️ בקשות ממתינות זמן רב עלולות לחסום תכנון: תורנות שממתינה לאישור החלפה לא תיחשב &quot;סופית&quot; עד שהאישור יושלם.
       </div>
     </div>
   );
@@ -1223,8 +1215,8 @@ function ImportTab() {
       </div>
       <div className="space-y-2">
         {[
-          { icon: "🔄", title: "מה ההבדל בין 'חדש' ל'עדכון'?", desc: "שורה מזוהה לפי מספר אישי קיים במערכת: אם נמצא — זו 'עדכון' (שדות קיימים יידרסו בערכים מהקובץ); אם לא נמצא — 'חדש' (רשומה נוצרת מאפס)." },
-          { icon: "⚠️", title: "שורות שגיאה ומחוץ לתחום", desc: "שורה עם שגיאה לא תיובא כלל עד לתיקון. שורה 'מחוץ לתחום' שייכת ליחידה שאין לכם הרשאה לנהל — היא מדולגת אוטומטית ולא תשפיע על היחידות שלכם." },
+          { icon: "🔄", title: "מה ההבדל בין \"חדש\" ל\"עדכון\"?", desc: "שורה מזוהה לפי מספר אישי קיים במערכת: אם נמצא — זו \"עדכון\" (שדות קיימים יידרסו בערכים מהקובץ); אם לא נמצא — \"חדש\" (רשומה נוצרת מאפס)." },
+          { icon: "⚠️", title: "שורות שגיאה ומחוץ לתחום", desc: "שורה עם שגיאה לא תיובא כלל עד לתיקון. שורה \"מחוץ לתחום\" שייכת ליחידה שאין לכם הרשאה לנהל — היא מדולגת אוטומטית ולא תשפיע על היחידות שלכם." },
           { icon: "🗂️", title: "מיפוי שמות", desc: "אם שם סוג תורנות או שם צומת בקובץ לא תואם בדיוק למה שקיים במערכת, ניתן למפות אותו ידנית לפני הביצוע — כדי למנוע יצירת כפילויות בטעות." },
           { icon: "↩️", title: "לפני שמבצעים סופית", desc: "שום שינוי לא נכנס לתוקף עד לשלב הביצוע (commit) המפורש — סקירת השורות היא שלב תצוגה מקדימה בלבד וניתן לבטל בכל שלב לפני הביצוע." },
         ].map(({ icon, title, desc }) => (
@@ -1317,7 +1309,7 @@ function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
         )}
         {!canPlan(user) && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            בדיקת כשירות מול סוגי תורנות ספציפיים זמינה למנהלי תורנויות ומפקדים בעלי הרשאת תכנון.
+            בדיקת כשירות מול סוגי תורנות ספציפיים זמינה למנהלי תורנויות ולמנהלי המערכת.
           </p>
         )}
       </div>
@@ -1325,10 +1317,10 @@ function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
   );
 }
 
-export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
+export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnabled = true, initialTab }: Props) {
   useModalBackClose(onClose);
   const { user } = useAuth();
-  const TABS = buildTabs(user as PermissionUser | null, gimelimEnabled);
+  const TABS = buildTabs(user as PermissionUser | null, gimelimEnabled, hakpazaEnabled);
   const [activeTab, setActiveTab] = useState(() =>
     initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : (TABS[0]?.id ?? "swaps")
   );
