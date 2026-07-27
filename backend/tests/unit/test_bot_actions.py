@@ -203,11 +203,16 @@ def test_execute_action_with_reason_constraint_reject():
     assert "נדחתה" in result
 
 
-def test_execute_action_with_reason_swap_reject():
+def test_execute_action_with_reason_swap_reject_by_requester_kills_whole_request():
+    """When the acting soldier IS the request's requester, swap:reject must
+    call reject_request (kill the whole SwapRequest)."""
     from bot.actions import execute_action_with_reason
 
     session = MagicMock()
     token = _make_token("swap:reject")
+    req = MagicMock()
+    req.requesting_soldier_id = token.soldier_id
+    session.get.return_value = req
 
     with patch("bot.actions.swap_svc.reject_request") as mock_reject:
         mock_reject.return_value = MagicMock()
@@ -216,6 +221,33 @@ def test_execute_action_with_reason_swap_reject():
     mock_reject.assert_called_once_with(
         session, request_id=token.resource_id, decision_note="לא מתאים", actor_id=token.soldier_id
     )
+    assert "נדחתה" in result
+
+
+def test_execute_action_with_reason_swap_reject_by_candidate_declines_only_own_candidacy():
+    """When the acting soldier is a non-requester candidate declining their
+    own invite, swap:reject must call decline_candidate — NOT reject_request
+    — so the rest of the swap request (other candidates) survives.
+    Regression test: this call site used to call reject_request
+    unconditionally, destroying the entire request even when the actor was
+    just one invited candidate bowing out."""
+    from bot.actions import execute_action_with_reason
+
+    session = MagicMock()
+    token = _make_token("swap:reject")
+    req = MagicMock()
+    req.requesting_soldier_id = uuid.uuid4()  # someone else — actor is a candidate, not the requester
+    session.get.return_value = req
+
+    with patch("bot.actions.swap_svc.reject_request") as mock_reject, \
+         patch("bot.actions.swap_svc.decline_candidate") as mock_decline:
+        mock_decline.return_value = MagicMock()
+        result = execute_action_with_reason(token, session, reason="לא מתאים")
+
+    mock_decline.assert_called_once_with(
+        session, request_id=token.resource_id, soldier_id=token.soldier_id, actor_id=token.soldier_id
+    )
+    mock_reject.assert_not_called()
     assert "נדחתה" in result
 
 

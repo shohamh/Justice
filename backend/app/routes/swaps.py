@@ -658,6 +658,8 @@ def _side_node(session: Session, req: SwapRequest, side: str, candidate_id: uuid
         if candidate_id is None:
             return None
         candidate = session.get(SwapCandidate, candidate_id)
+        if candidate is not None and candidate.swap_request_id != req.id:
+            raise svc.SwapError("candidate_mismatch")
         soldier_id = candidate.soldier_id if candidate else None
     if soldier_id is None:
         return None

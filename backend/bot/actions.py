@@ -148,9 +148,17 @@ def execute_action_with_reason(
 
     if action == "swap:reject":
         try:
-            swap_svc.reject_request(
-                session, request_id=resource_id, decision_note=reason, actor_id=soldier_id
-            )
+            req = session.get(SwapRequest, resource_id)
+            if req is None:
+                return "שגיאה: swap_not_found"
+            if soldier_id == req.requesting_soldier_id:
+                swap_svc.reject_request(
+                    session, request_id=resource_id, decision_note=reason, actor_id=soldier_id
+                )
+            else:
+                swap_svc.decline_candidate(
+                    session, request_id=resource_id, soldier_id=soldier_id, actor_id=soldier_id
+                )
             return "❌ בקשת ההחלפה נדחתה."
         except swap_svc.SwapError as e:
             return f"שגיאה: {e}"

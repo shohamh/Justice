@@ -155,6 +155,13 @@ def test_claim_request_creates_marketplace_candidate_without_cancelling_invited(
 
 
 def test_approve_soldier_side_approves_only_the_callers_candidate(admin_session):
+    """`a` and `b` are both invited candidates, so `a`'s own approval must
+    only touch `a`'s candidate row — `b` stays untouched. Note this now
+    finalizes the whole request: since `a` was specifically invited by the
+    requester, `a`'s approval auto-implies the requester's consent too
+    (see approve_soldier_side's "invited" source branch), and with no
+    manager-approval chains configured for these test soldiers, that's
+    enough to win the finalize race outright."""
     node = create_node(admin_session, level="unit", name="swap-svc-unit-4")
     requester = create_soldier(admin_session, personal_number="7710007", hierarchy_node_id=node.id)
     a = create_soldier(admin_session, personal_number="7710008", hierarchy_node_id=node.id)
@@ -168,12 +175,15 @@ def test_approve_soldier_side_approves_only_the_callers_candidate(admin_session)
 
     svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
     admin_session.flush()
+    admin_session.refresh(req)
 
     cands = {c.soldier_id: c for c in admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).all()}
     assert cands[a.id].soldier_side_approved is True
-    assert cands[a.id].status == "accepted"
+    assert cands[a.id].status == "applied"
     assert cands[b.id].soldier_side_approved is None
-    assert cands[b.id].status == "pending"
+    assert cands[b.id].status == "cancelled"
+    assert req.status == "applied"
+    assert req.requester_side_approved is True
 
 
 def test_approve_soldier_side_requester_shared_across_candidates(admin_session):
@@ -225,11 +235,8 @@ def test_approve_soldier_side_still_raises_when_request_was_rejected(admin_sessi
     )
     admin_session.flush()
 
-    # reject_request itself currently raises AttributeError (it references
-    # req.covering_soldier_id, which no longer exists on SwapRequest after
-    # the per-candidate refactor) — a separate pre-existing bug outside this
-    # fix's scope. Set the status directly to isolate approve_soldier_side's
-    # behavior from that unrelated breakage.
+    # Set the status directly (rather than calling reject_request) to isolate
+    # approve_soldier_side's behavior from the rejection path itself.
     req.status = "rejected"
     admin_session.flush()
     admin_session.refresh(req)
@@ -293,29 +300,38 @@ def test_declined_candidate_does_not_affect_other_candidates(admin_session):
 
 def test_finalize_triggers_when_requester_approves_last(admin_session):
     """The requester's own consent can be the LAST missing piece for an
-    already-fully-approved candidate (e.g. they invited someone, that
-    candidate accepted, and only then does the requester confirm) —
-    approve_soldier_side's requester branch must call _try_finalize too,
-    not just the candidate branch. Regression test for a bug found during
-    manual verification: the requester branch set requester_side_approved
-    but never triggered the finalize race, leaving the request stuck open
-    forever even though every other condition was already satisfied."""
+    already-fully-approved candidate — approve_soldier_side's requester
+    branch must call _try_finalize too, not just the candidate branch.
+    Regression test for a bug found during manual verification: the
+    requester branch set requester_side_approved but never triggered the
+    finalize race, leaving the request stuck open forever even though every
+    other condition was already satisfied.
+
+    Uses a marketplace-sourced candidate (inserted directly, bypassing
+    claim_request/cover_offer) rather than an invited one: an invited
+    candidate's own approval now auto-implies requester consent too (see
+    approve_soldier_side's "invited" source branch), which would finalize
+    the request right there and never exercise the requester branch's own
+    _try_finalize call — the thing this test exists to check."""
     node = create_node(admin_session, level="unit", name="swap-svc-unit-requester-last")
     requester = create_soldier(admin_session, personal_number="7710030", hierarchy_node_id=node.id)
     a = create_soldier(admin_session, personal_number="7710031", hierarchy_node_id=node.id)
     assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
     req = svc.create_request(
         admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
-        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
     )
+    admin_session.add(SwapCandidate(swap_request_id=req.id, soldier_id=a.id, source="marketplace"))
     admin_session.flush()
 
-    # Candidate approves first — requester_side_approved is still None, so
+    # Candidate approves first — requester_side_approved is still None (this
+    # candidate is marketplace-sourced, not invited, so no auto-consent), so
     # this alone must NOT finalize yet.
     svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
     admin_session.flush()
     admin_session.refresh(req)
     assert req.status == "open"
+    assert req.requester_side_approved is not True
 
     # Requester approves last — this is the final missing piece; finalize
     # must trigger from THIS call.
@@ -388,3 +404,99 @@ def test_take_free_creates_one_applied_candidate(admin_session):
     assert cand.soldier_id == taker.id
     assert cand.source == "marketplace"
     assert cand.status == "applied"
+
+
+def test_reject_manager_row_raises_for_unauthorized_actor(admin_session):
+    """reject_manager_row must raise (not silently no-op) when the actor
+    doesn't qualify as a required approver for any (side, kind) on this
+    request. Regression test: this used to return the untouched SwapRequest
+    with no error at all, hiding from the caller/UI that nothing happened."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-reject-mgr-unauth")
+    requester = create_soldier(admin_session, personal_number="7710040", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710041", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number="7710042")  # no hierarchy node, no chain at all
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_required_approver"):
+        svc.reject_manager_row(admin_session, request_id=req.id, actor_id=stranger.id, candidate_id=None)
+
+    admin_session.refresh(req)
+    assert req.status == "open"
+
+
+def test_reject_manager_row_raises_candidate_mismatch(admin_session):
+    """reject_manager_row must validate that candidate_id actually belongs
+    to request_id — a mismatched pair (candidate from a different swap
+    request) is a caller bug and must raise, not silently act on/ignore the
+    wrong request's candidate."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-candidate-mismatch")
+    requester = create_soldier(admin_session, personal_number="7710043", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710044", hierarchy_node_id=node.id)
+    other_requester = create_soldier(admin_session, personal_number="7710045", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="7710046", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    other_assignment = _published_assignment(admin_session, soldier_id=other_requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+    )
+    other_req = svc.create_request(
+        admin_session, requesting_soldier_id=other_requester.id, duty_assignment_id=other_assignment.id,
+        target_soldier_id=None, target_soldier_ids=[b.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+    other_candidate = admin_session.query(SwapCandidate).filter_by(swap_request_id=other_req.id, soldier_id=b.id).one()
+
+    # other_candidate genuinely belongs to other_req, not req — passing it
+    # in alongside req.id must raise rather than silently proceed.
+    with pytest.raises(SwapError, match="candidate_mismatch"):
+        svc.reject_manager_row(admin_session, request_id=req.id, actor_id=requester.id, candidate_id=other_candidate.id)
+
+    with pytest.raises(SwapError, match="candidate_mismatch"):
+        svc.is_chain_commander_for_side(
+            admin_session, request_id=req.id, side="covering", commander_id=requester.id, candidate_id=other_candidate.id,
+        )
+
+    with pytest.raises(SwapError, match="candidate_mismatch"):
+        svc.approve_manager_side_override(
+            admin_session, request_id=req.id, side="covering", actor_id=requester.id, candidate_id=other_candidate.id,
+        )
+
+
+def test_approve_soldier_side_auto_sets_requester_consent_only_for_invited_candidates(admin_session):
+    """Fix #4 consistency check: an invited candidate's own approval implies
+    requester consent (the requester specifically chose them), but a
+    marketplace-claimed candidate's approval must NOT — the requester never
+    chose a marketplace claimant, so their separate approval is still
+    required. This directly exercises approve_soldier_side's candidate
+    branch for both `source` values."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-source-branch")
+    requester = create_soldier(admin_session, personal_number="7710047", hierarchy_node_id=node.id)
+    invited = create_soldier(admin_session, personal_number="7710048", hierarchy_node_id=node.id)
+    marketplace_claimant = create_soldier(admin_session, personal_number="7710049", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[invited.id], reason=None, open_to_marketplace=True,
+    )
+    # Directly insert a pending marketplace-sourced candidate (bypassing
+    # claim_request/cover_offer, which both already auto-set
+    # requester_side_approved at creation time regardless of source) so we
+    # can isolate approve_soldier_side's own source-based branching.
+    admin_session.add(SwapCandidate(swap_request_id=req.id, soldier_id=marketplace_claimant.id, source="marketplace"))
+    admin_session.flush()
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=marketplace_claimant.id, actor_id=marketplace_claimant.id)
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.requester_side_approved is not True
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=invited.id, actor_id=invited.id)
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.requester_side_approved is True

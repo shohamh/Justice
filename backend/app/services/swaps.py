@@ -364,6 +364,14 @@ def approve_soldier_side(
     candidate.soldier_side_approved = True
     if candidate.status == "pending":
         candidate.status = "accepted"
+    if candidate.source == "invited":
+        # The requester specifically invited this soldier, so inviting them
+        # already implies the requester's consent to swap with them —
+        # consistent with claim_request/cover_offer's auto-approval for
+        # invited candidates. Marketplace-claimed candidates are NOT covered
+        # here: the requester never chose them, so their separate approval
+        # must still be obtained.
+        req.requester_side_approved = True
     write_audit(
         session, actor_id=actor_id or soldier_id, action="swap.soldier_approve",
         entity_type="swap_request", entity_id=req.id,
@@ -373,6 +381,20 @@ def approve_soldier_side(
     _try_finalize(session, req, actor_id or soldier_id)
     session.flush()
     return req
+
+
+def _get_candidate_for_request(
+    session: Session, request_id: uuid.UUID, candidate_id: uuid.UUID | None,
+) -> SwapCandidate | None:
+    """Fetch `candidate_id`, verifying it actually belongs to `request_id`.
+    Raises SwapError("candidate_mismatch") if a caller passes a candidate that
+    belongs to a different swap request than the one it's paired with."""
+    if candidate_id is None:
+        return None
+    candidate = session.get(SwapCandidate, candidate_id)
+    if candidate is not None and candidate.swap_request_id != request_id:
+        raise SwapError("candidate_mismatch")
+    return candidate
 
 
 def is_chain_commander_for_side(
@@ -386,7 +408,7 @@ def is_chain_commander_for_side(
     else:
         if candidate_id is None:
             return False
-        candidate = session.get(SwapCandidate, candidate_id)
+        candidate = _get_candidate_for_request(session, request_id, candidate_id)
         soldier_id = candidate.soldier_id if candidate else None
     if soldier_id is None:
         return False
@@ -410,7 +432,7 @@ def _qualifying_rows_for_actor(
     if require_dm and actor_id in duty_manager_chain_for_soldier(session, req.requesting_soldier_id):
         out.append(("requester", "duty_manager"))
     if candidate_id is not None:
-        candidate = session.get(SwapCandidate, candidate_id)
+        candidate = _get_candidate_for_request(session, req.id, candidate_id)
         if candidate is not None:
             if actor_id in commander_chain_for_soldier(session, candidate.soldier_id):
                 out.append(("covering", "commander"))
@@ -483,6 +505,8 @@ def reject_manager_row(
     if req.status != "open":
         raise SwapError("not_pending")
     qualifying = _qualifying_rows_for_actor(session, req, actor_id, candidate_id)
+    if not qualifying:
+        raise SwapError("not_required_approver")
     now = datetime.utcnow()
     sides_rejected: set[str] = set()
     for side, kind in qualifying:
@@ -497,7 +521,7 @@ def reject_manager_row(
     if "requester" in sides_rejected:
         return reject_request(session, request_id=request_id, decision_note=decision_note, actor_id=actor_id)
     if candidate_id is not None:
-        candidate = session.get(SwapCandidate, candidate_id)
+        candidate = _get_candidate_for_request(session, request_id, candidate_id)
         if candidate is not None and candidate.status in ("pending", "accepted"):
             candidate.status = "cancelled"
             candidate.decided_at = now
@@ -560,7 +584,7 @@ def approve_manager_side_override(
     else:
         if candidate_id is None:
             raise SwapError("no_soldier_for_side")
-        candidate = session.get(SwapCandidate, candidate_id)
+        candidate = _get_candidate_for_request(session, request_id, candidate_id)
         soldier_id = candidate.soldier_id if candidate else None
     if soldier_id is None:
         raise SwapError("no_soldier_for_side")
