@@ -37,7 +37,7 @@ import {
   listPendingSwaps,
   managerRejectSwap,
 } from "../api/swaps";
-import { EnrollmentRequestDTO, listPendingEnrollments, approveEnrollment, rejectEnrollment } from "../api/enrollment";
+import { EnrollmentRequestDTO, listPendingEnrollments, rejectEnrollment } from "../api/enrollment";
 import {
   TransferRequest,
   listPendingTransferRequests,
@@ -315,14 +315,6 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function onEnrollApprove(id: string) {
-    try {
-      await approveEnrollment(id);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
-    } catch (err) {
-      setActionError(describeError(err));
-    }
-  }
   async function onEnrollReject(id: string) {
     const note = enrollRejectNotes[id];
     if (!note) return;
@@ -690,10 +682,6 @@ export default function ApprovalsPage() {
                     {enrollGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={enrollGrouped.duty_manager} /></span>}
                   </div>
                   <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => onEnrollApprove(req.id)}
-                      className="bg-green-600 text-white px-2 py-1 rounded text-xs">
-                      {t("enrollment.approve")}
-                    </button>
                     <input
                       placeholder={t("enrollment.decision_note_placeholder")}
                       value={enrollRejectNotes[req.id] ?? ""}

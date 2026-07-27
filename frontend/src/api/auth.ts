@@ -64,6 +64,8 @@ export interface RegisterPayload {
   discharge_date: string | null;
   last_mitvahim_date: string | null;
   last_alal_date: string | null;
+  has_military_driving_license: boolean;
+  military_driving_license_expiry: string | null;
   requested_node_id: string;
   exemption_requests: object[];
   personal_constraints: object[];

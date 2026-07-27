@@ -21,16 +21,43 @@ import { useEffect, useRef } from "react";
  * button, backdrop click, Escape, successful submit) while our entry is still
  * on top, cleanup consumes it via history.back() so the back-stack doesn't
  * accumulate a stale entry a later back-press would otherwise hit.
+ *
+ * That cleanup's history.back() is deferred to a microtask rather than
+ * called synchronously, and a fresh mount cancels any deferral still
+ * pending. This matters because React's StrictMode double-invokes effects
+ * on mount in dev (mount → cleanup → mount, all synchronously) specifically
+ * to surface effects like this one that touch non-idempotent external
+ * state. Without the deferral, the *first* (fake) cleanup's history.back()
+ * would resolve asynchronously after the *second* (real) mount had already
+ * attached its own popstate listener — which would misread that stale
+ * back-navigation as a genuine back-button press and close the modal
+ * immediately after it opened. Deferring to a microtask (rather than
+ * e.g. setTimeout) lets the second mount — which React runs synchronously,
+ * before any microtask can flush — cancel the first cleanup's scheduled
+ * back() and reuse its still-current history entry instead of pushing a
+ * duplicate one; a macrotask would also work for that, but would resolve at
+ * an arbitrary point relative to a caller's own fake-timer usage instead of
+ * within the same microtask-flush every `await` already performs.
  */
 export function useModalBackClose(onClose: () => void, enabled = true): void {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const pendingBack = useRef<{ cancelled: boolean } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     let ownEntryOnTop = true;
-    window.history.pushState({ __modal: true }, "");
+
+    if (pendingBack.current !== null) {
+      // A StrictMode double-invoke: the immediately-preceding cleanup's
+      // deferred back() is still pending. Cancel it and keep using its
+      // entry instead of pushing a second one.
+      pendingBack.current.cancelled = true;
+      pendingBack.current = null;
+    } else {
+      window.history.pushState({ __modal: true }, "");
+    }
 
     function handlePopState() {
       ownEntryOnTop = false;
@@ -48,7 +75,13 @@ export function useModalBackClose(onClose: () => void, enabled = true): void {
       // navigation instead of popping our own state.
       const stillOnOwnEntry = (window.history.state as { __modal?: boolean } | null)?.__modal === true;
       if (ownEntryOnTop && stillOnOwnEntry) {
-        window.history.back();
+        const token = { cancelled: false };
+        pendingBack.current = token;
+        queueMicrotask(() => {
+          if (token.cancelled) return;
+          pendingBack.current = null;
+          window.history.back();
+        });
       }
     };
   }, [enabled]);

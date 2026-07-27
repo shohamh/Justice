@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import (
+    Announcement,
     CommanderNotificationDepth,
     CommanderNotificationScope,
     DutyManagerScope,
@@ -22,6 +23,7 @@ from app.db.models import (
     TelegramLink,
     TelegramOutbox,
 )
+from app.auth.authz import scope_root_ids
 
 # Depth filtering applies only to these types (others cascade without limit)
 _DEPTH_FILTERED_TYPES = frozenset([
@@ -160,7 +162,7 @@ def _enqueue_push(
         if not bool(get_setting(session, "telegram.enabled")):
             return
     except SettingNotFound:
-        pass  # default: enabled
+        return  # default: disabled
 
     link = session.execute(
         select(TelegramLink).where(
@@ -289,9 +291,15 @@ def create_notification(
     write_audit(session, actor_id=actor_id, action="notification.create",
                 entity_type="notification", entity_id=notif.id,
                 after={"soldier_id": str(soldier_id), "type": type.value, "title": title})
-    cascade_to_commanders(session, type=type, title=title, body=body,
-                          reference_type=reference_type, reference_id=reference_id,
-                          actor_id=actor_id, original_soldier_id=soldier_id)
+    # Announcements already include every relevant soldier (commanders included,
+    # since they're Soldier rows too) directly in their recipient list — cascading
+    # to commanders on top would create duplicate Notification rows sharing the
+    # same reference_id, corrupting read_count/recipient_count and the recipient
+    # list for that announcement.
+    if type not in (NotificationType.announcement, NotificationType.system_announcement):
+        cascade_to_commanders(session, type=type, title=title, body=body,
+                              reference_type=reference_type, reference_id=reference_id,
+                              actor_id=actor_id, original_soldier_id=soldier_id)
     soldier = session.get(Soldier, soldier_id)
     if pref is None or pref.push_enabled:
         _enqueue_push(
@@ -669,13 +677,16 @@ def mark_read(session: Session, *, notification_id: uuid.UUID, soldier_id: uuid.
     n = session.execute(select(Notification).where(Notification.id == notification_id, Notification.soldier_id == soldier_id)).scalar_one_or_none()
     if n:
         n.is_read = True
+        n.read_at = datetime.now(timezone.utc)
     return n
 
 
 def mark_all_read(session: Session, *, soldier_id: uuid.UUID) -> int:
     notifs = list(session.execute(select(Notification).where(Notification.soldier_id == soldier_id, Notification.is_read == False)).scalars().all())  # noqa: E712
+    now = datetime.now(timezone.utc)
     for n in notifs:
         n.is_read = True
+        n.read_at = now
     return len(notifs)
 
 
@@ -710,7 +721,7 @@ def remove_commander_scope(session: Session, *, scope_id: uuid.UUID, commander_i
 
 def broadcast_announcement(session: Session, *, title: str, body: str | None = None,
                            hierarchy_node_ids: list[uuid.UUID] | None = None,
-                           actor_id: uuid.UUID | None = None) -> int:
+                           actor_id: uuid.UUID | None = None) -> Announcement:
     if hierarchy_node_ids:
         nodes = session.execute(
             select(HierarchyNode).where(HierarchyNode.id.in_(hierarchy_node_ids))
@@ -731,9 +742,70 @@ def broadcast_announcement(session: Session, *, title: str, body: str | None = N
             soldiers = []
     else:
         soldiers = session.execute(select(Soldier)).scalars().all()
-    count = 0
+
+    notif_type = NotificationType.announcement if hierarchy_node_ids else NotificationType.system_announcement
+    announcement = Announcement(
+        sender_id=actor_id, title=title, recipient_count=len(soldiers), type=notif_type,
+        body=body, hierarchy_node_ids=hierarchy_node_ids,
+    )
+    session.add(announcement)
+    session.flush()
     for s in soldiers:
-        create_notification(session, soldier_id=s.id, type=NotificationType.announcement,
-                            title=title, body=body, actor_id=actor_id)
-        count += 1
-    return count
+        create_notification(session, soldier_id=s.id, type=notif_type,
+                            title=title, body=body, actor_id=actor_id,
+                            reference_type="announcement", reference_id=announcement.id)
+    return announcement
+
+
+def scope_nodes_for_announcement(session: Session, user: Soldier) -> list[HierarchyNode]:
+    if user.role == "admin":
+        return []
+    roots = scope_root_ids(session, user)
+    if not roots:
+        return []
+    return list(session.execute(
+        select(HierarchyNode).where(HierarchyNode.path_ids.overlap(list(roots)))
+    ).scalars().all())
+
+
+def list_sent_announcements(session: Session, *, sender_id: uuid.UUID,
+                            offset: int = 0, limit: int = 20) -> tuple[list[tuple[Announcement, int]], int]:
+    total = len(session.execute(
+        select(Announcement.id).where(Announcement.sender_id == sender_id)
+    ).scalars().all())
+    rows = list(session.execute(
+        select(Announcement).where(Announcement.sender_id == sender_id)
+        .order_by(Announcement.created_at.desc()).offset(offset).limit(limit)
+    ).scalars().all())
+    result = []
+    for a in rows:
+        read_count = len(session.execute(
+            select(Notification.id).where(
+                Notification.reference_type == "announcement",
+                Notification.reference_id == a.id,
+                Notification.is_read == True,  # noqa: E712
+            )
+        ).scalars().all())
+        result.append((a, read_count))
+    return result, total
+
+
+def get_announcement_recipients(session: Session, *, announcement_id: uuid.UUID,
+                                sender_id: uuid.UUID, offset: int = 0, limit: int = 20,
+                                ) -> tuple[list[tuple[Soldier, bool, datetime | None]], int] | None:
+    announcement = session.get(Announcement, announcement_id)
+    if announcement is None or announcement.sender_id != sender_id:
+        return None
+    base_q = (
+        select(Notification, Soldier)
+        .join(Soldier, Soldier.id == Notification.soldier_id)
+        .where(Notification.reference_type == "announcement", Notification.reference_id == announcement_id)
+    )
+    total = len(session.execute(
+        select(Notification.id).where(
+            Notification.reference_type == "announcement",
+            Notification.reference_id == announcement_id,
+        )
+    ).scalars().all())
+    rows = session.execute(base_q.offset(offset).limit(limit)).all()
+    return [(soldier, notif.is_read, notif.read_at) for notif, soldier in rows], total

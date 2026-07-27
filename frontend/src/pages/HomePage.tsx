@@ -320,6 +320,7 @@ export default function HomePage() {
           <StatCard
             label="דירוג ביחידה"
             value={rank ? `${rank.pos} מתוך ${rank.total}` : "—"}
+            sub="מיקום 1 = הניקוד המנורמל הגבוה ביותר ביחידה (הכי הרבה תורנויות ביחס לימים הפעילים)"
           />
         </div>
 

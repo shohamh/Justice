@@ -145,7 +145,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         label: "טלגרם מופעל",
         description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
         type: "boolean",
-        defaultValue: true,
+        defaultValue: false,
       },
     ],
   },

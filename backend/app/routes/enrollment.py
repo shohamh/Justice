@@ -4,17 +4,36 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionRequest, HierarchyNode, Soldier, SoldierEnrollmentRequest
+from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
 from app.db.session import get_session
 from app.services import enrollment as svc
+from app.services.notifications import create_notification
+from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/enrollment-requests", tags=["enrollment"])
+
+# Hebrew labels for the soldier-facing "what changed" notification, keyed by
+# the same PatchEnrollmentBody field names.
+_EDITABLE_FIELD_LABELS: dict[str, str] = {
+    "full_name": "שם מלא",
+    "personal_number": "מספר אישי",
+    "phone": "טלפון",
+    "email": "אימייל",
+    "rank": "דרגה",
+    "is_officer": "קצין",
+    "gender": "מגדר",
+    "enlistment_date": "תאריך גיוס",
+    "mandatory_end_date": "סיום חובה",
+    "discharge_date": "שחרור",
+    "last_mitvahim_date": "מטווח אחרון",
+    "last_alal_date": 'אל"ל אחרון',
+}
 
 
 class NearestApproverOut(BaseModel):
@@ -75,6 +94,13 @@ class PatchEnrollmentBody(BaseModel):
     discharge_date: str | None = None
     last_mitvahim_date: str | None = None
     last_alal_date: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, v: str | None) -> str | None:
+        if v and not is_valid_israeli_phone(v):
+            raise ValueError("invalid_israeli_phone")
+        return v
 
 
 def _nearest_approvers_for_node(
@@ -250,30 +276,52 @@ def patch_enrollment(
     s = session.get(Soldier, req.soldier_id)
     if s is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier not found")
+
+    changed_fields: list[str] = []
+
+    def _apply(field: str, new_value: object) -> None:
+        if new_value != getattr(s, field):
+            changed_fields.append(field)
+        setattr(s, field, new_value)
+
     if body.full_name is not None:
-        s.full_name = body.full_name
+        _apply("full_name", body.full_name)
     if body.personal_number is not None:
-        s.personal_number = body.personal_number
+        _apply("personal_number", body.personal_number)
     if body.phone is not None:
-        s.phone = body.phone or None
+        _apply("phone", body.phone or None)
     if body.email is not None:
-        s.email = body.email or None
+        _apply("email", body.email or None)
     if body.rank is not None:
-        s.rank = body.rank or None
+        _apply("rank", body.rank or None)
     if body.is_officer is not None:
-        s.is_officer = body.is_officer
+        _apply("is_officer", body.is_officer)
     if body.gender is not None:
-        s.gender = body.gender or None
+        _apply("gender", body.gender or None)
     if body.enlistment_date is not None:
-        s.enlistment_date = date.fromisoformat(body.enlistment_date) if body.enlistment_date else None
+        _apply("enlistment_date", date.fromisoformat(body.enlistment_date) if body.enlistment_date else None)
     if body.mandatory_end_date is not None:
-        s.mandatory_end_date = date.fromisoformat(body.mandatory_end_date) if body.mandatory_end_date else None
+        _apply("mandatory_end_date", date.fromisoformat(body.mandatory_end_date) if body.mandatory_end_date else None)
     if body.discharge_date is not None:
-        s.discharge_date = date.fromisoformat(body.discharge_date) if body.discharge_date else None
+        _apply("discharge_date", date.fromisoformat(body.discharge_date) if body.discharge_date else None)
     if body.last_mitvahim_date is not None:
-        s.last_mitvahim_date = date.fromisoformat(body.last_mitvahim_date) if body.last_mitvahim_date else None
+        _apply("last_mitvahim_date", date.fromisoformat(body.last_mitvahim_date) if body.last_mitvahim_date else None)
     if body.last_alal_date is not None:
-        s.last_alal_date = date.fromisoformat(body.last_alal_date) if body.last_alal_date else None
+        _apply("last_alal_date", date.fromisoformat(body.last_alal_date) if body.last_alal_date else None)
+
+    if changed_fields:
+        labels = [_EDITABLE_FIELD_LABELS[f] for f in changed_fields]
+        create_notification(
+            session,
+            soldier_id=s.id,
+            type=NotificationType.enrollment_fields_edited,
+            title="פרטי הקליטה שלך עודכנו",
+            body=f"השדות שעודכנו: {', '.join(labels)}",
+            reference_type="soldier_enrollment_request",
+            reference_id=req.id,
+            actor_id=user.id,
+        )
+
     if body.requested_node_id is not None:
         new_node = session.get(HierarchyNode, body.requested_node_id)
         if new_node is None:

@@ -64,6 +64,7 @@ export default function ResetPasswordPage() {
           {t("reset_password.new_password")}
           <input
             type="password"
+            dir="ltr"
             className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -75,6 +76,7 @@ export default function ResetPasswordPage() {
           {t("reset_password.confirm")}
           <input
             type="password"
+            dir="ltr"
             className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             value={confirm}
             onChange={e => setConfirm(e.target.value)}

@@ -41,6 +41,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_action_tokens": "auth",
     "test_rbac_matrix": "auth",
     "test_registration_routes": "auth",
+    "test_validation": "auth",
     "test_invite_code_routes": "auth",
     "test_enrollment_routes": "auth",
     "test_security_hardening": "auth",
