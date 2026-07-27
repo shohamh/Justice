@@ -17,6 +17,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
 )
@@ -131,14 +132,26 @@ def test_export_swap_requests_sheet(client, admin_session):
     admin_session.add(assignment)
     admin_session.flush()
 
+    # "pending_approval" no longer exists as a SwapRequest.status — a swap
+    # mid-approval is now "open" with a live SwapCandidate carrying its own
+    # soldier_side_approved. covering_side_approved=False here means the
+    # candidate has already engaged (status="accepted", not just an
+    # unanswered invite) but hasn't confirmed their own side yet.
     swap = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=assignment.start_date,
-        requesting_soldier_id=requester.id, covering_soldier_id=covering.id,
-        status="pending_approval", reason="סיבה אישית",
-        requester_side_approved=True, covering_side_approved=False,
+        requesting_soldier_id=requester.id,
+        status="open", reason="סיבה אישית",
+        requester_side_approved=True,
         decision_note="ממתין לאישור צד שני",
     )
     admin_session.add(swap)
+    admin_session.flush()
+
+    candidate = SwapCandidate(
+        swap_request_id=swap.id, soldier_id=covering.id, source="invited",
+        status="accepted", soldier_side_approved=False,
+    )
+    admin_session.add(candidate)
     admin_session.flush()
 
     approved_at = datetime(2026, 4, 1, 8, 30, tzinfo=timezone.utc)
@@ -151,7 +164,8 @@ def test_export_swap_requests_sheet(client, admin_session):
 
     rejected_at = approved_at + timedelta(minutes=5)
     rejection = SwapManagerApproval(
-        swap_request_id=swap.id, side="covering", commander_id=rejecting_commander.id,
+        swap_request_id=swap.id, swap_candidate_id=candidate.id, side="covering",
+        commander_id=rejecting_commander.id,
         rejected=True, rejected_by=rejecting_commander.id, rejected_at=rejected_at,
         approver_kind="commander",
     )
@@ -180,7 +194,7 @@ def test_export_swap_requests_sheet(client, admin_session):
     assert row[3] is None
     assert row[4] == covering.personal_number
     assert row[5] == "2026-04-01"
-    assert row[6] == "pending_approval"
+    assert row[6] == "open"
     assert row[7] == "סיבה אישית"
     assert row[8] is True
     assert row[9] is False

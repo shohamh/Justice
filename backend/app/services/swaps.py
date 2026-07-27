@@ -775,7 +775,7 @@ def take_free(
     existing = session.execute(
         select(SwapRequest).where(
             SwapRequest.duty_assignment_id == assignment_id,
-            SwapRequest.status.in_(["open", "pending_approval"]),
+            SwapRequest.status == "open",
         )
     ).scalar_one_or_none()
     if existing is not None:

@@ -19,6 +19,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
 )
@@ -259,12 +260,21 @@ def test_swap_request_export_import_round_trip_preserves_approval_log(admin_sess
     node.commander_id = commander.id
     admin_session.flush()
     assignment = _make_assignment(admin_session, soldier=requester, node=node)
+    # "pending_approval" no longer exists as a SwapRequest.status — a swap
+    # mid-approval is now "open" with a live SwapCandidate carrying its own
+    # soldier_side_approved.
     original = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=assignment.start_date,
-        requesting_soldier_id=requester.id, covering_soldier_id=covering.id,
-        status="pending_approval", requester_side_approved=True, covering_side_approved=True,
+        requesting_soldier_id=requester.id,
+        status="open", requester_side_approved=True,
     )
     admin_session.add(original)
+    admin_session.flush()
+    candidate = SwapCandidate(
+        swap_request_id=original.id, soldier_id=covering.id, source="invited",
+        status="accepted", soldier_side_approved=True,
+    )
+    admin_session.add(candidate)
     admin_session.flush()
     decision = SwapManagerApproval(
         swap_request_id=original.id, side="requester", commander_id=commander.id,
@@ -301,7 +311,10 @@ def test_swap_request_export_import_round_trip_preserves_approval_log(admin_sess
     assert rows[0].approved_by == commander.id
 
     admin_session.refresh(original)
-    assert original.status == "pending_approval"
+    assert original.status == "open"
     assert original.requester_side_approved is True
-    assert original.covering_side_approved is True
-    assert original.covering_soldier_id == covering.id
+
+    admin_session.refresh(candidate)
+    assert candidate.soldier_side_approved is True
+    assert candidate.soldier_id == covering.id
+    assert candidate.status == "accepted"

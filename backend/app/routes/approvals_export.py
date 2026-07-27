@@ -13,7 +13,7 @@ from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
     ExemptionRequest, ExemptionRequestFile, ExemptionType, HierarchyNode,
     PersonalConstraint, Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SwapManagerApproval, SwapRequest,
+    SoldierFieldUpdate, SwapCandidate, SwapManagerApproval, SwapRequest,
 )
 from app.db.session import get_session
 
@@ -149,6 +149,16 @@ def _write_exemption_requests(wb: openpyxl.Workbook, session: Session, actor: So
 
 
 def _write_swap_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier) -> None:
+    """One row per SwapRequest x SwapCandidate (or one bare row if the request
+    has no candidates yet), since a request can now have several candidates
+    instead of exactly one target/covering soldier. `target_personal_number`
+    holds a still-unanswered invited candidate (mirrors the old pre-response
+    target_soldier_id); `covering_personal_number` holds a candidate who has
+    accepted, applied, or self-claimed from the marketplace (mirrors the old
+    covering_soldier_id). `covering_side_approved` is that candidate's own
+    `soldier_side_approved`. `approval_log` is the union of the shared
+    requester-side decisions and this candidate's own covering-side decisions,
+    so each row is a self-contained record of that candidate's approval state."""
     ws = wb.create_sheet("swap_requests")
     ws.append([
         "id", "requesting_personal_number", "requesting_name", "target_personal_number",
@@ -157,7 +167,11 @@ def _write_swap_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier
         "rejected_by_personal_number", "decision_note", "approval_log", "created_at", "updated_at",
     ])
     soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
-    decisions_by_swap: dict = {}
+
+    # Keyed by (swap_request_id, swap_candidate_id) — candidate_id is None for
+    # the shared requester-side rows, and set for a specific candidate's
+    # covering-side rows, matching SwapManagerApproval.swap_candidate_id.
+    decisions_by_key: dict[tuple, list[str]] = {}
     for d in session.execute(select(SwapManagerApproval)).scalars():
         if not (d.approved or d.rejected):
             continue
@@ -165,23 +179,44 @@ def _write_swap_requests(wb: openpyxl.Workbook, session: Session, actor: Soldier
         if person is None:
             continue
         outcome = "approved" if d.approved else "rejected"
-        at = (d.approved_at if d.approved else d.rejected_at)
-        decisions_by_swap.setdefault(d.swap_request_id, []).append(
+        at = d.approved_at if d.approved else d.rejected_at
+        decisions_by_key.setdefault((d.swap_request_id, d.swap_candidate_id), []).append(
             f"{d.side}:{d.approver_kind}:{person.personal_number}:{outcome}:{at.isoformat() if at else ''}"
         )
+
+    candidates_by_request: dict = {}
+    for c in session.execute(select(SwapCandidate)).scalars():
+        candidates_by_request.setdefault(c.swap_request_id, []).append(c)
+
     for r in session.execute(select(SwapRequest)).scalars():
         requesting_pn, requesting_name = _soldier_label(soldiers_by_id, r.requesting_soldier_id)
-        target_pn = _soldier_label(soldiers_by_id, r.target_soldier_id)[0] if r.target_soldier_id else ""
-        covering_pn = _soldier_label(soldiers_by_id, r.covering_soldier_id)[0] if r.covering_soldier_id else ""
         rejected_pn = _soldier_label(soldiers_by_id, r.rejected_by)[0] if r.rejected_by else ""
-        approval_log = ";".join(decisions_by_swap.get(r.id, []))
-        ws.append([
-            str(r.id), requesting_pn, requesting_name, target_pn, covering_pn,
-            r.duty_date.isoformat(), r.status, r.reason,
-            r.requester_side_approved, r.covering_side_approved,
-            rejected_pn, r.decision_note, approval_log,
-            r.created_at.isoformat(), r.updated_at.isoformat(),
-        ])
+        requester_log = decisions_by_key.get((r.id, None), [])
+        candidates = sorted(candidates_by_request.get(r.id, []), key=lambda c: c.created_at)
+
+        if not candidates:
+            ws.append([
+                str(r.id), requesting_pn, requesting_name, "", "",
+                r.duty_date.isoformat(), r.status, r.reason,
+                r.requester_side_approved, None,
+                rejected_pn, r.decision_note, ";".join(requester_log),
+                r.created_at.isoformat(), r.updated_at.isoformat(),
+            ])
+            continue
+
+        for c in candidates:
+            pn, _name = _soldier_label(soldiers_by_id, c.soldier_id)
+            still_unanswered_invite = c.source == "invited" and c.status == "pending"
+            target_pn = pn if still_unanswered_invite else ""
+            covering_pn = "" if still_unanswered_invite else pn
+            approval_log = ";".join(requester_log + decisions_by_key.get((r.id, c.id), []))
+            ws.append([
+                str(r.id), requesting_pn, requesting_name, target_pn, covering_pn,
+                r.duty_date.isoformat(), r.status, r.reason,
+                r.requester_side_approved, c.soldier_side_approved,
+                rejected_pn, r.decision_note, approval_log,
+                r.created_at.isoformat(), r.updated_at.isoformat(),
+            ])
 
 
 _WRITERS = {

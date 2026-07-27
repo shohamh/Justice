@@ -49,6 +49,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapCandidate,
     SwapRequest,
     SystemSetting,
 )
@@ -1304,6 +1305,55 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             def _other(exclude_id):
                 return session.query(Soldier).filter(Soldier.id != exclude_id).first()
 
+            def _make_swap_request(*, assignment, requesting_soldier_id, status, reason, extra):
+                """Build a SwapRequest (+ single SwapCandidate, if the old
+                fixture implied one) from the pre-unified-swap-requests shape
+                these fixtures used to encode directly on SwapRequest
+                (target_soldier_id / covering_soldier_id / covering_side_approved
+                / offered_assignment_ids, plus a "pending_approval" status).
+                `status="pending_approval"` maps to the new `SwapRequest.status
+                == "open"` with a live SwapCandidate representing the covering
+                soldier; `"applied"` gets a matching applied SwapCandidate."""
+                target_soldier_id = extra.get("target_soldier_id")
+                covering_soldier_id = extra.get("covering_soldier_id")
+                requester_side_approved = extra.get("requester_side_approved")
+                covering_side_approved = extra.get("covering_side_approved")
+                offered_assignment_ids = extra.get("offered_assignment_ids")
+
+                req_status = "open" if status == "pending_approval" else status
+                candidate_soldier_id = covering_soldier_id or target_soldier_id
+
+                req = SwapRequest(
+                    duty_assignment_id=assignment.id,
+                    duty_date=assignment.start_date,
+                    requesting_soldier_id=requesting_soldier_id,
+                    status=req_status,
+                    reason=reason,
+                    open_to_marketplace=not candidate_soldier_id,
+                    requester_side_approved=requester_side_approved,
+                )
+                session.add(req)
+                session.flush()
+
+                if candidate_soldier_id:
+                    if req_status == "applied":
+                        candidate_status = "applied"
+                    elif covering_side_approved:
+                        candidate_status = "accepted"
+                    else:
+                        candidate_status = "pending"
+                    candidate = SwapCandidate(
+                        swap_request_id=req.id,
+                        soldier_id=candidate_soldier_id,
+                        source="invited" if target_soldier_id else "marketplace",
+                        status=candidate_status,
+                        soldier_side_approved=covering_side_approved,
+                    )
+                    if offered_assignment_ids:
+                        candidate.offered_assignment_ids = offered_assignment_ids
+                    session.add(candidate)
+                return req
+
             if len(future_assignments) >= 20:
 
                 swap_reasons = [
@@ -1380,14 +1430,13 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 ]
                 for swap_i, (idx, status, extra) in enumerate(swap_defs):
                     a = future_assignments[idx]
-                    session.add(SwapRequest(
-                        duty_assignment_id=a.id,
-                        duty_date=a.start_date,
+                    _make_swap_request(
+                        assignment=a,
                         requesting_soldier_id=a.soldier_id,
                         status=status,
                         reason=swap_reasons[swap_i % len(swap_reasons)],
-                        **extra,
-                    ))
+                        extra=extra,
+                    )
 
             # ── Swap requests for מפמר פסיפס (admin) ───────────────────
             admin_future = [
@@ -1411,14 +1460,13 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 ("rejected", {}, "בקשה שלא אושרה"),
             ]
             for a, (status, extra, reason) in zip(admin_future, admin_swap_defs):
-                session.add(SwapRequest(
-                    duty_assignment_id=a.id,
-                    duty_date=a.start_date,
+                _make_swap_request(
+                    assignment=a,
                     requesting_soldier_id=s_admin.id,
                     status=status,
                     reason=reason,
-                    **extra,
-                ))
+                    extra=extra,
+                )
 
         # ── Always-on marketplace demo swaps ──────────────────────────────────────────────────
         # Use real DutyShifts so duty_shift_id is populated and the shift
@@ -1455,11 +1503,17 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             )
             session.add(da_demo)
             session.flush()
+            # open_to_marketplace=True: these are meant to always show up on
+            # the marketplace board (see comment above) — that visibility
+            # gate is new with the unified-swap-requests schema change and
+            # this fixture was never updated to set it, so it silently
+            # defaulted to False (invisible on the board) until now.
             session.add(SwapRequest(
                 duty_assignment_id=da_demo.id,
                 duty_date=da_demo.start_date,
                 requesting_soldier_id=sol.id,
                 status="open",
+                open_to_marketplace=True,
                 reason=demo_reasons[i % len(demo_reasons)],
             ))
 

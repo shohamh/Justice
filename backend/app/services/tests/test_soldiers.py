@@ -106,13 +106,14 @@ def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admi
 
     from app.db.models import (
         DutyLocation, DutyType, ExemptionRequest, ExemptionType,
-        PersonalConstraint, SwapRequest,
+        PersonalConstraint, SwapCandidate, SwapRequest,
     )
     from app.services import assignments as assignments_svc
     from app.services.soldiers import soft_delete
     from tests.helpers import create_soldier
 
     soldier = create_soldier(admin_session, personal_number="7930002")
+    covering = create_soldier(admin_session, personal_number="7930004")
 
     et = ExemptionType(name="soft_delete_test_exemption_type")
     admin_session.add(et)
@@ -139,11 +140,18 @@ def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admi
         start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
     )
     admin_session.flush()
+    # Open swap request with a live candidate — the current equivalent of the
+    # old "pending_approval" status (which no longer exists on SwapRequest).
     sr = SwapRequest(
         duty_assignment_id=assignment.id, duty_date=date(2026, 8, 1),
-        requesting_soldier_id=soldier.id, status="pending_approval",
+        requesting_soldier_id=soldier.id, status="open",
     )
     admin_session.add(sr)
+    admin_session.flush()
+    candidate = SwapCandidate(
+        swap_request_id=sr.id, soldier_id=covering.id, source="invited", status="pending",
+    )
+    admin_session.add(candidate)
     admin_session.commit()
 
     soft_delete(admin_session, soldier=soldier, actor_id=None)
@@ -151,9 +159,11 @@ def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admi
     admin_session.refresh(er)
     admin_session.refresh(pc)
     admin_session.refresh(sr)
+    admin_session.refresh(candidate)
     assert er.status == "cancelled"
     assert pc.status == "cancelled"
     assert sr.status == "cancelled"
+    assert candidate.status == "cancelled"
 
 
 def test_approve_field_update_rejects_discharge_before_enlistment(admin_session):
