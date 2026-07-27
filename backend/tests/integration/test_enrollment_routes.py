@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from app.db.models import HierarchyNode, SoldierEnrollmentRequest, SystemSetting
+from app.db.models import HierarchyNode, Notification, NotificationType, SoldierEnrollmentRequest, SystemSetting
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -116,6 +116,46 @@ def test_patch_accepts_valid_phone(client, admin_session):
     assert resp.status_code == 200
     admin_session.refresh(soldier)
     assert soldier.phone == "050-1234567"
+
+
+def test_patch_notifies_soldier_when_fields_actually_changed(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    resp = client.patch(f"/api/enrollment-requests/{req.id}",
+                        json={"phone": "050-1234567", "rank": "רבט"}, headers=auth_headers(admin))
+    assert resp.status_code == 200
+
+    notif = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.enrollment_fields_edited,
+    ).one()
+    assert "טלפון" in notif.body
+    assert "דרגה" in notif.body
+    assert notif.reference_type == "soldier_enrollment_request"
+    assert notif.reference_id == req.id
+
+
+def test_patch_does_not_notify_when_nothing_actually_changed(client, admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"u_{_uid()}", parent=holding)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=holding.id)
+    soldier.phone = "050-1234567"
+    admin_session.commit()
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    req = _make_req(admin_session, soldier, node)
+
+    # Re-submitting the soldier's own current phone value is not an edit.
+    resp = client.patch(f"/api/enrollment-requests/{req.id}",
+                        json={"phone": soldier.phone}, headers=auth_headers(admin))
+    assert resp.status_code == 200
+
+    count = admin_session.query(Notification).filter_by(
+        soldier_id=soldier.id, type=NotificationType.enrollment_fields_edited,
+    ).count()
+    assert count == 0
 
 
 def test_reject_without_note_fails(client, admin_session):

@@ -941,6 +941,7 @@ class NotificationType(str, _enum.Enum):
     transfer_request_pending = "transfer_request_pending"
     transfer_request_rejected = "transfer_request_rejected"
     system_announcement = "system_announcement"
+    enrollment_fields_edited = "enrollment_fields_edited"
 
 
 class Notification(Base):
