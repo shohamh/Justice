@@ -344,6 +344,9 @@ def decline_candidate(
     """A candidate soldier declines their own invite/claim — only removes
     them from contention, never touches the parent request or other
     candidates."""
+    req = _lock_request(session, request_id)
+    if req is None:
+        raise SwapError("request_not_found")
     candidate = session.execute(
         select(SwapCandidate).where(
             SwapCandidate.swap_request_id == request_id,

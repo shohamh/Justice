@@ -299,6 +299,12 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
+      // Another approver may have already finalized/rejected this request
+      // (e.g. lost a finalize race) — refresh so the resolved card disappears
+      // instead of sitting there with a now-stale action button.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     }
   }
   async function onSwapManagerReject(id: string, candidateId?: string) {
@@ -313,6 +319,9 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     }
   }
 
