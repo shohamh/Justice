@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-27
+
+### Features
+- New Announcements feature: admins can broadcast org-wide, and commanders/duty-managers can narrow the target to specific units via a hierarchy checkbox tree, from a dedicated compose/history page. Announcements are read-tracked and shown with a distinct icon for system-wide vs. targeted broadcasts.
+- Soldiers can now declare a military driving license (with expiry date) directly on the registration form, instead of only via a later profile-update request.
+- Approving a soldier's enrollment now requires reviewing their full profile in a modal first — the quick-approve shortcut that bypassed it is gone. If the approver edits any field while reviewing, the soldier gets a notification listing exactly what changed.
+
+### Fixes
+- Modals across the app (bug report, help, and most other dialogs) no longer flash-closed immediately after opening — a React StrictMode timing issue in the shared back-button-close hook affected nearly every modal.
+- Telegram notifications are now off by default until an admin explicitly enables them (previously defaulted to on).
+- Password fields on login, register, change-password, and reset-password are now left-aligned instead of inheriting the app's RTL direction.
+- "Rank in unit" on the home and my-duties pages now explains what position 1 means (highest normalised score, i.e. heaviest duty load — not "best").
+- Phone numbers are now validated against Israeli mobile/landline formats on registration, profile updates, and enrollment-review edits (previously any string was accepted).
+- `dev.ps1` now stops if migrations fail instead of silently starting services anyway, which previously surfaced as a confusing "role does not exist" backend connection error far from the real cause.
+- Announcements: fixed duplicate notifications from the commander cascade, paginated the recipients endpoint, added error handling and role-gating to the compose page, fixed a stale unit name after removing a narrowed-scope chip, and disabled submit while scope is still loading for non-admins (which previously produced a confusing permission error).
+
+### Chores
+- Reconciled a duplicate/orphaned Alembic merge migration for the theme-preference and bug-reports heads.
+- Added internal permission-check groundwork for upcoming work.
+
 ## 2026-07-25
 
 ### Features
