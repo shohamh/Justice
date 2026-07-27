@@ -45,6 +45,8 @@ def register(
     requested_node_id: uuid.UUID,
     exemption_requests: list[dict],
     personal_constraints: list[dict],
+    has_military_driving_license: bool = False,
+    military_driving_license_expiry: date | None = None,
 ) -> Soldier:
     consume_invite_code(session, code=invite_code)
 
@@ -90,6 +92,8 @@ def register(
         discharge_date=discharge_date,
         last_mitvahim_date=last_mitvahim_date,
         last_alal_date=last_alal_date,
+        has_military_driving_license=has_military_driving_license,
+        military_driving_license_expiry=military_driving_license_expiry,
     )
     session.add(soldier)
     session.flush()

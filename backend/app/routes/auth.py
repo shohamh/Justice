@@ -67,6 +67,8 @@ class RegisterRequest(BaseModel):
     discharge_date: date
     last_mitvahim_date: date
     last_alal_date: date | None = None
+    has_military_driving_license: bool = False
+    military_driving_license_expiry: date | None = None
     requested_node_id: uuid.UUID
     exemption_requests: list[dict] = []
     personal_constraints: list[dict] = []
@@ -336,6 +338,8 @@ def register(
             discharge_date=body.discharge_date,
             last_mitvahim_date=body.last_mitvahim_date,
             last_alal_date=body.last_alal_date,
+            has_military_driving_license=body.has_military_driving_license,
+            military_driving_license_expiry=body.military_driving_license_expiry,
             requested_node_id=body.requested_node_id,
             exemption_requests=body.exemption_requests,
             personal_constraints=body.personal_constraints,
