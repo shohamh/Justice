@@ -31,7 +31,6 @@ interface HierarchyNode {
 
 const STATUS_COLORS: Record<string, string> = {
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
-  pending_approval: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
   open: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
   rejected: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
   cancelled: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
@@ -40,7 +39,6 @@ const STATUS_COLORS: Record<string, string> = {
 function statusKey(status: string) {
   const map: Record<string, string> = {
     open: "swaps.status_open",
-    pending_approval: "swaps.status_pending_approval",
     applied: "swaps.status_applied",
     rejected: "swaps.status_rejected",
     cancelled: "swaps.status_cancelled",

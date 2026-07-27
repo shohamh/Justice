@@ -4,10 +4,12 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import AskSwapModal from "./AskSwapModal";
 
 const mockCreateSwap = vi.fn().mockResolvedValue({});
+const mockListEligibleTargets = vi.fn().mockResolvedValue([{ soldier_id: "s1", full_name: "Yossi", node_name: null, hierarchy_distance: 1 }]);
+const mockGetSwapConfig = vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 });
 vi.mock("../api/swaps", () => ({
   createSwap: (...args: unknown[]) => mockCreateSwap(...args),
-  listEligibleTargets: vi.fn().mockResolvedValue([{ soldier_id: "s1", full_name: "Yossi", node_name: null, hierarchy_distance: 1 }]),
-  getSwapConfig: vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 }),
+  listEligibleTargets: (...args: unknown[]) => mockListEligibleTargets(...args),
+  getSwapConfig: (...args: unknown[]) => mockGetSwapConfig(...args),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ enrollmentPending: false }) }));
@@ -63,5 +65,23 @@ describe("AskSwapModal", () => {
     fireEvent.click(await screen.findByTestId("ask-swap-marketplace-checkbox"));
     fireEvent.click(screen.getByText("swaps.save"));
     expect(await screen.findByText("פטור מסוג תורנות זו")).toBeInTheDocument();
+  });
+
+  test("disables further target selection once max_specific_targets is reached", async () => {
+    mockGetSwapConfig.mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 2 });
+    mockListEligibleTargets.mockResolvedValueOnce([
+      { soldier_id: "s1", full_name: "Yossi", node_name: null, hierarchy_distance: 1 },
+      { soldier_id: "s2", full_name: "Dana", node_name: null, hierarchy_distance: 1 },
+      { soldier_id: "s3", full_name: "Roi", node_name: null, hierarchy_distance: 1 },
+    ]);
+    renderModal();
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(4));
+    // index 0 is the marketplace checkbox; 1-3 are the target picker
+    const targetCheckboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(targetCheckboxes[1]);
+    fireEvent.click(targetCheckboxes[2]);
+    expect(screen.getAllByRole("checkbox")[1]).not.toBeDisabled();
+    expect(screen.getAllByRole("checkbox")[2]).not.toBeDisabled();
+    expect(screen.getAllByRole("checkbox")[3]).toBeDisabled();
   });
 });

@@ -69,10 +69,11 @@ def create_request(
     open_to_marketplace: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    """Create (or extend) the one open SwapRequest for this (requester, duty),
-    with a SwapCandidate row per invited target plus optional marketplace
-    visibility. Always returns a single SwapRequest — no more fan-out into
-    multiple parent rows."""
+    """Create the one open SwapRequest for this (requester, duty), with a
+    SwapCandidate row per invited target plus optional marketplace
+    visibility. Raises SwapError("already_pending") if an open request for
+    this (requester, duty) already exists — always returns a single
+    SwapRequest, no more fan-out into multiple parent rows."""
     targets = target_soldier_ids if target_soldier_ids is not None else (
         [target_soldier_id] if target_soldier_id is not None else []
     )
