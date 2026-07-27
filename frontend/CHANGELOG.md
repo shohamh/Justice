@@ -6,6 +6,8 @@
 - New Announcements feature: admins can broadcast org-wide, and commanders/duty-managers can narrow the target to specific units via a hierarchy checkbox tree, from a dedicated compose/history page. Announcements are read-tracked and shown with a distinct icon for system-wide vs. targeted broadcasts.
 - Soldiers can now declare a military driving license (with expiry date) directly on the registration form, instead of only via a later profile-update request.
 - Approving a soldier's enrollment now requires reviewing their full profile in a modal first — the quick-approve shortcut that bypassed it is gone. If the approver edits any field while reviewing, the soldier gets a notification listing exactly what changed.
+- Swap requests are now unified: a soldier's request for a given duty is a single request that can combine specific invited soldiers and open-marketplace visibility at once, with every candidate able to compete for approval in parallel — the first to clear approval wins and the rest are automatically cancelled, replacing the old design where each invited/marketplace candidate created its own separate request.
+- The help modal gained several new, permission-gated tabs (Hakpaza, Approvals, Import, and a live eligibility-checker), a live what-if recompute in the Fairness tab, a draft/publish section in the Algorithm tab, and a clickable, expandable version of the swap flow diagram.
 
 ### Fixes
 - Modals across the app (bug report, help, and most other dialogs) no longer flash-closed immediately after opening — a React StrictMode timing issue in the shared back-button-close hook affected nearly every modal.
@@ -15,10 +17,14 @@
 - Phone numbers are now validated against Israeli mobile/landline formats on registration, profile updates, and enrollment-review edits (previously any string was accepted).
 - `dev.ps1` now stops if migrations fail instead of silently starting services anyway, which previously surfaced as a confusing "role does not exist" backend connection error far from the real cause.
 - Announcements: fixed duplicate notifications from the commander cascade, paginated the recipients endpoint, added error handling and role-gating to the compose page, fixed a stale unit name after removing a narrowed-scope chip, and disabled submit while scope is still loading for non-admins (which previously produced a confusing permission error).
+- A duty dismissal's reason text is now redacted unless the viewer is an admin, an in-scope commander/duty-manager, or the affected soldier — previously visible to anyone who could see the calendar.
+- Notification "mark as read" now actually records the read timestamp (previously always left null).
+- Rejecting one specific candidate on a swap request no longer risks rejecting the entire request when the approver happens to be authorized on both the requester's and the candidate's side; admins and other broadly-authorized approvers can once again reject a swap even with no direct chain match; and two commanders approving different candidates on the same swap at nearly the same moment can no longer both finalize it.
+- Hakpaza feature-flag gating, solver-explanation copy accuracy, a missing constraints tab, and duplicated algorithm-mode copy were corrected in the help modal.
 
 ### Chores
-- Reconciled a duplicate/orphaned Alembic merge migration for the theme-preference and bug-reports heads.
-- Added internal permission-check groundwork for upcoming work.
+- Reconciled a duplicate/orphaned Alembic merge migration for the theme-preference and bug-reports heads, and another for the swap-requests and enrollment-fields heads — an expected hazard of concurrent feature worktrees in this repo.
+- Extracted shared permission-check predicates (`authenticated`, `canApprove`, `canPlan`) into a new `auth/permissions` module.
 
 ## 2026-07-25
 
