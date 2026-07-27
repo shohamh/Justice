@@ -2717,8 +2717,13 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.status}
                             onChange={(e) => setFieldOverride("swap_requests", row.row, "status", e.target.value)}
                           >
+                            {/* "pending_approval" is deliberately absent: it was
+                                removed as a SwapRequest.status value by the unified
+                                swap-requests schema change (that in-progress state
+                                lives on SwapCandidate.status now), and the backend's
+                                resolve_swap_requests rejects it as invalid. Only the
+                                four statuses it accepts are offered here. */}
                             <option value="open">פתוח</option>
-                            <option value="pending_approval">ממתין לאישור</option>
                             <option value="applied">בוצע</option>
                             <option value="rejected">נדחה</option>
                             <option value="cancelled">בוטל</option>

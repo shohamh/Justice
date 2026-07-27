@@ -4,8 +4,9 @@ from decimal import Decimal
 
 import pytest
 
-from app.db.models import DutyAssignment, SwapCandidate, SwapRequest
+from app.db.models import DutyAssignment, SwapCandidate, SwapManagerApproval, SwapRequest
 from app.services import swaps as svc
+from app.services.approval_scope import commander_chain_for_soldier
 from app.services.swaps import SwapError
 from tests.helpers import create_node, create_soldier
 
@@ -500,3 +501,202 @@ def test_approve_soldier_side_auto_sets_requester_consent_only_for_invited_candi
     admin_session.flush()
     admin_session.refresh(req)
     assert req.requester_side_approved is True
+
+
+def test_reject_manager_row_per_candidate_does_not_escalate_to_whole_request(admin_session):
+    """A manager who qualifies on BOTH sides (same node commands the requester
+    and the candidates) rejecting ONE candidate must cancel only that
+    candidate. Previously the requester-side qualification leaked through and
+    escalated to reject_request, killing the parent and every sibling."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-reject-scoped")
+    cmd = create_soldier(admin_session, personal_number="7710050", role="commander")
+    node.commander_id = cmd.id
+    admin_session.commit()
+    requester = create_soldier(admin_session, personal_number="7710051", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710052", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="7710053", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id, b.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+    cand_a = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=a.id).one()
+    cand_b = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=b.id).one()
+
+    # cmd is in the requester's chain AND in both candidates' chains.
+    assert cmd.id in commander_chain_for_soldier(admin_session, requester.id)
+    assert cmd.id in commander_chain_for_soldier(admin_session, a.id)
+
+    svc.reject_manager_row(admin_session, request_id=req.id, actor_id=cmd.id, candidate_id=cand_a.id)
+    admin_session.flush()
+
+    admin_session.refresh(req)
+    admin_session.refresh(cand_a)
+    admin_session.refresh(cand_b)
+    assert req.status == "open"
+    assert cand_a.status == "cancelled"
+    assert cand_b.status == "pending"
+
+    rows = admin_session.query(SwapManagerApproval).filter_by(swap_request_id=req.id).all()
+    assert [r.side for r in rows] == ["covering"]
+    assert rows[0].swap_candidate_id == cand_a.id
+
+
+def test_reject_manager_row_allows_override_authorized_actor(admin_session):
+    """An actor with no qualifying chain row at all (an admin, or a
+    broader-scope commander) may still reject when the caller signals it has
+    already authorized them — mirroring approve_manager_side's override path.
+    Without that signal the strict `not_required_approver` behaviour stands
+    (see test_reject_manager_row_raises_for_unauthorized_actor)."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-reject-override")
+    requester = create_soldier(admin_session, personal_number="7710060", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710061", hierarchy_node_id=node.id)
+    admin = create_soldier(admin_session, personal_number="7710062", role="admin")  # no node, no chain
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+    cand_a = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=a.id).one()
+
+    # Strict path first: no override -> still raises, both scopes.
+    with pytest.raises(SwapError, match="not_required_approver"):
+        svc.reject_manager_row(admin_session, request_id=req.id, actor_id=admin.id, candidate_id=None)
+    with pytest.raises(SwapError, match="not_required_approver"):
+        svc.reject_manager_row(admin_session, request_id=req.id, actor_id=admin.id, candidate_id=cand_a.id)
+
+    # Per-candidate reject via the override path: scoped to that candidate.
+    svc.reject_manager_row(
+        admin_session, request_id=req.id, actor_id=admin.id, candidate_id=cand_a.id,
+        is_authorized_override=True,
+    )
+    admin_session.flush()
+    admin_session.refresh(req)
+    admin_session.refresh(cand_a)
+    assert req.status == "open"
+    assert cand_a.status == "cancelled"
+    # No chain row is invented for an actor who holds none.
+    assert admin_session.query(SwapManagerApproval).filter_by(swap_request_id=req.id).count() == 0
+
+    # Whole-request reject via the override path (callable form, as the route
+    # passes it) kills the request.
+    svc.reject_manager_row(
+        admin_session, request_id=req.id, actor_id=admin.id, candidate_id=None,
+        decision_note="nope", is_authorized_override=lambda: True,
+    )
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.status == "rejected"
+    assert req.decision_note == "nope"
+
+
+def test_concurrent_finalize_of_two_candidates_applies_only_one(admin_session, admin_engine):
+    """Two candidates each one manager approval short, cleared by two different
+    commanders in two genuinely concurrent transactions.
+
+    Without the SELECT ... FOR UPDATE on the parent SwapRequest at the top of
+    _try_finalize, both transactions read status='open', both pick a winner and
+    both run _apply_cover — and duty_day_overrides has no unique constraint on
+    (duty_assignment_id, date), so that lands two conflicting override rows for
+    the same day plus a duplicate 'swap completed' notification pair. With the
+    lock, the loser blocks until the winner commits, re-reads status='applied'
+    and no-ops.
+    """
+    import threading
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.db.models import DutyDayOverride
+
+    req_node = create_node(admin_session, level="unit", name="swap-svc-race-req")
+    a_node = create_node(admin_session, level="unit", name="swap-svc-race-a")
+    b_node = create_node(admin_session, level="unit", name="swap-svc-race-b")
+    req_cmd = create_soldier(admin_session, personal_number="7710070", role="commander")
+    a_cmd = create_soldier(admin_session, personal_number="7710071", role="commander")
+    b_cmd = create_soldier(admin_session, personal_number="7710072", role="commander")
+    req_node.commander_id = req_cmd.id
+    a_node.commander_id = a_cmd.id
+    b_node.commander_id = b_cmd.id
+    admin_session.commit()
+
+    requester = create_soldier(admin_session, personal_number="7710073", hierarchy_node_id=req_node.id)
+    a = create_soldier(admin_session, personal_number="7710074", hierarchy_node_id=a_node.id)
+    b = create_soldier(admin_session, personal_number="7710075", hierarchy_node_id=b_node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=req_node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id, b.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+    cand_a = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=a.id).one()
+    cand_b = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=b.id).one()
+
+    # Drive both candidates to "one approval short": both soldiers accepted,
+    # requester side (soldier + its chain commander) fully cleared. No duty
+    # managers exist, so duty_manager_chain_for_soldier is empty on every side
+    # and only the commander kind is required.
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=b.id, actor_id=b.id)
+    svc.approve_manager_row(admin_session, request_id=req.id, actor_id=req_cmd.id, candidate_id=cand_a.id)
+    admin_session.commit()
+    assert admin_session.get(SwapRequest, req.id).status == "open"
+
+    request_id, cand_a_id, cand_b_id = req.id, cand_a.id, cand_b.id
+    assignment_id = assignment.id
+    SessionLocal = sessionmaker(bind=admin_engine, expire_on_commit=False)
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def approve(actor_id, candidate_id):
+        try:
+            with SessionLocal() as s:
+                # Warm the connection/transaction before the barrier so the two
+                # threads hit _try_finalize as close together as possible.
+                assert s.get(SwapRequest, request_id) is not None
+                barrier.wait(timeout=30)
+                svc.approve_manager_row(s, request_id=request_id, actor_id=actor_id, candidate_id=candidate_id)
+                s.commit()
+        except BaseException as exc:  # noqa: BLE001 - re-raised via `errors` below
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=approve, args=(a_cmd.id, cand_a_id)),
+        threading.Thread(target=approve, args=(b_cmd.id, cand_b_id)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    assert not any(t.is_alive() for t in threads), "a finalize thread deadlocked / never returned"
+    # The loser blocks on the lock until the winner commits, then re-reads the
+    # request under the lock and finds status='applied'. approve_manager_row's
+    # pre-existing "not_pending" guard then rejects the late approval — that is
+    # the correct outcome (nothing is applied twice), so it's the ONLY error
+    # tolerated here. In particular a DeadlockDetected would mean the exclusive
+    # lock is being taken after a child insert already holds FOR KEY SHARE on
+    # the same row, i.e. acquired too late to be safe.
+    assert all(isinstance(e, SwapError) and str(e) == "not_pending" for e in errors), (
+        f"racing approvals raised something other than the late-arrival guard: {errors!r}"
+    )
+    assert len(errors) <= 1, f"both approvals failed, nothing finalized: {errors!r}"
+
+    admin_session.expire_all()
+    finalized = admin_session.get(SwapRequest, request_id)
+    assert finalized.status == "applied"
+
+    statuses = sorted(
+        c.status
+        for c in admin_session.query(SwapCandidate).filter_by(swap_request_id=request_id).all()
+    )
+    assert statuses == ["applied", "cancelled"], f"exactly one candidate must win, got {statuses}"
+
+    overrides = admin_session.query(DutyDayOverride).filter_by(duty_assignment_id=assignment_id).all()
+    assert len(overrides) == 1, f"double-finalize wrote {len(overrides)} day overrides"
+    winner_id = (
+        admin_session.query(SwapCandidate)
+        .filter_by(swap_request_id=request_id, status="applied").one().soldier_id
+    )
+    assert overrides[0].effective_soldier_id == winner_id

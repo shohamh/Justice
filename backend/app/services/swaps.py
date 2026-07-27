@@ -225,6 +225,38 @@ def _has_decision(session: Session, request_id: uuid.UUID, candidate_id: uuid.UU
     ).first() is not None
 
 
+def _lock_request(session: Session, request_id: uuid.UUID) -> SwapRequest | None:
+    """Fetch a SwapRequest with SELECT ... FOR UPDATE.
+
+    Every mutating entry point takes this lock as its FIRST database
+    interaction, so that concurrent transactions touching the same request
+    serialize on it. Two things depend on that placement:
+
+    * Correctness — `_try_finalize` must not be able to run twice for the same
+      request. Without serialization two commanders clearing the last approval
+      on two different candidates at the same moment both read status='open',
+      both pick a winner, and both call `_apply_cover`; duty_day_overrides has
+      no unique constraint on (duty_assignment_id, date), so that silently
+      writes two conflicting override rows for the same day.
+    * Deadlock avoidance — inserting a SwapManagerApproval (or any child row)
+      takes a FOR KEY SHARE lock on the parent swap_requests row via the
+      foreign key. FOR KEY SHARE is shared, so two transactions both get it;
+      if each then tried to UPGRADE to FOR UPDATE they would wait on each
+      other and Postgres would kill one with a deadlock. Taking the exclusive
+      lock up front, before any child insert, removes the upgrade entirely.
+
+    populate_existing refreshes the identity-mapped instance from the row as
+    it exists once the lock is held, so callers never act on a stale read of a
+    request another transaction just finalized.
+    """
+    return session.execute(
+        select(SwapRequest)
+        .where(SwapRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def _candidate_fully_approved(session: Session, req: SwapRequest, candidate: SwapCandidate) -> bool:
     """A candidate is ready to finalize once: the requester has approved
     (shared across all candidates), this candidate has approved, and — only
@@ -257,8 +289,17 @@ def _try_finalize(session: Session, req: SwapRequest, actor_id: uuid.UUID | None
     checked in creation order so ties resolve deterministically (earliest
     invited/claimed wins). Runs the same regardless of the
     require-manager-approval setting — `_candidate_fully_approved` is what
-    varies its bar based on that setting, not this function."""
-    if req.status != "open":
+    varies its bar based on that setting, not this function.
+
+    Concurrency: this is only ever reached with the parent SwapRequest row
+    already exclusively locked — every caller goes through `_lock_request`
+    before touching anything (see its docstring for why the lock has to be
+    taken that early rather than here). The re-lock below is therefore a
+    no-op re-entry on a lock this transaction already holds; it's kept so the
+    invariant still holds if a future caller forgets, and so the status check
+    is made against the row as it exists under the lock."""
+    locked = _lock_request(session, req.id)
+    if locked is None or locked.status != "open":
         return
     candidates = session.execute(
         select(SwapCandidate).where(
@@ -326,7 +367,7 @@ def decline_candidate(
 def approve_soldier_side(
     session: Session, *, request_id: uuid.UUID, soldier_id: uuid.UUID, actor_id: uuid.UUID | None = None
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if soldier_id == req.requesting_soldier_id:
@@ -465,7 +506,7 @@ def _get_or_create_row(
 def approve_manager_row(
     session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID, candidate_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
@@ -494,22 +535,46 @@ def approve_manager_row(
 def reject_manager_row(
     session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID, candidate_id: uuid.UUID | None = None,
     decision_note: str | None = None,
+    is_authorized_override: "Callable[[], bool] | bool" = False,
 ) -> SwapRequest:
-    """Stamps rejected on every (side, kind) row the actor qualifies for,
-    then declines just that candidate (or, if side="requester" was the
-    only qualifying side, rejects the whole request — a requester-side
-    manager rejection means the requester's own chain says no, which kills
-    the ask entirely regardless of which candidates exist)."""
-    req = session.get(SwapRequest, request_id)
+    """Stamps rejected on every (side, kind) row the actor qualifies for, then
+    resolves the rejection at the scope the CALLER asked for:
+
+    * `candidate_id is None` — a whole-request rejection. Only reachable from
+      the UI's separate "reject the whole request" control, and only stamps
+      requester-side rows (the covering side is never resolvable without a
+      candidate). Kills the request via `reject_request`, cascading to cancel
+      every live candidate.
+    * `candidate_id is not None` — a per-candidate rejection. Only that
+      candidate's covering-side rows are stamped and only that candidate is
+      cancelled; the parent request and any sibling candidates are untouched.
+      Requester-side qualification is deliberately IGNORED here: a duty
+      manager or ancestor commander scoped over the requester's whole unit is
+      very commonly also in a candidate's chain, and letting that requester-
+      side qualification escalate would silently turn "reject candidate A"
+      into "kill the whole request and every other candidate".
+
+    `is_authorized_override` mirrors `approve_manager_side`'s override
+    parameter: when the actor holds no qualifying chain row but the caller
+    (the route) has already authorized them by a broader check — an admin, or
+    a commander whose authority comes from hierarchy scope rather than chain
+    membership — the rejection proceeds without stamping a chain row it has
+    no business stamping, instead of failing with `not_required_approver`.
+    Callers that don't pass it keep the strict behaviour (a genuine stranger
+    still raises)."""
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
         raise SwapError("not_pending")
     qualifying = _qualifying_rows_for_actor(session, req, actor_id, candidate_id)
+    if candidate_id is not None:
+        qualifying = [(side, kind) for side, kind in qualifying if side == "covering"]
     if not qualifying:
-        raise SwapError("not_required_approver")
+        authorized = is_authorized_override() if callable(is_authorized_override) else bool(is_authorized_override)
+        if not authorized:
+            raise SwapError("not_required_approver")
     now = datetime.utcnow()
-    sides_rejected: set[str] = set()
     for side, kind in qualifying:
         row_candidate_id = candidate_id if side == "covering" else None
         row = _get_or_create_row(session, request_id=request_id, candidate_id=row_candidate_id, side=side, actor_id=actor_id, kind=kind)
@@ -517,19 +582,17 @@ def reject_manager_row(
             row.rejected = True
             row.rejected_by = actor_id
             row.rejected_at = now
-        sides_rejected.add(side)
     session.flush()
-    if "requester" in sides_rejected:
+    if candidate_id is None:
         return reject_request(session, request_id=request_id, decision_note=decision_note, actor_id=actor_id)
-    if candidate_id is not None:
-        candidate = _get_candidate_for_request(session, request_id, candidate_id)
-        if candidate is not None and candidate.status in ("pending", "accepted"):
-            candidate.status = "cancelled"
-            candidate.decided_at = now
-            create_notification(
-                session, soldier_id=candidate.soldier_id, type=NotificationType.swap_rejected,
-                title="בקשת ההחלפה נדחתה", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
-            )
+    candidate = _get_candidate_for_request(session, request_id, candidate_id)
+    if candidate is not None and candidate.status in ("pending", "accepted"):
+        candidate.status = "cancelled"
+        candidate.decided_at = now
+        create_notification(
+            session, soldier_id=candidate.soldier_id, type=NotificationType.swap_rejected,
+            title="בקשת ההחלפה נדחתה", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+        )
     session.flush()
     return req
 
@@ -575,7 +638,7 @@ def _override_authorized_kinds(
 def approve_manager_side_override(
     session: Session, *, request_id: uuid.UUID, side: str, actor_id: uuid.UUID, candidate_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
@@ -652,7 +715,7 @@ def claim_request(
     covering_soldier_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
@@ -711,7 +774,7 @@ def reject_request(
     decision_note: str | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
@@ -753,7 +816,7 @@ def cancel_request(
     request_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
 ) -> SwapRequest:
-    req = session.get(SwapRequest, request_id)
+    req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
     if req.status != "open":
@@ -897,7 +960,7 @@ def cover_offer(
 ) -> SwapRequest:
     """Covering soldier responds to an open swap request (from board or
     incoming), optionally attaching a counter-offer of their own assignments."""
-    req = session.get(SwapRequest, swap_id)
+    req = _lock_request(session, swap_id)
     if req is None:
         raise SwapError("swap_not_found")
     if req.status != "open":

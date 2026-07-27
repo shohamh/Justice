@@ -725,7 +725,14 @@ def manager_reject(
     if not _authorized_via_requester() and body.candidate_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="candidate_id_required")
 
-    cov_node = _side_node(session, req, "covering", body.candidate_id)
+    # _side_node can raise SwapError("candidate_mismatch") when candidate_id
+    # belongs to a different swap request. Keep it inside a try so that
+    # surfaces as a 400 (same as manager_approve does) rather than an
+    # uncaught 500.
+    try:
+        cov_node = _side_node(session, req, "covering", body.candidate_id)
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
     authorized = False
     for node in (req_node, cov_node):
         if node is None:
@@ -742,6 +749,13 @@ def manager_reject(
         r = svc.reject_manager_row(
             session, request_id=request_id, actor_id=user.id, decision_note=body.decision_note,
             candidate_id=body.candidate_id,
+            # The authorize() sweep above already cleared this actor against
+            # the requester's and/or the candidate's node (admins, broader-
+            # scope commanders included). Tell the service so it doesn't
+            # refuse an actor who holds no literal chain row of their own —
+            # same override mechanism manager_approve hands to
+            # approve_manager_side.
+            is_authorized_override=True,
         )
     except svc.SwapError as exc:
         raise _err(exc) from exc

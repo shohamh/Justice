@@ -428,6 +428,129 @@ def test_manager_reject_covering_without_candidate_id_requires_candidate_id(
     assert r.json()["detail"] == "candidate_id_required"
 
 
+def test_manager_reject_candidate_scoped_when_actor_also_covers_requester_side(
+    client: TestClient, admin_session: Session
+):
+    """Regression: a per-candidate manager reject must NOT escalate into a
+    whole-request rejection just because the acting manager also happens to
+    qualify on the requester's side.
+
+    The existing covering-candidate test uses two disjoint hierarchy branches,
+    so its covering-side commander never qualifies on the requester side — the
+    realistic topology is the opposite: a commander (or a duty manager scoped
+    over the whole unit) sits in BOTH the requester's chain and the candidate's
+    chain. Before the fix, `_qualifying_rows_for_actor` returned the requester
+    side too and reject_manager_row escalated to reject_request, killing the
+    parent request and cancelling every sibling candidate."""
+    shared_node = create_node(admin_session, level="unit", name=f"api_shrej_{_uid()}")
+    shared_cmd = create_soldier(admin_session, personal_number=f"api_shrejc_{_uid()}", role="commander")
+    shared_node.commander_id = shared_cmd.id
+    admin_session.commit()
+
+    requester = create_soldier(admin_session, personal_number=f"api_shrejr_{_uid()}", hierarchy_node_id=shared_node.id)
+    cand_a = create_soldier(admin_session, personal_number=f"api_shreja_{_uid()}", hierarchy_node_id=shared_node.id)
+    cand_b = create_soldier(admin_session, personal_number=f"api_shrejb_{_uid()}", hierarchy_node_id=shared_node.id)
+    # Unit-wide duty manager: in the requester's chain AND both candidates'.
+    create_soldier(
+        admin_session, personal_number=f"api_shrejdm_{_uid()}", role="duty_manager",
+        hierarchy_node_id=shared_node.id,
+    )
+
+    dt = DutyType(name=f"api_shrej_dt_{_uid()}", score_per_day=1)
+    loc = DutyLocation(name=f"api_shrej_loc_{_uid()}")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=requester.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
+        status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+    swap_req = SwapRequest(
+        duty_assignment_id=assignment.id, duty_date=assignment.start_date,
+        requesting_soldier_id=requester.id, status="open", open_to_marketplace=True,
+    )
+    admin_session.add(swap_req)
+    admin_session.commit()
+
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(cand_a), json={})
+    body = client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(cand_b), json={}).json()
+    cand_a_id = _candidate_id_for(body, cand_a.id)
+    cand_b_id = _candidate_id_for(body, cand_b.id)
+
+    # shared_cmd qualifies on BOTH sides — this is the topology that used to
+    # escalate. Rejecting candidate A must stay scoped to candidate A.
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(shared_cmd),
+        json={"decision_note": "not A", "candidate_id": cand_a_id},
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["status"] == "open", "per-candidate reject must not kill the parent request"
+    assert next(c for c in out["candidates"] if c["id"] == cand_a_id)["status"] == "cancelled"
+    assert next(c for c in out["candidates"] if c["id"] == cand_b_id)["status"] == "accepted"
+
+    # The requester-side chain row is untouched: shared_cmd never said no to
+    # the requester's ask, only to this one candidate.
+    req_row = next(a for a in out["requester_manager_approvals"] if a["commander_id"] == str(shared_cmd.id))
+    assert req_row["rejected"] is False
+    assert req_row["rejected_by"] is None
+    assert out["rejected_by_name"] is None
+
+    persisted = admin_session.execute(
+        select(SwapManagerApproval).where(
+            SwapManagerApproval.swap_request_id == swap_req.id,
+            SwapManagerApproval.side == "requester",
+        )
+    ).scalars().all()
+    assert persisted == [], "no requester-side decision row should have been stamped"
+
+
+def test_admin_can_manager_reject_without_a_chain_row(client: TestClient, admin_session: Session):
+    """Regression: an override-authorized actor (admin — no hierarchy node, no
+    DutyManagerScope, so no qualifying chain row anywhere) must still be able
+    to reject. Their approve counterpart already goes through
+    approve_manager_side_override; reject briefly regressed to raising
+    not_required_approver, which surfaced as a 400 for an action the route had
+    already authorized."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+    admin = create_soldier(admin_session, personal_number=f"api_rejadm_{_uid()}", role="admin")
+
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(admin),
+        json={"decision_note": "denied by admin"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+
+
+def test_manager_reject_with_mismatched_candidate_id_returns_400(
+    client: TestClient, admin_session: Session
+):
+    """A candidate_id belonging to a DIFFERENT swap request must surface as a
+    400 candidate_mismatch, not a 500: _side_node raises SwapError and that
+    call used to sit outside manager_reject's try/except."""
+    requester, covering, req_cmd, cov_cmd, assignment, swap_req = _setup(admin_session)
+    client.post(f"/api/swaps/{swap_req.id}/claim", headers=auth_headers(covering), json={})
+
+    # A second, unrelated swap request with its own candidate.
+    other_requester, other_covering, *_rest, other_swap_req = _setup(admin_session)
+    other_body = client.post(
+        f"/api/swaps/{other_swap_req.id}/claim", headers=auth_headers(other_covering), json={}
+    ).json()
+    other_candidate_id = _candidate_id_for(other_body, other_covering.id)
+
+    admin = create_soldier(admin_session, personal_number=f"api_mismadm_{_uid()}", role="admin")
+    r = client.post(
+        f"/api/swaps/{swap_req.id}/manager-reject", headers=auth_headers(admin),
+        json={"decision_note": "denied", "candidate_id": other_candidate_id},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["detail"] == "candidate_mismatch"
+
+
 def test_claim_creates_commander_and_duty_manager_rows(client: TestClient, admin_session: Session):
     """Claiming a swap should surface both the chain-commander requirement and
     the duty-manager requirement in the API response's live-computed approval

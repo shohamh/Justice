@@ -44,13 +44,21 @@ def upgrade() -> None:
     # pending_approval row and a separate open row for the same
     # (requester, duty) would both survive as 'open' parents and violate the
     # new partial unique index (uq_swap_requests_one_open_per_requester_duty)
-    # created below. This is a real reachable pre-migration state:
-    # sibling-cancel-on-claim only fires once a covering soldier is claimed
-    # (transitioning ITS OWN row to pending_approval or applied), it never
-    # touches sibling rows for the same (requester, duty) that are still
-    # sitting open, so a requester who invited N specific targets and/or
-    # posted to the open marketplace can have one target's row already
-    # accepted (pending_approval) while others remain open.
+    # created below. This is a real reachable pre-migration state, for two
+    # independent reasons:
+    #   * claim_request DOES cancel siblings, but only AFTER a claim: it
+    #     cancels every other row for the same (requester, duty) with status
+    #     in ('open', 'pending_approval'). Until someone claims, a requester
+    #     who invited N specific targets and/or also posted to the open
+    #     marketplace simply has N+1 live open rows.
+    #   * cover_offer does NOT cancel siblings at all — it flips only its own
+    #     row to pending_approval. So a covered row can sit at
+    #     pending_approval indefinitely alongside untouched open siblings, and
+    #     two separate cover_offers can even leave two live pending_approval
+    #     rows in the same group.
+    # This asymmetry is also what makes it possible for the SAME soldier to
+    # appear in two rows of one group (invited on one row, covering on
+    # another) — hence the per-soldier dedup in the loop below.
     #
     # Each such group merges into one surviving parent, with one
     # SwapCandidate per non-null target/covering soldier in the group. If the
@@ -60,10 +68,11 @@ def upgrade() -> None:
     # with existing SwapManagerApproval rows pointed at it), so collapsing it
     # into a non-survivor that then gets deleted would silently lose that
     # approval-chain progress. Preserving its id as the survivor means the
-    # re-pointing step below (which matches SwapManagerApproval rows by
-    # swap_request_id) still resolves correctly with no special-casing. If a
-    # group somehow has more than one pending_approval row, the earliest
-    # created_at among THEM wins (tie-broken by id) — see group_survivor().
+    # re-pointing step below still resolves correctly with no special-casing.
+    # A group can genuinely hold more than one pending_approval row (two
+    # cover_offer claims on two sibling rows — cover_offer never cancels
+    # siblings); in that case the earliest created_at among THEM wins,
+    # tie-broken by id — see group_survivor().
     #
     # Pure status='open' groups (no pending_approval row) never have
     # pre-existing SwapManagerApproval rows — those are only created once a
@@ -130,30 +139,66 @@ def upgrade() -> None:
                 sa.update(swap_requests_t).where(swap_requests_t.c.id == survivor["id"])
                 .values(open_to_marketplace=True)
             )
-        for row in group_rows:
+
+        # The SAME soldier can appear in more than one row of a group, so
+        # candidates must be deduplicated by soldier_id before insert —
+        # swap_candidates carries UniqueConstraint(swap_request_id,
+        # soldier_id) and a second insert would abort the whole migration.
+        #
+        # Reachable pre-branch: a requester invites X (row_X,
+        # target_soldier_id=X) and also posts the same duty to the open
+        # marketplace (row_M, target_soldier_id=NULL) — permitted, because
+        # create_request's `already_pending` check only matched on the literal
+        # target, not on "any open row for this (requester, duty)". X then
+        # claims the anonymous marketplace posting through cover_offer, which
+        # (unlike claim_request) does NOT cancel sibling rows — see the
+        # SwapManagerApproval note further below. Now X is in the group twice:
+        # once as row_X.target_soldier_id and once as
+        # row_M.covering_soldier_id.
+        #
+        # Ordering below decides which row represents the soldier: a
+        # pending_approval row outranks a plain open one (it carries real
+        # progress — soldier_side_approved, and possibly SwapManagerApproval
+        # rows), then earliest created_at, then id, for determinism. `source`
+        # is decided independently of that pick: if the soldier appears as an
+        # explicit target_soldier_id in ANY row of the group they are
+        # "invited", since the requester naming them is a stronger statement
+        # of intent than an anonymous marketplace claim by the same person.
+        invited_soldier_ids = {
+            r["target_soldier_id"] for r in group_rows if r["target_soldier_id"] is not None
+        }
+        ordered_rows = sorted(
+            group_rows,
+            key=lambda r: (0 if r["status"] == "pending_approval" else 1, r["created_at"], str(r["id"])),
+        )
+        row_by_soldier: dict = {}
+        for row in ordered_rows:
             soldier_id = row["covering_soldier_id"] or row["target_soldier_id"]
             if soldier_id is not None:
-                # A pending_approval row's candidate has already been
-                # accepted by the covering soldier and is mid manager-
-                # approval — "accepted", not "pending" (matches the
-                # pending -> accepted transition in
-                # app/services/swaps.py:approve_soldier_side). decided_at
-                # stays None: that field only gets stamped on a terminal
-                # transition (applied/declined/cancelled), and "accepted" is
-                # not terminal.
-                candidate_status = "accepted" if row["status"] == "pending_approval" else "pending"
-                conn.execute(
-                    sa.insert(swap_candidates_t).values(
-                        swap_request_id=survivor["id"],
-                        soldier_id=soldier_id,
-                        source="marketplace" if row["target_soldier_id"] is None else "invited",
-                        status=candidate_status,
-                        offered_assignment_ids=row["offered_assignment_ids"] or [],
-                        soldier_side_approved=row["covering_side_approved"],
-                        created_at=row["created_at"],
-                        decided_at=None,
-                    )
+                row_by_soldier.setdefault(soldier_id, row)
+
+        for soldier_id, row in row_by_soldier.items():
+            # A pending_approval row's candidate has already been accepted by
+            # the covering soldier and is mid manager-approval — "accepted",
+            # not "pending" (matches the pending -> accepted transition in
+            # app/services/swaps.py:approve_soldier_side). decided_at stays
+            # None: that field only gets stamped on a terminal transition
+            # (applied/declined/cancelled), and "accepted" is not terminal.
+            candidate_status = "accepted" if row["status"] == "pending_approval" else "pending"
+            conn.execute(
+                sa.insert(swap_candidates_t).values(
+                    swap_request_id=survivor["id"],
+                    soldier_id=soldier_id,
+                    source="invited" if soldier_id in invited_soldier_ids else "marketplace",
+                    status=candidate_status,
+                    offered_assignment_ids=row["offered_assignment_ids"] or [],
+                    soldier_side_approved=row["covering_side_approved"],
+                    created_at=row["created_at"],
+                    decided_at=None,
                 )
+            )
+
+        for row in group_rows:
             if row["id"] != survivor["id"]:
                 ids_to_delete.append(row["id"])
 
@@ -182,25 +227,42 @@ def upgrade() -> None:
         conn.execute(sa.delete(swap_requests_t).where(swap_requests_t.c.id.in_(ids_to_delete)))
 
     # Re-point covering-side SwapManagerApproval rows at the new candidate.
-    # This join matches on swap_request_id, so it only re-points approvals
-    # whose parent row kept its own id: that's every `other_rows` row (they
-    # were never merged), and, within a merged open_groups group, the
-    # pending_approval row when present (group_survivor always keeps it as
-    # the survivor, by id, specifically so this still works). Plain 'open'
-    # rows never have pre-existing SwapManagerApproval rows to begin with
-    # (those only exist once a request reaches pending_approval or later),
-    # so a plain-open non-survivor being deleted below never orphans any
-    # approval. A group can only ever contain a single live pending_approval
-    # row pre-migration — claim_request cancels every other still-live
-    # sibling (open or pending_approval) the moment one of them claims — so
-    # there is no scenario where a non-survivor row in a group still holds
-    # approvals that this join would fail to reach.
+    #
+    # Which parents can still hold approvals here: only rows that kept their
+    # own id. That's every `other_rows` row (terminal — never merged), and,
+    # within a merged open_groups group, the pending_approval row when present
+    # (group_survivor always keeps it as the survivor, by id, specifically so
+    # this still resolves). Plain 'open' rows never have pre-existing
+    # SwapManagerApproval rows at all — those only get created once a request
+    # reaches pending_approval or later — so deleting a plain-open non-survivor
+    # below never orphans an approval.
+    #
+    # A group CAN contain more than one pending_approval row, so this must not
+    # be assumed away. The two pre-branch claim paths differ:
+    #   * claim_request DOES cancel siblings — after claiming it cancels every
+    #     other row for the same (requester, duty) whose status is in
+    #     ('open', 'pending_approval').
+    #   * cover_offer does NOT — it flips only its own row to
+    #     pending_approval and leaves every sibling exactly as it was.
+    # So two soldiers each cover_offer-ing two different rows of the same
+    # (requester, duty) leaves two live pending_approval rows in one group.
+    # That is also precisely why the same soldier can appear twice in a group
+    # (see the dedup block above): an invite row plus a marketplace row that
+    # the invited soldier then cover_offer-ed.
+    #
+    # Because a group can therefore end up with several candidates under one
+    # surviving parent, the join is qualified by soldier: an approval is
+    # re-pointed at the candidate for ITS OWN row's covering soldier, not at
+    # whichever candidate the planner happens to match first.
     op.add_column("swap_manager_approvals", sa.Column("swap_candidate_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("swap_candidates.id", ondelete="CASCADE"), nullable=True))
     op.execute("""
         UPDATE swap_manager_approvals sma
         SET swap_candidate_id = sc.id
-        FROM swap_candidates sc
-        WHERE sma.side = 'covering' AND sma.swap_request_id = sc.swap_request_id;
+        FROM swap_requests sr, swap_candidates sc
+        WHERE sma.side = 'covering'
+          AND sma.swap_request_id = sr.id
+          AND sc.swap_request_id = sr.id
+          AND sc.soldier_id = sr.covering_soldier_id;
     """)
 
     op.drop_constraint("uq_swap_manager_approval_request_side_person_kind", "swap_manager_approvals", type_="unique")
