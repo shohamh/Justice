@@ -4,7 +4,7 @@ import { useModalBackClose } from "../hooks/useModalBackClose";
 
 interface Props {
   onClose: () => void;
-  onPicked: (nodeId: string) => void;
+  onPicked: (nodeId: string, nodeName: string) => void;
 }
 
 interface FlatNode {
@@ -78,7 +78,7 @@ export default function HierarchyNodePickerModal({ onClose, onPicked }: Props) {
               <button
                 type="button"
                 className="text-indigo-600 hover:underline text-xs"
-                onClick={() => onPicked(n.id)}
+                onClick={() => onPicked(n.id, n.name)}
               >
                 בחר
               </button>

@@ -1,20 +1,6 @@
-export interface SearchUser {
-  role: "soldier" | "commander" | "duty_manager" | "admin";
-  is_commander: boolean;
-  is_duty_manager: boolean;
-}
+import { authenticated, canApprove, canPlan, isAdmin, PermissionUser } from "./auth/permissions";
 
-function isAdmin(user: SearchUser | null): boolean {
-  return user?.role === "admin";
-}
-
-function canApprove(user: SearchUser | null): boolean {
-  return user?.role === "admin" || !!user?.is_commander || !!user?.is_duty_manager;
-}
-
-function canPlan(user: SearchUser | null): boolean {
-  return user?.role === "admin" || !!user?.is_duty_manager;
-}
+export type SearchUser = PermissionUser;
 
 export interface PageEntry {
   id: string;
@@ -39,8 +25,6 @@ export interface HelpTopicEntry {
   keywords: string[];
   canAccess: (user: SearchUser | null) => boolean;
 }
-
-const authenticated = (user: SearchUser | null): boolean => user !== null;
 
 export function getPageEntries(): PageEntry[] {
   return [

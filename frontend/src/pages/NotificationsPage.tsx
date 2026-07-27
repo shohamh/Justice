@@ -43,7 +43,7 @@ export default function NotificationsPage() {
     exemption_approved: "✔️", exemption_rejected: "✖️",
     constraint_approved: "✔️", constraint_rejected: "✖️",
     assignment_created: "📋", assignment_removed: "🗑️",
-    score_adjusted: "⭐", announcement: "📢",
+    score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
   };
 
   const pages = Math.ceil(total / limit);
