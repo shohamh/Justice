@@ -291,27 +291,37 @@ export default function ApprovalsPage() {
     }
   }
 
-  async function onSwapManagerApprove(id: string, side: "requester" | "covering") {
+  async function onSwapManagerApprove(id: string, side: "requester" | "covering", candidateId?: string) {
     try {
-      await managerApproveSwap(id, side);
+      await managerApproveSwap(id, side, candidateId);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
+      // Another approver may have already finalized/rejected this request
+      // (e.g. lost a finalize race) — refresh so the resolved card disappears
+      // instead of sitting there with a now-stale action button.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     }
   }
-  async function onSwapManagerReject(id: string) {
+  async function onSwapManagerReject(id: string, candidateId?: string) {
+    const noteKey = candidateId ? `${id}:${candidateId}` : id;
     try {
-      await managerRejectSwap(id, swapRejectNotes[id]);
+      await managerRejectSwap(id, swapRejectNotes[noteKey], candidateId);
       const next = { ...swapRejectNotes };
-      delete next[id];
+      delete next[noteKey];
       setSwapRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     } catch (err) {
       setActionError(describeError(err));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
     }
   }
 
@@ -592,10 +602,10 @@ export default function ApprovalsPage() {
             {swapItems.map(swap => {
               const isAdmin = user?.role === "admin";
               const reqGroups = groupByKind(swap.requester_manager_approvals);
-              const covGroups = groupByKind(swap.covering_manager_approvals);
               const canActCommander = (commanderApprovals: DirectCommanderApprovalRow[]) =>
                 isAdmin || commanderApprovals.some(a => a.commander_id === user?.id);
               const canActDutyManager = isAdmin || !!user?.is_duty_manager;
+              const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
@@ -604,13 +614,6 @@ export default function ApprovalsPage() {
                     {swap.requesting_soldier_node_name && <span className="text-xs text-gray-400">{swap.requesting_soldier_node_name}</span>}
                     <ApprovalDotInline value={swap.requester_side_approved} />
                   </div>
-                  {swap.covering_soldier_id && (
-                    <div className="flex items-center gap-2">
-                      <strong>{t("swaps.covering")}:</strong>
-                      <span><SoldierLink id={swap.covering_soldier_id} name={swap.covering_soldier_name || swap.covering_soldier_id.slice(0, 8)} /></span>
-                      <ApprovalDotInline value={swap.covering_side_approved} />
-                    </div>
-                  )}
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
                   <div className="text-xs text-gray-500 space-y-1">
                     <SwapKindApproval
@@ -627,21 +630,11 @@ export default function ApprovalsPage() {
                       onApprove={() => onSwapManagerApprove(swap.id, "requester")}
                       t={t}
                     />
-                    <SwapKindApproval
-                      approvals={covGroups.commander}
-                      label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_commander")})`}
-                      canAct={canActCommander(covGroups.commander)}
-                      onApprove={() => onSwapManagerApprove(swap.id, "covering")}
-                      t={t}
-                    />
-                    <SwapKindApproval
-                      approvals={covGroups.duty_manager}
-                      label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_duty_manager")})`}
-                      canAct={canActDutyManager}
-                      onApprove={() => onSwapManagerApprove(swap.id, "covering")}
-                      t={t}
-                    />
                   </div>
+                  {/* Whole-request reject: a requester-side manager rejection kills the
+                      ask entirely (backend: reject_manager_row -> reject_request), independent
+                      of any per-candidate rejection below. Kept separate from the per-candidate
+                      controls so a reviewer doesn't lose this previously-existing action. */}
                   <div className="flex gap-2 items-center flex-wrap">
                     <input
                       placeholder={t("approvals.decision_note")}
@@ -656,6 +649,52 @@ export default function ApprovalsPage() {
                       {t("approvals.reject")}
                     </button>
                   </div>
+                  {liveCandidates.length > 0 && (
+                    <div className="space-y-2 border-t pt-2 dark:border-gray-700">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("swaps.candidates_title")} ({liveCandidates.length})</p>
+                      {liveCandidates.map(candidate => {
+                        const covGroups = groupByKind(candidate.manager_approvals);
+                        return (
+                          <div key={candidate.id} className="border rounded p-2 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <SoldierLink id={candidate.soldier_id} name={candidate.soldier_name || candidate.soldier_id.slice(0, 8)} />
+                              <ApprovalDotInline value={candidate.soldier_side_approved} />
+                            </div>
+                            <div className="text-xs text-gray-500 space-y-1">
+                              <SwapKindApproval
+                                approvals={covGroups.commander}
+                                label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_commander")})`}
+                                canAct={canActCommander(covGroups.commander)}
+                                onApprove={() => onSwapManagerApprove(swap.id, "covering", candidate.id)}
+                                t={t}
+                              />
+                              <SwapKindApproval
+                                approvals={covGroups.duty_manager}
+                                label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_duty_manager")})`}
+                                canAct={canActDutyManager}
+                                onApprove={() => onSwapManagerApprove(swap.id, "covering", candidate.id)}
+                                t={t}
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <input
+                                placeholder={t("approvals.decision_note")}
+                                value={swapRejectNotes[`${swap.id}:${candidate.id}`] ?? ""}
+                                onChange={e => setSwapRejectNotes(prev => ({ ...prev, [`${swap.id}:${candidate.id}`]: e.target.value }))}
+                                className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                              />
+                              <button
+                                onClick={() => onSwapManagerReject(swap.id, candidate.id)}
+                                className="bg-red-600 text-white px-2 py-1 rounded text-xs"
+                              >
+                                {t("approvals.reject")}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

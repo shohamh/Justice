@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize, can, is_commander, is_duty_manager, scope_root_ids
+from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, DutyLocation, DutyType, HierarchyNode, Soldier, SwapRequest
 from app.db.session import get_session
@@ -104,6 +104,31 @@ def _swap_counts_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> dic
     return {shift_id: count for shift_id, count in rows}
 
 
+def _visible_reason(
+    user: Soldier,
+    assignee_soldier_id: uuid.UUID,
+    hierarchy_path_ids: list[str],
+    roots: set[uuid.UUID],
+    reason: str | None,
+) -> str | None:
+    if reason is None:
+        return None
+    if user.role == "admin" or assignee_soldier_id == user.id:
+        return reason
+    path_uuids = {uuid.UUID(p) for p in hierarchy_path_ids}
+    if roots & path_uuids:
+        return reason
+    return None
+
+
+def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uuid.UUID]) -> None:
+    for assignee in shift.assignees:
+        for d in assignee.dismissals:
+            d.reason = _visible_reason(
+                user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, d.reason
+            )
+
+
 @router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)
 def get_shift_detail(
     shift_id: uuid.UUID,
@@ -114,7 +139,10 @@ def get_shift_detail(
     if raw is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     swap_count = _swap_counts_for_shifts(session, [shift_id]).get(shift_id, 0)
-    return CalendarShiftOut(**raw, swap_request_count=swap_count)
+    shift = CalendarShiftOut(**raw, swap_request_count=swap_count)
+    roots = scope_root_ids(session, user)
+    _redact_shift_reasons(shift, user, roots)
+    return shift
 
 
 @router.get("/unit", response_model=list[CalRow])
@@ -192,18 +220,11 @@ def calendar_shifts(
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     roots = scope_root_ids(session, user)
-    show_reason = can(
-        user, Action.HIERARCHY_READ, target_node=node, roots=roots,
-        is_commander=is_commander(session, user.id), is_duty_manager=is_duty_manager(session, user.id),
-    )
     raw = get_calendar_shifts(session, node_id=node_id, date_from=date_from, date_to=date_to)
     swap_counts = _swap_counts_for_shifts(session, [s["id"] for s in raw])
     shifts = []
     for s in raw:
         shift = CalendarShiftOut(**s, swap_request_count=swap_counts.get(s["id"], 0))
-        if not show_reason:
-            for assignee in shift.assignees:
-                for d in assignee.dismissals:
-                    d.reason = None
+        _redact_shift_reasons(shift, user, roots)
         shifts.append(shift)
     return CalendarShiftsResponse(shifts=shifts)

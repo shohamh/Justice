@@ -43,14 +43,11 @@ const swap = {
   duty_assignment_id: "da1",
   duty_date: "2026-01-05",
   requesting_soldier_id: "sol-2",
-  target_soldier_id: null,
-  covering_soldier_id: "sol-3",
-  status: "pending_approval",
+  open_to_marketplace: false,
+  status: "open",
   reason: null,
   requester_side_approved: false,
-  covering_side_approved: false,
   decision_note: null,
-  offered_assignment_ids: [],
   created_at: "2026-01-01",
   duty_type_name: null,
   duty_location_name: null,
@@ -60,7 +57,6 @@ const swap = {
   duty_end_date: null,
   duty_shift_id: null,
   requesting_soldier_name: "B",
-  covering_soldier_name: "C",
   requester_manager_approvals: [
     {
       commander_id: "m1",
@@ -69,11 +65,29 @@ const swap = {
       approved_by: null,
       approved_by_name: null,
       approved_at: null,
+      rejected: false,
+      rejected_by: null,
+      rejected_by_name: null,
+      rejected_at: null,
       approver_kind: "commander",
     },
   ],
-  covering_manager_approvals: [],
+  candidates: [],
 } as swapsApi.SwapRequest;
+
+function makeCandidate(overrides: Partial<swapsApi.SwapCandidate>): swapsApi.SwapCandidate {
+  return {
+    id: "cand-default",
+    soldier_id: "sol-x",
+    soldier_name: "X",
+    source: "invited",
+    status: "pending",
+    soldier_side_approved: null,
+    offered_assignment_ids: [],
+    manager_approvals: [],
+    ...overrides,
+  };
+}
 
 const constraint = {
   id: "c1",
@@ -171,6 +185,92 @@ describe("ApprovalsPage - action error banner", () => {
     fireEvent.click(approveBtn);
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
+  it("shows one approval block per live candidate on a swap with multiple candidates", async () => {
+    const pendingCandidate = makeCandidate({
+      id: "cand-1",
+      soldier_id: "sol-10",
+      soldier_name: "Pending Candidate",
+      status: "pending",
+      manager_approvals: [],
+    });
+    const acceptedCandidate = makeCandidate({
+      id: "cand-2",
+      soldier_id: "sol-11",
+      soldier_name: "Accepted Candidate",
+      status: "accepted",
+      manager_approvals: [
+        {
+          commander_id: "m2",
+          commander_name: "Commander Two",
+          approved: false,
+          approved_by: null,
+          approved_by_name: null,
+          approved_at: null,
+          rejected: false,
+          rejected_by: null,
+          rejected_by_name: null,
+          rejected_at: null,
+          approver_kind: "commander",
+        },
+      ],
+    });
+    // A declined candidate should NOT get its own block — only pending/accepted are "live".
+    const declinedCandidate = makeCandidate({
+      id: "cand-3",
+      soldier_id: "sol-12",
+      soldier_name: "Declined Candidate",
+      status: "declined",
+    });
+
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([
+      { ...swap, candidates: [pendingCandidate, acceptedCandidate, declinedCandidate] },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const swapsTab = await screen.findByTestId("approvals-tab-swaps");
+    fireEvent.click(swapsTab);
+
+    await screen.findByText("Pending Candidate");
+    expect(screen.getByText("Accepted Candidate")).toBeInTheDocument();
+    expect(screen.queryByText("Declined Candidate")).not.toBeInTheDocument();
+
+    // Each live candidate gets its own independent reject button — clicking
+    // the accepted candidate's reject must only reject that candidate, not the
+    // whole request and not the other (pending) candidate.
+    // Order: [0] whole-request reject, [1] cand-1 (pending), [2] cand-2 (accepted).
+    const rejectButtons = screen.getAllByText("approvals.reject");
+    expect(rejectButtons.length).toBe(3);
+
+    fireEvent.click(rejectButtons[2]);
+    await waitFor(() => {
+      expect(swapsApi.managerRejectSwap).toHaveBeenCalledWith("s1", undefined, "cand-2");
+    });
+    expect(swapsApi.managerRejectSwap).toHaveBeenCalledTimes(1);
+
+    // The accepted candidate's manager-approval button acts on that candidate only
+    // (the requester side also has one approve button — theirs must not fire, only cand-2's).
+    const approveButtons = screen.getAllByText("approvals.approve");
+    expect(approveButtons.length).toBe(2);
+    fireEvent.click(approveButtons[1]);
+    await waitFor(() => {
+      expect(swapsApi.managerApproveSwap).toHaveBeenCalledWith("s1", "covering", "cand-2");
     });
   });
 });

@@ -518,20 +518,17 @@ class SwapRequest(Base):
     requesting_soldier_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
     )
-    # NULL = open board posting; set = direct request to a specific peer.
-    target_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
-    )
-    # Soldier who agreed to cover (set when an offer is accepted/claimed).
-    covering_soldier_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
-    )
-    # open → pending_approval (approval required) | applied (auto) → applied | rejected | cancelled
+    # True if any eligible soldier may claim this from the open board —
+    # independent of whether specific soldiers were also invited (see
+    # SwapCandidate for the actual invited/claimed parties).
+    open_to_marketplace: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # open → applied (one candidate finished approval) | rejected | cancelled
     status: Mapped[str] = mapped_column(Text, server_default=text("'open'"), default="open")
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
-    # Two-sided approval flags (NULL = not yet decided / not required).
+    # Requester's own "I still want this" confirmation — shared across every
+    # candidate on this request (there's exactly one requester), auto-set
+    # True the first time any candidate is accepted, same as today.
     requester_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
-    covering_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
     resulting_override_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("duty_day_overrides.id", ondelete="SET NULL"), nullable=True, default=None
     )
@@ -539,14 +536,49 @@ class SwapRequest(Base):
     rejected_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
-    offered_assignment_ids: Mapped[list[Any]] = mapped_column(
-        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    __table_args__ = (
+        sa.Index(
+            "uq_swap_requests_one_open_per_requester_duty",
+            "requesting_soldier_id", "duty_assignment_id",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+    )
+
+
+class SwapCandidate(Base):
+    __tablename__ = "swap_candidates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    swap_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("swap_requests.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    # "invited" (added at request-creation time) | "marketplace" (self-claimed
+    # from the open board).
+    source: Mapped[str] = mapped_column(Text)
+    # pending (invited, awaiting response) → declined | accepted → applied | cancelled
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"), default="pending")
+    offered_assignment_ids: Mapped[list[Any]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb"), default_factory=list
+    )
+    soldier_side_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    __table_args__ = (
+        sa.UniqueConstraint("swap_request_id", "soldier_id", name="uq_swap_candidate_request_soldier"),
     )
 
 
@@ -558,6 +590,13 @@ class SwapManagerApproval(Base):
     )
     swap_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("swap_requests.id", ondelete="CASCADE")
+    )
+    # NULL for side="requester" (shared across every candidate on the
+    # request); required for side="covering" (each candidate has their own
+    # commander/duty-manager chain, since they're different soldiers).
+    swap_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("swap_candidates.id", ondelete="CASCADE"), nullable=True, default=None,
+        kw_only=True,
     )
     # "requester" | "covering" -- which side of the swap this approval belongs to.
     side: Mapped[str] = mapped_column(Text)
@@ -590,8 +629,8 @@ class SwapManagerApproval(Base):
     )
     __table_args__ = (
         sa.UniqueConstraint(
-            "swap_request_id", "side", "commander_id", "approver_kind",
-            name="uq_swap_manager_approval_request_side_person_kind",
+            "swap_request_id", "swap_candidate_id", "side", "commander_id", "approver_kind",
+            name="uq_swap_manager_approval_request_candidate_side_person_kind",
         ),
     )
 

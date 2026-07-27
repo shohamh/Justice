@@ -200,7 +200,7 @@ def soft_delete(
     left_at: date | None = None,
 ) -> Soldier:
     soldier.left_at = left_at or date.today()
-    from app.db.models import ExemptionRequest, PersonalConstraint, SwapRequest
+    from app.db.models import ExemptionRequest, PersonalConstraint, SwapCandidate, SwapRequest
     session.execute(
         sa_update(ExemptionRequest)
         .where(
@@ -214,14 +214,30 @@ def soft_delete(
         .where(PersonalConstraint.soldier_id == soldier.id, PersonalConstraint.status == "pending")
         .values(status="cancelled")
     )
-    session.execute(
-        sa_update(SwapRequest)
-        .where(
+    # "pending_approval" no longer exists as a SwapRequest.status value — that
+    # in-progress state now lives on SwapCandidate rows (see swaps.py). Only
+    # "open" requests need cancelling here; their still-live candidates are
+    # cancelled alongside so nothing is left pointing at a resolved request.
+    cancelled_swap_ids = session.execute(
+        select(SwapRequest.id).where(
             SwapRequest.requesting_soldier_id == soldier.id,
-            SwapRequest.status.in_(("open", "pending_approval")),
+            SwapRequest.status == "open",
         )
-        .values(status="cancelled")
-    )
+    ).scalars().all()
+    if cancelled_swap_ids:
+        session.execute(
+            sa_update(SwapRequest)
+            .where(SwapRequest.id.in_(cancelled_swap_ids))
+            .values(status="cancelled")
+        )
+        session.execute(
+            sa_update(SwapCandidate)
+            .where(
+                SwapCandidate.swap_request_id.in_(cancelled_swap_ids),
+                SwapCandidate.status.in_(["pending", "accepted"]),
+            )
+            .values(status="cancelled")
+        )
     write_audit(
         session,
         actor_id=actor_id,

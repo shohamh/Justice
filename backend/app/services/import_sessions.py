@@ -29,6 +29,7 @@ from app.db.models import (
     SoldierEnrollmentRequest,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
 )
@@ -1766,6 +1767,11 @@ def confirm_session(
             errors.append({"row": row["row"], "type": "exemption_requests", "error": str(exc)})
 
     # ── Swap requests ───────────────────────────────────────────────────
+    # Each row restores the parent SwapRequest plus, at most, the one
+    # SwapCandidate it identifies via target/covering personal number (see
+    # resolve_swap_requests in import_approvals.py and
+    # approvals_export._write_swap_requests — a request with several
+    # candidates round-trips as several rows sharing the same "id").
     for row in state.get("swap_requests", []):
         effective = _effective_action(selections, "swap_requests", row)
         if row["action"] == "error" or effective == "skip":
@@ -1786,22 +1792,50 @@ def confirm_session(
                 swap.status = row["status"]
                 swap.reason = row.get("reason")
                 swap.requester_side_approved = row.get("requester_side_approved")
-                swap.covering_side_approved = row.get("covering_side_approved")
                 swap.decision_note = row.get("decision_note")
                 if row.get("resolved_rejected_by_id"):
                     swap.rejected_by = uuid.UUID(row["resolved_rejected_by_id"])
-                if row.get("resolved_covering_soldier_id"):
-                    swap.covering_soldier_id = uuid.UUID(row["resolved_covering_soldier_id"])
+
+                # Restore this row's candidate, if it names one — update the
+                # existing SwapCandidate matched by (swap_request, soldier),
+                # or create it if the export had one that no longer exists
+                # here (e.g. re-importing into a fresh DB).
+                candidate = None
+                if row.get("resolved_candidate_soldier_id"):
+                    if row.get("existing_candidate_id"):
+                        candidate = session.get(SwapCandidate, uuid.UUID(row["existing_candidate_id"]))
+                    if candidate is None:
+                        candidate = SwapCandidate(
+                            swap_request_id=swap.id,
+                            soldier_id=uuid.UUID(row["resolved_candidate_soldier_id"]),
+                            source=row.get("candidate_source") or "invited",
+                        )
+                        session.add(candidate)
+                        session.flush()
+                    candidate.soldier_side_approved = row.get("covering_side_approved")
+                    if swap.status == "applied":
+                        candidate.status = "applied"
+                    elif swap.status in ("rejected", "cancelled"):
+                        candidate.status = "cancelled"
+                    elif row.get("covering_side_approved"):
+                        candidate.status = "accepted"
+                    else:
+                        candidate.status = "pending"
+
                 updated += 1
 
                 # Restore the approval_log's decision-log rows — one insert
                 # per segment, exactly as recorded (not re-derived from the
                 # live hierarchy), skipping any (side, kind, person) already
-                # present for this swap (idempotent re-confirm).
+                # present for this swap (idempotent re-confirm). Covering-side
+                # entries attach to this row's candidate; requester-side
+                # entries are shared across every row for the request.
                 for entry in row.get("approval_log", []):
+                    row_candidate_id = candidate.id if (entry["side"] == "covering" and candidate is not None) else None
                     existing_decision = session.execute(
                         select(SwapManagerApproval).where(
                             SwapManagerApproval.swap_request_id == swap.id,
+                            SwapManagerApproval.swap_candidate_id == row_candidate_id,
                             SwapManagerApproval.side == entry["side"],
                             SwapManagerApproval.approver_kind == entry["kind"],
                             SwapManagerApproval.commander_id == uuid.UUID(entry["resolved_person_id"]),
@@ -1809,7 +1843,8 @@ def confirm_session(
                     ).scalar_one_or_none()
                     if existing_decision is None:
                         existing_decision = SwapManagerApproval(
-                            swap_request_id=swap.id, side=entry["side"], approver_kind=entry["kind"],
+                            swap_request_id=swap.id, swap_candidate_id=row_candidate_id,
+                            side=entry["side"], approver_kind=entry["kind"],
                             commander_id=uuid.UUID(entry["resolved_person_id"]),
                         )
                         session.add(existing_decision)

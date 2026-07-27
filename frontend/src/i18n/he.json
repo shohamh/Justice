@@ -852,6 +852,13 @@
     "rejected_by": "(נדחה ע\"י {{name}})",
     "has_cover_candidate": "יש מועמד לכיסוי",
     "decision_note": "הערת החלטה",
+    "candidates_title": "מועמדים",
+    "candidate_source_marketplace": "מהלוח הפתוח",
+    "candidate_source_invited": "הוזמן",
+    "candidate_declined": "סירב",
+    "candidate_cancelled": "בוטל",
+    "candidate_applied": "בוצע",
+    "n_candidates_pending": "{{n}} מועמדים ממתינים",
     "days": "ימים",
     "free_blocked_conflict": "לא ניתן לקחת בחינם — יש לך תורנות חופפת בתאריכים אלו",
     "must_offer_conflicting": "יש לך תורנות חופפת — ניתן להציע רק אותה להחלפה",
@@ -1269,7 +1276,11 @@
       "algorithm": "⚙️ האלגוריתם",
       "fairness": "⚖️ הוגנות ושקיפות",
       "deep": "🔬 מאחורי הקלעים",
-      "gimelim": "🏥 גימלים"
+      "approvals": "✅ אישורים",
+      "hierarchy": "🌳 היררכיה וכשירות",
+      "hakpaza": "📣 הקפצה פיקודית",
+      "gimelim": "🏥 גימלים",
+      "import": "📥 ייבוא"
     },
     "tabs": {
       "transparency_sub_units": "תתי יחידות"

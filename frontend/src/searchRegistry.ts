@@ -57,13 +57,19 @@ export function getQuickActionEntries(): QuickActionEntry[] {
   ];
 }
 
-export function getHelpTopicEntries(gimelimEnabled: boolean): HelpTopicEntry[] {
+export function getHelpTopicEntries(gimelimEnabled: boolean, hakpazaEnabled: boolean): HelpTopicEntry[] {
   const topics: HelpTopicEntry[] = [
     { id: "swaps", labelKey: "search.help.swaps", keywords: ["החלפות", "swap"], canAccess: authenticated },
     { id: "algorithm", labelKey: "search.help.algorithm", keywords: ["אלגוריתם", "algorithm"], canAccess: authenticated },
     { id: "fairness", labelKey: "search.help.fairness", keywords: ["הוגנות", "שקיפות", "fairness"], canAccess: authenticated },
     { id: "deep", labelKey: "search.help.deep", keywords: ["מאחורי הקלעים", "deep"], canAccess: authenticated },
+    { id: "approvals", labelKey: "search.help.approvals", keywords: ["אישורים", "approvals"], canAccess: canApprove },
+    { id: "hierarchy", labelKey: "search.help.hierarchy", keywords: ["היררכיה", "כשירות", "hierarchy"], canAccess: authenticated },
+    { id: "import", labelKey: "search.help.import", keywords: ["ייבוא", "אקסל", "import"], canAccess: canPlan },
   ];
+  if (hakpazaEnabled) {
+    topics.push({ id: "hakpaza", labelKey: "search.help.hakpaza", keywords: ["הקפצה", "הקפצה פיקודית", "hakpaza"], canAccess: canApprove });
+  }
   if (gimelimEnabled) {
     topics.push({ id: "gimelim", labelKey: "search.help.gimelim", keywords: ["גימלים", "gimelim"], canAccess: authenticated });
   }

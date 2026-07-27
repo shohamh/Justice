@@ -20,6 +20,7 @@ from app.db.models import (
     Soldier,
     SoldierExemption,
     SoldierFieldUpdate,
+    SwapCandidate,
     SwapRequest,
 )
 
@@ -107,15 +108,28 @@ def summary_cards(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
         or 0
     )
 
+    # A swap is "mid manager-approval" once it has at least one live
+    # (pending/accepted) SwapCandidate — mirrors list_pending_approval in
+    # app.services.swaps, since SwapRequest.status no longer has a
+    # "pending_approval" value of its own (that state now lives on the
+    # candidate rows).
+    _swap_candidate_request_ids = (
+        session.execute(
+            select(SwapCandidate.swap_request_id)
+            .where(SwapCandidate.status.in_(["pending", "accepted"]))
+            .distinct()
+        ).scalars().all()
+    )
     pending_swaps = (
         session.execute(
             select(func.count(SwapRequest.id)).where(
                 SwapRequest.requesting_soldier_id.in_(soldier_ids),
-                SwapRequest.status == "pending_approval",
+                SwapRequest.status == "open",
+                SwapRequest.id.in_(_swap_candidate_request_ids),
             )
         ).scalar()
         or 0
-    )
+    ) if _swap_candidate_request_ids else 0
 
     approvals_pending = pending_field + pending_exempt + pending_swaps
 

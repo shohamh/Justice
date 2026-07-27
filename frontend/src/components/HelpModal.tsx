@@ -1,29 +1,47 @@
 import { useEffect, useState } from "react";
 import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
+import { authenticated, canApprove, canPlan, PermissionUser } from "../auth/permissions";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { NodeDTO, fetchTree } from "../api/hierarchy";
+import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
+import AlgorithmModeExplainer from "./AlgorithmModeExplainer";
 
 interface Props {
   onClose: () => void;
   gimelimEnabled?: boolean;
+  hakpazaEnabled?: boolean;
   initialTab?: string;
 }
 
-function buildTabs(gimelimEnabled: boolean) {
-  const tabs = [
-    { id: "swaps", label: "🔄 החלפות" },
-    { id: "algorithm", label: "⚙️ האלגוריתם" },
-    { id: "fairness", label: "⚖️ הוגנות ושקיפות" },
-    { id: "deep", label: "🔬 מאחורי הקלעים" },
-  ];
-  if (gimelimEnabled) {
-    tabs.push({ id: "gimelim", label: "🏥 גימלים" });
-  }
-  return tabs;
+interface HelpTabDef {
+  id: string;
+  label: string;
+  visible: (user: PermissionUser | null, gimelimEnabled: boolean, hakpazaEnabled: boolean) => boolean;
 }
 
-function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string; color?: string }) {
+const TAB_DEFS: HelpTabDef[] = [
+  { id: "swaps", label: "🔄 החלפות", visible: (u) => authenticated(u) },
+  { id: "algorithm", label: "⚙️ האלגוריתם", visible: (u) => authenticated(u) },
+  { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
+  { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
+  { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
+  { id: "hierarchy", label: "🌳 היררכיה וכשירות", visible: (u) => authenticated(u) },
+  { id: "hakpaza", label: "📣 הקפצה פיקודית", visible: (u, _gimelimEnabled, hakpazaEnabled) => canApprove(u) && hakpazaEnabled },
+  { id: "gimelim", label: "🏥 גימלים", visible: (u, gimelimEnabled) => authenticated(u) && gimelimEnabled },
+  { id: "import", label: "📥 ייבוא", visible: (u) => canPlan(u) },
+];
+
+function buildTabs(user: PermissionUser | null, gimelimEnabled: boolean, hakpazaEnabled: boolean): HelpTabDef[] {
+  return TAB_DEFS.filter((t) => t.visible(user, gimelimEnabled, hakpazaEnabled));
+}
+
+function FlowStep({
+  icon, text, color = "indigo", detail, expanded, onToggle,
+}: {
+  icon: string; text: string; color?: string; detail?: string; expanded?: boolean; onToggle?: () => void;
+}) {
   const colors: Record<string, string> = {
     indigo: "bg-indigo-50 dark:bg-indigo-950 border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-200",
     green: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200",
@@ -32,9 +50,22 @@ function FlowStep({ icon, text, color = "indigo" }: { icon: string; text: string
     blue: "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200",
     gray: "bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300",
   };
+  const clickable = !!detail;
   return (
-    <div className={`border rounded-lg px-3 py-2 text-sm font-medium text-center ${colors[color] ?? colors.indigo}`}>
-      {icon} {text}
+    <div>
+      <div
+        className={`border rounded-lg px-3 py-2 text-sm font-medium text-center ${colors[color] ?? colors.indigo} ${clickable ? "cursor-pointer hover:opacity-80" : ""}`}
+        onClick={clickable ? onToggle : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+      >
+        {icon} {text} {clickable && (expanded ? "▲" : "▼")}
+      </div>
+      {clickable && expanded && (
+        <div className="mt-1 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg p-2 text-gray-600 dark:text-gray-300">
+          {detail}
+        </div>
+      )}
     </div>
   );
 }
@@ -58,29 +89,55 @@ function Arrow({ split }: { split?: boolean }) {
 }
 
 function SwapsTab() {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
+
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך עובדות החלפות?</h3>
       <p className="text-gray-700 dark:text-gray-300">
-        מנגנון ההחלפות מאפשר לשני חיילים להחליף ביניהם תורנויות, בכפוף לאישור. כך זה עובד:
+        מנגנון ההחלפות מאפשר לשני חיילים להחליף ביניהם תורנויות, בכפוף לאישור. לחצו על כל שלב כדי לראות מה קורה בפועל ולמה:
       </p>
 
-      {/* Flow diagram */}
       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600">
-        <FlowStep icon="🙋" text="חייל מגיש בקשת החלפה" color="indigo" />
+        <FlowStep
+          icon="🙋" text="חייל מגיש בקשת החלפה" color="indigo"
+          detail="החייל בוחר תורנות שלו ומבקש שמישהו אחר יבצע אותה במקומו. הבקשה יכולה להיות פתוחה (כל חייל יכול להציע עצמו) או ממוקדת לחייל ספציפי."
+          expanded={expanded === "request"} onToggle={() => toggle("request")}
+        />
         <Arrow split />
         <div className="grid grid-cols-2 gap-2">
-          <FlowStep icon="📢" text="מתפרסם בלוח ההחלפות" color="blue" />
-          <FlowStep icon="📩" text="נשלחת הודעה לחייל המבוקש" color="blue" />
+          <FlowStep
+            icon="📢" text="מתפרסם בלוח ההחלפות" color="blue"
+            detail="כל חייל ביחידה יכול לראות את הבקשה ולהציע את עצמו כמחליף — שימושי כשלא ידוע מראש מי פנוי."
+            expanded={expanded === "board"} onToggle={() => toggle("board")}
+          />
+          <FlowStep
+            icon="📩" text="נשלחת הודעה לחייל המבוקש" color="blue"
+            detail="רק החייל שצוין רואה את הבקשה ומחליט אם לאשר או לדחות אותה."
+            expanded={expanded === "targeted"} onToggle={() => toggle("targeted")}
+          />
         </div>
         <Arrow />
-        <FlowStep icon="🤝" text="חייל מציע להחליף ושני הצדדים מאשרים" color="indigo" />
+        <FlowStep
+          icon="🤝" text="חייל מציע להחליף ושני הצדדים מאשרים" color="indigo"
+          detail="שני החיילים חייבים להסכים לפני שהבקשה ממשיכה לשלב האישור הפיקודי."
+          expanded={expanded === "agree"} onToggle={() => toggle("agree")}
+        />
         <Arrow />
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <div className="text-center text-xs text-gray-400">נדרש אישור</div>
-            <FlowStep icon="👮" text="מפקד אחד מהשרשרת מאשר" color="amber" />
-            <FlowStep icon="🗂️" text="אחראי תורנויות מאשר" color="amber" />
+            <FlowStep
+              icon="👮" text="מפקד אחד מהשרשרת מאשר" color="amber"
+              detail="מספיק אישור אחד ממפקד רלוונטי לאחד הצדדים; אם אותו מפקד אחראי על שני הצדדים, האישור שלו מכסה את שניהם בבת אחת."
+              expanded={expanded === "cmd-approve"} onToggle={() => toggle("cmd-approve")}
+            />
+            <FlowStep
+              icon="🗂️" text="אחראי תורנויות מאשר" color="amber"
+              detail="נדרש גם אישור נפרד של אחראי תורנויות — מפקד יכול לדחות גם אם אחראי התורנויות כבר אישר, וההפך."
+              expanded={expanded === "dm-approve"} onToggle={() => toggle("dm-approve")}
+            />
             <Arrow />
             <FlowStep icon="✅" text="ההחלפה בוצעה!" color="green" />
           </div>
@@ -115,7 +172,7 @@ function SwapsTab() {
   );
 }
 
-function AlgorithmTab() {
+function AlgorithmTab({ user }: { user: PermissionUser | null }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
       <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">איך האלגוריתם מחלק תורנויות?</h3>
@@ -156,6 +213,10 @@ function AlgorithmTab() {
           { icon: "🗺️", title: "רזרבה", desc: "חיילי רזרבה משובצים כגיבוי לאותה משמרת — האלגוריתם מעדיף רזרבה מהיחידה הקרובה ביותר בהיררכיה." },
           { icon: "🎖️", title: "פטור פיקודי", desc: "פטור שניתן בשלב אחד בלבד על ידי מפקד בדרגת רס\"ן ומעלה, מפקד תת-יחידה ברמת מדור ומעלה, או קצין תורן. הפטור פוטר את החייל הבודד מתורנויות מסוימות, אך לא מפחית את הפוטנציאל של יחידתו — כלומר אותה כמות תורנויות תתחלק על פחות חיילים ביחידה. יש להשתמש בכלי זה בצמצום ובמקרים חריגים בלבד." },
           { icon: "📈", title: "פוטנציאל", desc: "מספר החיילים הכשירים לפחות לסוג תורנות אחד בכל תת-יחידה. פטורים רשמיים מפחיתים פוטנציאל אם הם מכסים את כל סוגי התורנות של החייל; פטורים פיקודיים ואילוצים אישיים לא משפיעים על הפוטנציאל. הפוטנציאל קובע את חלוקת האחריות היחסית בין תת-יחידות במשמרות חדשות, וניתן לבקר אותו לפי חייל ולראות התאמות ידניות מתועדות." },
+          { icon: "🔁", title: "רענון מכסות תת-יחידה", desc: "אם סולם ההרפיה הרגיל (R/T) כבר הצליח למצוא פתרון (מלא או חלקי), האלגוריתם מנסה בנוסף לרענן את מכסות תת-היחידה — כדי לנצל עוד קצת גמישות, כשההגדרה auto_relax_node_quotas מופעלת." },
+          { icon: "🧩", title: "אסטרטגיות פתרון חלופיות", desc: "בנוסף לפירוק הרגיל לפי סבבי-עומס, קיימות אסטרטגיות פתרון חלופיות (למשל פתרון משולב על פני כמה משמרות בבת אחת) שהפותר עשוי להשתמש בהן במקרים מסוימים." },
+          { icon: "⏹️", title: "עצירה מוקדמת", desc: "אם הפותר לא משפר את הפתרון במשך כ-15 שניות רצופות, הוא עוצר ומחזיר את הטוב ביותר שנמצא — במקום לנצל את כל זמן הריצה המוקצב." },
+          { icon: "♻️", title: "גורל הרזרבה בגימלים", desc: "הגדרת מערכת קובעת מה קורה לרזרבה המקורית של חייל שעבר גימלים: נשארת משויכת אליו (\"keep\") או משוחררת (\"release\")." },
         ].map(({ icon, title, desc }) => (
           <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
             <span className="text-xl flex-shrink-0">{icon}</span>
@@ -166,6 +227,13 @@ function AlgorithmTab() {
           </div>
         ))}
       </div>
+
+      {canPlan(user) && (
+        <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-3">
+          <p className="font-semibold text-gray-800 dark:text-gray-200">🚦 מצבי הרצה (למי שמריץ את האלגוריתם)</p>
+          <AlgorithmModeExplainer />
+        </div>
+      )}
 
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
@@ -201,6 +269,7 @@ function FairnessTab() {
   const { user } = useAuth();
   const [myBreakdown, setMyBreakdown] = useState<EffortBreakdown | null>(null);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [extraDuties, setExtraDuties] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -363,6 +432,35 @@ function FairnessTab() {
         )}
       </div>
 
+      {myBreakdown && (
+        <div className="bg-blue-50 dark:bg-blue-950 rounded-xl p-4 border border-blue-200 dark:border-blue-800 space-y-2">
+          <p className="font-semibold text-blue-800 dark:text-blue-200">🎚️ מה אם אקבל עוד תורנויות?</p>
+          <label className="block text-xs text-blue-700 dark:text-blue-300">
+            תורנויות נוספות היפותטיות: {extraDuties}
+            <input
+              aria-label="תורנויות נוספות היפותטיות"
+              type="range" min={0} max={10} value={extraDuties}
+              onChange={(e) => setExtraDuties(Number(e.target.value))}
+              className="w-full"
+            />
+          </label>
+          {(() => {
+            const A = parseFloat(myBreakdown.A_i);
+            const W = parseFloat(myBreakdown.W_i);
+            // Each hypothetical duty is treated as one full-weight duty this quarter (active_frac = 1),
+            // contributing 1 unit to both the numerator's share and the denominator's weight — a
+            // simplified, illustrative approximation of the real per-block calculation shown in the
+            // Deep Dive tab, not the exact solver math.
+            const projected = W + extraDuties > 0 ? (A + extraDuties) / (W + extraDuties) : 0;
+            return (
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                עומס לאחר התוספת (הערכה): <span className="font-bold">{(projected * 100).toFixed(2)}%</span>
+              </p>
+            );
+          })()}
+        </div>
+      )}
+
       <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-3">
         <p className="font-semibold text-indigo-800 dark:text-indigo-200">📝 דוגמה מספרית</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -424,7 +522,7 @@ function GimelimTab() {
         <FlowStep icon="📲" text="כל הצדדים מקבלים הודעה" color="green" />
       </div>
       <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-300">
-        <li>הסיבה הרפואית נשמרת לצפייה של מנהלי תורניות בלבד — לא מועברת לחיילים אחרים.</li>
+        <li>הסיבה הרפואית גלויה רק למי שרשאי: מנהל תורנויות או מפקד שבתחום אחריותם נמצא החייל, והחייל עצמו. חיילים אחרים לא רואים אותה.</li>
         <li>אם לא נמצאת תורנות עתידית מתאימה, הגימלים מבוצע בלי שיבוץ מחדש.</li>
         <li>החייל שמומר לרזרבה שומר את הרזרבה המקורית שלו כרזרבה כללית.</li>
       </ul>
@@ -433,6 +531,7 @@ function GimelimTab() {
 }
 
 function DeepDiveTab() {
+  const [shownAssignment, setShownAssignment] = useState<"a" | "b">("a");
   return (
     <div className="space-y-5 text-sm leading-relaxed" dir="rtl">
 
@@ -799,33 +898,53 @@ function DeepDiveTab() {
           בקוד האמיתי μ מחושב פעם אחת לפני הפותר (ולא לכל שיבוץ בנפרד) — הדוגמה מפשטת זאת לצורך הבנה.
         </p>
 
+        {/* Assignment toggle */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShownAssignment("a")}
+            className={`text-xs px-2 py-1 rounded border ${shownAssignment === "a" ? "bg-green-600 text-white border-green-600" : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"}`}
+          >
+            שיבוץ א׳ (הפותר יבחר בזה)
+          </button>
+          <button
+            type="button"
+            onClick={() => setShownAssignment("b")}
+            className={`text-xs px-2 py-1 rounded border ${shownAssignment === "b" ? "bg-red-600 text-white border-red-600" : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"}`}
+          >
+            שיבוץ ב׳ (גרוע יותר)
+          </button>
+        </div>
+
         {/* Assignment A */}
-        <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-2">
-          <p className="font-semibold text-green-800 dark:text-green-200">שיבוץ א׳ (הפותר יבחר בזה): תורנות 1→דן, תורנות 2→רוני</p>
-          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+        {shownAssignment === "a" && (
+          <div className="bg-green-50 dark:bg-green-950 rounded-lg p-3 border border-green-200 dark:border-green-800 text-xs space-y-2">
+            <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 0     =       0   ( 0%)
 projected[רוני]= 80,000 + 40  × 2,500 = 180,000  (18%)`}</pre>
-          <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 0 + 180,000) / 3 ≈ 106,667
+            <pre className="font-mono text-green-700 dark:text-green-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 0 + 180,000) / 3 ≈ 106,667
 dev[דן]  = |140,000 − 106,667| =  33,333
 dev[יעל] = |      0 − 106,667| = 106,667
 dev[רוני]= |180,000 − 106,667| =  73,333
 ──────────────────────────────────────────
 סה"כ = 213,333`}</pre>
-        </div>
+          </div>
+        )}
 
         {/* Assignment B */}
-        <div className="bg-red-50 dark:bg-red-950 rounded-lg p-3 border border-red-200 dark:border-red-800 text-xs space-y-2">
-          <p className="font-semibold text-red-800 dark:text-red-200">שיבוץ ב׳ (גרוע יותר): תורנות 1→דן, תורנות 2→יעל</p>
-          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
+        {shownAssignment === "b" && (
+          <div className="bg-red-50 dark:bg-red-950 rounded-lg p-3 border border-red-200 dark:border-red-800 text-xs space-y-2">
+            <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`projected[דן]  = 40,000 + 40  × 2,500 = 140,000  (14%)
 projected[יעל] =      0 + 200 × 2,500 = 500,000  (50%)  ← זינוק!
 projected[רוני]=      80,000           =  80,000  ( 8%)`}</pre>
-          <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 500,000 + 80,000) / 3 = 240,000
+            <pre className="font-mono text-red-700 dark:text-red-300 leading-relaxed whitespace-pre">{`μ = ממוצע = (140,000 + 500,000 + 80,000) / 3 = 240,000
 dev[דן]  = |140,000 − 240,000| = 100,000
 dev[יעל] = |500,000 − 240,000| = 260,000
 dev[רוני]= | 80,000 − 240,000| = 160,000
 ──────────────────────────────────────────
 סה"כ = 520,000  ← פי ~2.4 יותר גרוע!`}</pre>
-        </div>
+          </div>
+        )}
 
         <div className="bg-indigo-50 dark:bg-indigo-950 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 text-xs space-y-1">
           <p className="font-semibold text-indigo-800 dark:text-indigo-200">🔑 תובנה מפתח</p>
@@ -1009,10 +1128,208 @@ dev[רוני]= | 80,000 − 240,000| = 160,000
   );
 }
 
-export default function HelpModal({ onClose, gimelimEnabled = false, initialTab }: Props) {
+function HakpazaTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-red-700 dark:text-red-400">📣 מה זו הקפצה פיקודית?</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        הקפצה פיקודית מאפשרת למפקד למשוך חייל מתורנות קיימת ולהחליף אותו במועמד אחר — ללא תלות בבקשת החלפה הדדית. שימושי כשצריך מענה מיידי (למשל חייל שלא הגיע).
+      </p>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
+        <FlowStep icon="🙋" text="מפקד בוחר תורנות וחייל שנמשך ממנה" color="red" />
+        <Arrow />
+        <FlowStep icon="📋" text="המערכת מציעה עד 8 מועמדים מדורגים" color="blue" />
+        <Arrow />
+        <FlowStep icon="✅" text="מפקד בוחר מועמד ומגיש בקשה" color="indigo" />
+        <Arrow />
+        <FlowStep icon="👮" text="נדרש אישור נוסף לפני שההקפצה נכנסת לתוקף" color="amber" />
+        <Arrow />
+        <FlowStep icon="📲" text="שני הצדדים מקבלים הודעה" color="green" />
+      </div>
+      <div className="space-y-2">
+        {[
+          { icon: "📏", title: "דירוג המועמדים", desc: "המועמדים מדורגים לפי קרבה היררכית לחייל שנמשך, עומס נוכחי (score_per_day), ומספר ימי התורנות שנותרו לו — כך שהעומס הנוסף מתחלק בצורה סבירה." },
+          { icon: "⚖️", title: "מניעת שימוש חוזר באותו חייל", desc: "המערכת עוקבת אחרי הקפצות פיקודיות קודמות של כל חייל (עם דעיכה לאורך זמן) ומורידה את הדירוג שלו כמועמד ככל שהוקפץ יותר לאחרונה — כדי למנוע הישענות על אותם חיילים שוב ושוב." },
+          { icon: "🔒", title: "צריך אישור", desc: "הקפצה לא נכנסת לתוקף מיידית — היא ממתינה לאישור נפרד (לרוב של גורם פיקודי נוסף) בדיוק כמו בקשת החלפה, ורק לאחריו התורנות בפועל מתחלפת." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ApprovalsTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">תיבת האישורים</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        כל הבקשות שמחכות לאישור שלכם מרוכזות בעמוד <strong>אישורים</strong>, מחולקות לטאבים. אישור או דחייה כאן משפיעים מיידית על שיבוץ החייל — כדאי להבין את ההשפעה לפני שמחליטים:
+      </p>
+      <div className="space-y-2">
+        {[
+          { icon: "🔄", title: "בקשות החלפה", desc: "אישור מבצע את ההחלפה בפועל: מעביר את התורנות בין שני החיילים. דחייה משאירה את השיבוץ המקורי כפי שהיה — שני הצדדים מקבלים הודעה." },
+          { icon: "🚫", title: "בקשות פטור", desc: "אישור מסיר את החייל משיבוץ עתידי לסוגי התורנות שבפטור. פטור רשמי גם מפחית את פוטנציאל היחידה (ראו טאב האלגוריתם) — כלומר אותו מספר תורנויות מתחלק בין פחות חיילים ביחידה." },
+          { icon: "✏️", title: "עדכוני פרופיל", desc: "חייל ביקש לשנות פרט אישי (למשל טלפון או דרגה). אישור מעדכן את הרשומה מיד; דחייה משאירה את הערך הישן." },
+          { icon: "🎓", title: "הצטרפויות/קליטה", desc: "חייל חדש שממתין לשיבוץ ליחידה. אישור קובע את היחידה שלו וממנו והלאה הוא נכנס לחישובי העומס וההוגנות." },
+          { icon: "🔀", title: "העברות", desc: "העברת חייל בין תתי-יחידות. אישור מעביר את החייל וההיסטוריה שלו נשארת אך העומס העתידי נספר תחת היחידה החדשה." },
+          { icon: "📅", title: "בקשות אילוץ אישי", desc: "חייל ביקש שלא לשבץ אותו בתאריכים מסוימים. אישור מחריג אותו מהתאריכים שביקש; דחייה משאירה אותו זמין לשיבוץ כרגיל. זהו הטאב שנפתח כברירת מחדל בעמוד האישורים." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+        ⚠️ בקשות ממתינות זמן רב עלולות לחסום תכנון: תורנות שממתינה לאישור החלפה לא תיחשב &quot;סופית&quot; עד שהאישור יושלם.
+      </div>
+    </div>
+  );
+}
+
+function ImportTab() {
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">📥 ייבוא מקובץ אקסל</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        ייבוא מאפשר להזין או לעדכן חיילים, שיבוצים והגדרות ממקור אקסל חיצוני, בשלושה שלבים:
+      </p>
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 border border-gray-200 dark:border-gray-600 space-y-1">
+        <FlowStep icon="📤" text="העלאת קובץ" color="indigo" />
+        <Arrow />
+        <FlowStep icon="🔍" text="סקירת שורות: חדש / עדכון / שגיאה / מחוץ לתחום / דילוג" color="blue" />
+        <Arrow />
+        <FlowStep icon="🛠️" text="מיפוי שמות ותיקוני שדות ידניים לפי הצורך" color="amber" />
+        <Arrow />
+        <FlowStep icon="✅" text="ביצוע (commit)" color="green" />
+      </div>
+      <div className="space-y-2">
+        {[
+          { icon: "🔄", title: "מה ההבדל בין \"חדש\" ל\"עדכון\"?", desc: "שורה מזוהה לפי מספר אישי קיים במערכת: אם נמצא — זו \"עדכון\" (שדות קיימים יידרסו בערכים מהקובץ); אם לא נמצא — \"חדש\" (רשומה נוצרת מאפס)." },
+          { icon: "⚠️", title: "שורות שגיאה ומחוץ לתחום", desc: "שורה עם שגיאה לא תיובא כלל עד לתיקון. שורה \"מחוץ לתחום\" שייכת ליחידה שאין לכם הרשאה לנהל — היא מדולגת אוטומטית ולא תשפיע על היחידות שלכם." },
+          { icon: "🗂️", title: "מיפוי שמות", desc: "אם שם סוג תורנות או שם צומת בקובץ לא תואם בדיוק למה שקיים במערכת, ניתן למפות אותו ידנית לפני הביצוע — כדי למנוע יצירת כפילויות בטעות." },
+          { icon: "↩️", title: "לפני שמבצעים סופית", desc: "שום שינוי לא נכנס לתוקף עד לשלב הביצוע (commit) המפורש — סקירת השורות היא שלב תצוגה מקדימה בלבד וניתן לבטל בכל שלב לפני הביצוע." },
+        ].map(({ icon, title, desc }) => (
+          <div key={title} className="flex gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+            <span className="text-xl flex-shrink-0">{icon}</span>
+            <div>
+              <p className="font-medium text-gray-800 dark:text-gray-200">{title}</p>
+              <p className="text-gray-600 dark:text-gray-300">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function flattenNodes(nodes: NodeDTO[]): NodeDTO[] {
+  const out: NodeDTO[] = [];
+  for (const n of nodes) {
+    out.push(n);
+    if (n.children) out.push(...flattenNodes(n.children));
+  }
+  return out;
+}
+
+function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
+  const [nodes, setNodes] = useState<NodeDTO[]>([]);
+  const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+
+  useEffect(() => {
+    fetchTree().then((tree) => setNodes(flattenNodes(tree))).catch(() => setNodes([]));
+  }, []);
+
+  useEffect(() => {
+    if (!canPlan(user)) return;
+    listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, [user]);
+
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
+  const eligible = selectedNode && selectedTemplate
+    ? !selectedTemplate.eligible_node_ids || selectedTemplate.eligible_node_ids.some((id) => selectedNode.path_ids.includes(id))
+    : null;
+
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">היררכיה וכשירות</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        כל משמרת יכולה להיות מוגבלת לתת-יחידה מסוימת. חייל כשיר אם אחד הצמתים הכשירים של המשמרת נמצא במסלול שלו מהשורש (<code>path_ids</code>) — כלומר הצומת שלו עצמו, או אחד מאבות-הקדמונים שלו.
+      </p>
+
+      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 space-y-2">
+        <p className="font-medium text-gray-800 dark:text-gray-200">🔎 בדיקת כשירות חיה</p>
+        <label className="block text-xs text-gray-600 dark:text-gray-300">
+          בחר צומת
+          <select
+            aria-label="בחר צומת"
+            className="mt-1 w-full border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+            value={selectedNodeId}
+            onChange={(e) => setSelectedNodeId(e.target.value)}
+          >
+            <option value="">— בחר —</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.name}</option>
+            ))}
+          </select>
+        </label>
+        {canPlan(user) && (
+          <label className="block text-xs text-gray-600 dark:text-gray-300">
+            בחר סוג תורנות
+            <select
+              aria-label="בחר סוג תורנות"
+              className="mt-1 w-full border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+            >
+              <option value="">— בחר —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {eligible !== null && (
+          <p className={eligible ? "text-green-700 dark:text-green-300 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+            {eligible ? "✅ כשיר" : "❌ לא כשיר"}
+          </p>
+        )}
+        {!canPlan(user) && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            בדיקת כשירות מול סוגי תורנות ספציפיים זמינה למנהלי תורנויות ולמנהלי המערכת.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnabled = true, initialTab }: Props) {
   useModalBackClose(onClose);
-  const [activeTab, setActiveTab] = useState(initialTab ?? "swaps");
-  const TABS = buildTabs(gimelimEnabled);
+  const { user } = useAuth();
+  const TABS = buildTabs(user as PermissionUser | null, gimelimEnabled, hakpazaEnabled);
+  const [activeTab, setActiveTab] = useState(() =>
+    initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : (TABS[0]?.id ?? "swaps")
+  );
+
+  useEffect(() => {
+    if (!TABS.some((t) => t.id === activeTab)) {
+      setActiveTab(TABS[0]?.id ?? "swaps");
+    }
+  }, [TABS, activeTab]);
 
   return (
     <div
@@ -1055,10 +1372,14 @@ export default function HelpModal({ onClose, gimelimEnabled = false, initialTab 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {activeTab === "swaps" && <SwapsTab />}
-          {activeTab === "algorithm" && <AlgorithmTab />}
+          {activeTab === "algorithm" && <AlgorithmTab user={user as PermissionUser | null} />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
+          {activeTab === "approvals" && <ApprovalsTab />}
+          {activeTab === "hierarchy" && <HierarchyEligibilityTab user={user as PermissionUser | null} />}
+          {activeTab === "hakpaza" && <HakpazaTab />}
           {activeTab === "gimelim" && <GimelimTab />}
+          {activeTab === "import" && <ImportTab />}
         </div>
       </div>
     </div>

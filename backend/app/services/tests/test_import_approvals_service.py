@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.db.models import (
     DutyAssignment, DutyLocation, DutyShift, ExemptionRequest, ExemptionType,
     PersonalConstraint, Soldier, SoldierEnrollmentRequest, SoldierExemption,
-    SoldierFieldUpdate, SwapManagerApproval, SwapRequest,
+    SoldierFieldUpdate, SwapCandidate, SwapManagerApproval, SwapRequest,
 )
 from app.services.duty_config import create_duty_type
 import app.services.import_parsers.v1_standard  # noqa: F401
@@ -627,9 +627,16 @@ def test_swap_request_confirm_restores_status_and_approval_log(admin_session):
     updated = admin_session.get(SwapRequest, existing.id)
     assert updated.status == "applied"
     assert updated.requester_side_approved is True
-    assert updated.covering_side_approved is True
-    assert updated.covering_soldier_id == covering.id
     assert updated.decision_note == "ok"
+
+    candidate = admin_session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == existing.id,
+            SwapCandidate.soldier_id == covering.id,
+        )
+    ).scalar_one()
+    assert candidate.soldier_side_approved is True
+    assert candidate.status == "applied"
 
     approvals = admin_session.execute(
         select(SwapManagerApproval).where(SwapManagerApproval.swap_request_id == existing.id)

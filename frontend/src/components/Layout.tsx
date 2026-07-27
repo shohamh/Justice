@@ -25,6 +25,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
+  const [hakpazaEnabled, setHakpazaEnabled] = useState(true);
 
   function openHelp(tab?: string) {
     setHelpTab(tab);
@@ -38,11 +39,18 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    getPublicSettings().then((settings) => {
+      const enabled = settings["forced_callup.enabled"];
+      setHakpazaEnabled(enabled === true || enabled === undefined);
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       <BugReportTrigger />
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} initialTab={helpTab} />}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} />}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-2 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-1">
           {/* Left side (DOM order): profile icon + optional gear icon + theme toggle.

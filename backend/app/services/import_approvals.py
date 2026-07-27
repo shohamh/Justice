@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
     Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
-    SwapRequest,
+    SwapCandidate, SwapRequest,
 )
 from app.services.import_parsers.schema import ParsedImportData
 
@@ -348,7 +348,11 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
         rejected_by = soldiers_by_pn.get(rejected_by_pn) if rejected_by_pn else None
         if rejected_by_pn and rejected_by is None:
             errors.append(f"דוחה לא מזוהה '{rejected_by_pn}'")
-        if status not in ("open", "pending_approval", "applied", "rejected", "cancelled"):
+        # "pending_approval" was removed as a SwapRequest.status value by the
+        # unified-swap-requests schema change — that in-progress state now
+        # lives on SwapCandidate.status instead (see resolved_candidate_status
+        # below), so it's no longer a valid value on this sheet.
+        if status not in ("open", "applied", "rejected", "cancelled"):
             errors.append(f"סטטוס לא תקין '{status}'")
 
         approval_log_parsed = _parse_approval_log(approval_log_raw)
@@ -360,7 +364,16 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
                 continue
             resolved_log.append({**entry, "resolved_person_id": str(person.id)})
 
+        # target_personal_number (still-unanswered invite) and
+        # covering_personal_number (accepted/applied/self-claimed) are two
+        # mutually-exclusive views of the same underlying SwapCandidate row
+        # — see approvals_export._write_swap_requests. Whichever is present
+        # identifies the one candidate this row's approval state applies to.
+        candidate_soldier = covering or target
+        candidate_source = "invited" if target_pn else ("marketplace" if covering_pn else None)
+
         existing = None
+        existing_candidate = None
         if not row.id:
             errors.append("ייבוא בקשות החלפה נתמך רק לעדכון — נדרש מזהה (id)")
         else:
@@ -368,6 +381,13 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
                 existing = session.get(SwapRequest, uuid.UUID(row.id))
                 if existing is None:
                     errors.append(f"בקשת החלפה לא נמצאה עבור מזהה '{row.id}'")
+                elif candidate_soldier is not None:
+                    existing_candidate = session.execute(
+                        select(SwapCandidate).where(
+                            SwapCandidate.swap_request_id == existing.id,
+                            SwapCandidate.soldier_id == candidate_soldier.id,
+                        )
+                    ).scalar_one_or_none()
             except ValueError:
                 errors.append(f"מזהה לא תקין '{row.id}'")
 
@@ -376,7 +396,8 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
         # business key like duty_type_name+duty_location_name+date exists for an
         # arbitrary historical assignment), so creating a brand-new swap request via
         # spreadsheet is out of scope — only restoring/updating an existing one's
-        # decided/rejected state and approval_log is supported.
+        # decided/rejected state, its (at most one) candidate per row, and
+        # approval_log is supported.
         action = "error" if errors else "update"
         out.append({
             "row": row.source_row, "action": action, "errors": errors,
@@ -387,6 +408,9 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
             "resolved_target_soldier_id": str(target.id) if target else None,
             "covering_personal_number": covering_pn,
             "resolved_covering_soldier_id": str(covering.id) if covering else None,
+            "resolved_candidate_soldier_id": str(candidate_soldier.id) if candidate_soldier else None,
+            "candidate_source": candidate_source,
+            "existing_candidate_id": str(existing_candidate.id) if existing_candidate is not None else None,
             "duty_date": duty_date, "status": status, "reason": reason,
             "requester_side_approved": requester_side_approved,
             "covering_side_approved": covering_side_approved,

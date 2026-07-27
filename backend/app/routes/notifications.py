@@ -484,7 +484,13 @@ def _dispatch_action(session: Session, *, token, actor_id: uuid.UUID) -> dict:
         return {"action": action, "status": "ok"}
     elif action == "swap:reject":
         from app.services import swaps as swap_svc
-        swap_svc.reject_request(session, request_id=resource_id, decision_note="", actor_id=actor_id)
+        req = session.get(SwapRequest, resource_id)
+        if req is None:
+            raise HTTPException(status_code=404, detail="swap_not_found")
+        if actor_id == req.requesting_soldier_id:
+            swap_svc.reject_request(session, request_id=resource_id, decision_note="", actor_id=actor_id)
+        else:
+            swap_svc.decline_candidate(session, request_id=resource_id, soldier_id=actor_id, actor_id=actor_id)
         return {"action": action, "status": "ok"}
     else:
         raise HTTPException(status_code=400, detail=f"unknown_action: {action}")

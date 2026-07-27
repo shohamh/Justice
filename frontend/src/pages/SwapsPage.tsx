@@ -7,14 +7,14 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
-import DirectCommanderApproval, { groupByKind, DirectCommanderApprovalRow } from "../components/DirectCommanderApproval";
+import DirectCommanderApproval, { groupByKind } from "../components/DirectCommanderApproval";
+import AskSwapModal from "../components/AskSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
-  SwapRequest, cancelSwap, createSwap, listBoard,
-  listMySwaps, listIncomingSwaps, getSwapConfig, CreateSwapInput, BoardFilters,
+  SwapRequest, cancelSwap, listBoard,
+  listMySwaps, listIncomingSwaps, getSwapConfig, BoardFilters,
   CoverEligibilityResult, checkCoverEligibility, soldierApproveSwap, soldierRejectSwap,
-  listEligibleTargets, createBulkSwap,
 } from "../api/swaps";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
@@ -31,7 +31,6 @@ interface HierarchyNode {
 
 const STATUS_COLORS: Record<string, string> = {
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
-  pending_approval: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
   open: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
   rejected: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
   cancelled: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
@@ -40,31 +39,11 @@ const STATUS_COLORS: Record<string, string> = {
 function statusKey(status: string) {
   const map: Record<string, string> = {
     open: "swaps.status_open",
-    pending_approval: "swaps.status_pending_approval",
     applied: "swaps.status_applied",
     rejected: "swaps.status_rejected",
     cancelled: "swaps.status_cancelled",
   };
   return map[status] ?? status;
-}
-
-function extractErrorMessage(err: unknown, t: (key: string, options?: Record<string, unknown>) => string, fallback: string): string {
-  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === "string" && detail) {
-    if (detail.startsWith("cover_not_eligible:")) {
-      return detail.slice("cover_not_eligible:".length) || fallback;
-    }
-  }
-  if (Array.isArray(detail)) {
-    // Pydantic v2 validation errors — list of {loc, msg, type}. The msg
-    // itself is English framework text, so we don't surface it — just the field.
-    const fields = (detail as { loc?: string[] }[])
-      .map((d) => d.loc?.slice(1).join(".") ?? "?")
-      .join(", ");
-    return fields ? `נתונים לא תקינים בשדות: ${fields}` : fallback;
-  }
-  // Pydantic validation msg is English framework text — never surface it raw.
-  return translateApiError(err, t, fallback);
 }
 
 function ApprovalDot({ value }: { value: boolean | null }) {
@@ -81,65 +60,27 @@ function ApprovalBadge({ value, t }: { value: boolean | null; t: (k: string) => 
   return <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300">{t("swaps.approval_pending")}…</span>;
 }
 
-function PendingSide({
-  label, name, commanderName, approved, showCommander, managerApprovals, showDutyManager, t,
-}: {
-  label: string; name: string | null | undefined; commanderName: string | null | undefined;
-  approved: boolean | null; showCommander: boolean;
-  managerApprovals: (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[];
-  showDutyManager: boolean; t: (k: string) => string;
-}) {
-  const dutyManagerApprovals = groupByKind(managerApprovals).duty_manager;
-  return (
-    <div className="flex-1 border rounded p-3 space-y-1.5 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 min-w-0">
-      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="text-sm font-medium dark:text-gray-100 truncate">{name ?? "—"}</p>
-      {showCommander && commanderName && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {t("swaps.commander_label")}: {commanderName}
-        </p>
-      )}
-      {showDutyManager && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={dutyManagerApprovals} />
-        </p>
-      )}
-      <ApprovalBadge value={approved} t={t} />
-    </div>
-  );
-}
-
 function PendingApprovalCard({
   swap, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
 }: {
   swap: SwapRequest; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
   onShiftClick?: () => void; t: (k: string) => string;
 }) {
+  const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
   return (
     <li className="border rounded-lg p-4 space-y-3 dark:border-gray-600">
       <SwapDutyHeader swap={swap} onShiftClick={onShiftClick} />
-      <div className="flex gap-3 items-stretch">
-        <PendingSide
-          label={t("swaps.side_requester")}
-          name={swap.requesting_soldier_name}
-          commanderName={swap.requesting_commander_name}
-          approved={swap.requester_side_approved}
-          showCommander={requireManagerApproval}
-          managerApprovals={swap.requester_manager_approvals}
-          showDutyManager={requireManagerApproval && requireDutyManagerApproval}
-          t={t}
-        />
-        <div className="flex items-center text-gray-400 text-lg select-none">⇄</div>
-        <PendingSide
-          label={t("swaps.side_covering")}
-          name={swap.covering_soldier_name}
-          commanderName={swap.covering_commander_name}
-          approved={swap.covering_side_approved}
-          showCommander={requireManagerApproval}
-          managerApprovals={swap.covering_manager_approvals}
-          showDutyManager={requireManagerApproval && requireDutyManagerApproval}
-          t={t}
-        />
+      <div className="flex flex-wrap gap-3">
+        <div className="flex-1 min-w-[140px] border rounded p-3 space-y-1.5 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{t("swaps.side_requester")}</p>
+          <p className="text-sm font-medium dark:text-gray-100 truncate">{swap.requesting_soldier_name ?? "—"}</p>
+          <ApprovalBadge value={swap.requester_side_approved} t={t} />
+        </div>
+        {liveCandidates.map((c) => (
+          <div key={c.id} className="flex-1 min-w-[140px]">
+            <CandidateRow candidate={c} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} t={t} />
+          </div>
+        ))}
       </div>
     </li>
   );
@@ -181,154 +122,51 @@ function ApprovalStatus({ swap, requireManagerApproval, requireDutyManagerApprov
   swap: SwapRequest; requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
 }) {
   const { t } = useTranslation();
-  if (!requireManagerApproval || swap.status !== "pending_approval") return null;
+  if (!requireManagerApproval) return null;
+  const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
+  if (liveCandidates.length === 0) return null;
   const reqGroups = groupByKind(swap.requester_manager_approvals);
-  const covGroups = groupByKind(swap.covering_manager_approvals);
   return (
     <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1 mt-1">
       <div className="flex flex-wrap gap-3">
         <span>{t("swaps.requester_approval")}: <ApprovalDot value={swap.requester_side_approved} /></span>
-        <span>{t("swaps.covering_approval")}: <ApprovalDot value={swap.covering_side_approved} /></span>
+        <span>{t("swaps.n_candidates_pending", { n: liveCandidates.length })}</span>
       </div>
       <div className="flex flex-col gap-1">
         <span>{t("swaps.requester_managers")} ({t("swaps.approver_kind_commander")}): <DirectCommanderApproval approvals={reqGroups.commander} /></span>
         {requireDutyManagerApproval && (
           <span>{t("swaps.requester_managers")} ({t("swaps.approver_kind_duty_manager")}): <DirectCommanderApproval approvals={reqGroups.duty_manager} /></span>
         )}
-        <span>{t("swaps.covering_managers")} ({t("swaps.approver_kind_commander")}): <DirectCommanderApproval approvals={covGroups.commander} /></span>
-        {requireDutyManagerApproval && (
-          <span>{t("swaps.covering_managers")} ({t("swaps.approver_kind_duty_manager")}): <DirectCommanderApproval approvals={covGroups.duty_manager} /></span>
-        )}
       </div>
     </div>
   );
 }
 
-function AskSwapModal({
-  duty, dutyTypeName, onClose, onCreated,
-}: {
-  duty: EffectiveDuty; dutyTypeName: string; onClose: () => void; onCreated: () => void;
+function CandidateRow({ candidate, requireManagerApproval, requireDutyManagerApproval, t }: {
+  candidate: SwapRequest["candidates"][number];
+  requireManagerApproval: boolean; requireDutyManagerApproval: boolean;
+  t: (k: string) => string;
 }) {
-  const { t } = useTranslation();
-  const { enrollmentPending } = useAuth();
-  const [mode, setMode] = useState<"open" | "soldier">("open");
-  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const eligibleQuery = useQuery({
-    queryKey: ["swaps", "eligible-targets", duty.assignment_id],
-    queryFn: () => listEligibleTargets(duty.assignment_id),
-    enabled: mode === "soldier",
-  });
-  const eligibleTargets = eligibleQuery.data ?? [];
-  const configQuery = useQuery({ queryKey: queryKeys.swapConfig(), queryFn: getSwapConfig });
-  const maxTargets = configQuery.data?.max_specific_targets ?? 5;
-
-  function toggleTarget(id: string) {
-    setSelectedTargets((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < maxTargets) next.add(id);
-      return next;
-    });
-  }
-
-  const soldierModeNeedsSelection = mode === "soldier" && selectedTargets.size === 0;
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (soldierModeNeedsSelection) {
-      setError(t("swaps.select_at_least_one"));
-      return;
-    }
-    try {
-      if (mode === "soldier" && selectedTargets.size > 0) {
-        await createBulkSwap({
-          duty_assignment_id: duty.assignment_id,
-          target_soldier_ids: Array.from(selectedTargets),
-          reason: reason || null,
-        });
-      } else {
-        const input: CreateSwapInput = {
-          duty_assignment_id: duty.assignment_id,
-          reason: reason || null,
-          target_soldier_id: null,
-        };
-        await createSwap(input);
-      }
-      onCreated();
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err, t, "שגיאה"));
-    }
-  }
-
+  const groups = groupByKind(candidate.manager_approvals);
+  const sourceLabel = candidate.source === "marketplace" ? t("swaps.candidate_source_marketplace") : t("swaps.candidate_source_invited");
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4" dir="rtl" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold dark:text-gray-100">{t("swaps.ask_swap")}: {dutyTypeName}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3" dir="ltr">
-          {(() => {
-            const last = lastDutyDay(duty.end_date);
-            return duty.start_date === last ? duty.start_date : `${duty.start_date} → ${last}`;
-          })()}
-        </p>
-        {enrollmentPending && (
-          <div className="rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 px-3 py-2 text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-            בקשת הקליטה שלך למסגרת עדיין ממתינה לאישור — לא ניתן להגיש בקשות חדשות עד לאישור.
-          </div>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
-              <input type="radio" name="mode" checked={mode === "open"} onChange={() => setMode("open")} />
-              {t("swaps.post_open")}
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer dark:text-gray-300">
-              <input type="radio" name="mode" checked={mode === "soldier"} onChange={() => setMode("soldier")} />
-              {t("swaps.send_to_soldier")}
-            </label>
-          </div>
-          {mode === "soldier" && (
-            <div className="space-y-1">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t("swaps.select_up_to", { n: maxTargets })} ({selectedTargets.size}/{maxTargets})
-              </p>
-              <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
-                {eligibleTargets.length === 0 ? (
-                  <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
-                ) : (
-                  <ul>
-                    {eligibleTargets.map((s) => (
-                      <li key={s.soldier_id} className="flex items-center gap-2 px-2 py-1 border-b last:border-b-0 dark:border-gray-700 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedTargets.has(s.soldier_id)}
-                          disabled={!selectedTargets.has(s.soldier_id) && selectedTargets.size >= maxTargets}
-                          onChange={() => toggleTarget(s.soldier_id)}
-                        />
-                        <span>{s.full_name}{s.node_name ? ` — ${s.node_name}` : ""} ({s.hierarchy_distance})</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          )}
-          <textarea placeholder={t("swaps.personal_message")} value={reason}
-            onChange={e => setReason(e.target.value)} rows={3}
-            className="w-full border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
-          {error && <p className="text-red-500 text-xs">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-3 py-1 text-sm border rounded dark:border-gray-600 dark:text-gray-300">{t("swaps.cancel")}</button>
-            <button type="submit" disabled={enrollmentPending || soldierModeNeedsSelection} className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{t("swaps.save")}</button>
-          </div>
-        </form>
+    <div className="border rounded p-2 text-xs space-y-1 dark:border-gray-600">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium dark:text-gray-100">{candidate.soldier_name ?? candidate.soldier_id.slice(0, 8)}</span>
+        <span className="text-gray-400">{sourceLabel}</span>
       </div>
+      <ApprovalBadge value={candidate.soldier_side_approved} t={t} />
+      {requireManagerApproval && candidate.status === "accepted" && (
+        <div className="text-gray-500 dark:text-gray-400 space-y-0.5">
+          <div>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={groups.commander} /></div>
+          {requireDutyManagerApproval && (
+            <div>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={groups.duty_manager} /></div>
+          )}
+        </div>
+      )}
+      {candidate.status === "declined" && <p className="text-red-500">{t("swaps.candidate_declined")}</p>}
+      {candidate.status === "cancelled" && <p className="text-gray-400">{t("swaps.candidate_cancelled")}</p>}
+      {candidate.status === "applied" && <p className="text-green-600">{t("swaps.candidate_applied")}</p>}
     </div>
   );
 }
@@ -479,7 +317,7 @@ export default function SwapsPage() {
   }
 
   const pendingApproval = [...mySwaps, ...incomingSwaps]
-    .filter((s) => s.status === "pending_approval")
+    .filter((s) => s.status === "open" && s.candidates.some((c) => c.status === "accepted"))
     .filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i);
 
   const tabs = [t("swaps.tab_mine"), t("swaps.tab_board"), t("swaps.tab_incoming"), t("swaps.tab_pending")];
@@ -492,8 +330,11 @@ export default function SwapsPage() {
           {t(statusKey(swap.status))}
         </span>
       </div>
-      <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} />
-      {swap.status === "pending_approval" && swap.requester_side_approved !== true && (
+      {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
+      {swap.decision_note && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
+      )}
+      {swap.status === "open" && swap.requester_side_approved !== true && (
         <div className="flex gap-2 items-center">
           <button type="button" onClick={() => handleSoldierApprove(swap.id)}
             className="bg-green-600 text-white px-2 py-1 rounded text-xs">
@@ -511,14 +352,17 @@ export default function SwapsPage() {
           </button>
         </div>
       )}
-      {swap.covering_soldier_id && swap.status === "pending_approval" && (
-        <p className="text-xs text-indigo-600 dark:text-indigo-300">{t("swaps.has_cover_candidate")}</p>
+      {swap.candidates.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("swaps.candidates_title")} ({swap.candidates.length})</p>
+          <div className="space-y-1">
+            {swap.candidates.map((c) => (
+              <CandidateRow key={c.id} candidate={c} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} t={t} />
+            ))}
+          </div>
+        </div>
       )}
-      {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
-      {swap.decision_note && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
-      )}
-      {(swap.status === "open" || swap.status === "pending_approval") && (
+      {swap.status === "open" && (
         <button type="button" onClick={() => handleCancel(swap.id)} className="text-red-600 text-xs hover:underline">
           {t("swaps.cancel")}
         </button>
@@ -564,6 +408,7 @@ export default function SwapsPage() {
   const renderIncomingCard = (swap: SwapRequest) => {
     const elig = coverEligibility[swap.duty_assignment_id];
     const coverDisabled = elig != null && !elig.eligible;
+    const myCandidate = swap.candidates.find((c) => c.soldier_id === user?.id);
     return (
       <li key={swap.id}
         className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
@@ -574,7 +419,7 @@ export default function SwapsPage() {
           </span>
         </div>
         <ApprovalStatus swap={swap} requireManagerApproval={requireManagerApproval} requireDutyManagerApproval={requireDutyManagerApproval} />
-        {swap.status === "pending_approval" && swap.covering_side_approved !== true && (
+        {myCandidate && myCandidate.status === "pending" && (
           <div className="flex gap-2 items-center">
             <button type="button" onClick={() => handleSoldierApprove(swap.id)}
               className="bg-green-600 text-white px-2 py-1 rounded text-xs">
