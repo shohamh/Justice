@@ -669,13 +669,16 @@ def mark_read(session: Session, *, notification_id: uuid.UUID, soldier_id: uuid.
     n = session.execute(select(Notification).where(Notification.id == notification_id, Notification.soldier_id == soldier_id)).scalar_one_or_none()
     if n:
         n.is_read = True
+        n.read_at = datetime.now(timezone.utc)
     return n
 
 
 def mark_all_read(session: Session, *, soldier_id: uuid.UUID) -> int:
     notifs = list(session.execute(select(Notification).where(Notification.soldier_id == soldier_id, Notification.is_read == False)).scalars().all())  # noqa: E712
+    now = datetime.now(timezone.utc)
     for n in notifs:
         n.is_read = True
+        n.read_at = now
     return len(notifs)
 
 
