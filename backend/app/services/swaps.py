@@ -342,6 +342,8 @@ def approve_soldier_side(
             entity_type="swap_request", entity_id=req.id, after={"soldier_id": str(soldier_id), "side": "requester"},
         )
         session.flush()
+        _try_finalize(session, req, actor_id or soldier_id)
+        session.flush()
         return req
     candidate = session.execute(
         select(SwapCandidate).where(

@@ -291,6 +291,42 @@ def test_declined_candidate_does_not_affect_other_candidates(admin_session):
     assert req.status == "open"
 
 
+def test_finalize_triggers_when_requester_approves_last(admin_session):
+    """The requester's own consent can be the LAST missing piece for an
+    already-fully-approved candidate (e.g. they invited someone, that
+    candidate accepted, and only then does the requester confirm) —
+    approve_soldier_side's requester branch must call _try_finalize too,
+    not just the candidate branch. Regression test for a bug found during
+    manual verification: the requester branch set requester_side_approved
+    but never triggered the finalize race, leaving the request stuck open
+    forever even though every other condition was already satisfied."""
+    node = create_node(admin_session, level="unit", name="swap-svc-unit-requester-last")
+    requester = create_soldier(admin_session, personal_number="7710030", hierarchy_node_id=node.id)
+    a = create_soldier(admin_session, personal_number="7710031", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[a.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    # Candidate approves first — requester_side_approved is still None, so
+    # this alone must NOT finalize yet.
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.status == "open"
+
+    # Requester approves last — this is the final missing piece; finalize
+    # must trigger from THIS call.
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id, actor_id=requester.id)
+    admin_session.flush()
+    admin_session.refresh(req)
+    assert req.status == "applied"
+    cand = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id, soldier_id=a.id).one()
+    assert cand.status == "applied"
+
+
 def test_finalize_immediate_when_manager_approval_not_required(admin_session):
     """When swaps.require_manager_approval is off, both soldier-side
     confirmations alone finalize the request — no commander/duty-manager
