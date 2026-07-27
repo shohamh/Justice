@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime as _dt, timedelta as _td
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from typing import Annotated
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from slowapi.util import get_remote_address
 from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ from app.services.invite_codes import InviteCodeError, validate_code
 from app.services.registration import RegistrationError
 from app.services.soldiers import PasswordPolicyError, bump_token_version, validate_password
 from app.settings import get_settings
+from app.validation import is_valid_israeli_phone
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -66,9 +67,18 @@ class RegisterRequest(BaseModel):
     discharge_date: date
     last_mitvahim_date: date
     last_alal_date: date | None = None
+    has_military_driving_license: bool = False
+    military_driving_license_expiry: date | None = None
     requested_node_id: uuid.UUID
     exemption_requests: list[dict] = []
     personal_constraints: list[dict] = []
+
+    @field_validator("phone")
+    @classmethod
+    def _validate_phone(cls, v: str) -> str:
+        if not is_valid_israeli_phone(v):
+            raise ValueError("invalid_israeli_phone")
+        return v
 
 
 class ForgotPasswordCheckRequest(BaseModel):
@@ -328,6 +338,8 @@ def register(
             discharge_date=body.discharge_date,
             last_mitvahim_date=body.last_mitvahim_date,
             last_alal_date=body.last_alal_date,
+            has_military_driving_license=body.has_military_driving_license,
+            military_driving_license_expiry=body.military_driving_license_expiry,
             requested_node_id=body.requested_node_id,
             exemption_requests=body.exemption_requests,
             personal_constraints=body.personal_constraints,

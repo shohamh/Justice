@@ -33,6 +33,7 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
   const { user } = useAuth();
   const settings = usePublicSettings();
   const gimelimEnabled = settings?.["gimalim.enabled"] !== false;
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [backendResults, setBackendResults] = useState<SearchResponseDTO>({ soldiers: [], duties: [], units: [] });
@@ -45,8 +46,8 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
   const accessiblePages = useMemo(() => getPageEntries().filter((e) => e.canAccess(user)), [user]);
   const accessibleActions = useMemo(() => getQuickActionEntries().filter((e) => e.canAccess(user)), [user]);
   const accessibleHelp = useMemo(
-    () => getHelpTopicEntries(gimelimEnabled).filter((e) => e.canAccess(user)),
-    [user, gimelimEnabled],
+    () => getHelpTopicEntries(gimelimEnabled, hakpazaEnabled).filter((e) => e.canAccess(user)),
+    [user, gimelimEnabled, hakpazaEnabled],
   );
   const accessibleTabs = useMemo(() => getTabEntries().filter((e) => e.canAccess(user)), [user]);
 

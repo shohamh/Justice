@@ -7,6 +7,7 @@ import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { formatDate } from "../utils/formatDate";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
+import { isValidIsraeliPhone } from "../utils/phoneValidation";
 import ExemptionsPanel from "../components/ExemptionsPanel";
 import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
@@ -305,10 +306,13 @@ export default function ProfilePage() {
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.phone")}</label>
             <input type="tel" value={phoneReq} onChange={e => setPhoneReq(e.target.value)} className="border rounded p-1 text-sm flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="05X-XXXXXXX" dir="ltr" />
-            <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" onClick={() => requestUpdate("phone", phoneReq)} disabled={!phoneReq || !isValidIsraeliPhone(phoneReq)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 disabled:opacity-50">
               {t("soldier_profile.submit_update")}
             </button>
           </div>
+          {phoneReq && !isValidIsraeliPhone(phoneReq) && (
+            <p className="text-red-600 text-xs">מספר טלפון לא תקין</p>
+          )}
           <div className="flex gap-2 items-center">
             <label className="w-40">{t("soldier_profile.last_mitvahim_date")}</label>
             <DateInput value={mitvahimReq} onChange={setMitvahimReq} className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />

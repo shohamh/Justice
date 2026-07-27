@@ -45,12 +45,12 @@ export default function ChangePasswordPage() {
         )}
         <label className="block">
           <span className="text-sm font-medium">{t("change_password.current")}</span>
-          <input type="password" required className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={current}
+          <input type="password" required dir="ltr" className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={current}
                  onChange={(e) => setCurrent(e.target.value)} data-testid="current-password" />
         </label>
         <label className="block">
           <span className="text-sm font-medium">{t("change_password.new")}</span>
-          <input type="password" required className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={next}
+          <input type="password" required dir="ltr" className="mt-1 block w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={next}
                  onChange={(e) => setNext(e.target.value)} data-testid="new-password" />
           <PasswordStrengthHint password={next} />
         </label>

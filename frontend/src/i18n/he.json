@@ -57,6 +57,7 @@
     "shift_templates": "תבניות משמרת",
     "swaps": "החלפות",
     "command_dashboard": "דשבורד מפקד",
+    "announcements": "הכרזות",
     "manage": "ניהול",
     "section_personal": "אישי",
     "section_team": "צוות",
@@ -1074,6 +1075,30 @@
     "type_exemption_revoked": "פטור בוטל",
     "type_transfer_request_pending": "בקשת העברה ממתינה"
   },
+  "announcements": {
+    "title": "הכרזות",
+    "compose_title": "הכרזה חדשה",
+    "field_title": "כותרת",
+    "field_body": "תוכן (אופציונלי)",
+    "target_label": "נמענים",
+    "target_everyone": "כלל הארגון",
+    "target_my_scope": "כל מי שתחת פיקודי",
+    "target_narrow": "בחר יחידה ספציפית",
+    "add_unit": "הוסף יחידה",
+    "remove_unit": "הסר",
+    "submit": "שלח הכרזה",
+    "submitting": "שולח...",
+    "sent_success": "ההכרזה נשלחה בהצלחה",
+    "send_error": "שגיאה בשליחת ההכרזה",
+    "history_title": "היסטוריית הכרזות",
+    "no_history": "עדיין לא נשלחו הכרזות",
+    "recipients": "נמענים",
+    "read_count": "{{read}} מתוך {{total}} קראו",
+    "view_recipients": "הצג נמענים",
+    "hide_recipients": "הסתר נמענים",
+    "recipient_read": "נקרא",
+    "recipient_unread": "לא נקרא"
+  },
   "register": {
     "title": "הרשמה",
     "signup_button": "הרשמה לחייל חדש",
@@ -1251,7 +1276,11 @@
       "algorithm": "⚙️ האלגוריתם",
       "fairness": "⚖️ הוגנות ושקיפות",
       "deep": "🔬 מאחורי הקלעים",
-      "gimelim": "🏥 גימלים"
+      "approvals": "✅ אישורים",
+      "hierarchy": "🌳 היררכיה וכשירות",
+      "hakpaza": "📣 הקפצה פיקודית",
+      "gimelim": "🏥 גימלים",
+      "import": "📥 ייבוא"
     },
     "tabs": {
       "transparency_sub_units": "תתי יחידות"

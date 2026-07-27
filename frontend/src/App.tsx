@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage";
 import MyDutiesPage from "./pages/MyDutiesPage";
 import MyRequestsPage from "./pages/MyRequestsPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
 import ProfilePage from "./pages/ProfilePage";
 import TeamHierarchyPage from "./pages/TeamHierarchyPage";
 import SwapsPage from "./pages/SwapsPage";
@@ -86,6 +87,7 @@ export default function App() {
                 <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
                 <Route path="/command-dashboard" element={<AppGate><CommandDashboardPage /></AppGate>} />
                 <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
+                <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
                 {/* Planning pages */}
                 <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
                 <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />

@@ -14,6 +14,7 @@ from app.db.models import (
     TelegramOutbox,
 )
 from app.services import notifications as svc
+from app.services.settings_loader import set_setting
 from tests.helpers import create_node, create_soldier
 
 
@@ -29,8 +30,16 @@ def _link_soldier(session: Session, soldier_id: uuid.UUID, chat_id: int) -> Tele
     return link
 
 
+def _enable_telegram(session: Session) -> None:
+    """telegram.enabled now defaults to off, so any test exercising push
+    delivery must opt in explicitly."""
+    set_setting(session, key="telegram.enabled", value=True, actor_id=None)
+    session.flush()
+
+
 def test_enqueue_push_creates_outbox_with_keyboard(admin_session: Session):
     """Push notification for actionable type creates outbox row with reply_markup_json."""
+    _enable_telegram(admin_session)
     s = create_soldier(admin_session, personal_number="TN001")
     _link_soldier(admin_session, s.id, 1001)
     resource_id = uuid.uuid4()
@@ -62,6 +71,7 @@ def test_enqueue_push_creates_outbox_with_keyboard(admin_session: Session):
 
 def test_enqueue_push_informational_type_has_no_approve_row(admin_session: Session):
     """Informational notification has no approve/reject row, just silence + link."""
+    _enable_telegram(admin_session)
     s = create_soldier(admin_session, personal_number="TN002")
     _link_soldier(admin_session, s.id, 1002)
 
@@ -85,6 +95,7 @@ def test_enqueue_push_informational_type_has_no_approve_row(admin_session: Sessi
 
 def test_gender_aware_open_label_female(admin_session: Session):
     """Female soldier gets 'פתחי במערכת' label."""
+    _enable_telegram(admin_session)
     s = create_soldier(admin_session, personal_number="TN003")
     s.gender = "female"
     admin_session.flush()
@@ -137,6 +148,7 @@ def test_cascade_depth_filtering_excludes_deep_soldiers(admin_session: Session):
 
 def test_cascade_depth_filtering_includes_within_depth(admin_session: Session):
     """Commander with max_depth=2 (default) receives cascade for grandchild soldier."""
+    _enable_telegram(admin_session)
     root = create_node(admin_session, level="division", name="DIV-TN2")
     mid = create_node(admin_session, level="unit", name="UNIT-TN2", parent=root)
     leaf = create_node(admin_session, level="department", name="DEPT-TN2", parent=mid)
@@ -195,6 +207,7 @@ def test_constraint_submit_notifies_commanders(admin_session: Session):
     from datetime import date, timedelta
     from sqlalchemy import select
 
+    _enable_telegram(admin_session)
     root = create_node(admin_session, level="division", name="DIV-CS")
     soldier = create_soldier(admin_session, personal_number="CS-S1", hierarchy_node_id=root.id)
     commander = create_soldier(admin_session, personal_number="CS-CMD1", role="commander")

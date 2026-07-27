@@ -1,6 +1,12 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { render, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { useModalBackClose } from "./useModalBackClose";
+
+function ModalUnderTest({ onClose }: { onClose: () => void }) {
+  useModalBackClose(onClose);
+  return null;
+}
 
 // jsdom's history.back() applies the navigation and fires popstate
 // asynchronously, same as a real browser — tests that trigger it must wait
@@ -106,6 +112,38 @@ describe("useModalBackClose", () => {
     // instead, then assert the navigation is still intact.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(location.pathname).toBe("/somewhere-else");
+  });
+
+  test("does not close the modal immediately due to React StrictMode's dev-only double-invoke of effects", async () => {
+    // StrictMode double-invokes effects on mount (mount → cleanup → mount, all
+    // synchronously) purely to surface non-idempotent effects. This hook's
+    // cleanup calls history.back() when it looks like a real close — under
+    // the double-invoke, the *first* (fake) cleanup used to schedule that
+    // call synchronously, and by the time it resolved asynchronously the
+    // *second* (real) mount's popstate listener was already attached, so it
+    // misread the stale back-navigation as a real back-button press and
+    // closed the modal that had just opened.
+    const onClose = vi.fn();
+    const pushSpy = vi.spyOn(window.history, "pushState");
+
+    render(
+      <StrictMode>
+        <ModalUnderTest onClose={onClose} />
+      </StrictMode>,
+    );
+
+    // The double-invoke must collapse to a single logical history entry, not
+    // stack two — otherwise a single real back-press would only pop one and
+    // leave the modal open with a dangling extra entry underneath it.
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+    expect(isOnModalEntry()).toBe(true);
+
+    // Give the deferred (or, if unfixed, the stale) history.back() every
+    // chance to resolve and fire its popstate.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(isOnModalEntry()).toBe(true);
   });
 
   test("enabled=false keeps the hook inert, for always-mounted components gated on their own `open` prop", () => {

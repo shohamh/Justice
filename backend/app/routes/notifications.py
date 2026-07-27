@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, _node_in_scope, authorize, is_commander, is_duty_manager, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier, SwapRequest
+from app.db.models import Announcement, CommanderNotificationScope, HierarchyNode, Notification, NotificationPreference, NotificationType, Soldier, SwapRequest
 from app.db.session import get_session
 from app.services import notifications as svc
 from app.settings import get_settings
@@ -77,6 +77,46 @@ class AnnounceBody(BaseModel):
     title: str
     body: str | None = None
     hierarchy_node_ids: list[uuid.UUID] | None = None
+
+
+class AnnounceOut(BaseModel):
+    id: uuid.UUID
+    sent: int
+
+
+class ScopeNodeOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    level: str
+    parent_id: uuid.UUID | None
+
+
+class AnnouncementOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    body: str | None
+    type: str
+    hierarchy_node_ids: list[uuid.UUID] | None
+    recipient_count: int
+    read_count: int
+    created_at: datetime
+
+
+class PaginatedAnnouncements(BaseModel):
+    items: list[AnnouncementOut]
+    total: int
+
+
+class AnnouncementRecipientOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str
+    is_read: bool
+    read_at: datetime | None
+
+
+class PaginatedAnnouncementRecipients(BaseModel):
+    items: list[AnnouncementRecipientOut]
+    total: int
 
 
 class PaginatedNotifications(BaseModel):
@@ -264,12 +304,12 @@ def remove_scope(
     session.commit()
 
 
-@router.post("/notifications/announce", status_code=201)
+@router.post("/notifications/announce", status_code=201, response_model=AnnounceOut)
 def announce(
     body: AnnounceBody,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> dict:
+) -> AnnounceOut:
     if user.role != "admin":
         if not body.hierarchy_node_ids:
             raise HTTPException(
@@ -285,11 +325,59 @@ def announce(
                     status_code=status.HTTP_403_FORBIDDEN, detail="hierarchy_node_out_of_scope"
                 )
 
-    count = svc.broadcast_announcement(session, title=body.title, body=body.body,
-                                        hierarchy_node_ids=body.hierarchy_node_ids,
-                                        actor_id=user.id)
+    announcement = svc.broadcast_announcement(session, title=body.title, body=body.body,
+                                              hierarchy_node_ids=body.hierarchy_node_ids,
+                                              actor_id=user.id)
     session.commit()
-    return {"sent": count}
+    return AnnounceOut(id=announcement.id, sent=announcement.recipient_count)
+
+
+@router.get("/notifications/announce/scope", response_model=list[ScopeNodeOut])
+def announce_scope(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[ScopeNodeOut]:
+    nodes = svc.scope_nodes_for_announcement(session, user)
+    return [ScopeNodeOut(id=n.id, name=n.name, level=n.level, parent_id=n.parent_id) for n in nodes]
+
+
+@router.get("/notifications/announcements", response_model=PaginatedAnnouncements)
+def list_my_announcements(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+    offset: int = 0,
+    limit: int = 20,
+) -> PaginatedAnnouncements:
+    rows, total = svc.list_sent_announcements(session, sender_id=user.id, offset=offset, limit=limit)
+    items = [
+        AnnouncementOut(
+            id=a.id, title=a.title, body=a.body, type=a.type.value,
+            hierarchy_node_ids=a.hierarchy_node_ids, recipient_count=a.recipient_count,
+            read_count=read_count, created_at=a.created_at,
+        )
+        for a, read_count in rows
+    ]
+    return PaginatedAnnouncements(items=items, total=total)
+
+
+@router.get("/notifications/announcements/{announcement_id}/recipients", response_model=PaginatedAnnouncementRecipients)
+def announcement_recipients(
+    announcement_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+    offset: int = 0,
+    limit: int = 20,
+) -> PaginatedAnnouncementRecipients:
+    result = svc.get_announcement_recipients(session, announcement_id=announcement_id, sender_id=user.id,
+                                              offset=offset, limit=limit)
+    if result is None:
+        raise _err("not_found", 404)
+    rows, total = result
+    items = [
+        AnnouncementRecipientOut(soldier_id=s.id, full_name=s.full_name, is_read=is_read, read_at=read_at)
+        for s, is_read, read_at in rows
+    ]
+    return PaginatedAnnouncementRecipients(items=items, total=total)
 
 
 @router.post("/telegram/link", response_model=GenerateCodeOut)
