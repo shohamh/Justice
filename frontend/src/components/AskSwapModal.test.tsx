@@ -4,10 +4,14 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import AskSwapModal from "./AskSwapModal";
 
 const mockCreateSwap = vi.fn().mockResolvedValue({});
+const mockAddSwapTargets = vi.fn().mockResolvedValue({});
+const mockPublishSwapToMarketplace = vi.fn().mockResolvedValue({});
 const mockListEligibleTargets = vi.fn().mockResolvedValue([{ soldier_id: "s1", full_name: "Yossi", node_name: null, hierarchy_distance: 1 }]);
 const mockGetSwapConfig = vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 });
 vi.mock("../api/swaps", () => ({
   createSwap: (...args: unknown[]) => mockCreateSwap(...args),
+  addSwapTargets: (...args: unknown[]) => mockAddSwapTargets(...args),
+  publishSwapToMarketplace: (...args: unknown[]) => mockPublishSwapToMarketplace(...args),
   listEligibleTargets: (...args: unknown[]) => mockListEligibleTargets(...args),
   getSwapConfig: (...args: unknown[]) => mockGetSwapConfig(...args),
 }));
@@ -83,5 +87,64 @@ describe("AskSwapModal", () => {
     expect(screen.getAllByRole("checkbox")[1]).not.toBeDisabled();
     expect(screen.getAllByRole("checkbox")[2]).not.toBeDisabled();
     expect(screen.getAllByRole("checkbox")[3]).toBeDisabled();
+  });
+
+  function renderEditModal(editingSwap: { id: string; open_to_marketplace: boolean; candidates: { soldier_id: string }[] }) {
+    const client = new QueryClient();
+    return render(
+      <QueryClientProvider client={client}>
+        <AskSwapModal
+          duty={{ assignment_id: "a1", start_date: "2026-08-01", end_date: "2026-08-02" } as never}
+          dutyTypeName="Guard"
+          editingSwap={editingSwap}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+  }
+
+  test("edit mode: an already-invited person's checkbox is disabled with an explanation", async () => {
+    renderEditModal({ id: "req1", open_to_marketplace: false, candidates: [{ soldier_id: "s1" }] });
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(2));
+    const checkbox = screen.getAllByRole("checkbox")[1];
+    expect(checkbox).toBeDisabled();
+    expect(await screen.findByText("swaps.already_invited")).toBeInTheDocument();
+  });
+
+  test("edit mode: an already-published marketplace checkbox is checked, disabled, with an explanation", async () => {
+    renderEditModal({ id: "req1", open_to_marketplace: true, candidates: [] });
+    const marketplaceCheckbox = await screen.findByTestId("ask-swap-marketplace-checkbox");
+    expect(marketplaceCheckbox).toBeChecked();
+    expect(marketplaceCheckbox).toBeDisabled();
+    expect(await screen.findByText("swaps.already_on_marketplace")).toBeInTheDocument();
+  });
+
+  test("edit mode: submit only calls addSwapTargets for newly selected people", async () => {
+    mockAddSwapTargets.mockClear();
+    mockPublishSwapToMarketplace.mockClear();
+    renderEditModal({ id: "req1", open_to_marketplace: false, candidates: [] });
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(2));
+    const targetCheckbox = screen.getAllByRole("checkbox")[1];
+    fireEvent.click(targetCheckbox);
+    fireEvent.click(screen.getByText("swaps.save"));
+    await waitFor(() => expect(mockAddSwapTargets).toHaveBeenCalledWith("req1", ["s1"]));
+    expect(mockPublishSwapToMarketplace).not.toHaveBeenCalled();
+  });
+
+  test("edit mode: submit only calls publishSwapToMarketplace when the marketplace box is newly checked", async () => {
+    mockAddSwapTargets.mockClear();
+    mockPublishSwapToMarketplace.mockClear();
+    renderEditModal({ id: "req1", open_to_marketplace: false, candidates: [] });
+    fireEvent.click(await screen.findByTestId("ask-swap-marketplace-checkbox"));
+    fireEvent.click(screen.getByText("swaps.save"));
+    await waitFor(() => expect(mockPublishSwapToMarketplace).toHaveBeenCalledWith("req1"));
+    expect(mockAddSwapTargets).not.toHaveBeenCalled();
+  });
+
+  test("edit mode: submit is disabled when nothing new is selected", async () => {
+    renderEditModal({ id: "req1", open_to_marketplace: true, candidates: [{ soldier_id: "s1" }] });
+    await screen.findAllByRole("checkbox");
+    expect(screen.getByText("swaps.save")).toBeDisabled();
   });
 });
