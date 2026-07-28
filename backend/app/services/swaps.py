@@ -1104,3 +1104,40 @@ def list_pending_approval(session: Session) -> list[SwapRequest]:
         .scalars()
         .all()
     )
+
+
+def expire_started_swaps(session: Session, *, today: date | None = None) -> int:
+    """Cancel every open SwapRequest whose duty has already started (duty_date <= today)
+    — once a duty is underway there's no one left to swap it with. Returns the count
+    cancelled. Called periodically by the background worker (see app/swap_expiry_worker.py);
+    there is no user actor for this system action, so notifications/audit use actor_id=None."""
+    today = today or date.today()
+    requests = session.execute(
+        select(SwapRequest).where(SwapRequest.status == "open", SwapRequest.duty_date <= today)
+    ).scalars().all()
+    for req in requests:
+        before = {"status": req.status}
+        req.status = "cancelled"
+        live_candidates = session.execute(
+            select(SwapCandidate).where(
+                SwapCandidate.swap_request_id == req.id,
+                SwapCandidate.status.in_(["pending", "accepted"]),
+            )
+        ).scalars().all()
+        now = datetime.utcnow()
+        recipients = {req.requesting_soldier_id, *(c.soldier_id for c in live_candidates)}
+        for candidate in live_candidates:
+            candidate.status = "cancelled"
+            candidate.decided_at = now
+        for soldier_id in recipients:
+            create_notification(
+                session, soldier_id=soldier_id, type=NotificationType.swap_rejected,
+                title="בקשת ההחלפה בוטלה — התורנות כבר התחילה", reference_type="swap_request",
+                reference_id=req.id, actor_id=None,
+            )
+        write_audit(
+            session, actor_id=None, action="swap.auto_expire", entity_type="swap_request",
+            entity_id=req.id, before=before, after={"status": "cancelled"},
+        )
+    session.flush()
+    return len(requests)
