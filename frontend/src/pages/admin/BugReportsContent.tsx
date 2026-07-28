@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -271,7 +272,14 @@ export function BugReportsContent() {
                     </ul>
                     <p className="mb-1"><strong>מסלול ניווט:</strong></p>
                     <ul className="list-disc pr-5 mb-2 text-xs">
-                      {(report.nav_history ?? []).map((h, i) => <li key={i}>{h.path} — {h.timestamp}</li>)}
+                      {(report.nav_history ?? []).map((h, i) => (
+                        <li key={i}>
+                          <Link to={h.path} className="text-indigo-600 hover:text-indigo-800 hover:underline" target="_blank" rel="noopener noreferrer">
+                            {h.path}
+                          </Link>
+                          {" — "}{new Date(h.timestamp).toLocaleString("he-IL")}
+                        </li>
+                      ))}
                     </ul>
                     <p className="mb-1"><strong>פעולות אחרונות ביומן:</strong></p>
                     <ul className="list-disc pr-5 mb-2 text-xs">
