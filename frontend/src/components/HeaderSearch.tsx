@@ -33,7 +33,7 @@ export default function HeaderSearch({ openHelp }: { openHelp: (tab?: string) =>
   const { user } = useAuth();
   const settings = usePublicSettings();
   const gimelimEnabled = settings?.["gimalim.enabled"] !== false;
-  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [backendResults, setBackendResults] = useState<SearchResponseDTO>({ soldiers: [], duties: [], units: [] });

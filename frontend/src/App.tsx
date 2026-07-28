@@ -56,8 +56,8 @@ function AppGate({ children }: { children: ReactElement }) {
 
 export default function App() {
   const settings = usePublicSettings();
-  const telegramEnabled = settings?.["telegram.enabled"] !== false;
-  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
+  const telegramEnabled = settings?.["telegram.enabled"] === true;
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
 
   return (
     <ErrorBoundary>
