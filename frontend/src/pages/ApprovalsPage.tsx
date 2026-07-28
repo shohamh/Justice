@@ -11,6 +11,7 @@ import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
 import DocumentPreviewModal from "../components/DocumentPreviewModal";
 import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "../components/DirectCommanderApproval";
+import SwapApprovalColumns, { SwapApprovalColumn } from "../components/SwapApprovalColumns";
 import { useAuth } from "../auth/AuthContext";
 import { listPublicExemptionTypes } from "../api/auth";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
@@ -72,12 +73,6 @@ function describeError(err: unknown): string {
     }
   }
   return translateApiError(err, i18n.t.bind(i18n), fallback);
-}
-
-function ApprovalDotInline({ value }: { value: boolean | null }) {
-  if (value === true) return <span className="text-green-600 font-bold">✓</span>;
-  if (value === false) return <span className="text-red-500 font-bold">✗</span>;
-  return <span className="text-gray-400">—</span>;
 }
 
 /** One approval-kind row (commander or duty-manager) for one swap side. Shows
@@ -606,15 +601,31 @@ export default function ApprovalsPage() {
                 isAdmin || commanderApprovals.some(a => a.commander_id === user?.id);
               const canActDutyManager = isAdmin || !!user?.is_duty_manager;
               const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
+              const statusColumns: SwapApprovalColumn[] = [
+                {
+                  label: `${t("swaps.requester")}: ${swap.requesting_soldier_name || swap.requesting_soldier_id.slice(0, 8)}`,
+                  soldierApprovalLabel: t("swaps.requester_approval"),
+                  soldierApproved: swap.requester_side_approved,
+                  commanderApprovals: reqGroups.commander,
+                  dutyManagerApprovals: reqGroups.duty_manager,
+                  showDutyManagerRow: reqGroups.duty_manager.length > 0,
+                },
+                ...liveCandidates.map(candidate => {
+                  const covGroups = groupByKind(candidate.manager_approvals);
+                  return {
+                    label: candidate.soldier_name || candidate.soldier_id.slice(0, 8),
+                    soldierApprovalLabel: t("swaps.covering_approval"),
+                    soldierApproved: candidate.soldier_side_approved,
+                    commanderApprovals: covGroups.commander,
+                    dutyManagerApprovals: covGroups.duty_manager,
+                    showDutyManagerRow: covGroups.duty_manager.length > 0,
+                  };
+                }),
+              ];
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
-                  <div className="flex items-center gap-2">
-                    <strong>{t("swaps.requester")}:</strong>
-                    <span><SoldierLink id={swap.requesting_soldier_id} name={swap.requesting_soldier_name || swap.requesting_soldier_id.slice(0, 8)} /></span>
-                    {swap.requesting_soldier_node_name && <span className="text-xs text-gray-400">{swap.requesting_soldier_node_name}</span>}
-                    <ApprovalDotInline value={swap.requester_side_approved} />
-                  </div>
                   <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                  <SwapApprovalColumns columns={statusColumns} />
                   <div className="text-xs text-gray-500 space-y-1">
                     <SwapKindApproval
                       approvals={reqGroups.commander}
@@ -661,10 +672,6 @@ export default function ApprovalsPage() {
                         const covGroups = groupByKind(candidate.manager_approvals);
                         return (
                           <div key={candidate.id} className="border rounded p-2 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <SoldierLink id={candidate.soldier_id} name={candidate.soldier_name || candidate.soldier_id.slice(0, 8)} />
-                              <ApprovalDotInline value={candidate.soldier_side_approved} />
-                            </div>
                             <div className="text-xs text-gray-500 space-y-1">
                               <SwapKindApproval
                                 approvals={covGroups.commander}
