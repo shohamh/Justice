@@ -438,15 +438,21 @@ export default function SwapsPage() {
           </div>
         )}
         {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
-        <button
-          type="button"
-          onClick={coverDisabled ? undefined : () => setCoverSwap(swap)}
-          disabled={coverDisabled}
-          title={coverDisabled ? (elig.reason ?? undefined) : undefined}
-          className={`px-2 py-1 rounded text-xs ${coverDisabled ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
-        >
-          {t("swaps.accept_cover")}
-        </button>
+        {/* Marketplace-claim action — only for a viewer who ISN'T already an
+            invited candidate on this request. An invited candidate has their
+            own approve/reject controls above; showing this too would offer
+            two overlapping ways to respond to the same invite. */}
+        {!myCandidate && (
+          <button
+            type="button"
+            onClick={coverDisabled ? undefined : () => setCoverSwap(swap)}
+            disabled={coverDisabled}
+            title={coverDisabled ? (elig.reason ?? undefined) : undefined}
+            className={`px-2 py-1 rounded text-xs ${coverDisabled ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
+          >
+            {t("swaps.accept_cover")}
+          </button>
+        )}
       </li>
     );
   };

@@ -634,21 +634,26 @@ export default function ApprovalsPage() {
                   {/* Whole-request reject: a requester-side manager rejection kills the
                       ask entirely (backend: reject_manager_row -> reject_request), independent
                       of any per-candidate rejection below. Kept separate from the per-candidate
-                      controls so a reviewer doesn't lose this previously-existing action. */}
-                  <div className="flex gap-2 items-center flex-wrap">
-                    <input
-                      placeholder={t("approvals.decision_note")}
-                      value={swapRejectNotes[swap.id] ?? ""}
-                      onChange={e => setSwapRejectNotes(prev => ({ ...prev, [swap.id]: e.target.value }))}
-                      className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                    />
-                    <button
-                      onClick={() => onSwapManagerReject(swap.id)}
-                      className="bg-red-600 text-white px-2 py-1 rounded text-xs"
-                    >
-                      {t("approvals.reject")}
-                    </button>
-                  </div>
+                      controls so a reviewer doesn't lose this previously-existing action.
+                      Gated the same way the approve buttons above are — only shown to an
+                      actor actually authorized on the requester side — so it doesn't dangle
+                      a clickable-looking action for a viewer with no real authority here. */}
+                  {(canActCommander(reqGroups.commander) || canActDutyManager) && (
+                    <div className="flex gap-2 items-center flex-wrap">
+                      <input
+                        placeholder={t("approvals.decision_note")}
+                        value={swapRejectNotes[swap.id] ?? ""}
+                        onChange={e => setSwapRejectNotes(prev => ({ ...prev, [swap.id]: e.target.value }))}
+                        className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                      />
+                      <button
+                        onClick={() => onSwapManagerReject(swap.id)}
+                        className="bg-red-600 text-white px-2 py-1 rounded text-xs"
+                      >
+                        {t("approvals.reject")}
+                      </button>
+                    </div>
+                  )}
                   {liveCandidates.length > 0 && (
                     <div className="space-y-2 border-t pt-2 dark:border-gray-700">
                       <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("swaps.candidates_title")} ({liveCandidates.length})</p>
@@ -676,20 +681,22 @@ export default function ApprovalsPage() {
                                 t={t}
                               />
                             </div>
-                            <div className="flex gap-2 items-center flex-wrap">
-                              <input
-                                placeholder={t("approvals.decision_note")}
-                                value={swapRejectNotes[`${swap.id}:${candidate.id}`] ?? ""}
-                                onChange={e => setSwapRejectNotes(prev => ({ ...prev, [`${swap.id}:${candidate.id}`]: e.target.value }))}
-                                className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                              />
-                              <button
-                                onClick={() => onSwapManagerReject(swap.id, candidate.id)}
-                                className="bg-red-600 text-white px-2 py-1 rounded text-xs"
-                              >
-                                {t("approvals.reject")}
-                              </button>
-                            </div>
+                            {(canActCommander(covGroups.commander) || canActDutyManager) && (
+                              <div className="flex gap-2 items-center flex-wrap">
+                                <input
+                                  placeholder={t("approvals.decision_note")}
+                                  value={swapRejectNotes[`${swap.id}:${candidate.id}`] ?? ""}
+                                  onChange={e => setSwapRejectNotes(prev => ({ ...prev, [`${swap.id}:${candidate.id}`]: e.target.value }))}
+                                  className="border rounded p-1 text-xs w-28 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                                />
+                                <button
+                                  onClick={() => onSwapManagerReject(swap.id, candidate.id)}
+                                  className="bg-red-600 text-white px-2 py-1 rounded text-xs"
+                                >
+                                  {t("approvals.reject")}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

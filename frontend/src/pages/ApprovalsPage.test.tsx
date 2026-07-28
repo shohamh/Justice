@@ -34,8 +34,9 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+const mockUseAuth = vi.fn(() => ({ user: { id: "viewer-1", role: "admin" } }));
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "viewer-1", role: "admin" } }),
+  useAuth: () => mockUseAuth(),
 }));
 
 const swap = {
@@ -127,6 +128,7 @@ const exemptionRequestWithFile = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockUseAuth.mockReturnValue({ user: { id: "viewer-1", role: "admin" } });
   vi.mocked(constraintsApi.listPendingApprovals).mockResolvedValue([constraint]);
   vi.mocked(constraintsApi.approveConstraint).mockRejectedValue({
     response: { status: 400, data: { detail: "already_decided" } },
@@ -272,6 +274,105 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     await waitFor(() => {
       expect(swapsApi.managerApproveSwap).toHaveBeenCalledWith("s1", "covering", "cand-2");
     });
+  });
+
+  it("hides both reject buttons for a non-admin viewer with no authority on either side", async () => {
+    mockUseAuth.mockReturnValue({ user: { id: "unrelated-viewer", role: "commander" } });
+    const acceptedCandidate = makeCandidate({
+      id: "cand-2",
+      soldier_id: "sol-11",
+      soldier_name: "Accepted Candidate",
+      status: "accepted",
+      manager_approvals: [
+        {
+          commander_id: "m2",
+          commander_name: "Commander Two",
+          approved: false,
+          approved_by: null,
+          approved_by_name: null,
+          approved_at: null,
+          rejected: false,
+          rejected_by: null,
+          rejected_by_name: null,
+          rejected_at: null,
+          approver_kind: "commander",
+        },
+      ],
+    });
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([
+      { ...swap, candidates: [acceptedCandidate] },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const swapsTab = await screen.findByTestId("approvals-tab-swaps");
+    fireEvent.click(swapsTab);
+
+    await screen.findByText("Accepted Candidate");
+    // Neither the whole-request reject nor the per-candidate reject should
+    // render for a viewer who isn't a chain match on either the requester
+    // side (m1) or this candidate's side (m2) — and isn't a duty manager.
+    expect(screen.queryByText("approvals.reject")).not.toBeInTheDocument();
+  });
+
+  it("shows only the per-candidate reject for a commander authorized on the candidate's side only", async () => {
+    mockUseAuth.mockReturnValue({ user: { id: "m2", role: "commander" } });
+    const acceptedCandidate = makeCandidate({
+      id: "cand-2",
+      soldier_id: "sol-11",
+      soldier_name: "Accepted Candidate",
+      status: "accepted",
+      manager_approvals: [
+        {
+          commander_id: "m2",
+          commander_name: "Commander Two",
+          approved: false,
+          approved_by: null,
+          approved_by_name: null,
+          approved_at: null,
+          rejected: false,
+          rejected_by: null,
+          rejected_by_name: null,
+          rejected_at: null,
+          approver_kind: "commander",
+        },
+      ],
+    });
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([
+      { ...swap, candidates: [acceptedCandidate] },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const swapsTab = await screen.findByTestId("approvals-tab-swaps");
+    fireEvent.click(swapsTab);
+
+    await screen.findByText("Accepted Candidate");
+    // m2 is only in the candidate's own chain (not the requester's, m1) —
+    // exactly one reject button (the candidate's) should render.
+    expect(screen.getAllByText("approvals.reject").length).toBe(1);
   });
 });
 

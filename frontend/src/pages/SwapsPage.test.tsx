@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import SwapsPage from "./SwapsPage";
 import type { SwapRequest } from "../api/swaps";
 
-const { mySwap } = vi.hoisted(() => {
+const { mySwap, incomingSwap } = vi.hoisted(() => {
   const mySwap: SwapRequest = {
     id: "req1", duty_assignment_id: "a1", duty_date: "2026-08-01", requesting_soldier_id: "me",
     open_to_marketplace: true, status: "open", reason: null, requester_side_approved: true,
@@ -19,7 +19,20 @@ const { mySwap } = vi.hoisted(() => {
       { id: "c2", soldier_id: "s2", soldier_name: "Dana", source: "marketplace", status: "accepted", soldier_side_approved: true, offered_assignment_ids: [], manager_approvals: [] },
     ],
   };
-  return { mySwap };
+  const incomingSwap: SwapRequest = {
+    id: "req2", duty_assignment_id: "a2", duty_date: "2026-08-05", requesting_soldier_id: "other",
+    open_to_marketplace: false, status: "open", reason: null, requester_side_approved: true,
+    decision_note: null, created_at: "2026-07-01T00:00:00Z",
+    duty_type_name: "Patrol", duty_location_name: "Base", duty_type_id: "dt2", duty_location_id: "l1",
+    duty_start_date: "2026-08-05", duty_end_date: "2026-08-06", duty_shift_id: null,
+    requesting_soldier_name: "Other", requesting_commander_name: null, requesting_soldier_node_name: null,
+    requester_manager_approvals: [],
+    // "me" is the invited candidate on this request.
+    candidates: [
+      { id: "c3", soldier_id: "me", soldier_name: "Me", source: "invited", status: "pending", soldier_side_approved: null, offered_assignment_ids: [], manager_approvals: [] },
+    ],
+  };
+  return { mySwap, incomingSwap };
 });
 
 vi.mock("../api/swaps", async () => {
@@ -28,8 +41,9 @@ vi.mock("../api/swaps", async () => {
     ...actual,
     listMySwaps: vi.fn().mockResolvedValue([mySwap]),
     listBoard: vi.fn().mockResolvedValue([]),
-    listIncomingSwaps: vi.fn().mockResolvedValue([]),
+    listIncomingSwaps: vi.fn().mockResolvedValue([incomingSwap]),
     getSwapConfig: vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 }),
+    checkCoverEligibility: vi.fn().mockResolvedValue({ eligible: true, reason: null }),
   };
 });
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
@@ -43,11 +57,11 @@ vi.mock("../components/Layout", () => ({
   ),
 }));
 
-function renderPage() {
+function renderPage(initialEntries = ["/swaps"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <SwapsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -62,5 +76,17 @@ describe("SwapsPage mine tab candidate list", () => {
     // Exactly one duty header/date rendered for this request, proving it's
     // one card, not two — SwapDutyHeader renders the duty_type_name once per card.
     expect(screen.getAllByText("Guard")).toHaveLength(1);
+  });
+});
+
+describe("SwapsPage incoming tab", () => {
+  test("shows only the dedicated approve/reject controls for an invited candidate, not the marketplace cover button too", async () => {
+    renderPage(["/swaps?tab=incoming"]);
+    // Approve/reject controls for the invite render.
+    expect(await screen.findByText("approvals.approve")).toBeInTheDocument();
+    expect(screen.getByText("approvals.reject")).toBeInTheDocument();
+    // The marketplace-claim button must NOT also render — an invited
+    // candidate shouldn't be offered two overlapping ways to respond.
+    expect(screen.queryByText("swaps.accept_cover")).not.toBeInTheDocument();
   });
 });
