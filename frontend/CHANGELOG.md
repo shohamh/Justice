@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-28
+
+### Fixes
+- On the swap approvals screen, the reject button (both whole-request and per-candidate) is now only shown to a commander/duty-manager who actually has authority over that side, matching how the approve button already worked — previously it appeared for anyone, and a commander with no relation to a specific candidate could reject that candidate's already-accepted swap by mistake.
+- An invited candidate responding to a swap request no longer also sees the unrelated "I'll cover" marketplace button alongside their own approve/reject controls.
+
+### Chores
+- Seed data now includes one duty manager per branch, scoped to that branch, so the duty-manager approval step of the swap workflow can be exercised locally without manually creating one.
+- Added the initial backend service functions (not yet wired to any route or UI) for extending an already-open swap request with more invites or marketplace visibility after the fact.
+
 ## 2026-07-27
 
 ### Features
