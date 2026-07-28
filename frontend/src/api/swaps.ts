@@ -98,6 +98,14 @@ export async function createSwap(input: CreateSwapInput): Promise<SwapRequest> {
   return (await api.post<SwapRequest>("/me/swaps", input)).data;
 }
 
+export async function addSwapTargets(id: string, targetIds: string[]): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/me/swaps/${id}/targets`, { target_ids: targetIds })).data;
+}
+
+export async function publishSwapToMarketplace(id: string): Promise<SwapRequest> {
+  return (await api.post<SwapRequest>(`/me/swaps/${id}/publish`, {})).data;
+}
+
 export async function claimSwap(id: string): Promise<SwapRequest> {
   return (await api.post<SwapRequest>(`/swaps/${id}/claim`, {})).data;
 }
