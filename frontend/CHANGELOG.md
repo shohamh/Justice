@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-07-29
+
+### Features
+- Soldier names throughout the swap cards (candidate list, approval status columns, marketplace requester line) are now clickable and open that soldier's profile, matching the pattern already used on the approvals screen.
+- Two new system settings, soldiers.phone_public and soldiers.email_public (both default on), control whether a soldier's phone number and email are visible to anyone who can see their record at all, rather than only in-scope commanders/duty-managers. The soldier profile modal also gained a read-only email row — previously it showed phone but never email in view mode.
+
 ## 2026-07-28
 
 ### Features
