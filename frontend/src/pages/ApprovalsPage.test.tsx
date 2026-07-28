@@ -137,6 +137,9 @@ beforeEach(() => {
   vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("");
   vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([]);
   vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([]);
+  vi.mocked(swapsApi.getSwapConfig).mockResolvedValue({
+    require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5,
+  });
   vi.mocked(enrollmentApi.listPendingEnrollments).mockResolvedValue([]);
   vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
   vi.mocked(authApi.listPublicExemptionTypes).mockResolvedValue([]);
@@ -188,6 +191,38 @@ describe("ApprovalsPage - action error banner", () => {
     await waitFor(() => {
       expect(screen.getByText("קיימת חפיפה עם תורנות אחרת")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ApprovalsPage - swaps tab duty-manager empty state", () => {
+  it("shows the duty-manager empty-state text when the setting is on but no duty manager is scoped", async () => {
+    // require_duty_manager_approval is already true in the shared beforeEach
+    // mock. `swap` has only a commander row in requester_manager_approvals —
+    // no duty_manager row — so with the setting-based (not presence-based)
+    // showDutyManagerRow computation, the row should still render and show
+    // the informative empty-state text rather than vanish entirely.
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([swap]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    const swapsTab = await screen.findByTestId("approvals-tab-swaps");
+    fireEvent.click(swapsTab);
+
+    // react-i18next is mocked in this file to return raw keys (t = (k) => k),
+    // so assert on the translation key rather than the rendered Hebrew string
+    // (see DirectCommanderApproval.test.tsx for the real-string version).
+    expect(await screen.findByText("swaps.no_duty_manager_assigned")).toBeInTheDocument();
   });
 });
 
@@ -249,8 +284,14 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
 
-    await screen.findByText("Pending Candidate");
-    expect(screen.getByText("Accepted Candidate")).toBeInTheDocument();
+    // Each live candidate's name appears twice: once in the column-strip label
+    // above, and once more in the restored per-candidate action-card header
+    // (Finding 2) — that second occurrence is what prevents a mis-click
+    // between action cards when there are 2+ live candidates.
+    const pendingMatches = await screen.findAllByText("Pending Candidate");
+    expect(pendingMatches.length).toBe(2);
+    const acceptedMatches = screen.getAllByText("Accepted Candidate");
+    expect(acceptedMatches.length).toBe(2);
     expect(screen.queryByText("Declined Candidate")).not.toBeInTheDocument();
 
     // Each live candidate gets its own independent reject button — clicking
@@ -319,7 +360,7 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
 
-    await screen.findByText("Accepted Candidate");
+    await screen.findAllByText("Accepted Candidate");
     // Neither the whole-request reject nor the per-candidate reject should
     // render for a viewer who isn't a chain match on either the requester
     // side (m1) or this candidate's side (m2) — and isn't a duty manager.
@@ -369,7 +410,7 @@ describe("ApprovalsPage - swaps tab per-candidate approvals", () => {
     const swapsTab = await screen.findByTestId("approvals-tab-swaps");
     fireEvent.click(swapsTab);
 
-    await screen.findByText("Accepted Candidate");
+    await screen.findAllByText("Accepted Candidate");
     // m2 is only in the candidate's own chain (not the requester's, m1) —
     // exactly one reject button (the candidate's) should render.
     expect(screen.getAllByText("approvals.reject").length).toBe(1);

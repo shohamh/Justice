@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
-import DirectCommanderApproval, { DirectCommanderApprovalRow, isSideSatisfied } from "./DirectCommanderApproval";
+import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "./DirectCommanderApproval";
+import { SwapRequest } from "../api/swaps";
 
 export interface SwapApprovalColumn {
   label: string;
@@ -50,6 +51,34 @@ function SoldierApprovalDot({ value }: { value: boolean | null }) {
   if (value === true) return <span className="text-green-600 font-bold">✓</span>;
   if (value === false) return <span className="text-red-500 font-bold">✗</span>;
   return <span className="text-gray-400">—</span>;
+}
+
+export function requesterColumn(
+  swap: SwapRequest, requireDutyManagerApproval: boolean, label: string, t: (k: string) => string,
+): SwapApprovalColumn {
+  const groups = groupByKind(swap.requester_manager_approvals);
+  return {
+    label,
+    soldierApprovalLabel: t("swaps.requester_approval"),
+    soldierApproved: swap.requester_side_approved,
+    commanderApprovals: groups.commander,
+    dutyManagerApprovals: groups.duty_manager,
+    showDutyManagerRow: requireDutyManagerApproval,
+  };
+}
+
+export function candidateColumn(
+  candidate: SwapRequest["candidates"][number], requireDutyManagerApproval: boolean, label: string, t: (k: string) => string,
+): SwapApprovalColumn {
+  const groups = groupByKind(candidate.manager_approvals);
+  return {
+    label,
+    soldierApprovalLabel: t("swaps.covering_approval"),
+    soldierApproved: candidate.soldier_side_approved,
+    commanderApprovals: groups.commander,
+    dutyManagerApprovals: groups.duty_manager,
+    showDutyManagerRow: requireDutyManagerApproval,
+  };
 }
 
 export default function SwapApprovalColumns({ columns }: { columns: SwapApprovalColumn[] }) {

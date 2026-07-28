@@ -7,8 +7,7 @@ import Layout from "../components/Layout";
 import TabBar from "../components/TabBar";
 import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
-import { groupByKind } from "../components/DirectCommanderApproval";
-import SwapApprovalColumns, { SwapApprovalColumn } from "../components/SwapApprovalColumns";
+import SwapApprovalColumns, { SwapApprovalColumn, requesterColumn, candidateColumn } from "../components/SwapApprovalColumns";
 import AskSwapModal from "../components/AskSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
@@ -47,6 +46,15 @@ function statusKey(status: string) {
   return map[status] ?? status;
 }
 
+/** Soldier-side accept/reject is independent of whether *manager* approval
+ * is required — so the commander/duty-manager fields on a column are zeroed
+ * out (hiding those specific bullets) only when the commander-approval
+ * setting is off, while the soldier-side bullet always renders. */
+function gateManagerFields(column: SwapApprovalColumn, requireManagerApproval: boolean): SwapApprovalColumn {
+  if (requireManagerApproval) return column;
+  return { ...column, commanderApprovals: [], dutyManagerApprovals: [], showDutyManagerRow: false };
+}
+
 function PendingApprovalCard({
   swap, requireManagerApproval, requireDutyManagerApproval, onShiftClick, t,
 }: {
@@ -54,12 +62,10 @@ function PendingApprovalCard({
   onShiftClick?: () => void; t: (k: string) => string;
 }) {
   const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
-  const columns: SwapApprovalColumn[] = requireManagerApproval
-    ? [
-        requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t),
-        ...liveCandidates.map((c) => candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t)),
-      ]
-    : [];
+  const columns: SwapApprovalColumn[] = [
+    gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t), requireManagerApproval),
+    ...liveCandidates.map((c) => gateManagerFields(candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t), requireManagerApproval)),
+  ];
   return (
     <li className="border rounded-lg p-4 space-y-3 dark:border-gray-600">
       <SwapDutyHeader swap={swap} onShiftClick={onShiftClick} />
@@ -105,34 +111,6 @@ function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClic
     );
   }
   return <div className="text-sm">{inner}</div>;
-}
-
-function requesterColumn(
-  swap: SwapRequest, requireDutyManagerApproval: boolean, label: string, t: (k: string) => string,
-): SwapApprovalColumn {
-  const groups = groupByKind(swap.requester_manager_approvals);
-  return {
-    label,
-    soldierApprovalLabel: t("swaps.requester_approval"),
-    soldierApproved: swap.requester_side_approved,
-    commanderApprovals: groups.commander,
-    dutyManagerApprovals: groups.duty_manager,
-    showDutyManagerRow: requireDutyManagerApproval,
-  };
-}
-
-function candidateColumn(
-  candidate: SwapRequest["candidates"][number], requireDutyManagerApproval: boolean, label: string, t: (k: string) => string,
-): SwapApprovalColumn {
-  const groups = groupByKind(candidate.manager_approvals);
-  return {
-    label,
-    soldierApprovalLabel: t("swaps.covering_approval"),
-    soldierApproved: candidate.soldier_side_approved,
-    commanderApprovals: groups.commander,
-    dutyManagerApprovals: groups.duty_manager,
-    showDutyManagerRow: requireDutyManagerApproval,
-  };
 }
 
 function CandidateRow({ candidate, t, showName }: {
@@ -307,10 +285,10 @@ export default function SwapsPage() {
 
   const renderMySwapCard = (swap: SwapRequest) => {
     const liveCandidates = swap.candidates.filter((c) => c.status === "pending" || c.status === "accepted");
-    const columns: SwapApprovalColumn[] = requireManagerApproval && liveCandidates.length > 0
+    const columns: SwapApprovalColumn[] = liveCandidates.length > 0
       ? [
-          requesterColumn(swap, requireDutyManagerApproval, t("swaps.mine"), t),
-          ...liveCandidates.map((c) => candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t)),
+          gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, t("swaps.mine"), t), requireManagerApproval),
+          ...liveCandidates.map((c) => gateManagerFields(candidateColumn(c, requireDutyManagerApproval, c.soldier_name ?? c.soldier_id.slice(0, 8), t), requireManagerApproval)),
         ]
       : [];
     return (
@@ -402,12 +380,10 @@ export default function SwapsPage() {
     const elig = coverEligibility[swap.duty_assignment_id];
     const coverDisabled = elig != null && !elig.eligible;
     const myCandidate = swap.candidates.find((c) => c.soldier_id === user?.id);
-    const columns: SwapApprovalColumn[] = requireManagerApproval
-      ? [
-          ...(myCandidate ? [candidateColumn(myCandidate, requireDutyManagerApproval, t("swaps.covering"), t)] : []),
-          requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t),
-        ]
-      : [];
+    const columns: SwapApprovalColumn[] = [
+      ...(myCandidate ? [gateManagerFields(candidateColumn(myCandidate, requireDutyManagerApproval, t("swaps.covering"), t), requireManagerApproval)] : []),
+      gateManagerFields(requesterColumn(swap, requireDutyManagerApproval, swap.requesting_soldier_name ?? t("swaps.requester"), t), requireManagerApproval),
+    ];
     return (
       <li key={swap.id}
         className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
