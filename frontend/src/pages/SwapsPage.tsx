@@ -330,7 +330,7 @@ export default function SwapsPage() {
           {t(statusKey(swap.status))}
         </span>
       </div>
-      {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
+      {swap.reason && <p className="text-gray-500 text-xs">{t("swaps.reason")}: {swap.reason}</p>}
       {swap.decision_note && (
         <p className="text-xs text-amber-600 dark:text-amber-400">{t("swaps.decision_note")}: {swap.decision_note}</p>
       )}
@@ -389,7 +389,7 @@ export default function SwapsPage() {
             )}
           </p>
         )}
-        {swap.reason && <p className="text-gray-500 text-xs">{swap.reason}</p>}
+        {swap.reason && <p className="text-gray-500 text-xs">{t("swaps.reason")}: {swap.reason}</p>}
         {swap.status === "open" && (
           <button
             type="button"
@@ -437,7 +437,7 @@ export default function SwapsPage() {
             </button>
           </div>
         )}
-        {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{swap.reason}</p>}
+        {swap.reason && <p className="text-gray-600 dark:text-gray-400 text-xs">{t("swaps.reason")}: {swap.reason}</p>}
         {/* Marketplace-claim action — only for a viewer who ISN'T already an
             invited candidate on this request. An invited candidate has their
             own approve/reject controls above; showing this too would offer

@@ -8,7 +8,7 @@ import type { SwapRequest } from "../api/swaps";
 const { mySwap, incomingSwap } = vi.hoisted(() => {
   const mySwap: SwapRequest = {
     id: "req1", duty_assignment_id: "a1", duty_date: "2026-08-01", requesting_soldier_id: "me",
-    open_to_marketplace: true, status: "open", reason: null, requester_side_approved: true,
+    open_to_marketplace: true, status: "open", reason: "אירוע משפחתי", requester_side_approved: true,
     decision_note: null, created_at: "2026-07-01T00:00:00Z",
     duty_type_name: "Guard", duty_location_name: "Base", duty_type_id: "dt1", duty_location_id: "l1",
     duty_start_date: "2026-08-01", duty_end_date: "2026-08-02", duty_shift_id: null,
@@ -88,5 +88,12 @@ describe("SwapsPage incoming tab", () => {
     // The marketplace-claim button must NOT also render — an invited
     // candidate shouldn't be offered two overlapping ways to respond.
     expect(screen.queryByText("swaps.accept_cover")).not.toBeInTheDocument();
+  });
+});
+
+describe("SwapsPage reason label", () => {
+  test("prefixes the swap reason with a label instead of showing bare text", async () => {
+    renderPage();
+    expect(await screen.findByText("swaps.reason: אירוע משפחתי")).toBeInTheDocument();
   });
 });
