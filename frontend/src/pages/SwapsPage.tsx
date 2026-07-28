@@ -392,7 +392,11 @@ export default function SwapsPage() {
     ];
     return (
       <li key={swap.id}
-        className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950 rounded p-3 text-sm space-y-1.5">
+        // Just the border carries the "incoming — needs your attention" signal;
+        // a full indigo background wash used to sit *underneath* each approval
+        // column's own translucent status tint (amber/green/red), muddying both
+        // colors together. The columns already communicate status on their own.
+        className="border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800 rounded p-3 text-sm space-y-1.5">
         <div className="flex items-start justify-between gap-2">
           <SwapDutyHeader swap={swap} onShiftClick={swap.duty_shift_id ? () => handleShiftClick(swap.duty_shift_id) : undefined} />
           <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${STATUS_COLORS[swap.status] ?? ""}`}>
