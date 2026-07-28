@@ -481,7 +481,10 @@
     "not_open": "הבקשה אינה פתוחה",
     "cannot_cover_own": "לא ניתן לכסות תורנות של עצמך",
     "reserve_take_free_disabled": "לקיחת תורנות חופשית לרזרבות מושבתת כעת",
-    "file_not_found": "הקובץ לא נמצא"
+    "file_not_found": "הקובץ לא נמצא",
+    "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
+    "target_limit_reached": "הגעת למגבלת ההזמנות",
+    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות"
   },
   "exemption_requests": {
     "title": "בקשות פטור",

@@ -726,8 +726,9 @@ def test_swap_out_shape_has_candidates_list_not_flat_covering_fields(client: Tes
     assert "target_soldier_id" not in swap_out
     assert "covering_side_approved" not in swap_out
     assert "covering_manager_approvals" not in swap_out
+
+
 def _create_open_request(session, requester, *, target_ids=None, open_to_marketplace=False):
-    from app.services import swaps as svc
     return svc.create_request(
         session, requesting_soldier_id=requester.id, duty_assignment_id=_published_assignment_for(session, requester).id,
         target_soldier_id=None, target_soldier_ids=target_ids or [], reason=None,

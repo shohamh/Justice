@@ -521,6 +521,7 @@ def publish_swap(
     session.refresh(r)
     return _out(r, session)
 
+
 class TakeFreeDutyRequest(BaseModel):
     duty_assignment_id: uuid.UUID
 

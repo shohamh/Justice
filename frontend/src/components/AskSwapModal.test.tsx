@@ -147,4 +147,17 @@ describe("AskSwapModal", () => {
     await screen.findAllByRole("checkbox");
     expect(screen.getByText("swaps.save")).toBeDisabled();
   });
+
+  test("edit mode: eligible people grey out with invite_limit_reached once existing candidates already fill the cap", async () => {
+    mockGetSwapConfig.mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 2 });
+    mockListEligibleTargets.mockResolvedValueOnce([
+      { soldier_id: "s1", full_name: "Yossi", node_name: null, hierarchy_distance: 1 },
+      { soldier_id: "s2", full_name: "Dana", node_name: null, hierarchy_distance: 1 },
+    ]);
+    renderEditModal({ id: "req1", open_to_marketplace: false, candidates: [{ soldier_id: "existing1" }, { soldier_id: "existing2" }] });
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(3));
+    const targetCheckbox = screen.getAllByRole("checkbox")[1]; // s1, not already invited
+    expect(targetCheckbox).toBeDisabled();
+    expect((await screen.findAllByText("swaps.invite_limit_reached")).length).toBeGreaterThan(0);
+  });
 });
