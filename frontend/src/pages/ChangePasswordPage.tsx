@@ -35,7 +35,7 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
+    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4" data-testid="change-password-form">
         <h1 className="text-2xl font-bold text-center">{t("change_password.title")}</h1>
         {mustChangePassword && (

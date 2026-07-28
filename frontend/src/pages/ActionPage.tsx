@@ -32,7 +32,7 @@ export default function ActionPage() {
   }, [navigate, searchParams]);
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 dark:bg-gray-900" dir="rtl">
+    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6 dark:bg-gray-900" dir="rtl">
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-8 text-center">
         {status === "pending" && <p className="text-gray-500">{t("action.processing")}</p>}
         {status === "success" && <p className="text-green-600 text-lg">✅ {t("action.success")}</p>}

@@ -42,7 +42,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
+      <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
         <div className="text-center space-y-3">
           <p className="text-red-600">{t("reset_password.errors.token_invalid")}</p>
           <Link to="/forgot-password" className="text-indigo-600 dark:text-indigo-300 hover:underline text-sm">
@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
+    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4">
         <h1 className="text-2xl font-bold text-center">{t("reset_password.title")}</h1>
 

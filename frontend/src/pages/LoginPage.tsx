@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-8 dark:bg-gray-900">
+    <main className="h-[100dvh] overflow-y-auto flex flex-col items-center justify-center p-6 gap-8 dark:bg-gray-900">
       <JusticeLogo size="lg" />
       <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-lg p-6 space-y-4 dark:bg-gray-800" data-testid="login-form">
         <h1 className="text-2xl font-bold text-center dark:text-gray-100">{t("login.title")}</h1>
