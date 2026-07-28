@@ -14,8 +14,17 @@ describe("TelegramBadge", () => {
     mockGetPublicSettings.mockReset();
   });
 
-  it("renders the badge when telegram.enabled is absent (default enabled)", async () => {
+  it("renders nothing when telegram.enabled is absent (default disabled)", async () => {
     mockGetPublicSettings.mockResolvedValue({});
+    const { default: TelegramBadge } = await import("./TelegramBadge");
+    const { container } = render(<TelegramBadge linked={true} />);
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
+  });
+
+  it("renders the badge when telegram.enabled is true", async () => {
+    mockGetPublicSettings.mockResolvedValue({ "telegram.enabled": true });
     const { default: TelegramBadge } = await import("./TelegramBadge");
     render(<TelegramBadge linked={true} />);
     await waitFor(() => {
@@ -41,16 +50,16 @@ describe("TelegramBadge", () => {
 
     const first = render(<TelegramBadge linked={true} />);
     await waitFor(() => {
-      // Failed fetch falls back to {} -> telegram.enabled is absent -> shown by default.
-      expect(screen.getByTitle("Telegram מקושר")).toBeInTheDocument();
+      // Failed fetch falls back to {} -> telegram.enabled is absent -> hidden by default.
+      expect(first.container.firstChild).toBeNull();
     });
     first.unmount();
 
-    mockGetPublicSettings.mockResolvedValueOnce({ "telegram.enabled": false });
-    const second = render(<TelegramBadge linked={true} />);
+    mockGetPublicSettings.mockResolvedValueOnce({ "telegram.enabled": true });
+    render(<TelegramBadge linked={true} />);
     await waitFor(() => {
       // Real (second) fetch result must be observed, not the stale poisoned {}.
-      expect(second.container.firstChild).toBeNull();
+      expect(screen.getByTitle("Telegram מקושר")).toBeInTheDocument();
     });
   });
 });

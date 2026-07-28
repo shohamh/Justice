@@ -6,7 +6,7 @@ interface Props {
 
 export default function TelegramBadge({ linked }: Props) {
   const settings = usePublicSettings();
-  if (settings?.["telegram.enabled"] === false) return null;
+  if (settings?.["telegram.enabled"] !== true) return null;
 
   return (
     <span
