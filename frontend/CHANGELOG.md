@@ -18,6 +18,7 @@
 - Approving a constraint could previously race ahead of a pending enrollment approval it should have waited for, and could send a duplicate enrollment notification — both fixed.
 - The swap-request candidate list now shows a loading indicator instead of misleadingly claiming there are no eligible soldiers while the list is still loading.
 - The bug report navigation trail now shows local time instead of raw UTC, and each entry is a clickable link to that page.
+- On a swap request with 3+ participants, candidates beyond what fit the approval-status block could lose their name everywhere on screen (not just in that block) on narrow/mobile viewports; the block now scrolls horizontally instead of clipping, and the candidate list always shows names regardless.
 - Fixed a global double-scrollbar bug: the document itself could scroll independently of the app's own internal scroll region, showing two competing scrollbars on the same page.
 - Commander-exemption approval is now gated purely on commanding a sufficiently senior hierarchy node — a high rank alone (previously רס"ן and above) no longer bypasses that requirement.
 - הקפצה פיקודית (forced callup) and Telegram notifications now correctly default to off everywhere (nav, routes, notification preferences) when unconfigured, matching their displayed default in system settings — previously only the settings page itself reflected "off" while every runtime check still treated the feature as enabled.
