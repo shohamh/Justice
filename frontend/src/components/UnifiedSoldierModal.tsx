@@ -252,6 +252,12 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   <span dir="ltr">{soldierData.phone}</span>
                 </div>
               )}
+              {soldierData.email && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">{t("profile.email")}</span>
+                  <span dir="ltr">{soldierData.email}</span>
+                </div>
+              )}
               {soldierData.enrolled_at && (
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t("transparency.enrolled_at")}</span>

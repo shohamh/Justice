@@ -35,6 +35,7 @@ from app.services.soldiers import (
 from app.services.eligibility import ENLISTED_RANKS, OFFICER_RANKS
 from app.services.duty_history import get_duty_history
 from app.services.reserves import get_current_reserve_stats
+from app.services.settings_loader import SettingNotFound, get_setting
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
 
@@ -172,12 +173,27 @@ def _direct_commander(session: Session, s: Soldier) -> Soldier | None:
 
 
 
+def _contact_visibility(session: Session) -> tuple[bool, bool]:
+    """Returns (phone_public, email_public) — whether those two fields bypass
+    the normal private-field scope check and are visible to anyone who can
+    see the soldier's record at all. Both default to True when unset."""
+    def _flag(key: str) -> bool:
+        try:
+            value = get_setting(session, key)
+            return bool(value)
+        except SettingNotFound:
+            return True
+    return _flag("soldiers.phone_public"), _flag("soldiers.email_public")
+
+
 def _out(
     s: Soldier,
     *,
     include_private: bool = False,
     telegram_linked: bool = False,
     direct_commander: Soldier | None = None,
+    phone_public: bool = True,
+    email_public: bool = True,
 ) -> SoldierOut:
     return SoldierOut(
         id=s.id,
@@ -185,7 +201,7 @@ def _out(
         full_name=s.full_name,
         role=s.role,
         hierarchy_node_id=s.hierarchy_node_id,
-        phone=s.phone if include_private else None,
+        phone=s.phone if (include_private or phone_public) else None,
         must_change_password=s.must_change_password,
         left_at=s.left_at.isoformat() if s.left_at else None,
         enrolled_at=s.enrolled_at,
@@ -203,7 +219,7 @@ def _out(
         last_alal_date=s.last_alal_date,
         profile_picture_url=s.profile_picture_url,
         telegram_linked=telegram_linked,
-        email=s.email if include_private else None,
+        email=s.email if (include_private or email_public) else None,
         direct_commander_id=direct_commander.id if direct_commander else None,
         direct_commander_name=direct_commander.full_name if direct_commander else None,
     )
@@ -305,9 +321,13 @@ def list_soldiers(
             select(TelegramLink.soldier_id).where(TelegramLink.is_verified == True)
         ).all()
     }
+    phone_public, email_public = _contact_visibility(session)
     if user.role == "admin":
         rows = session.execute(select(Soldier)).scalars().all()
-        return [_out(s, include_private=False, telegram_linked=s.id in linked_ids) for s in rows]
+        return [
+            _out(s, include_private=False, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public)
+            for s in rows
+        ]
 
     roots = scope_root_ids(session, user)
     # Unassigned soldiers with no scope can only see themselves
@@ -328,7 +348,7 @@ def list_soldiers(
         node = nodes_by_id.get(s.hierarchy_node_id) if s.hierarchy_node_id else None
         in_scope = node is not None and any(r in node.path_ids for r in roots)
         include_private = in_scope or s.id == user.id
-        out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids))
+        out.append(_out(s, include_private=include_private, telegram_linked=s.id in linked_ids, phone_public=phone_public, email_public=email_public))
     return out
 
 
@@ -558,11 +578,14 @@ def get_soldier(
         )
     ).scalar_one_or_none()
     commander = _direct_commander(session, s)
+    phone_public, email_public = _contact_visibility(session)
     return _out(
         s,
         include_private=can_see_private(session, user, s),
         telegram_linked=link is not None,
         direct_commander=commander,
+        phone_public=phone_public,
+        email_public=email_public,
     )
 
 
@@ -598,7 +621,8 @@ def update(
         )
     session.commit()
     session.refresh(s)
-    return _out(s, include_private=can_see_private(session, user, s))
+    phone_public, email_public = _contact_visibility(session)
+    return _out(s, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
 
 
 @router.patch("/{soldier_id}/profile", response_model=SoldierOut)
@@ -614,7 +638,8 @@ def update_profile(
     update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
     session.commit()
     session.refresh(s)
-    return _out(s, include_private=can_see_private(session, user, s))
+    phone_public, email_public = _contact_visibility(session)
+    return _out(s, include_private=can_see_private(session, user, s), phone_public=phone_public, email_public=email_public)
 
 
 @router.post("/{soldier_id}/field-updates", response_model=FieldUpdateOut, status_code=201)

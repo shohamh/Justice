@@ -207,6 +207,25 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
+    label: "פרטיות",
+    settings: [
+      {
+        key: "soldiers.phone_public",
+        label: "מספר טלפון גלוי לכולם",
+        description: "כשמופעל, כל חייל יכול לראות את מספר הטלפון של כל חייל אחר. כשכבוי, גלוי רק למפקדים/אחראי תורנויות בשרשרת הפיקוד ולחייל עצמו",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
+      {
+        key: "soldiers.email_public",
+        label: "כתובת אימייל גלויה לכולם",
+        description: "כשמופעל, כל חייל יכול לראות את כתובת האימייל של כל חייל אחר. כשכבוי, גלוי רק למפקדים/אחראי תורנויות בשרשרת הפיקוד ולחייל עצמו",
+        type: "boolean" as const,
+        defaultValue: true,
+      },
+    ],
+  },
+  {
     label: "טלגרם",
     settings: [
       {
