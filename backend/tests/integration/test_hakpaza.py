@@ -3,10 +3,12 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.db.models import DutyAssignment, DutyLocation, DutyType
+from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def _setup(session, pn_prefix: str):
+    set_setting(session, "forced_callup.enabled", True, actor_id=None)
     node = create_node(session, level="branch", name=f"n_{pn_prefix}")
     dm = create_soldier(session, personal_number=f"{pn_prefix}_dm", role="duty_manager", hierarchy_node_id=node.id)
     commander = create_soldier(session, personal_number=f"{pn_prefix}_cmd", role="commander", hierarchy_node_id=node.id)
@@ -205,6 +207,7 @@ def test_dual_role_commander_can_approve_hakpaza(client, admin_session):
     from decimal import Decimal
     from tests.helpers import create_node, create_soldier, auth_headers
 
+    set_setting(admin_session, "forced_callup.enabled", True, actor_id=None)
     a = create_node(admin_session, level="department", name="hak-dual-a")
     b = create_node(admin_session, level="department", name="hak-dual-b")
     dual = create_soldier(admin_session, personal_number="hak-dual-001", role="commander")

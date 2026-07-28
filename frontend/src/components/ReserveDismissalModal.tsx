@@ -149,7 +149,7 @@ export default function ReserveDismissalModal({ shift, reserve, onClose, onDone 
               {t("dismiss_modal.covering_reserve", "מי יכסה במקום")}
             </label>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              {t("dismiss_modal.covers_primaries", "כונן זה מכסה את")}:{" "}
+              {t("dismiss_modal.covers_primaries", "כונן זה מחליף את")}:{" "}
               {reserve.primary_assignment_ids.map((id, i) => {
                 const a = assigneeById[id];
                 return <span key={id}>{i > 0 && ", "}<span className="font-medium">{a?.soldier_name ?? id}</span></span>;

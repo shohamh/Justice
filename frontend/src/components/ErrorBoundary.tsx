@@ -22,7 +22,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center p-6 dark:bg-gray-900" dir="rtl">
+        <div className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6 dark:bg-gray-900" dir="rtl">
           <p className="text-gray-600 dark:text-gray-300">משהו השתבש. נסה לרענן את הדף.</p>
         </div>
       );

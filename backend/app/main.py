@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
 from app.email_worker import run_email_worker
+from app.swap_expiry_worker import run_swap_expiry_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.rate_limit import limiter
@@ -117,13 +118,16 @@ async def lifespan(app: FastAPI):
     logger.info("=== STARTUP pid=%d ===", os.getpid())
     asyncio.get_running_loop().set_exception_handler(_handle_async_exception)
     _fail_orphaned_algorithm_jobs()
-    task = asyncio.create_task(run_email_worker())
+    email_task = asyncio.create_task(run_email_worker())
+    swap_expiry_task = asyncio.create_task(run_swap_expiry_worker())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    for task in (email_task, swap_expiry_task):
+        task.cancel()
+    for task in (email_task, swap_expiry_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     logger.info("=== CLEAN SHUTDOWN ===")
 
 

@@ -245,8 +245,11 @@ export default function HomePage() {
 
   const comparisonData = useMemo(
     () => [
-      { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
+      // recharts always lays categories out left-to-right regardless of page
+      // dir, so "average" (read second in RTL) goes first in the array —
+      // that puts "my score" on the visual right, where RTL reading starts.
       { name: "ממוצע יחידה", value: unitAvgNormRaw },
+      { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
     ],
     [myRow, unitAvgNormRaw],
   );
@@ -337,11 +340,11 @@ export default function HomePage() {
               <BarChart
                 data={typeChartData}
                 layout="vertical"
-                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
+                margin={{ top: 0, right: 0, left: 30, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                <XAxis type="number" reversed tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" orientation="right" width={110} tick={{ fontSize: 11 }} />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
@@ -353,7 +356,7 @@ export default function HomePage() {
                     );
                   }}
                 />
-                <Bar dataKey="days" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="days" fill="#6366f1" radius={[4, 0, 0, 4]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -373,8 +376,8 @@ export default function HomePage() {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => [Number(v ?? 0).toFixed(3), "ניקוד מנורמל"]} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  <Cell fill="#6366f1" />
                   <Cell fill="#9ca3af" />
+                  <Cell fill="#6366f1" />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

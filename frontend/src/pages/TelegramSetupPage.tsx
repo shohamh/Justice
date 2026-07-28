@@ -50,7 +50,7 @@ export default function TelegramSetupPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
+    <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-4 text-center">
         <h1 className="text-2xl font-bold">{t("telegram_setup.title")}</h1>
         {verified ? (

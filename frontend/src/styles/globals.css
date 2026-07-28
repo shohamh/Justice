@@ -12,8 +12,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The app shell (Layout.tsx) is a fixed-height flex column whose <main> is
+   the sole scroll container. Without `overflow: hidden` here, content that
+   nudges the document past 100dvh (mobile browser chrome, subpixel
+   rounding, etc.) makes html/body scroll too — a second, native scrollbar
+   on top of main's, landing on the opposite side because dir=rtl only
+   shifts overflow gutters on elements, not the browser's own window
+   scrollbar. */
 html, body, #root {
   height: 100%;
+  overflow: hidden;
 }
 
 body {

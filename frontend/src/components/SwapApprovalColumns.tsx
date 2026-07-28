@@ -40,10 +40,21 @@ export function computeColumnStatus(column: SwapApprovalColumn): ColumnStatus {
   return "approved";
 }
 
+// Any translucent warm/cool tint washed over a near-black card background
+// desaturates toward mud, however light the source shade — a full-area dark
+// fill just isn't legible here. Dark mode instead gets a solid, saturated
+// top-border accent; the label/icon color (already -300, bright enough on
+// dark) carries the rest of the signal.
+//
+// The `!` (important) modifier is required: the wrapper's `divide-x-reverse
+// dark:divide-gray-600` sets `border-color` (the shorthand, all four sides)
+// on every non-first child via Tailwind's divide-* utilities, which
+// otherwise silently overrides this per-column border-top color on every
+// column except the first.
 const STATUS_STYLES: Record<ColumnStatus, { bg: string; text: string; icon: string }> = {
-  approved: { bg: "bg-green-50 dark:bg-green-950/40", text: "text-green-700 dark:text-green-300", icon: "✓" },
-  rejected: { bg: "bg-red-50 dark:bg-red-950/40", text: "text-red-600 dark:text-red-300", icon: "✗" },
-  pending: { bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-300", icon: "⋯" },
+  approved: { bg: "bg-green-50 dark:bg-transparent dark:border-t-2 dark:!border-t-green-500", text: "text-green-700 dark:text-green-300", icon: "✓" },
+  rejected: { bg: "bg-red-50 dark:bg-transparent dark:border-t-2 dark:!border-t-red-500", text: "text-red-600 dark:text-red-300", icon: "✗" },
+  pending: { bg: "bg-amber-50 dark:bg-transparent dark:border-t-2 dark:!border-t-amber-500", text: "text-amber-700 dark:text-amber-300", icon: "⋯" },
   neutral: { bg: "", text: "text-gray-500 dark:text-gray-400", icon: "" },
 };
 

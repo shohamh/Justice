@@ -54,6 +54,33 @@ describe("BugReportModal", () => {
     expect(screen.getByTestId("bug-report-submit")).toBeDisabled();
   });
 
+  test("submits via Ctrl+Enter in the description textarea", async () => {
+    render(
+      <MemoryRouter initialEntries={["/duty"]}>
+        <BugReportModal screenshot="data:image/png;base64,AAA" onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const textarea = screen.getByTestId("bug-report-description");
+    fireEvent.change(textarea, { target: { value: "ctrl enter works" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => expect(submitBugReport).toHaveBeenCalledWith(
+      expect.objectContaining({ description: "ctrl enter works" }),
+    ));
+  });
+
+  test("does not submit via Ctrl+Enter when the description is empty", () => {
+    render(
+      <MemoryRouter initialEntries={["/duty"]}>
+        <BugReportModal screenshot="data:image/png;base64,AAA" onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.keyDown(screen.getByTestId("bug-report-description"), { key: "Enter", ctrlKey: true });
+    expect(submitBugReport).not.toHaveBeenCalled();
+  });
+
   test("shows a fallback message and still allows submission when screenshot capture failed", async () => {
     render(
       <MemoryRouter initialEntries={["/duty"]}>

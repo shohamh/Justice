@@ -51,6 +51,16 @@ describe("AskSwapModal", () => {
     expect(screen.getByText("swaps.save")).toBeDisabled();
   });
 
+  test("shows a loading message instead of the empty state while eligible targets are still loading", async () => {
+    let resolveTargets!: (v: unknown[]) => void;
+    mockListEligibleTargets.mockReturnValueOnce(new Promise((resolve) => { resolveTargets = resolve; }));
+    renderModal();
+    expect(screen.getByText("swaps.loading_eligible_targets")).toBeInTheDocument();
+    expect(screen.queryByText("swaps.no_eligible_targets")).not.toBeInTheDocument();
+    resolveTargets([]);
+    expect(await screen.findByText("swaps.no_eligible_targets")).toBeInTheDocument();
+  });
+
   test("shows a field list (not the raw English msg) for an array-shaped 422 validation error detail", async () => {
     mockCreateSwap.mockRejectedValueOnce({
       response: { data: { detail: [{ msg: "Input should be a valid date", loc: ["body", "date"], type: "value_error" }] } },

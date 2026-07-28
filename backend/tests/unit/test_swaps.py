@@ -278,6 +278,62 @@ def test_cancel_request_notifies_covering_soldier(admin_session):
     assert notif is not None
 
 
+def test_expire_started_swaps_cancels_request_whose_duty_already_started(admin_session):
+    commander, a, b, assignment = _seed_with_commander(admin_session)
+    set_setting(admin_session, "swaps.require_manager_approval", True, actor_id=None)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id, open_to_marketplace=True,
+    )
+    admin_session.flush()
+    svc.claim_request(admin_session, request_id=req.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+
+    # assignment.start_date is 2026-06-10 (see _seed) — "today" past that means the duty started.
+    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 10))
+    admin_session.flush()
+
+    assert count == 1
+    assert admin_session.get(SwapRequest, req.id).status == "cancelled"
+    candidate = _candidate(admin_session, req.id, b.id)
+    assert candidate.status == "cancelled"
+    for sid in (a.id, b.id):
+        notif = admin_session.query(Notification).filter_by(
+            soldier_id=sid, type=NotificationType.swap_rejected,
+        ).one_or_none()
+        assert notif is not None
+
+
+def test_expire_started_swaps_leaves_future_duty_requests_open(admin_session):
+    a, b, assignment = _seed(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    # "today" before assignment.start_date (2026-06-10) — duty hasn't started yet.
+    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 1))
+    admin_session.flush()
+
+    assert count == 0
+    assert admin_session.get(SwapRequest, req.id).status == "open"
+
+
+def test_expire_started_swaps_ignores_already_cancelled_requests(admin_session):
+    a, b, assignment = _seed(admin_session)
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=a.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, reason="x", actor_id=a.id, open_to_marketplace=True,
+    )
+    admin_session.flush()
+    svc.cancel_request(admin_session, request_id=req.id, actor_id=a.id)
+    admin_session.flush()
+
+    count = svc.expire_started_swaps(admin_session, today=date(2026, 6, 10))
+    assert count == 0
+
+
 def _reserve_assignment(session, soldier_id, dt_id, loc_id, start, end, status="published"):
     a = DutyAssignment(
         soldier_id=soldier_id, duty_type_id=dt_id, duty_location_id=loc_id,

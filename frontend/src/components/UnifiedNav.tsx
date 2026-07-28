@@ -47,7 +47,7 @@ export default function UnifiedNav() {
   const { user } = useAuth();
   const location = useLocation();
   const settings = usePublicSettings();
-  const hakpazaEnabled = settings?.["forced_callup.enabled"] !== false;
+  const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
 

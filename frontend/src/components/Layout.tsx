@@ -25,7 +25,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
   const [gimelimEnabled, setGimelimEnabled] = useState(true);
-  const [hakpazaEnabled, setHakpazaEnabled] = useState(true);
+  const [hakpazaEnabled, setHakpazaEnabled] = useState(false);
 
   function openHelp(tab?: string) {
     setHelpTab(tab);
@@ -41,8 +41,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
 
   useEffect(() => {
     getPublicSettings().then((settings) => {
-      const enabled = settings["forced_callup.enabled"];
-      setHakpazaEnabled(enabled === true || enabled === undefined);
+      setHakpazaEnabled(settings["forced_callup.enabled"] === true);
     }).catch(() => {});
   }, []);
 

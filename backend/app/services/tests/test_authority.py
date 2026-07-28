@@ -27,7 +27,7 @@ def _level(session, key, rank):
     return lt
 
 
-def test_commander_below_rasan_without_hamador_command_cannot_grant(app_session):
+def test_commander_without_mador_command_cannot_grant_regardless_of_rank(app_session):
     _level(app_session, "גדוד", 1)
     _level(app_session, "פלוגה", 2)
     _level(app_session, "מדור", 3)
@@ -35,20 +35,13 @@ def test_commander_below_rasan_without_hamador_command_cannot_grant(app_session)
     app_session.add(node)
     app_session.flush()
     node.path_ids = [node.id]
-    s = Soldier(personal_number="1", full_name="X", password_hash="x", rank="סרן")
+    s = Soldier(personal_number="1", full_name="X", password_hash="x", rank="אלוף")
     app_session.add(s)
     app_session.flush()
-    assert commander_can_grant_commander_exemption(app_session, commander_id=s.id, commander_rank=s.rank) is False
+    assert commander_can_grant_commander_exemption(app_session, commander_id=s.id) is False
 
 
-def test_commander_rasan_can_grant_regardless_of_command_level(app_session):
-    s = Soldier(personal_number="2", full_name="X", password_hash="x", rank="רסן")
-    app_session.add(s)
-    app_session.flush()
-    assert commander_can_grant_commander_exemption(app_session, commander_id=s.id, commander_rank=s.rank) is True
-
-
-def test_commander_of_mador_or_above_can_grant_even_below_rasan(app_session):
+def test_commander_of_mador_or_above_can_grant_regardless_of_rank(app_session):
     _level(app_session, "גדוד", 1)
     _level(app_session, "מדור", 2)
     _level(app_session, "כיתה", 3)
@@ -61,7 +54,7 @@ def test_commander_of_mador_or_above_can_grant_even_below_rasan(app_session):
     app_session.flush()
     node.commander_id = s.id
     app_session.flush()
-    assert commander_can_grant_commander_exemption(app_session, commander_id=s.id, commander_rank=s.rank) is True
+    assert commander_can_grant_commander_exemption(app_session, commander_id=s.id) is True
 
 
 def test_dm_scope_covers_level_true_when_scope_node_at_or_above_target_level(app_session):
@@ -93,12 +86,12 @@ def test_commander_exemption_min_level_configurable(app_session):
     app_session.flush()
 
     # Default threshold ("מדור") — a צוות commander should NOT qualify.
-    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id, commander_rank=None) is False
+    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id) is False
 
     # Lower the required threshold to "צוות" via setting — now they should qualify.
     set_setting(app_session, "exemptions.commander_exemption_min_level", "צוות", actor_id=None)
     app_session.flush()
-    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id, commander_rank=None) is True
+    assert commander_can_grant_commander_exemption(app_session, commander_id=cmd.id) is True
 
 
 def test_dm_scope_covers_level_false_when_scope_node_below_target_level(app_session):

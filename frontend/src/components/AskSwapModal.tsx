@@ -143,7 +143,9 @@ export default function AskSwapModal({
               {t("swaps.select_up_to", { n: maxTargets })} ({alreadyInvitedIds.size + selectedTargets.size}/{maxTargets})
             </p>
             <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
-              {eligibleTargets.length === 0 ? (
+              {eligibleQuery.isLoading ? (
+                <p className="text-sm text-gray-500 p-2">{t("swaps.loading_eligible_targets")}</p>
+              ) : eligibleTargets.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
               ) : (
                 <ul>

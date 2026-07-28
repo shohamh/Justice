@@ -23,10 +23,10 @@ router = APIRouter(prefix="/hakpaza", tags=["hakpaza"])
 def _require_hakpaza_enabled(session: Session) -> None:
     try:
         enabled = get_setting(session, "forced_callup.enabled")
-        if not bool(enabled):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="hakpaza_disabled")
     except SettingNotFound:
-        pass  # enabled by default
+        enabled = False  # disabled by default
+    if not bool(enabled):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="hakpaza_disabled")
 
 
 def _require_commander_or_dm(session: Session, actor: Soldier) -> None:

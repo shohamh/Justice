@@ -31,7 +31,7 @@ export default function ProfilePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const publicSettings = usePublicSettings();
-  const telegramEnabled = publicSettings?.["telegram.enabled"] !== false;
+  const telegramEnabled = publicSettings?.["telegram.enabled"] === true;
 
   const [mitvahimReq, setMitvahimReq] = useState("");
   const [alalReq, setAlalReq] = useState("");
