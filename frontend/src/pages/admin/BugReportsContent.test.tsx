@@ -12,6 +12,7 @@ vi.mock("../../api/bugReports", async () => {
     updateBugReportStatus: vi.fn(),
     getBugReportJson: vi.fn(),
     fetchBugReportScreenshot: vi.fn(),
+    importBugReports: vi.fn(),
   };
 });
 
@@ -128,5 +129,35 @@ describe("BugReportsContent", () => {
 
     createObjectURLSpy.mockRestore();
     revokeObjectURLSpy.mockRestore();
+  });
+
+  it("imports a batch of JSON files and shows a summary, then refreshes the list", async () => {
+    vi.mocked(bugReportsApi.importBugReports).mockResolvedValue({
+      results: [
+        { filename: "a.json", status: "imported", detail: null },
+        { filename: "b.json", status: "already_exists", detail: "already_exists" },
+      ],
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-import-input")).toBeInTheDocument());
+
+    const fileA = new File(["{}"], "a.json", { type: "application/json" });
+    const fileB = new File(["{}"], "b.json", { type: "application/json" });
+    fireEvent.change(screen.getByTestId("bug-report-import-input"), { target: { files: [fileA, fileB] } });
+
+    await waitFor(() => expect(bugReportsApi.importBugReports).toHaveBeenCalledWith([fileA, fileB]));
+    await waitFor(() => expect(screen.getByTestId("bug-report-import-summary")).toHaveTextContent("יובאו 1 מתוך 2"));
+    expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an inline error when the import request itself fails", async () => {
+    vi.mocked(bugReportsApi.importBugReports).mockRejectedValue(new Error("network error"));
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-import-input")).toBeInTheDocument());
+
+    const file = new File(["{}"], "a.json", { type: "application/json" });
+    fireEvent.change(screen.getByTestId("bug-report-import-input"), { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByTestId("bug-report-import-error")).toBeInTheDocument());
   });
 });

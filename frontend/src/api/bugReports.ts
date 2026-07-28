@@ -58,3 +58,23 @@ export async function fetchBugReportScreenshot(id: string): Promise<Blob> {
 export async function updateBugReportStatus(id: string, status: BugReportStatus): Promise<BugReportSummary> {
   return (await api.patch<BugReportSummary>(`/admin/bug-reports/${id}`, { status })).data;
 }
+
+export interface BugReportImportFileResult {
+  filename: string;
+  status: "imported" | "already_exists" | "error";
+  detail: string | null;
+}
+
+export interface BugReportImportSummary {
+  results: BugReportImportFileResult[];
+}
+
+export async function importBugReports(files: File[]): Promise<BugReportImportSummary> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return (
+    await api.post<BugReportImportSummary>("/admin/bug-reports/import", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+  ).data;
+}

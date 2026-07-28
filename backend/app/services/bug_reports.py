@@ -20,6 +20,10 @@ class BugReportWriteError(Exception):
     """Raised only when both the JSON mirror and the DB insert fail."""
 
 
+class BugReportImportError(Exception):
+    """Raised for a single file when importing a JSON-mirrored bug report fails."""
+
+
 @dataclass
 class BugReportWriteResult:
     persisted_to_db: bool
@@ -128,3 +132,54 @@ def write_bug_report(
         raise BugReportWriteError("both_json_and_db_write_failed")
 
     return BugReportWriteResult(persisted_to_db=persisted_to_db, json_file_path=json_file_path)
+
+
+_REQUIRED_IMPORT_FIELDS = ("id", "reporter_id", "description", "severity", "route", "created_at")
+
+
+def import_bug_report_json(session: Session, payload: dict[str, Any]) -> uuid.UUID:
+    """Insert one bug report from a previously-written JSON mirror payload
+    (the same shape `write_bug_report` produces — see `_write_json_mirror`).
+
+    Used to recover reports that only ever reached disk because the DB insert
+    failed at submission time (e.g. during a DB outage). Raises
+    BugReportImportError if the payload is malformed, the report already
+    exists in the DB, or the insert itself fails (e.g. the reporter no longer
+    exists). Runs in a SAVEPOINT so a failure here does not roll back other
+    reports already imported in the same request.
+    """
+    missing = [f for f in _REQUIRED_IMPORT_FIELDS if not payload.get(f)]
+    if missing:
+        raise BugReportImportError(f"missing_fields:{','.join(missing)}")
+    try:
+        report_id = uuid.UUID(str(payload["id"]))
+        reporter_id = uuid.UUID(str(payload["reporter_id"]))
+        created_at = datetime.fromisoformat(payload["created_at"])
+    except (ValueError, TypeError) as exc:
+        raise BugReportImportError("malformed_fields") from exc
+    if payload["severity"] not in ("low", "medium", "high"):
+        raise BugReportImportError("invalid_severity")
+
+    if session.get(BugReport, report_id) is not None:
+        raise BugReportImportError("already_exists")
+
+    try:
+        with session.begin_nested():
+            report = BugReport(
+                reporter_id=reporter_id,
+                description=str(payload["description"])[:2000],
+                severity=payload["severity"],
+                route=str(payload["route"])[:500],
+                screenshot=None,
+                nav_history=payload.get("nav_history") or None,
+                audit_snapshot=payload.get("audit_snapshot") or None,
+                user_snapshot=payload.get("user_snapshot") or None,
+                json_file_path=None,
+            )
+            report.id = report_id
+            report.created_at = created_at
+            session.add(report)
+            session.flush()
+    except Exception as exc:
+        raise BugReportImportError("insert_failed") from exc
+    return report_id

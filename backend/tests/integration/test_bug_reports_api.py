@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -216,3 +219,101 @@ def test_get_bug_report_screenshot_404_when_none_captured(client: TestClient, ad
 
     resp = client.get(f"/api/admin/bug-reports/{report_id}/screenshot", headers=auth_headers(admin))
     assert resp.status_code == 404
+
+
+def _mirror_payload(reporter, **overrides) -> dict:
+    import uuid as uuid_mod
+    from datetime import datetime, timezone
+
+    payload = {
+        "id": str(uuid_mod.uuid4()),
+        "reporter_id": str(reporter.id),
+        "description": "imported from json mirror",
+        "severity": "medium",
+        "route": "/duties",
+        "nav_history": [],
+        "audit_snapshot": [],
+        "user_snapshot": {"full_name": reporter.full_name},
+        "has_screenshot": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_import_bug_reports_requires_admin(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugapi023")
+    resp = client.post(
+        "/api/admin/bug-reports/import",
+        files={"files": ("r1.json", b"{}", "application/json")},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 403
+
+
+def test_import_bug_reports_creates_rows_from_json_mirror(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugapi024", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi025")
+    payload = _mirror_payload(reporter)
+
+    resp = client.post(
+        "/api/admin/bug-reports/import",
+        files={"files": ("r1.json", json.dumps(payload).encode("utf-8"), "application/json")},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"] == [{"filename": "r1.json", "status": "imported", "detail": None}]
+
+    row = admin_session.get(BugReport, uuid.UUID(payload["id"]))
+    assert row is not None
+    assert row.description == "imported from json mirror"
+    assert row.severity == "medium"
+    assert row.screenshot is None
+
+
+def test_import_bug_reports_flags_duplicate_and_continues(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugapi026", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi027")
+    payload = _mirror_payload(reporter)
+
+    files = [
+        ("files", ("first.json", json.dumps(payload).encode("utf-8"), "application/json")),
+        ("files", ("dup.json", json.dumps(payload).encode("utf-8"), "application/json")),
+    ]
+    resp = client.post("/api/admin/bug-reports/import", files=files, headers=auth_headers(admin))
+    assert resp.status_code == 200
+    statuses = {r["filename"]: r["status"] for r in resp.json()["results"]}
+    assert statuses == {"first.json": "imported", "dup.json": "already_exists"}
+
+
+def test_import_bug_reports_rejects_invalid_json_but_continues(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugapi028", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi029")
+    good = _mirror_payload(reporter)
+
+    files = [
+        ("files", ("bad.json", b"not json at all", "application/json")),
+        ("files", ("good.json", json.dumps(good).encode("utf-8"), "application/json")),
+    ]
+    resp = client.post("/api/admin/bug-reports/import", files=files, headers=auth_headers(admin))
+    assert resp.status_code == 200
+    statuses = {r["filename"]: r["status"] for r in resp.json()["results"]}
+    assert statuses == {"bad.json": "error", "good.json": "imported"}
+    assert admin_session.get(BugReport, uuid.UUID(good["id"])) is not None
+
+
+def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugapi030", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugapi031")
+    payload = _mirror_payload(reporter, reporter_id=str(uuid.uuid4()))
+
+    resp = client.post(
+        "/api/admin/bug-reports/import",
+        files={"files": ("orphan.json", json.dumps(payload).encode("utf-8"), "application/json")},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200
+    result = resp.json()["results"][0]
+    assert result["status"] == "error"
+    assert admin_session.get(BugReport, uuid.UUID(payload["id"])) is None

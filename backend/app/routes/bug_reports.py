@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import base64
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,6 +21,8 @@ router = APIRouter(tags=["bug_reports"])
 
 _MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024  # 5 MB
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_MAX_IMPORT_FILES = 50
+_MAX_IMPORT_FILE_BYTES = 1 * 1024 * 1024  # 1 MB — JSON mirror files are lightweight text
 
 
 class NavHistoryEntry(BaseModel):
@@ -132,6 +135,51 @@ def list_bug_reports(
         query.order_by(BugReport.created_at.desc()).offset(offset).limit(limit)
     ).scalars().all()
     return PaginatedBugReports(items=[_summary_out(r) for r in items], total=total)
+
+
+class BugReportImportFileResult(BaseModel):
+    filename: str
+    status: Literal["imported", "already_exists", "error"]
+    detail: str | None = None
+
+
+class BugReportImportSummary(BaseModel):
+    results: list[BugReportImportFileResult]
+
+
+@router.post("/admin/bug-reports/import", response_model=BugReportImportSummary)
+def import_bug_reports(
+    session: Session = Depends(get_session),
+    _admin: Soldier = Depends(require_roles("admin")),
+    files: list[UploadFile] = File(...),
+) -> BugReportImportSummary:
+    if len(files) > _MAX_IMPORT_FILES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="too_many_files")
+
+    results: list[BugReportImportFileResult] = []
+    for f in files:
+        name = f.filename or "unnamed.json"
+        raw = f.file.read(_MAX_IMPORT_FILE_BYTES + 1)
+        if len(raw) > _MAX_IMPORT_FILE_BYTES:
+            results.append(BugReportImportFileResult(filename=name, status="error", detail="file_too_large"))
+            continue
+        try:
+            payload = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            results.append(BugReportImportFileResult(filename=name, status="error", detail="invalid_json"))
+            continue
+        if not isinstance(payload, dict):
+            results.append(BugReportImportFileResult(filename=name, status="error", detail="invalid_json"))
+            continue
+        try:
+            svc.import_bug_report_json(session, payload)
+        except svc.BugReportImportError as exc:
+            status_value = "already_exists" if str(exc) == "already_exists" else "error"
+            results.append(BugReportImportFileResult(filename=name, status=status_value, detail=str(exc)))
+            continue
+        results.append(BugReportImportFileResult(filename=name, status="imported"))
+    session.commit()
+    return BugReportImportSummary(results=results)
 
 
 @router.get("/admin/bug-reports/{report_id}/json")

@@ -106,4 +106,50 @@ describe("BugReportTrigger", () => {
 
     vi.useRealTimers();
   });
+
+  test("starts capture on mousedown, before a document-level outside-click listener can close another panel", async () => {
+    // Simulates a panel (e.g. the notifications dropdown) that closes itself
+    // via a document-level mousedown listener, as NotificationBell does.
+    const outsideClickHandler = vi.fn();
+    document.addEventListener("mousedown", outsideClickHandler);
+
+    render(
+      <MemoryRouter>
+        <BugReportTrigger />
+      </MemoryRouter>,
+    );
+
+    await act(async () => { fireEvent.mouseDown(screen.getByTestId("bug-report-trigger")); });
+
+    // Our own mousedown handler (bound directly on the button) must run
+    // before the event bubbles up to trigger document-level listeners.
+    expect(toPng).toHaveBeenCalled();
+    expect(outsideClickHandler).toHaveBeenCalled();
+
+    document.removeEventListener("mousedown", outsideClickHandler);
+  });
+
+  test("captures relative to the current scroll position, not the top of the document", async () => {
+    Object.defineProperty(window, "scrollX", { value: 40, configurable: true });
+    Object.defineProperty(window, "scrollY", { value: 300, configurable: true });
+
+    render(
+      <MemoryRouter>
+        <BugReportTrigger />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByTestId("bug-report-trigger"));
+
+    await waitFor(() => expect(toPng).toHaveBeenCalled());
+    expect(toPng).toHaveBeenCalledWith(
+      document.body,
+      expect.objectContaining({
+        style: expect.objectContaining({ transform: "translate(-40px, -300px)" }),
+      }),
+    );
+
+    Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
 });

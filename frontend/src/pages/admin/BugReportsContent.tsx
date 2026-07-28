@@ -6,9 +6,11 @@ import {
   updateBugReportStatus,
   getBugReportJson,
   fetchBugReportScreenshot,
+  importBugReports,
   BugReportSummary,
   BugReportSeverity,
   BugReportStatus,
+  BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
 
@@ -31,6 +33,10 @@ export function BugReportsContent() {
   const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
   const [jsonErrorById, setJsonErrorById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<BugReportImportSummary | null>(null);
+  const [importError, setImportError] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
   const limit = 20;
 
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
@@ -95,6 +101,23 @@ export function BugReportsContent() {
     if (report.has_screenshot) void loadScreenshot(report.id);
   }
 
+  async function handleImportFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    setImporting(true);
+    setImportError("");
+    setImportSummary(null);
+    try {
+      const summary = await importBugReports(Array.from(fileList));
+      setImportSummary(summary);
+      await query.refetch();
+    } catch (err: unknown) {
+      setImportError(translateApiError(err, t, "שגיאה בייבוא הקבצים"));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
   async function loadJson(id: string) {
     if (jsonById[id]) return;
     setJsonErrorById((prev) => ({ ...prev, [id]: "" }));
@@ -111,6 +134,42 @@ export function BugReportsContent() {
 
   return (
     <div dir="rtl">
+      <div className="flex items-center gap-2 mb-4">
+        <label
+          className={`text-sm px-3 py-1.5 rounded border cursor-pointer dark:border-gray-600 ${importing ? "opacity-60 cursor-not-allowed" : "hover:bg-gray-50 dark:hover:bg-gray-700"}`}
+        >
+          {importing ? "מייבא..." : "ייבוא קבצי JSON"}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            multiple
+            disabled={importing}
+            onChange={(e) => { void handleImportFiles(e.target.files); }}
+            className="hidden"
+            data-testid="bug-report-import-input"
+          />
+        </label>
+        {importError && (
+          <span className="text-xs text-red-500" data-testid="bug-report-import-error">{importError}</span>
+        )}
+        {importSummary && (
+          <span className="text-xs text-gray-600 dark:text-gray-300" data-testid="bug-report-import-summary">
+            יובאו {importSummary.results.filter((r) => r.status === "imported").length} מתוך {importSummary.results.length}
+            {importSummary.results.some((r) => r.status !== "imported") && (
+              <>
+                {" "}
+                (
+                {importSummary.results
+                  .filter((r) => r.status !== "imported")
+                  .map((r) => `${r.filename}: ${r.status === "already_exists" ? "כבר קיים" : r.detail ?? "שגיאה"}`)
+                  .join(", ")}
+                )
+              </>
+            )}
+          </span>
+        )}
+      </div>
       <div className="flex gap-2 mb-4">
         <select
           value={severityFilter}
