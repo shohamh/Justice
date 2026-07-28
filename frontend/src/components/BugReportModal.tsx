@@ -90,6 +90,12 @@ export default function BugReportModal({ screenshot, onClose }: BugReportModalPr
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  if (!submitting && description.trim()) void handleSubmit();
+                }
+              }}
               maxLength={2000}
               placeholder="מה קרה?"
               data-testid="bug-report-description"
