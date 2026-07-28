@@ -878,6 +878,12 @@
     "filter_duty_type_all": "כל הסוגים",
     "filter_node": "יחידה מציעה",
     "filter_node_all": "כל היחידות",
+    "manage_button": "נהל",
+    "manage_swap_title": "ניהול בקשת החלפה",
+    "already_invited": "כבר הוזמן",
+    "invite_limit_reached": "הגעת למגבלת ההזמנות",
+    "already_on_marketplace": "כבר פורסם בשוק ההחלפות",
+    "nothing_new_selected": "לא נבחר דבר חדש להוספה",
     "filter_eligible_only": "רק תורנויות שאני כשיר ופנוי",
     "filter_clear": "נקה סינון"
   },
