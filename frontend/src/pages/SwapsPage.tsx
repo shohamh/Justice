@@ -73,7 +73,7 @@ function PendingApprovalCard({
       <div className="flex flex-wrap gap-3">
         {liveCandidates.map((c) => (
           <div key={c.id} className="flex-1 min-w-[140px]">
-            <CandidateRow candidate={c} t={t} showName={c.status !== "pending" && c.status !== "accepted"} />
+            <CandidateRow candidate={c} t={t} />
           </div>
         ))}
       </div>
@@ -113,16 +113,19 @@ function SwapDutyHeader({ swap, onShiftClick }: { swap: SwapRequest; onShiftClic
   return <div className="text-sm">{inner}</div>;
 }
 
-function CandidateRow({ candidate, t, showName }: {
+function CandidateRow({ candidate, t }: {
   candidate: SwapRequest["candidates"][number];
   t: (k: string) => string;
-  showName: boolean;
 }) {
   const sourceLabel = candidate.source === "marketplace" ? t("swaps.candidate_source_marketplace") : t("swaps.candidate_source_invited");
   return (
     <div className="border rounded p-2 text-xs space-y-1 dark:border-gray-600">
       <div className="flex items-center justify-between gap-2">
-        {showName && <span className="font-medium dark:text-gray-100">{candidate.soldier_name ?? candidate.soldier_id.slice(0, 8)}</span>}
+        {/* Always shown, even for a "live" candidate who also has their own
+            SwapApprovalColumns column above — that column can silently clip
+            off narrow (mobile) viewports since it doesn't scroll, which
+            previously left the candidate's name visible nowhere at all. */}
+        <span className="font-medium dark:text-gray-100">{candidate.soldier_name ?? candidate.soldier_id.slice(0, 8)}</span>
         <span className="text-gray-400">{sourceLabel}</span>
       </div>
       {candidate.status === "declined" && <p className="text-red-500">{t("swaps.candidate_declined")}</p>}
@@ -328,7 +331,7 @@ export default function SwapsPage() {
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{t("swaps.candidates_title")} ({swap.candidates.length})</p>
           <div className="space-y-1">
             {swap.candidates.map((c) => (
-              <CandidateRow key={c.id} candidate={c} t={t} showName={c.status !== "pending" && c.status !== "accepted"} />
+              <CandidateRow key={c.id} candidate={c} t={t} />
             ))}
           </div>
         </div>

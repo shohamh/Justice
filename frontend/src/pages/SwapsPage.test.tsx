@@ -72,8 +72,12 @@ function renderPage(initialEntries = ["/swaps"]) {
 describe("SwapsPage mine tab candidate list", () => {
   test("shows one card per request with both candidates listed, not one card per candidate", async () => {
     renderPage();
-    expect(await screen.findByText("Yossi")).toBeInTheDocument();
-    expect(await screen.findByText("Dana")).toBeInTheDocument();
+    // Each live candidate's name renders twice by design — once as their
+    // SwapApprovalColumns column label, once in their CandidateRow entry
+    // (which no longer hides the name for live candidates, since the
+    // column can scroll out of view on narrow viewports).
+    expect(await screen.findAllByText("Yossi")).toHaveLength(2);
+    expect(screen.getAllByText("Dana")).toHaveLength(2);
     // Exactly one duty header/date rendered for this request, proving it's
     // one card, not two — SwapDutyHeader renders the duty_type_name once per card.
     expect(screen.getAllByText("Guard")).toHaveLength(1);
