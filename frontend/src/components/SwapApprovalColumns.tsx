@@ -96,7 +96,12 @@ export default function SwapApprovalColumns({ columns }: { columns: SwapApproval
   const { t } = useTranslation();
   return (
     <div
-      className="flex divide-x divide-x-reverse dark:divide-gray-600 border rounded dark:border-gray-600 overflow-hidden text-xs"
+      // overflow-x-auto (not overflow-hidden): each column has a min-width
+      // floor, so 3+ participants (requester + multiple candidates) can
+      // exceed a narrow/mobile viewport — clipping silently dropped whole
+      // columns (and the only place some candidates' names appeared) instead
+      // of making them reachable by scrolling.
+      className="flex divide-x divide-x-reverse dark:divide-gray-600 border rounded dark:border-gray-600 overflow-x-auto text-xs"
       dir="rtl"
     >
       {columns.map((column, i) => {
