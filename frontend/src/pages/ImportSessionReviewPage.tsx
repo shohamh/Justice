@@ -2653,12 +2653,12 @@ export default function ImportSessionReviewPage() {
                 <tr className="text-gray-500 border-b dark:border-gray-700">
                   <th className="text-right p-3">מבקש</th>
                   <th className="text-right p-3">חייל יעד</th>
-                  <th className="text-right p-3">מכסה</th>
+                  <th className="text-right p-3">מחליף</th>
                   <th className="text-right p-3">תאריך תורנות</th>
                   <th className="text-right p-3">סטטוס</th>
                   <th className="text-right p-3">סיבה</th>
                   <th className="text-right p-3">אישור מבקש</th>
-                  <th className="text-right p-3">אישור מכסה</th>
+                  <th className="text-right p-3">אישור מחליף</th>
                   <th className="text-right p-3">נדחה ע&quot;י</th>
                   <th className="text-right p-3">הערת החלטה</th>
                   <th className="text-right p-3">לוג אישורים</th>
@@ -2672,7 +2672,7 @@ export default function ImportSessionReviewPage() {
                   const canToggle = row.action !== "error" && row.action !== "out_of_scope";
                   const approvalLogSummary = row.approval_log.length > 0
                     ? row.approval_log
-                        .map((e) => `${e.side === "requester" ? "מבקש" : "מכסה"}/${e.kind === "commander" ? "מפקד" : "קצין תורן"}: ${e.person_pn} - ${e.outcome === "approved" ? "אישר" : "דחה"} (${e.at})`)
+                        .map((e) => `${e.side === "requester" ? "מבקש" : "מחליף"}/${e.kind === "commander" ? "מפקד" : "קצין תורן"}: ${e.person_pn} - ${e.outcome === "approved" ? "אישר" : "דחה"} (${e.at})`)
                         .join("; ")
                     : null;
                   return (
@@ -2790,13 +2790,13 @@ export default function ImportSessionReviewPage() {
                                 { key: "resolved_requesting_soldier_id", label: "מזהה מבקש", value: row.resolved_requesting_soldier_id },
                                 { key: "target_personal_number", label: "מ\"א חייל יעד", value: row.target_personal_number },
                                 { key: "resolved_target_soldier_id", label: "מזהה חייל יעד", value: row.resolved_target_soldier_id },
-                                { key: "covering_personal_number", label: "מ\"א מכסה", value: row.covering_personal_number },
-                                { key: "resolved_covering_soldier_id", label: "מזהה מכסה", value: row.resolved_covering_soldier_id },
+                                { key: "covering_personal_number", label: "מ\"א מחליף", value: row.covering_personal_number },
+                                { key: "resolved_covering_soldier_id", label: "מזהה מחליף", value: row.resolved_covering_soldier_id },
                                 { key: "duty_date", label: "תאריך תורנות", value: row.duty_date, editable: { type: "date", onChange: (v) => setFieldOverride("swap_requests", row.row, "duty_date", v) } },
                                 { key: "status", label: "סטטוס", value: row.status, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "status", v) } },
                                 { key: "reason", label: "סיבה", value: row.reason, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "reason", v) } },
                                 { key: "requester_side_approved", label: "אישור מבקש", value: row.requester_side_approved, editable: { type: "checkbox", onChange: (v) => setFieldOverride("swap_requests", row.row, "requester_side_approved", v) } },
-                                { key: "covering_side_approved", label: "אישור מכסה", value: row.covering_side_approved, editable: { type: "checkbox", onChange: (v) => setFieldOverride("swap_requests", row.row, "covering_side_approved", v) } },
+                                { key: "covering_side_approved", label: "אישור מחליף", value: row.covering_side_approved, editable: { type: "checkbox", onChange: (v) => setFieldOverride("swap_requests", row.row, "covering_side_approved", v) } },
                                 { key: "rejected_by_personal_number", label: "נדחה ע\"י (מ\"א)", value: row.rejected_by_personal_number },
                                 { key: "resolved_rejected_by_id", label: "מזהה דוחה", value: row.resolved_rejected_by_id },
                                 { key: "decision_note", label: "הערת החלטה", value: row.decision_note, editable: { type: "text", onChange: (v) => setFieldOverride("swap_requests", row.row, "decision_note", v) } },

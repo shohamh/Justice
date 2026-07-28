@@ -344,7 +344,7 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
             errors.append(f"חייל יעד לא מזוהה '{target_pn}'")
         covering = soldiers_by_pn.get(covering_pn) if covering_pn else None
         if covering_pn and covering is None:
-            errors.append(f"מכסה לא מזוהה '{covering_pn}'")
+            errors.append(f"מחליף לא מזוהה '{covering_pn}'")
         rejected_by = soldiers_by_pn.get(rejected_by_pn) if rejected_by_pn else None
         if rejected_by_pn and rejected_by is None:
             errors.append(f"דוחה לא מזוהה '{rejected_by_pn}'")

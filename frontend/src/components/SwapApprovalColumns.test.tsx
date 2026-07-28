@@ -59,7 +59,7 @@ describe("SwapApprovalColumns rendering", () => {
           columns={[
             baseColumn({
               label: "אני",
-              soldierApprovalLabel: "אישור מכסה",
+              soldierApprovalLabel: "אישור מחליף",
               soldierApproved: true,
               commanderApprovals: [{ commander_id: "c1", commander_name: "רשצ מארס", approved: false, approver_kind: "commander" }],
             }),
@@ -76,7 +76,7 @@ describe("SwapApprovalColumns rendering", () => {
     );
     expect(screen.getByText("אני")).toBeInTheDocument();
     expect(screen.getByText("מבקש")).toBeInTheDocument();
-    expect(screen.getByText(/אישור מכסה/)).toBeInTheDocument();
+    expect(screen.getByText(/אישור מחליף/)).toBeInTheDocument();
     expect(screen.getByText(/אישור מבקש/)).toBeInTheDocument();
     expect(screen.getByText("אין אחראי תורנויות משויך למסגרת")).toBeInTheDocument();
   });
