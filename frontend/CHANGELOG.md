@@ -2,13 +2,21 @@
 
 ## 2026-07-28
 
+### Features
+- A soldier can now edit an already-open swap request afterward — adding more specific invitees or publishing it to the marketplace — via a new "Manage" button, instead of only being able to set this up when first creating the request.
+- Swap approval status is now shown as separated per-side columns with bulleted approval lines and a color-coded (green/red/amber) summary per side, replacing the old single inline status line; the previously backend-only "require duty-manager approval" setting is now visible and editable in system settings.
+- Admins can now import bug reports from JSON mirror files.
+
 ### Fixes
 - On the swap approvals screen, the reject button (both whole-request and per-candidate) is now only shown to a commander/duty-manager who actually has authority over that side, matching how the approve button already worked — previously it appeared for anyone, and a commander with no relation to a specific candidate could reject that candidate's already-accepted swap by mistake.
 - An invited candidate responding to a swap request no longer also sees the unrelated "I'll cover" marketplace button alongside their own approve/reject controls.
+- The duty-manager approval line no longer claims "commander approval not required" when a soldier's branch simply has no duty manager scoped to it — it now shows an accurate, distinct message, consistently on both the soldier-facing and admin approval screens.
+- The swap reason field is now labeled instead of rendered as unlabeled text.
+- Approving a constraint could previously race ahead of a pending enrollment approval it should have waited for, and could send a duplicate enrollment notification — both fixed.
 
 ### Chores
 - Seed data now includes one duty manager per branch, scoped to that branch, so the duty-manager approval step of the swap workflow can be exercised locally without manually creating one.
-- Added the initial backend service functions (not yet wired to any route or UI) for extending an already-open swap request with more invites or marketplace visibility after the fact.
+- Extended integration/unit test coverage for bug-report import and swap-approval workflows.
 
 ## 2026-07-27
 
