@@ -46,12 +46,15 @@ function ApprovalDot({ value }: { value: boolean | null }) {
  */
 export default function DirectCommanderApproval({
   approvals,
+  approverKind = "commander",
 }: {
   approvals: DirectCommanderApprovalRow[];
+  approverKind?: "commander" | "duty_manager";
 }) {
   const { t } = useTranslation();
   if (approvals.length === 0) {
-    return <span className="text-gray-400">{t("swaps.no_managers_required")}</span>;
+    const emptyKey = approverKind === "duty_manager" ? "swaps.no_duty_manager_assigned" : "swaps.no_managers_required";
+    return <span className="text-gray-400">{t(emptyKey)}</span>;
   }
   const direct = approvals[0];
   const satisfied = isSideSatisfied(approvals);

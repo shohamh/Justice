@@ -846,6 +846,7 @@
     "requester_managers": "מפקדי המבקש",
     "covering_managers": "מפקדי המחליף",
     "no_managers_required": "לא נדרש אישור מפקד",
+    "no_duty_manager_assigned": "אין אחראי תורנויות משויך למסגרת",
     "approver_kind_commander": "מפקד",
     "approver_kind_duty_manager": "אחראי תורנויות",
     "approved_by_other": "(אושר ע\"י {{name}})",
