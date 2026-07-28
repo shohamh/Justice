@@ -185,6 +185,7 @@ export default function SwapsPage() {
     setSearchParams((prev) => { prev.set("tab", TAB_KEYS[next] ?? "mine"); return prev; }, { replace: true });
   }
   const [askSwapDuty, setAskSwapDuty] = useState<EffectiveDuty | null>(null);
+  const [manageSwap, setManageSwap] = useState<SwapRequest | null>(null);
   const [coverSwap, setCoverSwap] = useState<SwapRequest | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   // Board filters
@@ -363,9 +364,14 @@ export default function SwapsPage() {
         </div>
       )}
       {swap.status === "open" && (
-        <button type="button" onClick={() => handleCancel(swap.id)} className="text-red-600 text-xs hover:underline">
-          {t("swaps.cancel")}
-        </button>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => setManageSwap(swap)} className="text-indigo-600 text-xs hover:underline">
+            {t("swaps.manage_button")}
+          </button>
+          <button type="button" onClick={() => handleCancel(swap.id)} className="text-red-600 text-xs hover:underline">
+            {t("swaps.cancel")}
+          </button>
+        </div>
       )}
     </li>
   );
@@ -641,6 +647,24 @@ export default function SwapsPage() {
           dutyTypeName={askSwapDuty.duty_type_name}
           onClose={() => setAskSwapDuty(null)}
           onCreated={async () => { setAskSwapDuty(null); await refreshSwapData(); }}
+        />
+      )}
+
+      {manageSwap && (
+        <AskSwapModal
+          duty={{
+            assignment_id: manageSwap.duty_assignment_id,
+            start_date: manageSwap.duty_start_date ?? manageSwap.duty_date,
+            end_date: manageSwap.duty_end_date ?? manageSwap.duty_date,
+          }}
+          dutyTypeName={manageSwap.duty_type_name ?? ""}
+          editingSwap={{
+            id: manageSwap.id,
+            open_to_marketplace: manageSwap.open_to_marketplace,
+            candidates: manageSwap.candidates.map((c) => ({ soldier_id: c.soldier_id })),
+          }}
+          onClose={() => setManageSwap(null)}
+          onCreated={async () => { setManageSwap(null); await refreshSwapData(); }}
         />
       )}
 
