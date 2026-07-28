@@ -827,9 +827,10 @@ def test_publish_route_rejects_already_published(client: TestClient, admin_sessi
 def test_publish_route_rejects_non_owner(client: TestClient, admin_session: Session):
     node = create_node(admin_session, level="unit", name=f"api_pub_no_{_uid()}")
     requester = create_soldier(admin_session, personal_number=f"api_pubno_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_pubno_tgt_{_uid()}", hierarchy_node_id=node.id)
     stranger = create_soldier(admin_session, personal_number=f"api_pubno_str_{_uid()}")
     admin_session.commit()
-    req = _create_open_request(admin_session, requester)
+    req = _create_open_request(admin_session, requester, target_ids=[target.id])
     admin_session.commit()
 
     r = client.post(f"/api/me/swaps/{req.id}/publish", headers=auth_headers(stranger))
