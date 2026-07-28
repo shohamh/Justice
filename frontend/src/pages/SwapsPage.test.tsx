@@ -97,3 +97,35 @@ describe("SwapsPage reason label", () => {
     expect(await screen.findByText("swaps.reason: אירוע משפחתי")).toBeInTheDocument();
   });
 });
+
+describe("SwapsPage incoming tab approval columns", () => {
+  test("shows a two-column approval block for an incoming swap, mine first", async () => {
+    const { getSwapConfig, listIncomingSwaps } = await import("../api/swaps");
+    vi.mocked(listIncomingSwaps).mockResolvedValueOnce([
+      {
+        id: "req2", duty_assignment_id: "a2", duty_date: "2026-08-05", requesting_soldier_id: "other",
+        open_to_marketplace: true, status: "open", reason: null, requester_side_approved: null,
+        decision_note: null, created_at: "2026-07-01T00:00:00Z",
+        duty_type_name: "Patrol", duty_location_name: "North", duty_type_id: "dt2", duty_location_id: "l2",
+        duty_start_date: "2026-08-05", duty_end_date: "2026-08-06", duty_shift_id: null,
+        requesting_soldier_name: "Other", requesting_commander_name: null, requesting_soldier_node_name: null,
+        requester_manager_approvals: [],
+        candidates: [
+          { id: "c3", soldier_id: "me", soldier_name: "Me", source: "invited", status: "pending", soldier_side_approved: null, offered_assignment_ids: [], manager_approvals: [] },
+        ],
+      },
+    ]);
+    vi.mocked(getSwapConfig).mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/swaps?tab=incoming"]}>
+          <SwapsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const meLabel = await screen.findByText("swaps.covering");
+    const requesterLabel = screen.getByText("Other");
+    // "Me" column must come before the requester column in DOM order (right-first in RTL).
+    expect(meLabel.compareDocumentPosition(requesterLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
