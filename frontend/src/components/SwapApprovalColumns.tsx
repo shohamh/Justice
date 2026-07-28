@@ -1,9 +1,11 @@
 import { useTranslation } from "react-i18next";
 import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "./DirectCommanderApproval";
+import { useSoldierModal } from "../contexts/SoldierModalContext";
 import { SwapRequest } from "../api/swaps";
 
 export interface SwapApprovalColumn {
   label: string;
+  soldierId: string;
   soldierApprovalLabel?: string;
   soldierApproved?: boolean | null;
   commanderApprovals: DirectCommanderApprovalRow[];
@@ -70,6 +72,7 @@ export function requesterColumn(
   const groups = groupByKind(swap.requester_manager_approvals);
   return {
     label,
+    soldierId: swap.requesting_soldier_id,
     soldierApprovalLabel: t("swaps.requester_approval"),
     soldierApproved: swap.requester_side_approved,
     commanderApprovals: groups.commander,
@@ -84,6 +87,7 @@ export function candidateColumn(
   const groups = groupByKind(candidate.manager_approvals);
   return {
     label,
+    soldierId: candidate.soldier_id,
     soldierApprovalLabel: t("swaps.covering_approval"),
     soldierApproved: candidate.soldier_side_approved,
     commanderApprovals: groups.commander,
@@ -94,6 +98,7 @@ export function candidateColumn(
 
 export default function SwapApprovalColumns({ columns }: { columns: SwapApprovalColumn[] }) {
   const { t } = useTranslation();
+  const { openSoldierModal } = useSoldierModal();
   return (
     <div
       // overflow-x-auto (not overflow-hidden): each column has a min-width
@@ -110,7 +115,13 @@ export default function SwapApprovalColumns({ columns }: { columns: SwapApproval
         return (
           <div key={i} className={`flex-1 min-w-[130px] p-2 space-y-1 ${style.bg}`}>
             <div className={`flex items-center justify-between font-medium ${style.text}`}>
-              <span>{column.label}</span>
+              <button
+                type="button"
+                className="hover:underline"
+                onClick={(e) => { e.stopPropagation(); void openSoldierModal(column.soldierId); }}
+              >
+                {column.label}
+              </button>
               {style.icon && <span>{style.icon}</span>}
             </div>
             <ul className="space-y-0.5 list-disc list-inside text-gray-600 dark:text-gray-300">

@@ -7,6 +7,7 @@ import SwapApprovalColumns, { computeColumnStatus, SwapApprovalColumn } from "./
 function baseColumn(overrides: Partial<SwapApprovalColumn>): SwapApprovalColumn {
   return {
     label: "עמודה",
+    soldierId: "s0",
     commanderApprovals: [],
     dutyManagerApprovals: [],
     showDutyManagerRow: false,

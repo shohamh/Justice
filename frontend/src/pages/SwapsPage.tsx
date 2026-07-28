@@ -9,6 +9,7 @@ import CoverOfferModal from "../components/CoverOfferModal";
 import ShiftDetailPanel from "../components/ShiftDetailPanel";
 import SwapApprovalColumns, { SwapApprovalColumn, requesterColumn, candidateColumn } from "../components/SwapApprovalColumns";
 import AskSwapModal from "../components/AskSwapModal";
+import SoldierLink from "../components/SoldierLink";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import {
@@ -125,7 +126,7 @@ function CandidateRow({ candidate, t }: {
             SwapApprovalColumns column above — that column can silently clip
             off narrow (mobile) viewports since it doesn't scroll, which
             previously left the candidate's name visible nowhere at all. */}
-        <span className="font-medium dark:text-gray-100">{candidate.soldier_name ?? candidate.soldier_id.slice(0, 8)}</span>
+        <SoldierLink id={candidate.soldier_id} name={candidate.soldier_name ?? candidate.soldier_id.slice(0, 8)} className="font-medium" />
         <span className="text-gray-400">{sourceLabel}</span>
       </div>
       {candidate.status === "declined" && <p className="text-red-500">{t("swaps.candidate_declined")}</p>}
@@ -363,7 +364,7 @@ export default function SwapsPage() {
         </div>
         {swap.requesting_soldier_name && (
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {swap.requesting_soldier_name}
+            <SoldierLink id={swap.requesting_soldier_id} name={swap.requesting_soldier_name} />
             {swap.requesting_soldier_node_name && (
               <span className="mr-1 text-gray-400 dark:text-gray-500"> · {swap.requesting_soldier_node_name}</span>
             )}

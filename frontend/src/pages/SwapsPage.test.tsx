@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 import SwapsPage from "./SwapsPage";
 import type { SwapRequest } from "../api/swaps";
+import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 const { mySwap, incomingSwap } = vi.hoisted(() => {
   const mySwap: SwapRequest = {
@@ -62,9 +63,11 @@ function renderPage(initialEntries = ["/swaps"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={initialEntries}>
-        <SwapsPage />
-      </MemoryRouter>
+      <SoldierModalProvider>
+        <MemoryRouter initialEntries={initialEntries}>
+          <SwapsPage />
+        </MemoryRouter>
+      </SoldierModalProvider>
     </QueryClientProvider>,
   );
 }
@@ -128,13 +131,7 @@ describe("SwapsPage incoming tab approval columns", () => {
       },
     ]);
     vi.mocked(getSwapConfig).mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 });
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/swaps?tab=incoming"]}>
-          <SwapsPage />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderPage(["/swaps?tab=incoming"]);
     const meLabel = await screen.findByText("swaps.covering");
     const requesterLabel = screen.getByText("Other");
     // "Me" column must come before the requester column in DOM order (right-first in RTL).
