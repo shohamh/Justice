@@ -165,6 +165,76 @@ def _add_invited_candidate(
     return candidate
 
 
+def add_targets(
+    session: Session, *, request_id: uuid.UUID, target_soldier_ids: list[uuid.UUID],
+    actor_id: uuid.UUID | None = None,
+) -> SwapRequest:
+    """Invite additional specific soldiers on an already-open SwapRequest,
+    on top of whoever was invited at creation or in a previous call. The
+    running total of invited candidates (any status) still counts against
+    swaps.max_specific_targets. Raises SwapError("not_open") if the request
+    is no longer open, SwapError("target_limit_reached") if the total would
+    exceed the cap, or SwapError(f"already_invited:{soldier_id}") if any
+    target already has a SwapCandidate row on this request (any status) —
+    checked both against existing rows and against duplicates within this
+    same call."""
+    req = _lock_request(session, request_id)
+    if req is None:
+        raise SwapError("request_not_found")
+    if req.status != "open":
+        raise SwapError("not_open")
+
+    existing_candidates = session.execute(
+        select(SwapCandidate).where(SwapCandidate.swap_request_id == request_id)
+    ).scalars().all()
+    existing_soldier_ids = {c.soldier_id for c in existing_candidates}
+
+    seen_this_call: set[uuid.UUID] = set()
+    for target_id in target_soldier_ids:
+        if target_id in existing_soldier_ids or target_id in seen_this_call:
+            raise SwapError(f"already_invited:{target_id}")
+        seen_this_call.add(target_id)
+
+    if len(existing_candidates) + len(target_soldier_ids) > _max_specific_targets(session):
+        raise SwapError("target_limit_reached")
+
+    for target_id in target_soldier_ids:
+        _add_invited_candidate(
+            session, req=req, requesting_soldier_id=req.requesting_soldier_id,
+            target_soldier_id=target_id, actor_id=actor_id,
+        )
+
+    write_audit(
+        session, actor_id=actor_id, action="swap.add_targets", entity_type="swap_request",
+        entity_id=req.id, after={"target_soldier_ids": [str(t) for t in target_soldier_ids]},
+    )
+    session.flush()
+    return req
+
+
+def publish_to_marketplace(
+    session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID | None = None,
+) -> SwapRequest:
+    """Flip open_to_marketplace on an already-open SwapRequest that wasn't
+    published at creation time. Raises SwapError("not_open") if the request
+    is no longer open, or SwapError("already_on_marketplace") if it's
+    already published."""
+    req = _lock_request(session, request_id)
+    if req is None:
+        raise SwapError("request_not_found")
+    if req.status != "open":
+        raise SwapError("not_open")
+    if req.open_to_marketplace:
+        raise SwapError("already_on_marketplace")
+    req.open_to_marketplace = True
+    write_audit(
+        session, actor_id=actor_id, action="swap.publish", entity_type="swap_request",
+        entity_id=req.id, after={"open_to_marketplace": True},
+    )
+    session.flush()
+    return req
+
+
 def list_open_board(session: Session, *, for_soldier_id: uuid.UUID) -> list[SwapRequest]:
     """Open postings visible to a soldier: marketplace-visible, excluding
     their own requests and ones they're already a candidate on."""

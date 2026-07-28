@@ -700,3 +700,150 @@ def test_concurrent_finalize_of_two_candidates_applies_only_one(admin_session, a
         .filter_by(swap_request_id=request_id, status="applied").one().soldier_id
     )
     assert overrides[0].effective_soldier_id == winner_id
+
+
+def test_add_targets_happy_path(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-1")
+    requester = create_soldier(admin_session, personal_number="7720001", hierarchy_node_id=node.id)
+    target1 = create_soldier(admin_session, personal_number="7720002", hierarchy_node_id=node.id)
+    target2 = create_soldier(admin_session, personal_number="7720003", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[target1.id], reason=None,
+    )
+    admin_session.flush()
+
+    result = svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[target2.id])
+    admin_session.flush()
+
+    assert result.id == req.id
+    candidates = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).all()
+    assert {c.soldier_id for c in candidates} == {target1.id, target2.id}
+    added = next(c for c in candidates if c.soldier_id == target2.id)
+    assert added.source == "invited"
+    assert added.status == "pending"
+
+
+def test_add_targets_rejects_already_invited_soldier(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-2")
+    requester = create_soldier(admin_session, personal_number="7720004", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720005", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[target.id], reason=None,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match=f"already_invited:{target.id}"):
+        svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[target.id])
+
+
+def test_add_targets_rejects_duplicate_within_same_call(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-dup")
+    requester = create_soldier(admin_session, personal_number="7720006", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720007", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match=f"already_invited:{target.id}"):
+        svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[target.id, target.id])
+
+
+def test_add_targets_counts_existing_candidates_against_cap(admin_session):
+    from app.services.settings_loader import set_setting
+
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-cap")
+    requester = create_soldier(admin_session, personal_number="7720008", hierarchy_node_id=node.id)
+    t1 = create_soldier(admin_session, personal_number="7720009", hierarchy_node_id=node.id)
+    t2 = create_soldier(admin_session, personal_number="7720010", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+    set_setting(admin_session, "swaps.max_specific_targets", "1", actor_id=None)
+    admin_session.flush()
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[t1.id], reason=None,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="target_limit_reached"):
+        svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[t2.id])
+
+
+def test_add_targets_rejects_when_request_not_open(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-notopen")
+    requester = create_soldier(admin_session, personal_number="7720011", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720012", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+    svc.cancel_request(admin_session, request_id=req.id)
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_open"):
+        svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[target.id])
+
+
+def test_publish_to_marketplace_happy_path(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-publish-1")
+    requester = create_soldier(admin_session, personal_number="7720013", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720014", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[target.id], reason=None,
+    )
+    admin_session.flush()
+    assert req.open_to_marketplace is False
+
+    result = svc.publish_to_marketplace(admin_session, request_id=req.id)
+    admin_session.flush()
+
+    assert result.open_to_marketplace is True
+
+
+def test_publish_to_marketplace_rejects_when_already_published(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-publish-2")
+    requester = create_soldier(admin_session, personal_number="7720015", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=None, reason=None, open_to_marketplace=True,
+    )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="already_on_marketplace"):
+        svc.publish_to_marketplace(admin_session, request_id=req.id)
+
+
+def test_publish_to_marketplace_rejects_when_request_not_open(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-publish-3")
+    requester = create_soldier(admin_session, personal_number="7720016", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720017", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[target.id], reason=None,
+    )
+    admin_session.flush()
+    svc.cancel_request(admin_session, request_id=req.id)
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match="not_open"):
+        svc.publish_to_marketplace(admin_session, request_id=req.id)
