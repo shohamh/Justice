@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import HierarchyNode
-from app.services.eligibility import RANKS_RASAN_AND_ABOVE
 from app.services.hierarchy import get_level_rank
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -58,12 +57,10 @@ def dm_scope_covers_target(
 
 
 def commander_can_grant_commander_exemption(
-    session: Session, *, commander_id: uuid.UUID, commander_rank: str | None,
+    session: Session, *, commander_id: uuid.UUID,
 ) -> bool:
-    """True iff commander_rank is רסן+, OR the soldier commands at least one node
-    at level 'מדור' or above (closer to root)."""
-    if commander_rank and commander_rank in RANKS_RASAN_AND_ABOVE:
-        return True
+    """True iff the soldier commands at least one node at level 'מדור' (or the
+    configured exemptions.commander_exemption_min_level) or above (closer to root)."""
     mador_rank = get_level_rank(session, _commander_exemption_min_level(session))
     if mador_rank is None:
         return False

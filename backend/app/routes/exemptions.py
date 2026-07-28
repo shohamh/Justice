@@ -180,7 +180,7 @@ def grant_commander_exemption_route(
         from app.auth.authz import _node_in_scope, scope_root_ids
         in_scope = _node_in_scope(target_node, scope_root_ids(session, user))
         allowed = in_scope and commander_can_grant_commander_exemption(
-            session, commander_id=user.id, commander_rank=user.rank,
+            session, commander_id=user.id,
         )
     if not allowed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
