@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 
 from app.db.models import DutyAssignment, SwapCandidate, SwapManagerApproval, SwapRequest
 from app.services import swaps as svc
@@ -736,6 +737,30 @@ def test_add_targets_rejects_already_invited_soldier(admin_session):
         admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
         target_soldier_id=None, target_soldier_ids=[target.id], reason=None,
     )
+    admin_session.flush()
+
+    with pytest.raises(SwapError, match=f"already_invited:{target.id}"):
+        svc.add_targets(admin_session, request_id=req.id, target_soldier_ids=[target.id])
+
+
+def test_add_targets_rejects_already_invited_soldier_regardless_of_status(admin_session):
+    node = create_node(admin_session, level="unit", name="swap-svc-addtargets-status")
+    requester = create_soldier(admin_session, personal_number="7720008", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number="7720009", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[target.id], reason=None,
+    )
+    admin_session.flush()
+
+    candidate = admin_session.execute(
+        select(SwapCandidate).where(
+            SwapCandidate.swap_request_id == req.id, SwapCandidate.soldier_id == target.id,
+        )
+    ).scalar_one()
+    candidate.status = "declined"
     admin_session.flush()
 
     with pytest.raises(SwapError, match=f"already_invited:{target.id}"):

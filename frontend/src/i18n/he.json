@@ -481,7 +481,10 @@
     "not_open": "הבקשה אינה פתוחה",
     "cannot_cover_own": "לא ניתן לכסות תורנות של עצמך",
     "reserve_take_free_disabled": "לקיחת תורנות חופשית לרזרבות מושבתת כעת",
-    "file_not_found": "הקובץ לא נמצא"
+    "file_not_found": "הקובץ לא נמצא",
+    "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
+    "target_limit_reached": "הגעת למגבלת ההזמנות",
+    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות"
   },
   "exemption_requests": {
     "title": "בקשות פטור",
@@ -879,6 +882,12 @@
     "filter_duty_type_all": "כל הסוגים",
     "filter_node": "יחידה מציעה",
     "filter_node_all": "כל היחידות",
+    "manage_button": "נהל",
+    "manage_swap_title": "ניהול בקשת החלפה",
+    "already_invited": "כבר הוזמן",
+    "invite_limit_reached": "הגעת למגבלת ההזמנות",
+    "already_on_marketplace": "כבר פורסם בשוק ההחלפות",
+    "nothing_new_selected": "לא נבחר דבר חדש להוספה",
     "filter_eligible_only": "רק תורנויות שאני כשיר ופנוי",
     "filter_clear": "נקה סינון"
   },

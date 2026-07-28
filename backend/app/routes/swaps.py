@@ -477,6 +477,51 @@ def create(
     return _out(r, session)
 
 
+class AddSwapTargetsRequest(BaseModel):
+    target_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+@router.post("/me/swaps/{request_id}/targets", response_model=SwapOut)
+def add_targets(
+    request_id: uuid.UUID,
+    body: AddSwapTargetsRequest,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_enrolled),
+) -> SwapOut:
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if req.requesting_soldier_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        r = svc.add_targets(session, request_id=request_id, target_soldier_ids=body.target_ids, actor_id=user.id)
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    session.refresh(r)
+    return _out(r, session)
+
+
+@router.post("/me/swaps/{request_id}/publish", response_model=SwapOut)
+def publish_swap(
+    request_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_enrolled),
+) -> SwapOut:
+    req = session.get(SwapRequest, request_id)
+    if req is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if req.requesting_soldier_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        r = svc.publish_to_marketplace(session, request_id=request_id, actor_id=user.id)
+    except svc.SwapError as exc:
+        raise _err(exc) from exc
+    session.commit()
+    session.refresh(r)
+    return _out(r, session)
+
+
 class TakeFreeDutyRequest(BaseModel):
     duty_assignment_id: uuid.UUID
 

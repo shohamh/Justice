@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
@@ -44,6 +44,7 @@ vi.mock("../api/swaps", async () => {
     listIncomingSwaps: vi.fn().mockResolvedValue([incomingSwap]),
     getSwapConfig: vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 }),
     checkCoverEligibility: vi.fn().mockResolvedValue({ eligible: true, reason: null }),
+    listEligibleTargets: vi.fn().mockResolvedValue([]),
   };
 });
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
@@ -76,6 +77,13 @@ describe("SwapsPage mine tab candidate list", () => {
     // Exactly one duty header/date rendered for this request, proving it's
     // one card, not two — SwapDutyHeader renders the duty_type_name once per card.
     expect(screen.getAllByText("Guard")).toHaveLength(1);
+  });
+
+  test("shows a Manage button on an open request that opens the edit modal", async () => {
+    renderPage();
+    const manageButton = await screen.findByText("swaps.manage_button");
+    fireEvent.click(manageButton);
+    expect(await screen.findByText("swaps.manage_swap_title: Guard")).toBeInTheDocument();
   });
 });
 

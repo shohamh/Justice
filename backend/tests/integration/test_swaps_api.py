@@ -726,3 +726,113 @@ def test_swap_out_shape_has_candidates_list_not_flat_covering_fields(client: Tes
     assert "target_soldier_id" not in swap_out
     assert "covering_side_approved" not in swap_out
     assert "covering_manager_approvals" not in swap_out
+
+
+def _create_open_request(session, requester, *, target_ids=None, open_to_marketplace=False):
+    return svc.create_request(
+        session, requesting_soldier_id=requester.id, duty_assignment_id=_published_assignment_for(session, requester).id,
+        target_soldier_id=None, target_soldier_ids=target_ids or [], reason=None,
+        open_to_marketplace=open_to_marketplace,
+    )
+
+
+def _published_assignment_for(session, requester):
+    dt = DutyType(name=f"api_dt_addt_{_uid()}", score_per_day=1)
+    loc = DutyLocation(name=f"api_loc_addt_{_uid()}")
+    session.add_all([dt, loc])
+    session.flush()
+    assignment = DutyAssignment(
+        duty_type_id=dt.id, duty_location_id=loc.id, soldier_id=requester.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
+        status="published",
+    )
+    session.add(assignment)
+    session.flush()
+    return assignment
+
+
+def test_add_targets_route_happy_path(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_addt_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_addt_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_addt_tgt_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, open_to_marketplace=True)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/me/swaps/{req.id}/targets", headers=auth_headers(requester),
+        json={"target_ids": [str(target.id)]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert any(c["soldier_id"] == str(target.id) for c in body["candidates"])
+
+
+def test_add_targets_route_rejects_non_owner(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_addt_no_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_addtno_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_addtno_tgt_{_uid()}", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number=f"api_addtno_str_{_uid()}")
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, open_to_marketplace=True)
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/me/swaps/{req.id}/targets", headers=auth_headers(stranger),
+        json={"target_ids": [str(target.id)]},
+    )
+    assert r.status_code == 403
+
+
+def test_add_targets_route_rejects_already_invited(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_addt_dup_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_addtdup_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_addtdup_tgt_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, target_ids=[target.id])
+    admin_session.commit()
+
+    r = client.post(
+        f"/api/me/swaps/{req.id}/targets", headers=auth_headers(requester),
+        json={"target_ids": [str(target.id)]},
+    )
+    assert r.status_code == 400
+    assert "already_invited" in r.json()["detail"]
+
+
+def test_publish_route_happy_path(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_pub_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_pub_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_pub_tgt_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, target_ids=[target.id])
+    admin_session.commit()
+
+    r = client.post(f"/api/me/swaps/{req.id}/publish", headers=auth_headers(requester))
+    assert r.status_code == 200, r.text
+    assert r.json()["open_to_marketplace"] is True
+
+
+def test_publish_route_rejects_already_published(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_pub_dup_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_pubdup_req_{_uid()}", hierarchy_node_id=node.id)
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, open_to_marketplace=True)
+    admin_session.commit()
+
+    r = client.post(f"/api/me/swaps/{req.id}/publish", headers=auth_headers(requester))
+    assert r.status_code == 400
+    assert r.json()["detail"] == "already_on_marketplace"
+
+
+def test_publish_route_rejects_non_owner(client: TestClient, admin_session: Session):
+    node = create_node(admin_session, level="unit", name=f"api_pub_no_{_uid()}")
+    requester = create_soldier(admin_session, personal_number=f"api_pubno_req_{_uid()}", hierarchy_node_id=node.id)
+    target = create_soldier(admin_session, personal_number=f"api_pubno_tgt_{_uid()}", hierarchy_node_id=node.id)
+    stranger = create_soldier(admin_session, personal_number=f"api_pubno_str_{_uid()}")
+    admin_session.commit()
+    req = _create_open_request(admin_session, requester, target_ids=[target.id])
+    admin_session.commit()
+
+    r = client.post(f"/api/me/swaps/{req.id}/publish", headers=auth_headers(stranger))
+    assert r.status_code == 403

@@ -178,6 +178,13 @@ def add_targets(
     target already has a SwapCandidate row on this request (any status) —
     checked both against existing rows and against duplicates within this
     same call."""
+    # Unlike create_request, we don't need to translate a unique-constraint
+    # IntegrityError from a concurrent duplicate-invite race here: _lock_request
+    # takes SELECT ... FOR UPDATE on the parent request before we check for
+    # existing candidates, so concurrent add_targets calls on the same request
+    # are serialized and can never race past this point together. Don't remove
+    # the lock, and don't add duplicate-error handling below "to be safe" —
+    # it would be dead code.
     req = _lock_request(session, request_id)
     if req is None:
         raise SwapError("request_not_found")
