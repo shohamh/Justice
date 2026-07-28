@@ -37,6 +37,16 @@ def try_activate(
     soldier.hierarchy_node_id = req.requested_node_id
     req.status = "approved"
     session.flush()
+    create_notification(
+        session,
+        soldier_id=req.soldier_id,
+        type=NotificationType.enrollment_approved,
+        title="בקשת הקליטה למסגרת אושרה",
+        body=req.decision_note,
+        reference_type="soldier_enrollment_request",
+        reference_id=req.id,
+        actor_id=req.decided_by,
+    )
 
 
 def approve_enrollment(
@@ -59,16 +69,6 @@ def approve_enrollment(
     write_audit(session, actor_id=decider_id, action="enrollment.approve",
                 entity_type="soldier_enrollment_request", entity_id=req.id,
                 after={"soldier_id": str(req.soldier_id), "node_id": str(req.requested_node_id)})
-    create_notification(
-        session,
-        soldier_id=req.soldier_id,
-        type=NotificationType.enrollment_approved,
-        title="בקשת הקליטה למסגרת אושרה",
-        body=decision_note,
-        reference_type="soldier_enrollment_request",
-        reference_id=req.id,
-        actor_id=decider_id,
-    )
     try_activate(session, req.id)
     return req
 

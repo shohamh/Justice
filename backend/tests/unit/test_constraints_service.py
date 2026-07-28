@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.db.models import PersonalConstraint
+from app.db.models import PersonalConstraint, SoldierEnrollmentRequest
 from app.services import constraints
 from app.services.constraints import (
     ConstraintError,
@@ -14,7 +14,7 @@ from app.services.constraints import (
     reject_constraint,
     submit_constraint,
 )
-from tests.helpers import create_soldier
+from tests.helpers import create_node, create_soldier
 
 _PREFIX = str(uuid.uuid4())[:8]
 
@@ -178,6 +178,23 @@ def test_approve_pending(admin_session):
     admin_session.commit()
     assert approved.status == "approved"
     assert approved.decided_by == s.id
+
+
+def test_approve_blocked_when_enrollment_not_approved(admin_session):
+    node = create_node(admin_session, level="unit", name=f"unit_{_pn(20)}")
+    s = create_soldier(admin_session, personal_number=_pn(20))
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        actor_id=None,
+    )
+    admin_session.add(SoldierEnrollmentRequest(soldier_id=s.id, requested_node_id=node.id))
+    admin_session.flush()
+    with pytest.raises(ConstraintError, match="enrollment_not_approved"):
+        approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
 
 
 def test_approve_not_pending(admin_session):

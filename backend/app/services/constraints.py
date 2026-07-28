@@ -118,6 +118,14 @@ def approve_constraint(
         raise ConstraintError("constraint_not_found")
     if c.status != "pending":
         raise ConstraintError("not_pending")
+    unresolved_enrollment = session.execute(
+        select(SoldierEnrollmentRequest).where(
+            SoldierEnrollmentRequest.soldier_id == c.soldier_id,
+            SoldierEnrollmentRequest.status.in_(("pending", "commander_approved")),
+        )
+    ).scalars().first()
+    if unresolved_enrollment is not None:
+        raise ConstraintError("enrollment_not_approved")
     c.status = "approved"
     c.decided_by = actor_id
     c.decided_at = datetime.now(UTC)
