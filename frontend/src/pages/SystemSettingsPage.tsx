@@ -43,6 +43,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     label: "החלפות",
     settings: [
       { key: "swaps.require_manager_approval", label: "דורש אישור מפקד", description: "האם החלפות דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      { key: "swaps.require_duty_manager_approval", label: "דורש אישור אחראי תורנויות", description: "האם החלפות דורשות אישור אחראי תורנויות (בנוסף לאישור מפקד)", type: "boolean", defaultValue: true },
       {
         key: "swaps.restrict_to_hierarchy_level",
         label: "הגבלת החלפות לרמת היררכיה",
