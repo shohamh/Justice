@@ -21,6 +21,25 @@ interface SettingDef {
 
 const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
   {
+    label: "תורנויות ומשמרות",
+    settings: [
+      {
+        key: "duty.default_rest_hours",
+        label: "שעות מנוחה בסיסיות בין תורנויות",
+        description: "מספר שעות המנוחה המינימלי הנדרש לחייל בין סיום תורנות אחת לתחילת הבאה. ניתן לשנות פר-סוג תורנות.",
+        type: "number" as const,
+        defaultValue: 12,
+      },
+      {
+        key: "shifts.auto_split_node_quotas",
+        label: "פיצול מכסות אוטומטי לפי פוטנציאל",
+        description: "כשמופעל, מכסות ליחידות-בת מחושבות אוטומטית לפי פוטנציאל (סה\"כ חיילים) בכל פעם שנבחרת יחידת-אב יחידה ונקבע מספר נדרש בטופס משמרת",
+        type: "boolean" as const,
+        defaultValue: false,
+      },
+    ],
+  },
+  {
     label: "אילוצים אישיים",
     settings: [
       { key: "constraints.personal_cap_days", label: "מכסת ימי אילוץ לחייל", description: "מספר ימי האילוץ המרביים שחייל יכול לבקש", type: "number", defaultValue: 15 },
@@ -55,132 +74,8 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
-    label: "שקיפות",
-    settings: [
-      {
-        key: "transparency.visible_commander_levels",
-        label: "",
-        type: "multiselect" as const,
-        defaultValue: [],
-      },
-    ],
-  },
-  {
-    label: "הרשמה",
-    settings: [
-      { key: "registration.telegram_required", label: "טלגרם חובה", description: "האם חיילים חדשים חייבים לקשר חשבון טלגרם לאחר ההרשמה", type: "boolean", defaultValue: false },
-      { key: "registration.email_domain_hint", label: "סיומת דומיין אימייל מומלצת", description: "דומיין ברירת מחדל המוצג כרמז בשדה האימייל, למשל gmail.com (ריק = ללא רמז)", type: "text", defaultValue: "" },
-    ],
-  },
-  {
-    label: "כשירות",
-    settings: [
-      { key: "eligibility.mitvahim_months", label: "חודשים מאז מטווח אחרון", description: "מספר חודשים מרבי מאז מטווח אחרון לצורך כשירות", type: "number", defaultValue: 6 },
-      { key: "eligibility.alal_months", label: 'חודשים מאז אל"ל אחרון', description: 'מספר חודשים מרבי מאז אל"ל אחרון לצורך כשירות', type: "number", defaultValue: 3 },
-    ],
-  },
-  {
-    label: "ניקוד",
-    settings: [
-      { key: "scoring.reserve_standby_multiplier", label: "מכפיל רזרבה במצב המתנה", description: "מכפיל ניקוד לחייל רזרבה שלא הוקפץ", type: "decimal", defaultValue: 0.2 },
-      { key: "scoring.reserve_called_up_multiplier", label: "מכפיל רזרבה שהוקפץ", description: "מכפיל ניקוד לחייל רזרבה שהוקפץ לשירות", type: "decimal", defaultValue: 1.0 },
-      { key: "scoring.dismissed_multiplier", label: "מכפיל שחרור", description: "מכפיל ניקוד לימים בהם החייל שוחרר מתורנות", type: "decimal", defaultValue: 0.0 },
-    ],
-  },
-  {
-    label: "הוגנות אלגוריתם",
-    settings: [
-      { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
-      {
-        key: "fairness.reset_date",
-        label: "תאריך איפוס נתוני הוגנות",
-        description: "רק תורנויות מתאריך זה ואילך נלקחות בחשבון לחישוב עומס ההוגנות. מומלץ לבחור תחילת רבעון (1 בינואר, אפריל, יולי, אוקטובר). שינוי תאריך זה ישפיע על כל הרצות אלגוריתם עתידיות.",
-        type: "date" as const,
-        defaultValue: "",
-      },
-      {
-        key: "fairness.effort_resolution",
-        label: "רזולוציית עומס (הוגנות)",
-        description: "דיוק חישוב ההוגנות — ככל שגבוה יותר, ההבחנה בין רמות עומס דקה יותר (ערך גבוה משמר תורנויות רזרבה). ברירת מחדל: 10000.",
-        type: "number",
-        defaultValue: 10000,
-      },
-    ],
-  },
-  {
-    label: "מגבלות צפיפות (אלגוריתם)",
-    settings: [
-      { key: "algorithm.max_duties_per_window", label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בכל חלון נע. חייב להיות קטן או שווה למכסה הכוללת (R).", type: "number", defaultValue: 8 },
-      { key: "algorithm.window_t", label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים שבו נספרת מכסת T. בדרך כלל קצר יותר מחלון R.", type: "number", defaultValue: 14 },
-      { key: "algorithm.max_total_duties_per_window", label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בכל חלון נע, כולל רזרבה. חייב להיות גדול או שווה ל-T.", type: "number", defaultValue: 15 },
-      { key: "algorithm.window_r", label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים שבו נספרת המכסה הכוללת R. בדרך כלל ארוך יותר מחלון T.", type: "number", defaultValue: 28 },
-      { key: "algorithm.relax_t_ceiling", label: "תקרת הרפיה — תורנויות ללא רזרבה", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את T כשאין פתרון פיזיבילי. חייב להיות ≤ תקרת R.", type: "number", defaultValue: 10 },
-      { key: "algorithm.relax_r_ceiling", label: "תקרת הרפיה — תורנויות כוללת", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את R כשאין פתרון פיזיבילי. R מורפה ראשון, ואחר כך T.", type: "number", defaultValue: 20 },
-    ],
-  },
-  {
-    label: "פירוק וקבוצות (אלגוריתם)",
-    settings: [
-      { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
-      { key: "algorithm.batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
-      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
-    ],
-  },
-  {
-    label: "משמרות",
-    settings: [
-      {
-        key: "shifts.auto_split_node_quotas",
-        label: "פיצול מכסות אוטומטי לפי פוטנציאל",
-        description: "כשמופעל, מכסות ליחידות-בת מחושבות אוטומטית לפי פוטנציאל (סה\"כ חיילים) בכל פעם שנבחרת יחידת-אב יחידה ונקבע מספר נדרש בטופס משמרת",
-        type: "boolean" as const,
-        defaultValue: false,
-      },
-    ],
-  },
-  {
-    label: "טלגרם",
-    settings: [
-      {
-        key: "telegram.enabled",
-        label: "טלגרם מופעל",
-        description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
-        type: "boolean",
-        defaultValue: false,
-      },
-    ],
-  },
-  {
-    label: "דף הבית",
-    settings: [
-      { key: "home.mitvahim_validity_days", label: "תוקף מטווחים (ימים)", description: "מספר ימים שמטווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
-      { key: "home.mitvahim_warn_days", label: "אזהרה לפני פקיעת מטווחים (ימים)", description: "כמה ימים לפני פקיעת המטווחים תופיע אזהרה בדף הבית", type: "number", defaultValue: 30 },
-      { key: "home.alal_validity_days", label: 'תוקף אל"ל (ימים)', description: 'מספר ימים שאל"ל בתוקף לאחר ביצוע', type: "number", defaultValue: 90 },
-      { key: "home.alal_warn_days", label: 'אזהרה לפני פקיעת אל"ל (ימים)', description: 'כמה ימים לפני פקיעת האל"ל תופיע אזהרה בדף הבית', type: "number", defaultValue: 30 },
-    ],
-  },
-  {
-    label: "התראות",
-    settings: [
-      {
-        key: "alerts.upcoming_duty_days",
-        label: "ימי הקדמה להתראת תורנות",
-        description: "כמה ימים לפני תורנות תוצג התראה (0 = ללא התראה)",
-        type: "number" as const,
-        defaultValue: 3,
-      },
-    ],
-  },
-  {
     label: "פטורים",
     settings: [
-      {
-        key: "exemptions.require_rasn_approver",
-        label: "מאשר פטורים — דרג רסן ומעלה בלבד",
-        description: "אם מסומן, רק מפקדים בדרג רסן ומעלה יוכלו לאשר פטורים (בנוסף למנהלי תורניות)",
-        type: "boolean" as const,
-        defaultValue: false,
-      },
       {
         key: "exemptions.commander_exemption_min_level",
         label: "החל מאיזו רמת פיקוד ניתן להעניק פטור פיקודי",
@@ -208,19 +103,6 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
-    label: "הקפצה פיקודית",
-    settings: [
-      { key: "forced_callup.enabled", label: "הקפצה פיקודית מופעלת", description: "כיבוי מסתיר את דף ההקפצה הפיקודית ומבטל את כל הפעולות הקשורות אליה", type: "boolean" as const, defaultValue: true },
-      {
-        key: "hakpaza.callup_multiplier",
-        label: "מכפיל הקפצה פיקודית",
-        description: "מכפיל ניקוד שיחויב על חייל שהוקפץ פיקודית (ברירת מחדל: 2.0)",
-        type: "decimal" as const,
-        defaultValue: 2.0,
-      },
-    ],
-  },
-  {
     label: "גימלים",
     settings: [
       {
@@ -229,13 +111,6 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         description: "כשמופעל, שחרור גימלים מגלגל את החייל לתורנות העתידית הבאה המתאימה — מרתיע ניצול לרעה של גימלים",
         type: "boolean" as const,
         defaultValue: true,
-      },
-      {
-        key: "duty.default_rest_hours",
-        label: "שעות מנוחה בסיסיות בין תורנויות",
-        description: "מספר שעות המנוחה המינימלי הנדרש לחייל בין סיום תורנות אחת לתחילת הבאה. ניתן לשנות פר-סוג תורנות.",
-        type: "number" as const,
-        defaultValue: 12,
       },
       {
         key: "gimalim.default_rest_days",
@@ -254,6 +129,119 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
           { value: "keep", label: "שמור כרזרבה כללית" },
           { value: "release", label: "שחרר מהתורנות" },
         ],
+      },
+    ],
+  },
+  {
+    label: "הקפצה פיקודית",
+    settings: [
+      { key: "forced_callup.enabled", label: "הקפצה פיקודית מופעלת", description: "כיבוי מסתיר את דף ההקפצה הפיקודית ומבטל את כל הפעולות הקשורות אליה", type: "boolean" as const, defaultValue: false },
+      {
+        key: "hakpaza.callup_multiplier",
+        label: "מכפיל הקפצה פיקודית",
+        description: "מכפיל ניקוד שיחויב על חייל שהוקפץ פיקודית (ברירת מחדל: 2.0)",
+        type: "decimal" as const,
+        defaultValue: 2.0,
+      },
+    ],
+  },
+  {
+    label: "כשירות",
+    settings: [
+      { key: "eligibility.mitvahim_months", label: "חודשים מאז מטווח אחרון", description: "מספר חודשים מרבי מאז מטווח אחרון לצורך כשירות", type: "number", defaultValue: 6 },
+      { key: "eligibility.alal_months", label: 'חודשים מאז אל"ל אחרון', description: 'מספר חודשים מרבי מאז אל"ל אחרון לצורך כשירות', type: "number", defaultValue: 3 },
+    ],
+  },
+  {
+    label: "ניקוד",
+    settings: [
+      { key: "scoring.reserve_standby_multiplier", label: "מכפיל רזרבה במצב המתנה", description: "מכפיל ניקוד לחייל רזרבה שלא הוקפץ", type: "decimal", defaultValue: 0.2 },
+      { key: "scoring.reserve_called_up_multiplier", label: "מכפיל רזרבה שהוקפץ", description: "מכפיל ניקוד לחייל רזרבה שהוקפץ לשירות", type: "decimal", defaultValue: 1.0 },
+      { key: "scoring.dismissed_multiplier", label: "מכפיל שחרור", description: "מכפיל ניקוד לימים בהם החייל שוחרר מתורנות", type: "decimal", defaultValue: 0.0 },
+    ],
+  },
+  {
+    label: "אלגוריתם — הוגנות",
+    settings: [
+      { key: "fairness.reserve_hierarchy_weight", label: "משקל קרבה היררכית לרזרבה", description: "משקל קרבה היררכית בבחירת חיילי רזרבה (0=ללא משקל, ערכים גבוהים=מעדיפים חיילים קרובים)", type: "decimal", defaultValue: 1.0 },
+      {
+        key: "fairness.reset_date",
+        label: "תאריך איפוס נתוני הוגנות",
+        description: "רק תורנויות מתאריך זה ואילך נלקחות בחשבון לחישוב עומס ההוגנות. מומלץ לבחור תחילת רבעון (1 בינואר, אפריל, יולי, אוקטובר). שינוי תאריך זה ישפיע על כל הרצות אלגוריתם עתידיות.",
+        type: "date" as const,
+        defaultValue: "",
+      },
+      {
+        key: "fairness.effort_resolution",
+        label: "רזולוציית עומס (הוגנות)",
+        description: "דיוק חישוב ההוגנות — ככל שגבוה יותר, ההבחנה בין רמות עומס דקה יותר (ערך גבוה משמר תורנויות רזרבה). ברירת מחדל: 10000.",
+        type: "number",
+        defaultValue: 10000,
+      },
+    ],
+  },
+  {
+    label: "אלגוריתם — צפיפות",
+    settings: [
+      { key: "algorithm.max_duties_per_window", label: "מכסת תורנויות ללא רזרבה בחלון (T)", description: "מספר תורנויות אמת מרבי לחייל בכל חלון נע. חייב להיות קטן או שווה למכסה הכוללת (R).", type: "number", defaultValue: 8 },
+      { key: "algorithm.window_t", label: "אורך חלון תורנויות ללא רזרבה (Wt)", description: "גודל החלון הנע בימים שבו נספרת מכסת T. בדרך כלל קצר יותר מחלון R.", type: "number", defaultValue: 14 },
+      { key: "algorithm.max_total_duties_per_window", label: "מכסת תורנויות כוללת בחלון (R)", description: "מספר התורנויות הכולל המרבי לחייל בכל חלון נע, כולל רזרבה. חייב להיות גדול או שווה ל-T.", type: "number", defaultValue: 15 },
+      { key: "algorithm.window_r", label: "אורך חלון תורנויות כולל (Wr)", description: "גודל החלון הנע בימים שבו נספרת המכסה הכוללת R. בדרך כלל ארוך יותר מחלון T.", type: "number", defaultValue: 28 },
+      { key: "algorithm.relax_t_ceiling", label: "תקרת הרפיה — תורנויות ללא רזרבה", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את T כשאין פתרון פיזיבילי. חייב להיות ≤ תקרת R.", type: "number", defaultValue: 10 },
+      { key: "algorithm.relax_r_ceiling", label: "תקרת הרפיה — תורנויות כוללת", description: "הערך המרבי שאליו האלגוריתם יכול להרפות את R כשאין פתרון פיזיבילי. R מורפה ראשון, ואחר כך T.", type: "number", defaultValue: 20 },
+    ],
+  },
+  {
+    label: "אלגוריתם — פירוק וקבוצות",
+    settings: [
+      { key: "algorithm.batching_enabled", label: "פירוק וקבוצות", description: "פירוק כל הרצה לקבוצות כשירות בלתי-תלויות ולקבוצות כרונולוגיות, כדי לשמור על הוגנות מדויקת (L1) גם בהרצות גדולות. כבה כדי לפתור את כל הבעיה בבת אחת.", type: "boolean", defaultValue: true },
+      { key: "algorithm.batch_size", label: "גודל קבוצה (תורנויות)", description: "מספר התורנויות המרבי בקבוצה כרונולוגית אחת. קטן יותר = מהיר יותר אך גרידי יותר.", type: "number", defaultValue: 50 },
+      { key: "algorithm.batch_time_limit_seconds", label: "מגבלת זמן לקבוצה (שניות)", description: "תקציב זמן הפותר לכל קבוצה.", type: "number", defaultValue: 120 },
+    ],
+  },
+  {
+    label: "הרשמה",
+    settings: [
+      { key: "registration.telegram_required", label: "טלגרם חובה", description: "האם חיילים חדשים חייבים לקשר חשבון טלגרם לאחר ההרשמה", type: "boolean", defaultValue: false },
+      { key: "registration.email_domain_hint", label: "סיומת דומיין אימייל מומלצת", description: "דומיין ברירת מחדל המוצג כרמז בשדה האימייל, למשל gmail.com (ריק = ללא רמז)", type: "text", defaultValue: "" },
+    ],
+  },
+  {
+    label: "טלגרם",
+    settings: [
+      {
+        key: "telegram.enabled",
+        label: "טלגרם מופעל",
+        description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
+        type: "boolean",
+        defaultValue: false,
+      },
+    ],
+  },
+  {
+    label: "דף הבית",
+    settings: [
+      { key: "home.mitvahim_validity_days", label: "תוקף מטווחים (ימים)", description: "מספר ימים שמטווחים בתוקף לאחר ביצוע", type: "number", defaultValue: 180 },
+      { key: "home.mitvahim_warn_days", label: "אזהרה לפני פקיעת מטווחים (ימים)", description: "כמה ימים לפני פקיעת המטווחים תופיע אזהרה בדף הבית", type: "number", defaultValue: 30 },
+      { key: "home.alal_validity_days", label: 'תוקף אל"ל (ימים)', description: 'מספר ימים שאל"ל בתוקף לאחר ביצוע', type: "number", defaultValue: 90 },
+      { key: "home.alal_warn_days", label: 'אזהרה לפני פקיעת אל"ל (ימים)', description: 'כמה ימים לפני פקיעת האל"ל תופיע אזהרה בדף הבית', type: "number", defaultValue: 30 },
+      {
+        key: "alerts.upcoming_duty_days",
+        label: "ימי הקדמה להתראת תורנות",
+        description: "כמה ימים לפני תורנות תוצג התראה (0 = ללא התראה)",
+        type: "number" as const,
+        defaultValue: 3,
+      },
+    ],
+  },
+  {
+    label: "שקיפות",
+    settings: [
+      {
+        key: "transparency.visible_commander_levels",
+        label: "",
+        type: "multiselect" as const,
+        defaultValue: [],
       },
     ],
   },
