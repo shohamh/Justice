@@ -488,6 +488,13 @@ git commit -m "feat: add SwapApprovalColumns shared two-column approval status c
 
 ### Task 5: Wire `SwapApprovalColumns` into `SwapsPage.tsx`
 
+**Correction (found during implementation):** the code below has two bugs that surface as test failures — fix them as part of this task, not as a separate pass:
+
+1. **Name duplication.** Both the new columns (labeled with each live candidate's name) and the unchanged `CandidateRow` (which also prints the candidate's name) render for the same "live" candidates, so names like "Yossi"/"Dana" appear twice in the DOM and break `findByText`. Fix: `CandidateRow` only prints the candidate's name when the candidate is NOT live (i.e. `status` is `"declined"`, `"cancelled"`, or `"applied"`) — live candidates' names already come from the column label. Give `CandidateRow` a `showName: boolean` prop; callers pass `showName={candidate.status !== "pending" && candidate.status !== "accepted"}`.
+2. **Requester column shows no name.** `requesterColumn(...)` is called with the literal label `t("swaps.requester")` in `renderIncomingCard` and `PendingApprovalCard`, so the requester's actual name never appears anywhere — inconsistent with candidate columns, which do show real names. Fix: in those two call sites (NOT in `renderMySwapCard`, where the viewer IS the requester and `t("swaps.mine")` is correct as-is), pass `swap.requesting_soldier_name ?? t("swaps.requester")` as the label instead of the bare `t("swaps.requester")`.
+
+The code blocks below have NOT been re-edited to show these two fixes inline — apply them on top of the code as written.
+
 **Files:**
 - Modify: `frontend/src/pages/SwapsPage.tsx` (functions `ApprovalStatus`, `CandidateRow`, `PendingApprovalCard`, `renderIncomingCard`, `renderMySwapCard`)
 - Modify: `frontend/src/pages/SwapsPage.test.tsx`
