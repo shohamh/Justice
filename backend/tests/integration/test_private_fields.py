@@ -21,11 +21,18 @@ def _et(session: Session, name: str) -> ExemptionType:
 # ── Soldier private fields ───────────────────────────────────────────────────
 
 
-def test_admin_cannot_see_gender_phone_email(client: TestClient, admin_session: Session):
+def test_admin_cannot_see_gender_but_sees_phone_email_by_default(client: TestClient, admin_session: Session):
+    """gender stays private-scope-gated; phone/email are public by default
+    (soldiers.phone_public / soldiers.email_public) so an admin with no
+    scope over the target still sees them — see test_private_fields.py's
+    test_admin_cannot_see_phone_email_when_public_settings_disabled for the
+    opposite case."""
     admin = create_soldier(admin_session, personal_number="pf-adm001", role="admin")
     d = create_node(admin_session, level="department", name="pf-d1")
     dm = create_soldier(admin_session, personal_number="pf-dm001", role="duty_manager", hierarchy_node_id=d.id)
     target = create_soldier(admin_session, personal_number="pf-s001", hierarchy_node_id=d.id)
+    target.phone = "0501234567"
+    target.email = "pf-target@example.com"
     admin_session.commit()
     # DM sets profile with private fields
     client.patch(
@@ -38,6 +45,27 @@ def test_admin_cannot_see_gender_phone_email(client: TestClient, admin_session: 
     assert r.status_code == 200
     body = r.json()
     assert body["gender"] is None
+    assert body["phone"] == "0501234567"
+    assert body["email"] == "pf-target@example.com"
+
+
+def test_admin_cannot_see_phone_email_when_public_settings_disabled(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+
+    set_setting(admin_session, "soldiers.phone_public", False, actor_id=None)
+    set_setting(admin_session, "soldiers.email_public", False, actor_id=None)
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number="pf-adm005", role="admin")
+    d = create_node(admin_session, level="department", name="pf-d5")
+    target = create_soldier(admin_session, personal_number="pf-s005", hierarchy_node_id=d.id)
+    target.phone = "0501234567"
+    target.email = "pf-target5@example.com"
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(admin))
+    assert r.status_code == 200
+    body = r.json()
     assert body["phone"] is None
     assert body["email"] is None
 

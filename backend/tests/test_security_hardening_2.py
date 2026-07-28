@@ -185,8 +185,15 @@ def test_phone_not_in_public_soldier_out():
     s.email = "test@example.com"
     s.profile_picture_url = None
 
-    out_public = _out(s, include_private=False)
-    assert out_public.phone is None
+    # soldiers.phone_public/email_public now default True (see
+    # test_soldiers_api.py / test_private_fields.py for the API-level
+    # coverage) — the redaction path is exercised by explicitly passing
+    # phone_public=False, matching an admin turning that setting off.
+    out_redacted = _out(s, include_private=False, phone_public=False)
+    assert out_redacted.phone is None
+
+    out_public_default = _out(s, include_private=False)
+    assert out_public_default.phone == "050-1234567"
 
     out_private = _out(s, include_private=True)
     assert out_private.phone == "050-1234567"

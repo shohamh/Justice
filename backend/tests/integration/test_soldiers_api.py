@@ -171,7 +171,9 @@ def test_dual_role_commander_can_see_draft_duty_history(client, admin_session):
 
 def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClient, admin_session: Session):
     """A plain soldier clicking another soldier's name should see a
-    read-only, redacted profile — not a 403."""
+    read-only, redacted profile — not a 403. Phone/email default to public
+    (soldiers.phone_public / soldiers.email_public default True) while other
+    private fields (gender) stay gated behind can_see_private."""
     node = create_node(admin_session, level="branch", name="view_node")
     viewer = create_soldier(admin_session, personal_number="view_plain_001", hierarchy_node_id=node.id)
     other_node = create_node(admin_session, level="branch", name="view_other_node")
@@ -179,6 +181,7 @@ def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClien
         admin_session, personal_number="view_target_001", hierarchy_node_id=other_node.id,
     )
     target.phone = "0501234567"
+    target.email = "target@example.com"
     target.gender = "male"
     admin_session.commit()
 
@@ -186,5 +189,30 @@ def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClien
     assert r.status_code == 200
     body = r.json()
     assert body["full_name"] == target.full_name
-    assert body["phone"] is None
+    assert body["phone"] == "0501234567"
+    assert body["email"] == "target@example.com"
     assert body["gender"] is None
+
+
+def test_phone_and_email_hidden_when_public_settings_disabled(client: TestClient, admin_session: Session):
+    from app.services.settings_loader import set_setting
+
+    set_setting(admin_session, "soldiers.phone_public", False, actor_id=None)
+    set_setting(admin_session, "soldiers.email_public", False, actor_id=None)
+    admin_session.commit()
+
+    node = create_node(admin_session, level="branch", name="view_node_2")
+    viewer = create_soldier(admin_session, personal_number="view_plain_002", hierarchy_node_id=node.id)
+    other_node = create_node(admin_session, level="branch", name="view_other_node_2")
+    target = create_soldier(
+        admin_session, personal_number="view_target_002", hierarchy_node_id=other_node.id,
+    )
+    target.phone = "0501234567"
+    target.email = "target2@example.com"
+    admin_session.commit()
+
+    r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["phone"] is None
+    assert body["email"] is None
