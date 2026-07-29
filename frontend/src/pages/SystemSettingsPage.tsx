@@ -81,7 +81,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         label: "החל מאיזו רמת פיקוד ניתן להעניק פטור פיקודי",
         description: "מפקד ברמה זו ומעלה (קרוב יותר לשורש) יכול להעניק פטור פיקודי, גם ללא דרגת קצונה מתאימה",
         type: "select" as const,
-        defaultValue: "מדור",
+        defaultValue: "מרכז",
         options: [],
       },
       {
@@ -97,7 +97,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         label: "צפייה במסמך רפואי — החל מאיזו רמת אחראי תורנויות",
         description: "אחראי תורנויות עם סמכות ברמה זו ומעלה יכול לצפות במסמך הרפואי עצמו",
         type: "select" as const,
-        defaultValue: "מרכז",
+        defaultValue: "ענף",
         options: [],
       },
     ],
