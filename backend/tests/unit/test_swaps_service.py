@@ -401,10 +401,22 @@ def test_take_free_creates_one_applied_candidate(admin_session):
     req, warnings = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=taker.id, actor_id=taker.id)
     admin_session.flush()
 
-    assert req.status == "applied"
+    # take_free now opens a normal swap request requiring the duty owner's
+    # consent — it no longer applies the cover instantly.
+    assert req.status == "open"
+    assert req.requester_side_approved is False
     cand = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).one()
     assert cand.soldier_id == taker.id
     assert cand.source == "marketplace"
+    assert cand.status == "accepted"
+    assert cand.soldier_side_approved is True
+
+    # node has no commander, so once the owner approves, the swap finalizes
+    # with no manager-approval gate.
+    finalized = svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=owner.id, actor_id=owner.id)
+    admin_session.flush()
+    assert finalized.status == "applied"
+    admin_session.refresh(cand)
     assert cand.status == "applied"
 
 
