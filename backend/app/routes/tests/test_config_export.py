@@ -101,16 +101,16 @@ def test_export_by_duty_manager_drops_system_settings_and_bug_reports(client, ad
 
 
 def test_export_by_duty_manager_explicit_request_still_drops_admin_only_sheets(client, admin_session):
-    import io as _io
-
+    """A request for *only* admin-only sheets by a non-admin has nothing left
+    to export once they're dropped — openpyxl can't save a workbook with zero
+    visible sheets, so this is a 400 rather than a 200 with an empty file."""
     dm = _make_duty_manager(admin_session, "dm_export_2")
 
     resp = client.get(
         "/api/config/export?sheets=system_settings,bug_reports", headers=auth_headers(dm)
     )
-    assert resp.status_code == 200
-    wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
-    assert wb.sheetnames == []
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "no_exportable_sheets"
 
 
 def test_export_by_admin_includes_system_settings_and_bug_reports(client, admin_session):

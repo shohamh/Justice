@@ -4,7 +4,7 @@ import io
 import json
 
 import openpyxl
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -160,6 +160,13 @@ def export_config(
         # can still export the other sheets they're allowed to see, but these
         # two are silently dropped rather than erroring the whole export.
         requested = [s for s in requested if s not in ("system_settings", "bug_reports")]
+
+    if not requested:
+        # openpyxl can't save a workbook with zero visible sheets, and an
+        # export with nothing in it isn't a meaningful response either —
+        # this only happens when every requested sheet was explicitly
+        # admin-only and the actor isn't an admin.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_exportable_sheets")
 
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
