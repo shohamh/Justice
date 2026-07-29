@@ -325,9 +325,12 @@ def announce(
                     status_code=status.HTTP_403_FORBIDDEN, detail="hierarchy_node_out_of_scope"
                 )
 
-    announcement = svc.broadcast_announcement(session, title=body.title, body=body.body,
-                                              hierarchy_node_ids=body.hierarchy_node_ids,
-                                              actor_id=user.id)
+    try:
+        announcement = svc.broadcast_announcement(session, title=body.title, body=body.body,
+                                                  hierarchy_node_ids=body.hierarchy_node_ids,
+                                                  actor_id=user.id)
+    except svc.AnnouncementRateLimitError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     session.commit()
     return AnnounceOut(id=announcement.id, sent=announcement.recipient_count)
 
