@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date as date_type
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
     Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
-    SwapCandidate, SwapRequest,
+    SwapCandidate, SwapRequest, SystemSetting,
 )
 from app.services.import_parsers.schema import ParsedImportData
 
@@ -419,5 +420,41 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
             "decision_note": decision_note,
             "approval_log": resolved_log,
             "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def resolve_system_settings(
+    session: Session, data: ParsedImportData, overrides: dict[str, dict] | None = None
+) -> list[dict]:
+    overrides = overrides or {}
+    existing_keys = {
+        row[0] for row in session.execute(select(SystemSetting.key)).all()
+    }
+    out = []
+    for row in data.system_settings:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        key = field("key", row.key)
+        value_json = field("value_json", row.value_json)
+
+        if not key:
+            errors.append("חסר מפתח")
+
+        parsed_value = None
+        if not errors:
+            try:
+                parsed_value = json.loads(value_json) if value_json != "" else None
+            except Exception as exc:
+                errors.append(f"JSON לא תקין בעמודת value_json: {exc}")
+
+        action = "error" if errors else ("update" if key in existing_keys else "new")
+        out.append({
+            "row": row.source_row, "action": action, "errors": errors,
+            "key": key, "value_json": value_json, "parsed_value": parsed_value,
         })
     return out

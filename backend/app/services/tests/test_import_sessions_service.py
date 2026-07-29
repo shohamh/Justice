@@ -1758,3 +1758,53 @@ def test_assignment_duty_type_resolved_via_by_row_mapping(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["assignments"][0]
     assert row["action"] == "new"
+
+
+def _wb_with_system_settings(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("system_settings")
+    ws.append(["key", "value_json"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_system_settings_import_creates_and_updates(admin_session):
+    from app.db.models import SystemSetting
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.add(SystemSetting(key="algorithm.max_duties_per_window", value=5, updated_by=admin.id))
+    admin_session.commit()
+
+    wb = _wb_with_system_settings([
+        ["algorithm.max_duties_per_window", "8"],
+        ["telegram.enabled", "true"],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    rows = sess.parsed_state["system_settings"]
+    assert {r["key"]: r["action"] for r in rows} == {
+        "algorithm.max_duties_per_window": "update",
+        "telegram.enabled": "new",
+    }
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    updated = admin_session.get(SystemSetting, "algorithm.max_duties_per_window")
+    assert updated.value == 8
+    created = admin_session.get(SystemSetting, "telegram.enabled")
+    assert created.value is True
+
+
+def test_system_settings_import_invalid_json_is_row_error(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    wb = _wb_with_system_settings([["some.key", "{not valid json"]])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["system_settings"][0]
+    assert row["action"] == "error"
+    assert row["errors"]

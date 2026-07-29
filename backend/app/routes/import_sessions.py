@@ -48,6 +48,7 @@ def _session_summary(sess: ImportSession) -> dict[str, Any]:
             "hierarchy": len(state.get("hierarchy", [])),
             "duty_types": len(state.get("duty_types", [])),
             "exemption_types": len(state.get("exemption_types", [])),
+            "system_settings": len(state.get("system_settings", [])),
         },
     }
 

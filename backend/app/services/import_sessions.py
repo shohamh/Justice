@@ -32,6 +32,7 @@ from app.db.models import (
     SwapCandidate,
     SwapManagerApproval,
     SwapRequest,
+    SystemSetting,
 )
 from app.services.dm_scope import assign_dm_scope, remove_dm_scope
 from app.services.duty_config import (
@@ -46,11 +47,12 @@ from app.services.duty_config import (
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
 from app.services.import_approvals import (
     resolve_exemption_requests, resolve_personal_constraints, resolve_soldier_enrollment_requests,
-    resolve_soldier_exemptions, resolve_soldier_field_updates, resolve_swap_requests,
+    resolve_soldier_exemptions, resolve_soldier_field_updates, resolve_swap_requests, resolve_system_settings,
 )
 from app.services.import_parsers.registry import auto_detect_parser, get_parser
 from app.services.import_parsers.schema import ParsedImportData
 from app.services.import_scope import is_node_in_actor_scope
+from app.services.settings_loader import set_setting
 from app.services.shift_quotas import set_shift_quotas
 from app.services.shift_templates import create_template, update_template
 
@@ -954,6 +956,7 @@ def _resolve_and_score(
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
+        "system_settings": resolve_system_settings(session, data, fo.get("system_settings", {})),
         "personal_constraints": resolve_personal_constraints(session, data, fo.get("personal_constraints", {})),
         "soldier_field_updates": resolve_soldier_field_updates(session, data, fo.get("soldier_field_updates", {})),
         "soldier_enrollment_requests": resolve_soldier_enrollment_requests(session, data, fo.get("soldier_enrollment_requests", {})),
@@ -1552,6 +1555,22 @@ def confirm_session(
                     skipped += 1
         except Exception as exc:
             errors.append({"row": row["row"], "type": "exemption_types", "error": str(exc)})
+
+    # ── System settings ────────────────────────────────────────────────
+    for row in state.get("system_settings", []):
+        effective = _effective_action(selections, "system_settings", row)
+        if row["action"] == "error" or effective == "skip":
+            skipped += 1
+            continue
+        try:
+            with session.begin_nested():
+                set_setting(session, key=row["key"], value=row["parsed_value"], actor_id=actor.id)
+                if effective == "new":
+                    created += 1
+                else:
+                    updated += 1
+        except Exception as exc:
+            errors.append({"row": row["row"], "type": "system_settings", "error": str(exc)})
 
     # ── Personal constraints ────────────────────────────────────────────
     for row in state.get("personal_constraints", []):
