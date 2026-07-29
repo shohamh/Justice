@@ -1808,3 +1808,89 @@ def test_system_settings_import_invalid_json_is_row_error(admin_session):
     row = sess.parsed_state["system_settings"][0]
     assert row["action"] == "error"
     assert row["errors"]
+
+
+def _wb_with_bug_reports(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("bug_reports")
+    ws.append([
+        "id", "reporter_personal_number", "description", "severity", "route", "status",
+        "created_at", "nav_history_json", "audit_snapshot_json", "user_snapshot_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_bug_report_import_creates_new_report(admin_session):
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    reporter = create_soldier(admin_session, personal_number="7778889", role="soldier")
+    admin_session.commit()
+
+    wb = _wb_with_bug_reports([
+        ["", "7778889", "הכפתור לא עובד", "medium", "/planning/export", "open",
+         "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "new"
+    assert row["resolved_reporter_id"] == str(reporter.id)
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    created = admin_session.execute(
+        select(BugReport).where(BugReport.description == "הכפתור לא עובד")
+    ).scalar_one()
+    assert created.reporter_id == reporter.id
+    assert created.severity == "medium"
+    assert created.status == "open"
+
+
+def test_bug_report_import_updates_status_by_id_without_changing_reporter(admin_session):
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    original_reporter = create_soldier(admin_session, personal_number="1112223", role="soldier")
+    other_soldier = create_soldier(admin_session, personal_number="3332221", role="soldier")
+    existing = BugReport(
+        reporter_id=original_reporter.id, description="ישן", severity="low",
+        route="/x", status="open",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    wb = _wb_with_bug_reports([
+        [str(existing.id), "3332221", "ישן", "low", "/x", "resolved", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "update"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    assert existing.status == "resolved"
+    assert existing.reporter_id == original_reporter.id  # unchanged despite mismatched row
+
+
+def test_bug_report_import_unresolvable_reporter_is_row_error(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    wb = _wb_with_bug_reports([
+        ["", "0000000", "תקלה", "low", "/x", "open", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "error"
+    assert row["errors"]

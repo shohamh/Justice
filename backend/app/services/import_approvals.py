@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
+    BugReport, ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
     Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
     SwapCandidate, SwapRequest, SystemSetting,
 )
@@ -456,5 +456,71 @@ def resolve_system_settings(
         out.append({
             "row": row.source_row, "action": action, "errors": errors,
             "key": key, "value_json": value_json, "parsed_value": parsed_value,
+        })
+    return out
+
+
+def resolve_bug_reports(
+    session: Session, data: ParsedImportData, overrides: dict[str, dict] | None = None
+) -> list[dict]:
+    soldiers_by_pn = _soldiers_by_pn(session)
+    overrides = overrides or {}
+    out = []
+    for row in data.bug_reports:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        reporter_pn = field("reporter_personal_number", row.reporter_personal_number)
+        description = field("description", row.description)
+        severity = field("severity", row.severity)
+        route = field("route", row.route)
+        status = field("status", row.status)
+        created_at = field("created_at", row.created_at)
+
+        reporter = soldiers_by_pn.get(reporter_pn) if reporter_pn else None
+        if reporter is None:
+            errors.append(f"מדווח לא מזוהה '{reporter_pn}'")
+        if severity not in ("low", "medium", "high"):
+            errors.append(f"חומרה לא תקינה '{severity}'")
+        if status not in ("open", "in_progress", "resolved"):
+            errors.append(f"סטטוס לא תקין '{status}'")
+        if not description:
+            errors.append("חסר תיאור")
+        if not route:
+            errors.append("חסר route")
+
+        def _decode(raw: str | None, label: str):
+            if not raw:
+                return None
+            try:
+                return json.loads(raw)
+            except Exception as exc:
+                errors.append(f"JSON לא תקין בעמודת {label}: {exc}")
+                return None
+
+        nav_history = _decode(field("nav_history_json", row.nav_history_json), "nav_history_json")
+        audit_snapshot = _decode(field("audit_snapshot_json", row.audit_snapshot_json), "audit_snapshot_json")
+        user_snapshot = _decode(field("user_snapshot_json", row.user_snapshot_json), "user_snapshot_json")
+
+        existing = None
+        if row.id:
+            try:
+                existing = session.get(BugReport, uuid.UUID(row.id))
+            except ValueError:
+                errors.append(f"מזהה לא תקין '{row.id}'")
+
+        action = "error" if errors else ("update" if existing is not None else "new")
+        out.append({
+            "row": row.source_row, "action": action, "errors": errors,
+            "id": row.id,
+            "reporter_personal_number": reporter_pn,
+            "resolved_reporter_id": str(reporter.id) if reporter is not None else None,
+            "description": description, "severity": severity, "route": route, "status": status,
+            "created_at": created_at,
+            "nav_history": nav_history, "audit_snapshot": audit_snapshot, "user_snapshot": user_snapshot,
+            "existing_id": str(existing.id) if existing is not None else None,
         })
     return out
