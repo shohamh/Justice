@@ -157,6 +157,27 @@ export interface ExemptionTypeImportRow extends RowBase {
   existing_id: string | null;
 }
 
+export interface SystemSettingImportRow extends RowBase {
+  key: string;
+  value_json: string;
+  parsed_value: unknown;
+}
+
+export interface BugReportImportRow extends RowBase {
+  id: string | null;
+  reporter_personal_number: string;
+  resolved_reporter_id: string | null;
+  description: string;
+  severity: string;
+  route: string;
+  status: string;
+  created_at: string | null;
+  nav_history: unknown;
+  audit_snapshot: unknown;
+  user_snapshot: unknown;
+  existing_id: string | null;
+}
+
 export interface PersonalConstraintImportRow extends RowBase {
   id: string | null;
   soldier_personal_number: string;
@@ -271,6 +292,8 @@ export interface ParsedState {
   hierarchy: HierarchyImportRow[];
   duty_types: DutyTypeImportRow[];
   exemption_types: ExemptionTypeImportRow[];
+  system_settings: SystemSettingImportRow[];
+  bug_reports: BugReportImportRow[];
   personal_constraints: PersonalConstraintImportRow[];
   soldier_field_updates: SoldierFieldUpdateImportRow[];
   soldier_enrollment_requests: SoldierEnrollmentRequestImportRow[];

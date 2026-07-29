@@ -68,6 +68,8 @@ describe("ExportPage", () => {
     expect(screen.getByLabelText(/מיקומי תורנות/)).toBeInTheDocument();
     expect(screen.getByLabelText(/היררכיה/)).toBeInTheDocument();
     expect(screen.getByLabelText(/פטורים/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/הגדרות מערכת/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/דוחות תקלות/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^חיילים$/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^משמרות$/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^שיבוצים$/)).toBeInTheDocument();
