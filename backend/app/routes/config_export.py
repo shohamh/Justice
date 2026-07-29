@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
+    BugReport,
     DutyLocation,
     DutyManagerScope,
     DutyType,
@@ -18,12 +19,13 @@ from app.db.models import (
     ExemptionType,
     HierarchyNode,
     Soldier,
+    SystemSetting,
 )
 from app.db.session import get_session
 
 router = APIRouter(prefix="/config", tags=["config-export"])
 
-ALL_SHEETS = ["duty_types", "duty_locations", "hierarchy", "exemption_types"]
+ALL_SHEETS = ["duty_types", "duty_locations", "hierarchy", "exemption_types", "system_settings", "bug_reports"]
 
 
 def _write_duty_locations(wb: openpyxl.Workbook, session: Session) -> None:
@@ -105,11 +107,45 @@ def _write_exemption_types(wb: openpyxl.Workbook, session: Session) -> None:
         ])
 
 
+_HIDDEN_SETTING_KEYS = {"system.holding_node_id"}
+
+
+def _write_system_settings(wb: openpyxl.Workbook, session: Session) -> None:
+    ws = wb.create_sheet("system_settings")
+    ws.append(["key", "value_json"])
+    for setting in session.execute(select(SystemSetting)).scalars():
+        if setting.key in _HIDDEN_SETTING_KEYS:
+            continue
+        ws.append([setting.key, json.dumps(setting.value, ensure_ascii=False)])
+
+
+def _write_bug_reports(wb: openpyxl.Workbook, session: Session) -> None:
+    ws = wb.create_sheet("bug_reports")
+    ws.append([
+        "id", "reporter_personal_number", "description", "severity", "route", "status",
+        "created_at", "nav_history_json", "audit_snapshot_json", "user_snapshot_json",
+    ])
+    soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
+    for br in session.execute(select(BugReport)).scalars():
+        reporter = soldiers_by_id.get(br.reporter_id)
+        ws.append([
+            str(br.id),
+            reporter.personal_number if reporter else "",
+            br.description, br.severity, br.route, br.status,
+            br.created_at.isoformat() if br.created_at else "",
+            json.dumps(br.nav_history, ensure_ascii=False) if br.nav_history else "",
+            json.dumps(br.audit_snapshot, ensure_ascii=False) if br.audit_snapshot else "",
+            json.dumps(br.user_snapshot, ensure_ascii=False) if br.user_snapshot else "",
+        ])
+
+
 _WRITERS = {
     "duty_locations": _write_duty_locations,
     "hierarchy": _write_hierarchy,
     "duty_types": _write_duty_types,
     "exemption_types": _write_exemption_types,
+    "system_settings": _write_system_settings,
+    "bug_reports": _write_bug_reports,
 }
 
 

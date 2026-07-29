@@ -37,14 +37,21 @@ def test_export_returns_only_requested_sheets(client, admin_session):
     assert any(r[0] == loc.name for r in rows)
 
 
-def test_export_defaults_to_all_four_sheets(client, admin_session):
+def test_export_defaults_to_all_six_sheets(client, admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
     resp = client.get(
         "/api/config/export", headers={"Authorization": f"Bearer {_token(admin)}"}
     )
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
-    assert set(wb.sheetnames) == {"duty_types", "duty_locations", "hierarchy", "exemption_types"}
+    assert set(wb.sheetnames) == {
+        "duty_types",
+        "duty_locations",
+        "hierarchy",
+        "exemption_types",
+        "system_settings",
+        "bug_reports",
+    }
 
 
 def test_export_hierarchy_includes_commander_and_duty_managers(client, admin_session):

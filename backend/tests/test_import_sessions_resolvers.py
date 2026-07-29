@@ -341,6 +341,7 @@ def test_resolve_and_score_includes_all_expected_keys(app_session):
         "hierarchy", "duty_types", "exemption_types", "parser_id", "parser_warnings",
         "personal_constraints", "soldier_field_updates", "soldier_enrollment_requests",
         "soldier_exemptions", "exemption_requests", "swap_requests",
+        "system_settings", "bug_reports",
     }
     assert set(result.keys()) == expected_keys
 
