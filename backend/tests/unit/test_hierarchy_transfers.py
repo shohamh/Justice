@@ -143,3 +143,32 @@ def test_create_request_succeeds_for_real_node(admin_session):
     req = create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
     admin_session.commit()
     assert req.to_node_id == node.id
+
+
+def test_create_request_daily_cap_enforced(admin_session):
+    from app.services.hierarchy_transfers import HierarchyTransferError, create_request
+    from tests.helpers import create_node, create_soldier
+
+    s = create_soldier(admin_session, personal_number="7600003")
+    nodes = [create_node(admin_session, level="unit", name=f"cap_u{i}") for i in range(6)]
+    for node in nodes[:5]:
+        create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
+        admin_session.flush()
+    with pytest.raises(HierarchyTransferError, match="daily_transfer_request_limit_exceeded"):
+        create_request(admin_session, soldier_id=s.id, to_node_id=nodes[5].id, requested_by=s.id)
+
+
+def test_create_request_daily_cap_is_per_soldier(admin_session):
+    from app.services.hierarchy_transfers import create_request
+    from tests.helpers import create_node, create_soldier
+
+    s1 = create_soldier(admin_session, personal_number="7600004")
+    s2 = create_soldier(admin_session, personal_number="7600005")
+    node = create_node(admin_session, level="unit", name="cap_shared")
+    for _ in range(5):
+        create_request(admin_session, soldier_id=s1.id, to_node_id=node.id, requested_by=s1.id)
+        admin_session.flush()
+    # s2 has made zero requests today — must not be blocked by s1's cap
+    req = create_request(admin_session, soldier_id=s2.id, to_node_id=node.id, requested_by=s2.id)
+    admin_session.commit()
+    assert req.soldier_id == s2.id

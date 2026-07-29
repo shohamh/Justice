@@ -4,13 +4,16 @@ subject to approval by the destination node's commander/duty managers.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import HierarchyNode, HierarchyTransferRequest, NotificationType, Soldier
 from app.services.notifications import create_notification
+
+_DAILY_TRANSFER_REQUEST_LIMIT = 5
 
 
 class HierarchyTransferError(Exception):
@@ -26,6 +29,17 @@ def create_request(
         raise HierarchyTransferError("soldier_not_found")
     if session.get(HierarchyNode, to_node_id) is None:
         raise HierarchyTransferError("to_node_not_found")
+
+    window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_count = session.execute(
+        select(func.count()).select_from(HierarchyTransferRequest).where(
+            HierarchyTransferRequest.soldier_id == soldier_id,
+            HierarchyTransferRequest.created_at >= window_start,
+        )
+    ).scalar_one()
+    if recent_count >= _DAILY_TRANSFER_REQUEST_LIMIT:
+        raise HierarchyTransferError("daily_transfer_request_limit_exceeded")
+
     req = HierarchyTransferRequest(
         soldier_id=soldier_id, from_node_id=soldier.hierarchy_node_id,
         to_node_id=to_node_id, requested_by=requested_by,
