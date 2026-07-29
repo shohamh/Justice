@@ -129,6 +129,8 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
       hierarchy: [],
       duty_types: [],
       exemption_types: [],
+      system_settings: [],
+      bug_reports: [],
       personal_constraints: [],
       soldier_field_updates: [],
       soldier_enrollment_requests: [],
@@ -401,6 +403,35 @@ describe("ImportSessionReviewPage", () => {
     fireEvent.click(screen.getByText("מיקומי תורנות (1)"));
     const row = (await screen.findByDisplayValue("שער חדש")).closest("tr")!;
     expect(within(row).getByText("אישור")).toBeInTheDocument();
+  });
+
+  it("renders the system_settings and bug_reports tabs with row counts", async () => {
+    const detail = makeDraftDetail();
+    detail.parsed_state.system_settings = [
+      { row: 2, action: "new", errors: [], key: "telegram.enabled", value_json: "true", parsed_value: true },
+    ];
+    detail.parsed_state.bug_reports = [
+      {
+        row: 2, action: "new", errors: [], id: null,
+        reporter_personal_number: "1234567", resolved_reporter_id: "s-1",
+        description: "בעיה", severity: "low", route: "/x", status: "open",
+        created_at: null, nav_history: null, audit_snapshot: null, user_snapshot: null,
+        existing_id: null,
+      },
+    ];
+    vi.mocked(importSessionsApi.getSession).mockResolvedValue(detail);
+
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+
+    expect(screen.getByText("הגדרות מערכת (1)")).toBeInTheDocument();
+    expect(screen.getByText("דוחות תקלות (1)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("הגדרות מערכת (1)"));
+    expect(await screen.findByText("telegram.enabled")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("דוחות תקלות (1)"));
+    expect(await screen.findByDisplayValue("בעיה")).toBeInTheDocument();
   });
 
   it("renders the hierarchy tab showing commander and duty manager names", async () => {
