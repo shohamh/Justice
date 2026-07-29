@@ -69,3 +69,44 @@ def test_list_pending_via_api(client: TestClient, admin_session: Session):
     assert resp2.status_code == 200
     assert len(resp2.json()) == 1
     assert resp2.json()[0]["soldier_id"] == str(soldier.id)
+
+
+def test_requester_cannot_approve_own_transfer_into_own_command(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d-self")
+    b = create_node(admin_session, level="branch", name="b-self", parent=d)
+    cmd = create_soldier(admin_session, personal_number="7700001", role="admin", hierarchy_node_id=d.id)
+    b.commander_id = cmd.id
+    admin_session.commit()
+
+    r = client.post(
+        "/api/hierarchy-transfers",
+        headers=auth_headers(cmd),
+        json={"soldier_id": str(cmd.id), "to_node_id": str(b.id)},
+    )
+    assert r.status_code == 200, r.text
+    request_id = r.json()["id"]
+
+    r2 = client.post(f"/api/hierarchy-transfers/{request_id}/approve", headers=auth_headers(cmd))
+    assert r2.status_code == 403
+
+
+def test_other_commander_can_still_approve(client: TestClient, admin_session: Session):
+    d = create_node(admin_session, level="department", name="d-other")
+    b = create_node(admin_session, level="branch", name="b-other", parent=d)
+    dept_cmd = create_soldier(admin_session, personal_number="7700002", role="admin", hierarchy_node_id=d.id)
+    d.commander_id = dept_cmd.id
+    branch_cmd = create_soldier(admin_session, personal_number="7700003", role="admin", hierarchy_node_id=d.id)
+    b.commander_id = branch_cmd.id
+    admin_session.commit()
+
+    r = client.post(
+        "/api/hierarchy-transfers",
+        headers=auth_headers(branch_cmd),
+        json={"soldier_id": str(branch_cmd.id), "to_node_id": str(b.id)},
+    )
+    assert r.status_code == 200, r.text
+    request_id = r.json()["id"]
+
+    r2 = client.post(f"/api/hierarchy-transfers/{request_id}/approve", headers=auth_headers(dept_cmd))
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "approved"
