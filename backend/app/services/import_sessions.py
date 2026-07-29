@@ -958,8 +958,8 @@ def _resolve_and_score(
         "hierarchy": _resolve_hierarchy(session, data, actor, node_by_name, node_by_row, fo.get("hierarchy", {})),
         "duty_types": _resolve_duty_types(session, data, node_by_name, node_by_row, fo.get("duty_types", {})),
         "exemption_types": _resolve_exemption_types(session, data, dt_by_name, dt_by_row, fo.get("exemption_types", {})),
-        "system_settings": resolve_system_settings(session, data, fo.get("system_settings", {})),
-        "bug_reports": resolve_bug_reports(session, data, fo.get("bug_reports", {})),
+        "system_settings": resolve_system_settings(session, data, actor, fo.get("system_settings", {})),
+        "bug_reports": resolve_bug_reports(session, data, actor, fo.get("bug_reports", {})),
         "personal_constraints": resolve_personal_constraints(session, data, fo.get("personal_constraints", {})),
         "soldier_field_updates": resolve_soldier_field_updates(session, data, fo.get("soldier_field_updates", {})),
         "soldier_enrollment_requests": resolve_soldier_enrollment_requests(session, data, fo.get("soldier_enrollment_requests", {})),
@@ -1562,7 +1562,7 @@ def confirm_session(
     # ── System settings ────────────────────────────────────────────────
     for row in state.get("system_settings", []):
         effective = _effective_action(selections, "system_settings", row)
-        if row["action"] == "error" or effective == "skip":
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
             skipped += 1
             continue
         try:
@@ -1578,7 +1578,7 @@ def confirm_session(
     # ── Bug reports ─────────────────────────────────────────────────────
     for row in state.get("bug_reports", []):
         effective = _effective_action(selections, "bug_reports", row)
-        if row["action"] == "error" or effective == "skip":
+        if row["action"] in ("error", "out_of_scope") or effective == "skip":
             skipped += 1
             continue
         try:

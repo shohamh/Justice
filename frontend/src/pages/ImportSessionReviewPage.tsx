@@ -2074,7 +2074,7 @@ export default function ImportSessionReviewPage() {
                         )}
                       </td>
                       <td className="p-3">
-                        <StatusChip action={row.action} errors={row.errors} />
+                        <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
                       </td>
                       {!readOnly && (
                         <td className="p-3">

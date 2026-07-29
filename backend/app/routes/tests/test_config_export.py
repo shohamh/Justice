@@ -6,9 +6,20 @@ import openpyxl
 import pytest
 from sqlalchemy import delete, select
 
-from app.db.models import BugReport, SystemSetting
+from app.db.models import BugReport, DutyManagerScope, SystemSetting
 from app.routes.config_export import _write_bug_reports, _write_system_settings
-from tests.helpers import create_soldier
+from app.services.hierarchy import create_node
+from tests.helpers import auth_headers, create_soldier
+
+
+def _make_duty_manager(session, personal_number: str):
+    """A duty_manager actor needs at least one DutyManagerScope row —
+    require_duty_manager_or_admin checks for scope, not just role."""
+    dm = create_soldier(session, personal_number=personal_number, role="duty_manager")
+    node = create_node(session, level="team", name=f"node_{personal_number}", parent_id=None)
+    session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=node.id))
+    session.commit()
+    return dm
 
 
 @pytest.fixture(autouse=True)
@@ -71,3 +82,45 @@ def test_write_bug_reports_resolves_reporter_and_serializes_json_columns(admin_s
     assert json.loads(data["nav_history_json"]) == [{"path": "/a"}]
     assert data["audit_snapshot_json"] == ""
     assert json.loads(data["user_snapshot_json"]) == {"role": "soldier"}
+
+
+def test_export_by_duty_manager_drops_system_settings_and_bug_reports(client, admin_session):
+    """Critical Fix 1: system_settings/bug_reports are admin-only end to
+    end. A duty-manager's export (no sheets param → defaults to all six)
+    silently drops these two rather than erroring the whole export."""
+    import io as _io
+
+    dm = _make_duty_manager(admin_session, "dm_export_1")
+
+    resp = client.get("/api/config/export", headers=auth_headers(dm))
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
+    assert "system_settings" not in wb.sheetnames
+    assert "bug_reports" not in wb.sheetnames
+    assert "duty_types" in wb.sheetnames
+
+
+def test_export_by_duty_manager_explicit_request_still_drops_admin_only_sheets(client, admin_session):
+    import io as _io
+
+    dm = _make_duty_manager(admin_session, "dm_export_2")
+
+    resp = client.get(
+        "/api/config/export?sheets=system_settings,bug_reports", headers=auth_headers(dm)
+    )
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
+    assert wb.sheetnames == []
+
+
+def test_export_by_admin_includes_system_settings_and_bug_reports(client, admin_session):
+    import io as _io
+
+    admin = create_soldier(admin_session, personal_number="admin_export_1", role="admin")
+    admin_session.commit()
+
+    resp = client.get("/api/config/export", headers=auth_headers(admin))
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(_io.BytesIO(resp.content))
+    assert "system_settings" in wb.sheetnames
+    assert "bug_reports" in wb.sheetnames

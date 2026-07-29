@@ -22,6 +22,7 @@ from app.db.models import (
     SystemSetting,
 )
 from app.db.session import get_session
+from app.services.settings_loader import _HIDDEN_KEYS
 
 router = APIRouter(prefix="/config", tags=["config-export"])
 
@@ -107,14 +108,11 @@ def _write_exemption_types(wb: openpyxl.Workbook, session: Session) -> None:
         ])
 
 
-_HIDDEN_SETTING_KEYS = {"system.holding_node_id"}
-
-
 def _write_system_settings(wb: openpyxl.Workbook, session: Session) -> None:
     ws = wb.create_sheet("system_settings")
     ws.append(["key", "value_json"])
     for setting in session.execute(select(SystemSetting)).scalars():
-        if setting.key in _HIDDEN_SETTING_KEYS:
+        if setting.key in _HIDDEN_KEYS:
             continue
         ws.append([setting.key, json.dumps(setting.value, ensure_ascii=False)])
 
@@ -157,6 +155,11 @@ def export_config(
 ):
     requested = [s.strip() for s in sheets.split(",")] if sheets else ALL_SHEETS
     requested = [s for s in requested if s in _WRITERS]
+    if actor.role != "admin":
+        # system_settings/bug_reports are admin-only end to end: a duty manager
+        # can still export the other sheets they're allowed to see, but these
+        # two are silently dropped rather than erroring the whole export.
+        requested = [s for s in requested if s not in ("system_settings", "bug_reports")]
 
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
