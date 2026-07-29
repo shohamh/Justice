@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
-from app.db.models import HierarchyTransferRequest, NotificationType, Soldier
+from app.db.models import HierarchyNode, HierarchyTransferRequest, NotificationType, Soldier
 from app.services.notifications import create_notification
 
 
@@ -24,6 +24,8 @@ def create_request(
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise HierarchyTransferError("soldier_not_found")
+    if session.get(HierarchyNode, to_node_id) is None:
+        raise HierarchyTransferError("to_node_not_found")
     req = HierarchyTransferRequest(
         soldier_id=soldier_id, from_node_id=soldier.hierarchy_node_id,
         to_node_id=to_node_id, requested_by=requested_by,

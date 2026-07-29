@@ -119,3 +119,27 @@ def test_list_pending_for_approver_scopes_by_destination_node(admin_session):
     pending = list_pending_for_approver(admin_session, approver_id=approver.id)
 
     assert [r.id for r in pending] == [req_for_approver.id]
+
+
+def test_create_request_rejects_unknown_to_node(admin_session):
+    import uuid
+
+    from app.services.hierarchy_transfers import HierarchyTransferError, create_request
+    from tests.helpers import create_soldier
+
+    s = create_soldier(admin_session, personal_number="7600001")
+    with pytest.raises(HierarchyTransferError, match="to_node_not_found"):
+        create_request(
+            admin_session, soldier_id=s.id, to_node_id=uuid.uuid4(), requested_by=s.id,
+        )
+
+
+def test_create_request_succeeds_for_real_node(admin_session):
+    from app.services.hierarchy_transfers import create_request
+    from tests.helpers import create_node, create_soldier
+
+    s = create_soldier(admin_session, personal_number="7600002")
+    node = create_node(admin_session, level="unit", name="u1")
+    req = create_request(admin_session, soldier_id=s.id, to_node_id=node.id, requested_by=s.id)
+    admin_session.commit()
+    assert req.to_node_id == node.id
