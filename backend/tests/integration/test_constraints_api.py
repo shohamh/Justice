@@ -55,6 +55,7 @@ def test_commander_approves_in_subtree(client: TestClient, admin_session: Sessio
     b = create_node(admin_session, level="branch", name="b", parent=d)
     cmd = create_soldier(admin_session, personal_number="7500003", role="commander")
     b.commander_id = cmd.id
+    dm = create_soldier(admin_session, personal_number="7500016", role="duty_manager", hierarchy_node_id=b.id)
     admin_session.commit()
     target = create_soldier(admin_session, personal_number="7500004", hierarchy_node_id=b.id)
     c = client.post(
@@ -66,9 +67,12 @@ def test_commander_approves_in_subtree(client: TestClient, admin_session: Sessio
             "reason": "חופשה",
         },
     ).json()
-    r = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(cmd), json={})
-    assert r.status_code == 200, r.text
-    assert r.json()["status"] == "approved"
+    r1 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(cmd), json={})
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "pending_duty_manager"
+    r2 = client.post(f"/api/constraints/{c['id']}/approve", headers=auth_headers(dm), json={})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "approved"
 
 
 def test_commander_out_of_subtree_forbidden(client: TestClient, admin_session: Session):

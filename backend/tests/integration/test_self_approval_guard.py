@@ -29,7 +29,7 @@ def test_commander_cannot_approve_own_constraint(client: TestClient, admin_sessi
         start_date=date.today() + timedelta(days=1),
         end_date=date.today() + timedelta(days=2),
         reason="test",
-        status="pending",
+        status="pending_commander",
     )
     admin_session.add(c)
     admin_session.commit()
@@ -59,7 +59,7 @@ def test_commander_cannot_reject_own_constraint(client: TestClient, admin_sessio
         start_date=date.today() + timedelta(days=1),
         end_date=date.today() + timedelta(days=2),
         reason="test",
-        status="pending",
+        status="pending_commander",
     )
     admin_session.add(c)
     admin_session.commit()
@@ -92,7 +92,7 @@ def test_commander_can_approve_other_constraint(client: TestClient, admin_sessio
         start_date=date.today() + timedelta(days=1),
         end_date=date.today() + timedelta(days=2),
         reason="test",
-        status="pending",
+        status="pending_commander",
     )
     admin_session.add(c)
     admin_session.commit()
@@ -103,7 +103,7 @@ def test_commander_can_approve_other_constraint(client: TestClient, admin_sessio
         headers=auth_headers(commander),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["status"] == "approved"
+    assert resp.json()["status"] == "pending_duty_manager"
 
 
 def test_commander_cannot_approve_own_exemption_request(client: TestClient, admin_session: Session):

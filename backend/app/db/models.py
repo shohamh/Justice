@@ -648,6 +648,9 @@ class PersonalConstraint(Base):
     end_date: Mapped[date] = mapped_column(Date)
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, server_default="pending", default="pending")
+    commander_approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )

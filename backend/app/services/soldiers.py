@@ -211,7 +211,10 @@ def soft_delete(
     )
     session.execute(
         sa_update(PersonalConstraint)
-        .where(PersonalConstraint.soldier_id == soldier.id, PersonalConstraint.status == "pending")
+        .where(
+            PersonalConstraint.soldier_id == soldier.id,
+            PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager")),
+        )
         .values(status="cancelled")
     )
     # "pending_approval" no longer exists as a SwapRequest.status value — that

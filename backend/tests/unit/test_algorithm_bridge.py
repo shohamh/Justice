@@ -115,7 +115,7 @@ def test_load_soldier_inputs_excludes_pending_constraints(admin_session):
         start_date=date(2026, 6, 10),
         end_date=date(2026, 6, 15),
         reason="רפואי",
-        status="pending",
+        status="pending_commander",
     )
     admin_session.add(pc)
     admin_session.commit()

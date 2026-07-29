@@ -52,28 +52,31 @@ def submit_constraint(
     if used + requested_in_period > cap_days:
         raise ConstraintError("cap_exceeded")
 
-    require_approval = bool(
-        _get_setting_with_default(session, "constraints.require_manager_approval", True)
+    require_commander = bool(
+        _get_setting_with_default(session, "constraints.require_commander_approval", True)
     )
-    if require_approval:
-        c = PersonalConstraint(
-            soldier_id=soldier_id,
-            start_date=start_date,
-            end_date=end_date,
-            reason=reason,
-            status="pending",
-        )
+    require_dm = bool(
+        _get_setting_with_default(session, "constraints.require_duty_manager_approval", True)
+    )
+
+    if require_commander:
+        initial_status = "pending_commander"
+    elif require_dm:
+        initial_status = "pending_duty_manager"
     else:
-        now = datetime.now(UTC)
-        c = PersonalConstraint(
-            soldier_id=soldier_id,
-            start_date=start_date,
-            end_date=end_date,
-            reason=reason,
-            status="approved",
-            decided_by=actor_id,
-            decided_at=now,
-        )
+        initial_status = "approved"
+
+    c = PersonalConstraint(
+        soldier_id=soldier_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        status=initial_status,
+    )
+    if initial_status == "approved":
+        c.decided_by = None
+        c.decided_at = datetime.now(UTC)
+        c.decision_note = "אושר אוטומטית - אין דרישת אישור מוגדרת"
 
     session.add(c)
     session.flush()
@@ -91,7 +94,7 @@ def submit_constraint(
             "status": c.status,
         },
     )
-    if c.status == "pending":
+    if c.status == "pending_commander":
         from app.services.notifications import notify_commanders_of_request
         notify_commanders_of_request(
             session,
@@ -103,6 +106,78 @@ def submit_constraint(
             reference_id=c.id,
             actor_id=actor_id,
         )
+    elif c.status == "pending_duty_manager":
+        from app.services.notifications import notify_duty_managers_of_request
+        notify_duty_managers_of_request(
+            session,
+            soldier_id=soldier_id,
+            type=NotificationType.constraint_pending,
+            title=f"בקשת אילוץ ממתינה לאישור: {start_date} – {end_date}",
+            body=reason,
+            reference_type="personal_constraint",
+            reference_id=c.id,
+            actor_id=actor_id,
+        )
+    return c
+
+
+def _approve_commander_step(
+    session: Session, c: PersonalConstraint, *, actor_id: uuid.UUID | None,
+) -> PersonalConstraint:
+    c.commander_approved_by = actor_id
+    require_dm = bool(
+        _get_setting_with_default(session, "constraints.require_duty_manager_approval", True)
+    )
+    if require_dm:
+        c.status = "pending_duty_manager"
+        session.flush()
+        from app.services.notifications import notify_duty_managers_of_request
+        notify_duty_managers_of_request(
+            session,
+            soldier_id=c.soldier_id,
+            type=NotificationType.constraint_pending,
+            title="בקשת אילוץ ממתינה לאישור (אושרה ע\"י מפקד)",
+            body=c.reason,
+            reference_type="personal_constraint",
+            reference_id=c.id,
+            actor_id=actor_id,
+        )
+    else:
+        c.status = "approved"
+        c.decided_by = actor_id
+        c.decided_at = datetime.now(UTC)
+        session.flush()
+        create_notification(session, soldier_id=c.soldier_id,
+                            type=NotificationType.constraint_approved,
+                            title="בקשת האילוץ אושרה",
+                            reference_type="personal_constraint", reference_id=c.id,
+                            actor_id=actor_id)
+    write_audit(
+        session, actor_id=actor_id, action="constraint.approve_commander_step",
+        entity_type="personal_constraint", entity_id=c.id,
+        before={"status": "pending_commander"}, after={"status": c.status},
+    )
+    return c
+
+
+def _approve_duty_manager_step(
+    session: Session, c: PersonalConstraint, *, actor_id: uuid.UUID | None, decision_note: str | None,
+) -> PersonalConstraint:
+    c.status = "approved"
+    c.decided_by = actor_id
+    c.decided_at = datetime.now(UTC)
+    c.decision_note = decision_note
+    session.flush()
+    create_notification(session, soldier_id=c.soldier_id,
+                        type=NotificationType.constraint_approved,
+                        title="בקשת האילוץ אושרה",
+                        reference_type="personal_constraint", reference_id=c.id,
+                        actor_id=actor_id)
+    write_audit(
+        session, actor_id=actor_id, action="constraint.approve_duty_manager_step",
+        entity_type="personal_constraint", entity_id=c.id,
+        before={"status": "pending_duty_manager"}, after={"status": "approved", "decision_note": decision_note},
+    )
     return c
 
 
@@ -116,7 +191,7 @@ def approve_constraint(
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
-    if c.status != "pending":
+    if c.status not in ("pending_commander", "pending_duty_manager"):
         raise ConstraintError("not_pending")
     unresolved_enrollment = session.execute(
         select(SoldierEnrollmentRequest).where(
@@ -126,26 +201,10 @@ def approve_constraint(
     ).scalars().first()
     if unresolved_enrollment is not None:
         raise ConstraintError("enrollment_not_approved")
-    c.status = "approved"
-    c.decided_by = actor_id
-    c.decided_at = datetime.now(UTC)
-    c.decision_note = decision_note
-    session.flush()
-    create_notification(session, soldier_id=c.soldier_id,
-                        type=NotificationType.constraint_approved,
-                        title="בקשת האילוץ אושרה",
-                        reference_type="personal_constraint", reference_id=c.id,
-                        actor_id=actor_id)
-    write_audit(
-        session,
-        actor_id=actor_id,
-        action="constraint.approve",
-        entity_type="personal_constraint",
-        entity_id=c.id,
-        before={"status": "pending"},
-        after={"status": "approved", "decision_note": decision_note},
-    )
-    return c
+
+    if c.status == "pending_commander":
+        return _approve_commander_step(session, c, actor_id=actor_id)
+    return _approve_duty_manager_step(session, c, actor_id=actor_id, decision_note=decision_note)
 
 
 def reject_constraint(
@@ -158,8 +217,9 @@ def reject_constraint(
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
-    if c.status != "pending":
+    if c.status not in ("pending_commander", "pending_duty_manager"):
         raise ConstraintError("not_pending")
+    before_status = c.status
     c.status = "rejected"
     c.decided_by = actor_id
     c.decided_at = datetime.now(UTC)
@@ -176,7 +236,7 @@ def reject_constraint(
         action="constraint.reject",
         entity_type="personal_constraint",
         entity_id=c.id,
-        before={"status": "pending"},
+        before={"status": before_status},
         after={"status": "rejected", "decision_note": decision_note},
     )
     return c
@@ -191,7 +251,10 @@ def cancel_constraint(
     c = session.get(PersonalConstraint, constraint_id)
     if c is None:
         raise ConstraintError("constraint_not_found")
-    if c.status != "pending":
+    cancelable = c.status == "pending_commander" or (
+        c.status == "pending_duty_manager" and c.commander_approved_by is None
+    )
+    if not cancelable:
         raise ConstraintError("not_pending")
     write_audit(
         session,
@@ -199,7 +262,7 @@ def cancel_constraint(
         action="constraint.cancel",
         entity_type="personal_constraint",
         entity_id=c.id,
-        before={"status": "pending"},
+        before={"status": c.status},
         after={"deleted": True},
     )
     session.delete(c)
@@ -250,7 +313,7 @@ def list_pending_approvals(
         session.execute(
             select(PersonalConstraint)
             .where(
-                PersonalConstraint.status == "pending",
+                PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager")),
                 PersonalConstraint.soldier_id.in_(soldier_ids),
             )
             .order_by(PersonalConstraint.start_date.asc())
@@ -267,7 +330,7 @@ def pending_approval_count(session: Session, *, node_ids: set[uuid.UUID]) -> int
             session.execute(
                 select(PersonalConstraint)
                 .where(
-                    PersonalConstraint.status == "pending",
+                    PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager")),
                     PersonalConstraint.soldier_id.in_(soldier_ids),
                 )
             )
@@ -314,7 +377,7 @@ def remaining_days(session: Session, *, soldier_id: uuid.UUID, today: date | Non
         session.execute(
             select(PersonalConstraint).where(
                 PersonalConstraint.soldier_id == soldier_id,
-                PersonalConstraint.status.in_(["pending", "approved"]),
+                PersonalConstraint.status.in_(["pending_commander", "pending_duty_manager", "approved"]),
                 PersonalConstraint.start_date < period_end,
                 PersonalConstraint.end_date >= period_start,
             )

@@ -138,7 +138,7 @@ def register(
             start_date=pc["start_date"],
             end_date=pc["end_date"],
             reason=pc.get("reason"),
-            status="pending",
+            status="pending_commander",
         ))
 
     session.flush()

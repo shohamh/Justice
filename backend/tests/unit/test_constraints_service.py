@@ -34,14 +34,16 @@ def test_submit_success(admin_session):
         actor_id=None,
     )
     admin_session.commit()
-    assert c.status == "pending"
+    assert c.status == "pending_commander"
     assert c.soldier_id == s.id
 
 
 def test_submit_auto_approve(admin_session, monkeypatch):
     monkeypatch.setattr(
         "app.services.constraints._get_setting_with_default",
-        lambda session, key, default: False if key == "constraints.require_manager_approval" else default,
+        lambda session, key, default: False
+        if key in ("constraints.require_commander_approval", "constraints.require_duty_manager_approval")
+        else default,
     )
     s = create_soldier(admin_session, personal_number=_pn(2))
     c = submit_constraint(
@@ -54,6 +56,7 @@ def test_submit_auto_approve(admin_session, monkeypatch):
     )
     admin_session.commit()
     assert c.status == "approved"
+    assert c.decided_by is None
 
 
 def test_submit_cap_enforced(admin_session):
@@ -122,7 +125,7 @@ def test_submit_cap_check_is_period_scoped_not_full_future_span(admin_session):
         actor_id=None,
     )
     admin_session.commit()
-    assert c.status == "pending"
+    assert c.status == "pending_commander"
 
 
 def test_submit_bad_date_range(admin_session):
@@ -174,6 +177,9 @@ def test_approve_pending(admin_session):
         actor_id=None,
     )
     admin_session.flush()
+    after_commander = approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+    assert after_commander.status == "pending_duty_manager"
+    assert after_commander.commander_approved_by == s.id
     approved = approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.commit()
     assert approved.status == "approved"
@@ -207,6 +213,8 @@ def test_approve_not_pending(admin_session):
         reason="חופשה",
         actor_id=None,
     )
+    admin_session.flush()
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.flush()
@@ -292,6 +300,8 @@ def test_get_approved_dates(admin_session):
     admin_session.flush()
     approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
     admin_session.flush()
+    approve_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+    admin_session.flush()
     dates = get_approved_constraint_dates(admin_session, soldier_id=s.id)
     assert len(dates) == 1
     assert dates[0][0] == date.today() + timedelta(days=10)
@@ -350,7 +360,7 @@ def test_remaining_days_counts_current_period_overlap(admin_session):
         start_date=date(2026, 6, 28),
         end_date=date(2026, 7, 3),
         reason="x",
-        status="pending",
+        status="pending_commander",
     )
     admin_session.add(overlapping)
     admin_session.flush()

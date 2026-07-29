@@ -124,7 +124,7 @@ def test_not_blocked_by_pending_constraint(admin_session):
     _owner, cover, _dt, _loc, a = _base(admin_session)
     admin_session.add(PersonalConstraint(
         soldier_id=cover.id, start_date=date(2026, 7, 8), end_date=date(2026, 7, 12),
-        reason="חופש", status="pending",
+        reason="חופש", status="pending_commander",
     ))
     admin_session.flush()
     ok, reason = check_soldier_for_assignment(admin_session, cover.id, a.id)
