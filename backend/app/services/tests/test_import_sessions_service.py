@@ -306,13 +306,13 @@ def test_reparse_session_non_draft_raises(admin_session):
     sess.status = "confirmed"
     admin_session.commit()
 
-    with pytest.raises(ImportSessionError, match="only draft sessions"):
+    with pytest.raises(ImportSessionError, match="only_draft_sessions_can_be_reparsed"):
         reparse_session(admin_session, session_id=sess.id, actor=admin)
 
 
 def test_reparse_session_not_found_raises(admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    with pytest.raises(ImportSessionError, match="not found"):
+    with pytest.raises(ImportSessionError, match="session_not_found"):
         reparse_session(admin_session, session_id=uuid.uuid4(), actor=admin)
 
 
@@ -487,7 +487,7 @@ def test_confirm_session_non_draft_raises(admin_session):
     sess.status = "confirmed"
     admin_session.commit()
 
-    with pytest.raises(ImportSessionError, match="only draft sessions"):
+    with pytest.raises(ImportSessionError, match="only_draft_sessions_can_be_confirmed"):
         confirm_session(admin_session, session_id=sess.id, actor=admin)
 
 
