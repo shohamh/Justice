@@ -15,6 +15,7 @@ import {
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
 import BugReportDetailModal from "./BugReportDetailModal";
+import { usePagePagination } from "../../hooks/usePagePagination";
 
 const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
@@ -33,7 +34,7 @@ export function BugReportsContent() {
   const { t } = useTranslation();
   const [severityFilter, setSeverityFilter] = useState<BugReportSeverity | "">("");
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
-  const [offset, setOffset] = useState(0);
+  const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
@@ -45,7 +46,6 @@ export function BugReportsContent() {
   const [importSummary, setImportSummary] = useState<BugReportImportSummary | null>(null);
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
-  const limit = 20;
 
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
   // accumulated without re-registering the effect on every fetch.
@@ -181,7 +181,7 @@ export function BugReportsContent() {
       <div className="flex gap-2 mb-4">
         <select
           value={severityFilter}
-          onChange={(e) => { setSeverityFilter(e.target.value as BugReportSeverity | ""); setOffset(0); }}
+          onChange={(e) => { setSeverityFilter(e.target.value as BugReportSeverity | ""); setPage(1); }}
           className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600"
           data-testid="bug-report-filter-severity"
         >
@@ -192,7 +192,7 @@ export function BugReportsContent() {
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as BugReportStatus | ""); setOffset(0); }}
+          onChange={(e) => { setStatusFilter(e.target.value as BugReportStatus | ""); setPage(1); }}
           className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600"
           data-testid="bug-report-filter-status"
         >
@@ -335,8 +335,8 @@ export function BugReportsContent() {
           {Array.from({ length: pages }, (_, i) => (
             <button
               key={i}
-              onClick={() => setOffset(i * limit)}
-              className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
+              onClick={() => setPage(i + 1)}
+              className={`px-3 py-1 rounded text-sm ${page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
             >
               {i + 1}
             </button>
