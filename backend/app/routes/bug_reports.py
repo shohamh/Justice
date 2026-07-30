@@ -65,6 +65,8 @@ def submit_bug_report(
             route=body.route,
             nav_history=[entry.model_dump() for entry in body.nav_history],
         )
+    except svc.BugReportRateLimitError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except svc.BugReportWriteError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="bug_report_write_failed") from exc
     session.commit()

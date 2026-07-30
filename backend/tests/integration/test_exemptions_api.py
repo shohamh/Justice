@@ -118,7 +118,7 @@ def test_patch_pending_commander_request_succeeds(client: TestClient, admin_sess
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     ).json()
     assert req["status"] == "pending_commander"
     r = client.patch(
@@ -143,7 +143,7 @@ def test_patch_rejects_retargeting_to_commander_exemption_type(client: TestClien
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(regular.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(regular.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     ).json()
     r = client.patch(
         f"/api/exemption-requests/{req['id']}",
@@ -349,7 +349,7 @@ def test_exemption_request_includes_nearest_commander_and_duty_manager(client: T
     req = client.post(
         "/api/me/exemption-requests",
         headers=auth_headers(soldier),
-        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01"},
+        json={"exemption_type_id": str(et.id), "start_date": "2026-01-01", "reason": "בדיקה"},
     ).json()
     assert req["nearest_commander"]["id"] == str(cmd.id)
     assert req["nearest_commander"]["name"] == cmd.full_name

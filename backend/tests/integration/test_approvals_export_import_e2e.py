@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import UTC, datetime
 from datetime import date as date_type
 
+import openpyxl
 from sqlalchemy import select
 
 import app.services.import_parsers.v1_standard  # noqa: F401 -- registers the v1_standard parser
@@ -104,9 +106,86 @@ def test_personal_constraint_export_import_round_trip(admin_session, client):
     assert original.end_date == date_type(2024, 6, 16)
     assert original.reason == "round trip test"
 
+
+def test_personal_constraint_import_accepts_new_split_approval_statuses(admin_session, client):
+    # Regression test: the two-step approval split (Task 9) added
+    # "pending_commander" / "pending_duty_manager" as PersonalConstraint.status
+    # values, replacing the old single "pending" state. The importer's status
+    # validation in resolve_personal_constraints previously still checked
+    # against the old 3-state set ("pending", "approved", "rejected"), so a
+    # row carrying "pending_commander" would be silently marked action="error"
+    # instead of being accepted for update. This must no longer happen.
+    node = create_node(admin_session, level="group", name=f"n_{_uid()}", parent_id=None)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
+    original = PersonalConstraint(
+        soldier_id=soldier.id, start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        reason="pending commander approval", status="pending_commander",
+    )
+    admin_session.add(original)
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+    xlsx_bytes = _export(client, admin, "personal_constraints")
+
+    sess = create_session(admin_session, filename="roundtrip.xlsx", content=xlsx_bytes, actor=admin, parser_id="v1_standard")
+    row = sess.parsed_state["personal_constraints"][0]
+    assert row["errors"] == []
+    assert row["action"] == "update"
+    assert row["status"] == "pending_commander"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(original)
+    assert original.status == "pending_commander"
+
     # No duplicate row was created by the round trip.
     all_rows = admin_session.execute(select(PersonalConstraint)).scalars().all()
     assert len(all_rows) == 1
+
+
+def test_personal_constraint_import_coerces_legacy_pending_status(admin_session, client):
+    # Regression test: approvals workbooks exported before the two-step
+    # approval split (Task 9) still carry the literal legacy value "pending"
+    # for personal_constraints.status. resolve_personal_constraints must
+    # coerce this legacy value to "pending_commander" before validating it,
+    # rather than hard-rejecting the row with "סטטוס לא תקין 'pending'".
+    node = create_node(admin_session, level="group", name=f"n_{_uid()}", parent_id=None)
+    soldier = create_soldier(admin_session, personal_number=f"s_{_uid()}", hierarchy_node_id=node.id)
+    original = PersonalConstraint(
+        soldier_id=soldier.id, start_date=date_type(2024, 6, 15), end_date=date_type(2024, 6, 16),
+        reason="legacy pending export", status="pending_commander",
+    )
+    admin_session.add(original)
+    admin_session.commit()
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=node.id))
+    admin_session.commit()
+    xlsx_bytes = _export(client, admin, "personal_constraints")
+
+    # Simulate a pre-Task-9 export: rewrite the status cell to the legacy
+    # literal "pending" value that older exports would still carry.
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes))
+    ws = wb["personal_constraints"]
+    header = [cell.value for cell in ws[1]]
+    status_col = header.index("status") + 1
+    ws.cell(row=2, column=status_col, value="pending")
+    buf = io.BytesIO()
+    wb.save(buf)
+    legacy_bytes = buf.getvalue()
+
+    sess = create_session(admin_session, filename="legacy.xlsx", content=legacy_bytes, actor=admin, parser_id="v1_standard")
+    row = sess.parsed_state["personal_constraints"][0]
+    assert row["errors"] == []
+    assert row["action"] == "update"
+    assert row["status"] == "pending_commander"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(original)
+    assert original.status == "pending_commander"
 
 
 def test_soldier_field_update_export_import_round_trip(admin_session, client):

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, authorize, forbid_self_target
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, HierarchyTransferRequest, Soldier
 from app.db.session import get_session
@@ -67,6 +67,7 @@ def approve_transfer(
     req = session.get(HierarchyTransferRequest, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    forbid_self_target(user, req.soldier_id)
     dest_node = session.get(HierarchyNode, req.to_node_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
     try:
@@ -87,6 +88,7 @@ def reject_transfer(
     req = session.get(HierarchyTransferRequest, request_id)
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
+    forbid_self_target(user, req.soldier_id)
     dest_node = session.get(HierarchyNode, req.to_node_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
     try:

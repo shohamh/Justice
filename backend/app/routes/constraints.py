@@ -255,7 +255,7 @@ def pending_list(
         rows = list(
             session.execute(
                 select(PersonalConstraint)
-                .where(PersonalConstraint.status == "pending")
+                .where(PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager")))
                 .order_by(PersonalConstraint.start_date.asc())
             )
             .scalars()
@@ -277,7 +277,9 @@ def pending_count(
         cnt = len(
             list(
                 session.execute(
-                    select(PersonalConstraint).where(PersonalConstraint.status == "pending")
+                    select(PersonalConstraint).where(
+                        PersonalConstraint.status.in_(("pending_commander", "pending_duty_manager"))
+                    )
                 )
                 .scalars()
                 .all()

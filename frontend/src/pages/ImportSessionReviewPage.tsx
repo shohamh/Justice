@@ -2161,7 +2161,8 @@ export default function ImportSessionReviewPage() {
                             defaultValue={row.status}
                             onChange={(e) => setFieldOverride("personal_constraints", row.row, "status", e.target.value)}
                           >
-                            <option value="pending">ממתין</option>
+                            <option value="pending_commander">ממתין למפקד</option>
+                            <option value="pending_duty_manager">ממתין לקצין תורן</option>
                             <option value="approved">מאושר</option>
                             <option value="rejected">נדחה</option>
                           </select>
