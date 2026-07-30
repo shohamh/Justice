@@ -49,7 +49,7 @@ def create_transfer(
     if soldier is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="soldier_not_found")
     source_node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=source_node)
+    authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=source_node)
     try:
         req = svc.create_request(session, soldier_id=body.soldier_id, to_node_id=body.to_node_id, requested_by=user.id)
     except svc.HierarchyTransferError as exc:
@@ -68,7 +68,7 @@ def approve_transfer(
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     dest_node = session.get(HierarchyNode, req.to_node_id)
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
+    authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=dest_node)
     try:
         req = svc.approve_request(session, request_id=request_id, actor_id=user.id)
     except svc.HierarchyTransferError as exc:
@@ -88,7 +88,7 @@ def reject_transfer(
     if req is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="request_not_found")
     dest_node = session.get(HierarchyNode, req.to_node_id)
-    authorize(session, user, Action.SOLDIER_UPDATE, target_node=dest_node)
+    authorize(session, user, Action.HIERARCHY_TRANSFER, target_node=dest_node)
     try:
         req = svc.reject_request(session, request_id=request_id, actor_id=user.id, decision_note=body.decision_note)
     except svc.HierarchyTransferError as exc:
