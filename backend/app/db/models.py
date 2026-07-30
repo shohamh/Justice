@@ -1234,7 +1234,7 @@ class BugReport(Base):
     )
     route: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
-        Enum("open", "in_progress", "resolved", name="bug_report_status"),
+        Enum("open", "in_progress", "resolved", "wont_fix", name="bug_report_status"),
         server_default="open", default="open",
     )
     screenshot: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)

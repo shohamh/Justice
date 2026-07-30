@@ -21,7 +21,12 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   medium: "bg-yellow-100 text-yellow-800",
   high: "bg-red-100 text-red-800",
 };
-const STATUS_LABELS: Record<BugReportStatus, string> = { open: "פתוח", in_progress: "בטיפול", resolved: "טופל" };
+const STATUS_LABELS: Record<BugReportStatus, string> = {
+  open: "פתוח",
+  in_progress: "בטיפול",
+  resolved: "טופל",
+  wont_fix: "לא יטופל",
+};
 
 export function BugReportsContent() {
   const { t } = useTranslation();
@@ -193,6 +198,7 @@ export function BugReportsContent() {
           <option value="open">פתוח</option>
           <option value="in_progress">בטיפול</option>
           <option value="resolved">טופל</option>
+          <option value="wont_fix">לא יטופל</option>
         </select>
       </div>
 
@@ -239,6 +245,7 @@ export function BugReportsContent() {
                     <option value="open">{STATUS_LABELS.open}</option>
                     <option value="in_progress">{STATUS_LABELS.in_progress}</option>
                     <option value="resolved">{STATUS_LABELS.resolved}</option>
+                    <option value="wont_fix">{STATUS_LABELS.wont_fix}</option>
                   </select>
                   {statusErrorById[report.id] && (
                     <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>

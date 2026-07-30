@@ -92,7 +92,7 @@ class PaginatedBugReports(BaseModel):
 
 
 class UpdateBugReportStatusBody(BaseModel):
-    status: Literal["open", "in_progress", "resolved"]
+    status: Literal["open", "in_progress", "resolved", "wont_fix"]
 
 
 def _summary_out(report: BugReport) -> BugReportSummaryOut:
@@ -117,7 +117,7 @@ def list_bug_reports(
     session: Session = Depends(get_session),
     _admin: Soldier = Depends(require_roles("admin")),
     severity: Literal["low", "medium", "high"] | None = None,
-    status_filter: Literal["open", "in_progress", "resolved"] | None = Query(default=None, alias="status"),
+    status_filter: Literal["open", "in_progress", "resolved", "wont_fix"] | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> PaginatedBugReports:

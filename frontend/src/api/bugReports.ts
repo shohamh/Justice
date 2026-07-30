@@ -2,7 +2,7 @@ import { api } from "./client";
 import type { NavHistoryEntry } from "../hooks/useNavigationHistory";
 
 export type BugReportSeverity = "low" | "medium" | "high";
-export type BugReportStatus = "open" | "in_progress" | "resolved";
+export type BugReportStatus = "open" | "in_progress" | "resolved" | "wont_fix";
 
 export interface BugReportSubmitPayload {
   description: string;
