@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import Layout from "../components/Layout";
+import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
@@ -98,18 +99,6 @@ export default function MyDutiesPage() {
     return { pos, total: allRows.length };
   }, [myRow, allRows]);
 
-  const typeChartData = useMemo(() => {
-    if (!breakdown) return [];
-    return breakdown.per_type
-      .filter((p) => p.days > 0)
-      .sort((a, b) => b.days - a.days)
-      .map((p) => ({
-        name: p.duty_type_name ?? p.duty_type_id.slice(0, 8),
-        days: p.days,
-        score: Number(p.score).toFixed(3),
-      }));
-  }, [breakdown]);
-
   const comparisonData = useMemo(
     () => [
       { name: "הניקוד שלי", value: Number(myRow?.normalised_score ?? 0) },
@@ -172,44 +161,7 @@ export default function MyDutiesPage() {
         </div>
 
         {/* Section 2: Breakdown by duty type */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
-          <h3 className="font-medium text-sm">פירוט לפי סוג תורנות</h3>
-          {typeChartData.length === 0 ? (
-            <p className="text-sm text-gray-500">אין נתוני פירוט</p>
-          ) : (
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(typeChartData.length * 44, 100)}
-            >
-              <BarChart
-                data={typeChartData}
-                layout="vertical"
-                margin={{ top: 0, right: 30, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={110}
-                  tick={{ fontSize: 11 }}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const item = payload[0].payload as { days: number; score: string };
-                    return (
-                      <div className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-xs shadow">
-                        {item.days} ימים (ניקוד: {item.score})
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="days" fill="#6366f1" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <DutyTypeBreakdownChart perType={breakdown?.per_type ?? []} />
 
         {/* Section 3: Score vs unit average */}
         {allRows.length > 1 && (
