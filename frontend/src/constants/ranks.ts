@@ -15,3 +15,27 @@ const OFFICER_RANK_SET = new Set(OFFICER_RANKS);
 export function isOfficerRank(rank: string): boolean {
   return OFFICER_RANK_SET.has(rank);
 }
+
+// Mirrors backend/app/services/eligibility.py RANK_TRACK_COMPATIBILITY.
+// Keep this table in sync with the backend if the compatibility rules change.
+const CHOVAH_ONLY_RANKS = ["טוראי", "רבט", "סמל", "סגמ", "קמא"];
+const RASAN_AND_ABOVE = OFFICER_RANKS.slice(OFFICER_RANKS.indexOf("רסן"));
+// קא"ב and סרן are קבע-only per product confirmation, but fall below רס"ן in
+// OFFICER_RANKS so they must be added explicitly — not covered by RASAN_AND_ABOVE.
+const KEVA_ONLY_RANKS = [
+  ...ENLISTED_RANKS.filter((r) => !CHOVAH_ONLY_RANKS.includes(r)),
+  ...RASAN_AND_ABOVE,
+  "קאב",
+  "סרן",
+];
+
+const RANK_TRACK_COMPATIBILITY: Record<string, "חובה" | "קבע"> = {
+  ...Object.fromEntries(CHOVAH_ONLY_RANKS.map((r) => [r, "חובה" as const])),
+  ...Object.fromEntries(KEVA_ONLY_RANKS.map((r) => [r, "קבע" as const])),
+};
+
+export function isRankTrackCompatible(rank: string, isCareer: boolean): boolean {
+  const required = RANK_TRACK_COMPATIBILITY[rank];
+  if (!required) return true;
+  return required === (isCareer ? "קבע" : "חובה");
+}

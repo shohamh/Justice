@@ -13,7 +13,7 @@ import PasswordStrengthHint, { passwordValid } from "../components/PasswordStren
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
-import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank } from "../constants/ranks";
+import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -144,13 +144,22 @@ export default function RegisterPage() {
         "exemption_missing_fields": t("register.errors.exemption_missing_fields"),
         "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
       };
-      setError(detail ? (knownErrors[detail] ?? detail) : t("register.errors.network"));
+      const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
+        ? t("register.rank_track_incompatible")
+        : detail ? knownErrors[detail] : undefined;
+      setError(detail ? (mappedDetail ?? detail) : t("register.errors.network"));
     } finally {
       setSubmitting(false);
     }
   }
 
   const selectedNode = nodes.find(n => n.id === form.requested_node_id);
+  // Registration always starts a soldier as חובה (is_career=False — see
+  // backend/app/services/registration.py), so the compatibility check always
+  // runs against the חובה track here.
+  const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, false)
+    ? t("register.rank_track_incompatible")
+    : null;
 
   return (
     <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
@@ -229,6 +238,7 @@ export default function RegisterPage() {
                 }}
                 placeholder="בחר"
               />
+              {rankTrackError && <p className="text-red-600 text-xs mt-1">{rankTrackError}</p>}
             </label>
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
@@ -282,7 +292,7 @@ export default function RegisterPage() {
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
                 disabled={
                   !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email ||
-                  !form.gender || !form.rank || !form.enlistment_date || !form.mandatory_end_date ||
+                  !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
                   !form.discharge_date || !form.last_mitvahim_date ||
                   !passwordValid(form.password) || form.password !== form.confirm_password
                 }
