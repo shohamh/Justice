@@ -34,6 +34,13 @@ def resolve_personal_constraints(session: Session, data: ParsedImportData, overr
         end_date = field("end_date", row.end_date)
         reason = field("reason", row.reason)
         status = field("status", row.status)
+        # Legacy pre-Task-9 exports still carry the old single-state literal
+        # "pending" for personal_constraints (before the commander/duty-manager
+        # two-step split introduced "pending_commander"/"pending_duty_manager").
+        # Coerce it to the new first-step value before validating, so older
+        # exported workbooks can still be re-imported instead of hard-rejecting.
+        if status == "pending":
+            status = "pending_commander"
         decided_by_pn = field("decided_by_personal_number", row.decided_by_personal_number)
         decision_note = field("decision_note", row.decision_note)
 
