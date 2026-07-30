@@ -484,7 +484,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
               <div key={c.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-1" data-testid={`constraint-row-${c.id}`}>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500">{formatDate(c.start_date)} → {formatDate(c.end_date)}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.status === "pending" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : c.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200" : c.status === "approved" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"}`}>
                     {t(`my_requests.${c.status}`)}
                   </span>
                 </div>
@@ -492,7 +492,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                   {c.reason ?? "מידע פרטי"}
                 </p>
                 {c.decision_note && <p className="text-gray-500 dark:text-gray-400 text-xs">{t("approvals.decision_note")}: {c.decision_note}</p>}
-                {(isAdmin || isDutyManager) && c.status === "pending" && (
+                {(isAdmin || isDutyManager) && (c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager") && (
                   <div className="flex gap-2 mt-1">
                     <button className="text-xs text-green-600 hover:underline" onClick={() => handleApprove(c.id)} data-testid={`approve-constraint-${c.id}`}>
                       {t("approvals.approve")}

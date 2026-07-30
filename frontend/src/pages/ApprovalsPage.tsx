@@ -118,7 +118,7 @@ function SwapKindApproval({
 function nearestApproversToRows(
   nearestCommander: { id: string; name: string } | null,
   nearestDutyManager: { id: string; name: string } | null,
-  status: "pending" | "approved" | "rejected",
+  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled",
 ): DirectCommanderApprovalRow[] {
   const rows: DirectCommanderApprovalRow[] = [];
   if (nearestCommander) {

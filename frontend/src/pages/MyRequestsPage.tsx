@@ -167,6 +167,8 @@ export default function MyRequestsPage() {
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
       pending: "text-amber-600 dark:text-amber-400",
+      pending_commander: "text-amber-600 dark:text-amber-400",
+      pending_duty_manager: "text-amber-600 dark:text-amber-400",
       approved: "text-green-600 dark:text-green-400",
       rejected: "text-red-600 dark:text-red-400",
     };
@@ -208,19 +210,26 @@ export default function MyRequestsPage() {
 
         {items.length === 0 && <p className="text-sm text-gray-500" data-testid="no-constraints">{t("my_requests.none")}</p>}
 
-        {items.filter((c) => c.status === "pending").length > 0 && (
+        {items.filter((c) => c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager").length > 0 && (
           <div>
             <h4 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">{t("my_requests.pending_constraints")}</h4>
             <ul className="space-y-2 text-sm" data-testid="constraints-list">
-              {items.filter((c) => c.status === "pending").map((c) => (
+              {items.filter((c) => c.status === "pending" || c.status === "pending_commander" || c.status === "pending_duty_manager").map((c) => (
                 <li key={c.id} className="border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-800 flex items-center gap-3" data-testid={`constraint-row-${c.id}`}>
                   <span dir="ltr" className="text-gray-700 dark:text-gray-200">{c.start_date} → {c.end_date}</span>
                   <DaysBadge start={c.start_date} end={c.end_date} />
                   <span className="text-gray-700 dark:text-gray-300 flex-1">{c.reason}</span>
                   {statusBadge(c.status)}
-                  <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
-                    {t("my_requests.cancel")}
-                  </button>
+                  {/* Only the first approval step (pending_commander) is cancelable —
+                      see cancel_constraint in backend/app/services/constraints.py.
+                      Once it reaches pending_duty_manager it can no longer be
+                      withdrawn unilaterally, so hide the button to avoid a call
+                      that would 400. */}
+                  {(c.status === "pending" || c.status === "pending_commander") && (
+                    <button className="text-red-500 text-xs" onClick={() => onCancel(c.id)} data-testid={`cancel-${c.id}`}>
+                      {t("my_requests.cancel")}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
