@@ -33,6 +33,8 @@ export interface ColDef<T> {
   minWidth?: number;
   /** Plain value for Excel export. Falls back to filterValue, then sortValue, then "". */
   exportValue?: (row: T) => string | number | boolean | null | undefined;
+  /** When true, this column sorts descending on its first header click instead of ascending. */
+  sortDescFirst?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -264,6 +266,7 @@ export function DataTable<T>({
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
+        sortDescFirst: col.sortDescFirst,
         accessorFn: col.filterValue
           ? (row: T) => col.filterValue!(row)
           : col.sortValue

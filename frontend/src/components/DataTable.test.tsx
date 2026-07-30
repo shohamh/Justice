@@ -59,6 +59,19 @@ test("sorts descending on second header click", () => {
   expect(rows[0].textContent).toContain("Alice");  // score 3
 });
 
+test("sorts descending on first header click when sortDescFirst is set on the column", () => {
+  const descFirstCols: ColDef<Row>[] = [
+    cols[0],
+    { ...cols[1], sortDescFirst: true },
+  ];
+  const { container } = render(<DataTable columns={descFirstCols} data={data} />);
+  fireEvent.click(screen.getByText("Score"));
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Alice"); // score 3 (descending first)
+  expect(rows[1].textContent).toContain("Charlie"); // score 2
+  expect(rows[2].textContent).toContain("Bob"); // score 1
+});
+
 test("non-sortable column header does not show arrow", () => {
   render(<DataTable columns={[{ id: "x", header: "NoSort", cell: () => "—" }]} data={[]} />);
   const header = screen.getByText("NoSort");
