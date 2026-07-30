@@ -3,6 +3,21 @@
 ## 2026-07-30
 
 ### Features
+- Personal constraint approval is now a two-step process — commander approval followed by duty-manager approval, both required by default and independently configurable in system settings — replacing the previous single-step approval.
+- Commanders and duty managers can now mark a past duty as a no-show, which records an audit trail and automatically applies a score penalty.
+- Hierarchy transfer requests are now capped at 5 per soldier per rolling 24 hours, and bug report submissions at 50 per reporter per rolling 24 hours, to stop abuse.
+- Announcements now block a duplicate resend (same title, same sender) within 5 minutes of the original.
+- Exemption requests now require a real, non-empty reason.
+
+### Fixes
+- Invite-code redemption is now atomic, closing a race condition that could let a single-use code be redeemed more than once by concurrent requests.
+- Hierarchy transfer requests targeting a nonexistent destination node are now rejected instead of silently creating a broken request, and a soldier can no longer approve or reject their own transfer request even if they hold commander authority over the destination.
+- Taking an open duty ("take free") now requires the original duty owner's consent and goes through the normal manager-approval gate, instead of instantly reassigning the duty.
+- Fixed the personal-constraint approval change breaking legacy approvals-import workbooks and the frontend: a soldier's pending constraints no longer disappear from their requests list, and no longer show the wrong (rejected) status to approvers.
+
+## 2026-07-30
+
+### Features
 - Excel export/import now covers system settings and bug reports as two new sheets in the existing unified pipeline. System settings round-trip as key/value pairs, validated against the same density and relax-ceiling rules the settings screen already enforces, with internal-only keys staying non-editable; bug reports round-trip with reporter, description, severity, route, status, and their JSON snapshot columns, and a mismatched reporter on an update row now surfaces as a warning rather than silently changing who's credited. Both sheets — in the export picker and the import review page — are admin-only.
 - Added a "🏅 ניקוד" (scoring) tab to the help modal, showing every duty type's score-per-day live from the current configuration.
 
