@@ -972,6 +972,7 @@ class NotificationType(str, _enum.Enum):
     constraint_pending = "constraint_pending"
     exemption_request_pending = "exemption_request_pending"
     swap_offer_incoming = "swap_offer_incoming"
+    swap_pending_approval = "swap_pending_approval"
     gimelim_dismissed = "gimelim_dismissed"
     gimelim_reserve_called_up = "gimelim_reserve_called_up"
     gimelim_demoted_to_reserve = "gimelim_demoted_to_reserve"

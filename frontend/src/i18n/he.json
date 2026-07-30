@@ -1075,6 +1075,7 @@
     "type_constraint_pending": "בקשת אילוץ ממתינה",
     "type_exemption_request_pending": "בקשת פטור ממתינה",
     "type_swap_offer_incoming": "הצעת החלפה נכנסת",
+    "type_swap_pending_approval": "בקשת החלפה ממתינה לאישורך",
     "type_algorithm_job_done": "הרצת אלגוריתם הסתיימה",
     "type_algorithm_job_failed": "הרצת אלגוריתם נכשלה",
     "type_enrollment_request_received": "בקשת הצטרפות התקבלה",
