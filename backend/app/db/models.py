@@ -769,6 +769,30 @@ class ScoreAdjustment(Base):
     )
 
 
+class DutyNoShow(Base):
+    __tablename__ = "duty_no_shows"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    duty_assignment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("duty_assignments.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    note: Mapped[str] = mapped_column(Text)
+    marked_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    score_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("score_adjustments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class PotentialModifier(Base):
     __tablename__ = "potential_modifiers"
 
@@ -984,6 +1008,7 @@ class NotificationType(str, _enum.Enum):
     transfer_request_rejected = "transfer_request_rejected"
     system_announcement = "system_announcement"
     enrollment_fields_edited = "enrollment_fields_edited"
+    no_show_marked = "no_show_marked"
 
 
 class Notification(Base):
