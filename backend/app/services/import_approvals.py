@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date as date_type
 
@@ -7,11 +8,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
+    BugReport, ExemptionRequest, ExemptionType, HierarchyNode, PersonalConstraint,
     Soldier, SoldierEnrollmentRequest, SoldierExemption, SoldierFieldUpdate,
-    SwapCandidate, SwapRequest,
+    SwapCandidate, SwapRequest, SystemSetting,
 )
+from app.services import settings_loader
 from app.services.import_parsers.schema import ParsedImportData
+from app.services.settings_loader import SettingsValidationError, _HIDDEN_KEYS
+
+# The four settings whose combined values are cross-validated as a batch by
+# validate_settings_update (t/r density ordering + relax-ceiling ordering).
+_DENSITY_KEYS = {
+    "algorithm.max_duties_per_window",
+    "algorithm.max_total_duties_per_window",
+    "algorithm.relax_t_ceiling",
+    "algorithm.relax_r_ceiling",
+}
 
 
 def _soldiers_by_pn(session: Session) -> dict[str, Soldier]:
@@ -418,6 +430,196 @@ def resolve_swap_requests(session: Session, data: ParsedImportData, overrides: d
             "resolved_rejected_by_id": str(rejected_by.id) if rejected_by else None,
             "decision_note": decision_note,
             "approval_log": resolved_log,
+            "existing_id": str(existing.id) if existing is not None else None,
+        })
+    return out
+
+
+def resolve_system_settings(
+    session: Session, data: ParsedImportData, actor: Soldier, overrides: dict[str, dict] | None = None
+) -> list[dict]:
+    overrides = overrides or {}
+
+    # Admin-only end to end (Critical Fix 1): a non-admin actor can't touch
+    # system_settings via Excel import at all, so every row is short-circuited
+    # to out_of_scope without computing lookups/validation.
+    if actor.role != "admin":
+        out = []
+        for row in data.system_settings:
+            override = overrides.get(str(row.source_row), {})
+
+            def field(name: str, default):
+                return override[name] if name in override else default
+
+            out.append({
+                "row": row.source_row, "action": "out_of_scope", "errors": [],
+                "key": field("key", row.key), "value_json": field("value_json", row.value_json),
+                "parsed_value": None,
+            })
+        return out
+
+    existing_keys = {
+        row[0] for row in session.execute(select(SystemSetting.key)).all()
+    }
+
+    # First pass: per-row resolution (key/value_json/parsed_value + JSON
+    # validity), same as before. Action/hidden-key checks are deferred to the
+    # second pass below so the batch density check below can see every row
+    # that parsed cleanly, regardless of what it ends up flipped to.
+    prelim = []
+    for row in data.system_settings:
+        errors: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        key = field("key", row.key)
+        value_json = field("value_json", row.value_json)
+
+        if not key:
+            errors.append("חסר מפתח")
+
+        parsed_value = None
+        if not errors:
+            try:
+                parsed_value = json.loads(value_json) if value_json != "" else None
+            except Exception as exc:
+                errors.append(f"JSON לא תקין בעמודת value_json: {exc}")
+
+        prelim.append({
+            "row": row.source_row, "errors": errors,
+            "key": key, "value_json": value_json, "parsed_value": parsed_value,
+        })
+
+    # Batch-level density validation (Critical Fix 2 extension): only rows
+    # that parsed cleanly and have a key participate — a row with a JSON
+    # error shouldn't feed into the cross-field check.
+    current = {r.key: r.value for r in session.execute(select(SystemSetting)).scalars().all()}
+    proposed = {r["key"]: r["parsed_value"] for r in prelim if not r["errors"] and r["key"]}
+    try:
+        settings_loader.validate_settings_update(current, proposed)
+    except SettingsValidationError as exc:
+        density_keys_in_proposed = _DENSITY_KEYS & proposed.keys()
+        # Defensive: the violation must have come from a change to one of the
+        # four density keys, but if none of them are actually in this
+        # import's proposed changes, don't crash — just skip attaching
+        # per-row errors (nothing in this batch to blame).
+        if density_keys_in_proposed:
+            for r in prelim:
+                if r["key"] in density_keys_in_proposed:
+                    r["errors"].append(f"קונפליקט בערכי הצפיפות (t/r): {exc.code}")
+
+    # Second pass: hidden-key filter (Critical Fix 3) + final action.
+    out = []
+    for r in prelim:
+        errors = r["errors"]
+        key = r["key"]
+        if not errors and key in _HIDDEN_KEYS:
+            errors.append("מפתח זה אינו ניתן לעריכה")
+        action = "error" if errors else ("update" if key in existing_keys else "new")
+        out.append({
+            "row": r["row"], "action": action, "errors": errors,
+            "key": key, "value_json": r["value_json"], "parsed_value": r["parsed_value"],
+        })
+    return out
+
+
+def resolve_bug_reports(
+    session: Session, data: ParsedImportData, actor: Soldier, overrides: dict[str, dict] | None = None
+) -> list[dict]:
+    soldiers_by_pn = _soldiers_by_pn(session)
+    overrides = overrides or {}
+    out = []
+    for row in data.bug_reports:
+        errors: list[str] = []
+        warnings: list[str] = []
+        override = overrides.get(str(row.source_row), {})
+
+        def field(name: str, default):
+            return override[name] if name in override else default
+
+        reporter_pn = field("reporter_personal_number", row.reporter_personal_number)
+        description = field("description", row.description)
+        severity = field("severity", row.severity)
+        route = field("route", row.route)
+        status = field("status", row.status)
+        created_at = field("created_at", row.created_at)
+
+        # Admin-only end to end (Critical Fix 1): non-admin actors can't
+        # touch bug_reports via Excel import — includes audit/user snapshots
+        # and reporters' personal numbers — so short-circuit without
+        # computing reporter lookups or JSON decoding.
+        if actor.role != "admin":
+            out.append({
+                "row": row.source_row, "action": "out_of_scope", "errors": [], "warnings": [],
+                "id": row.id,
+                "reporter_personal_number": reporter_pn,
+                "resolved_reporter_id": None,
+                "description": description, "severity": severity, "route": route, "status": status,
+                "created_at": created_at,
+                "nav_history": None, "audit_snapshot": None, "user_snapshot": None,
+                "existing_id": None,
+            })
+            continue
+
+        reporter = soldiers_by_pn.get(reporter_pn) if reporter_pn else None
+        if reporter is None:
+            errors.append(f"מדווח לא מזוהה '{reporter_pn}'")
+        if severity not in ("low", "medium", "high"):
+            errors.append(f"חומרה לא תקינה '{severity}'")
+        if status not in ("open", "in_progress", "resolved"):
+            errors.append(f"סטטוס לא תקין '{status}'")
+        if not description:
+            errors.append("חסר תיאור")
+        if not route:
+            errors.append("חסר route")
+
+        def _decode(raw: str | None, label: str):
+            if not raw:
+                return None
+            try:
+                return json.loads(raw)
+            except Exception as exc:
+                errors.append(f"JSON לא תקין בעמודת {label}: {exc}")
+                return None
+
+        nav_history = _decode(field("nav_history_json", row.nav_history_json), "nav_history_json")
+        audit_snapshot = _decode(field("audit_snapshot_json", row.audit_snapshot_json), "audit_snapshot_json")
+        user_snapshot = _decode(field("user_snapshot_json", row.user_snapshot_json), "user_snapshot_json")
+
+        existing = None
+        if row.id:
+            try:
+                existing = session.get(BugReport, uuid.UUID(row.id))
+                if existing is None:
+                    # Important Fix 6: a well-formed but nonexistent id must
+                    # be a row error, not a silent fall-through to "new"
+                    # (which would create an unrelated report).
+                    errors.append(f"מזהה תקלה לא נמצא '{row.id}'")
+            except ValueError:
+                errors.append(f"מזהה לא תקין '{row.id}'")
+
+        if existing is not None:
+            # Important Fix 4: warn (not error — reporter_id never changes on
+            # update) when the sheet's reporter doesn't match the report's
+            # actual current reporter.
+            existing_reporter = session.get(Soldier, existing.reporter_id)
+            existing_reporter_pn = existing_reporter.personal_number if existing_reporter else None
+            if reporter_pn != existing_reporter_pn:
+                warnings.append(
+                    f"שים לב: מספר אישי '{reporter_pn}' אינו תואם למדווח הקיים — הוא לא ישונה"
+                )
+
+        action = "error" if errors else ("update" if existing is not None else "new")
+        out.append({
+            "row": row.source_row, "action": action, "errors": errors, "warnings": warnings,
+            "id": row.id,
+            "reporter_personal_number": reporter_pn,
+            "resolved_reporter_id": str(reporter.id) if reporter is not None else None,
+            "description": description, "severity": severity, "route": route, "status": status,
+            "created_at": created_at,
+            "nav_history": nav_history, "audit_snapshot": audit_snapshot, "user_snapshot": user_snapshot,
             "existing_id": str(existing.id) if existing is not None else None,
         })
     return out

@@ -7,6 +7,7 @@ vi.mock("../auth/AuthContext", () => ({
 }));
 
 vi.mock("../api/scoring", () => ({ getEffortBreakdown: vi.fn() }));
+vi.mock("../api/dutyConfig", () => ({ listDutyTypes: vi.fn() }));
 
 vi.mock("../api/hierarchy", () => ({
   fetchTree: vi.fn(() => Promise.resolve([
@@ -140,6 +141,25 @@ it("Algorithm tab shows draft/publish mode section only for canPlan roles", () =
   setUser("duty_manager", { is_duty_manager: true });
   rerender(<HelpModal onClose={() => {}} gimelimEnabled={false} initialTab="algorithm" />);
   expect(screen.getByText(/מצב פרסום ישיר/)).toBeInTheDocument();
+});
+
+it("shows the scoring tab to a plain soldier", () => {
+  setUser("soldier");
+  render(<HelpModal onClose={() => {}} />);
+  expect(screen.getByText("🏅 ניקוד")).toBeInTheDocument();
+});
+
+it("scoring tab lists duty types with their score_per_day", async () => {
+  setUser("soldier");
+  const { listDutyTypes } = await import("../api/dutyConfig");
+  (listDutyTypes as ReturnType<typeof vi.fn>).mockResolvedValue([
+    { id: "1", name: "שמירה", score_per_day: "1.50", description: "שמירה בשער", active: true },
+    { id: "2", name: "ישן", score_per_day: "0.50", description: null, active: false },
+  ]);
+  render(<HelpModal onClose={() => {}} initialTab="scoring" />);
+  expect(await screen.findByText("שמירה")).toBeInTheDocument();
+  expect(screen.getByText("1.50")).toBeInTheDocument();
+  expect(screen.getByText("ישן")).toBeInTheDocument();
 });
 
 it("Deep Dive worked example toggles between assignment A and B instead of showing both at once", () => {

@@ -14,6 +14,33 @@ class SettingNotFound(KeyError):
     """Raised when a system_settings key is not present."""
 
 
+class SettingsValidationError(ValueError):
+    """Raised when a proposed settings update fails cross-field validation
+    (density t/r ordering, relax-ceiling ordering). `code` is the same
+    machine-readable string previously raised as an HTTP 400 `detail`
+    (e.g. "t_exceeds_r", "relax_ceiling_invalid")."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+# Keys that the UI/Excel import should never expose or allow editing
+# (internal/read-only). Canonical location — routes/config_export.py import
+# this rather than redefining it.
+_HIDDEN_KEYS = {"system.holding_node_id"}
+
+_DENSITY_DEFAULTS = {
+    "algorithm.max_duties_per_window": 8,
+    "algorithm.max_total_duties_per_window": 15,
+    "algorithm.window_t": 14,
+    "algorithm.window_r": 28,
+    "algorithm.batch_window_days": 28,
+    "algorithm.relax_t_ceiling": 10,
+    "algorithm.relax_r_ceiling": 20,
+}
+
+
 def _json_safe(value: Any) -> Any:
     # why: the value column is JSON; Decimal isn't JSON-serializable, so store it
     # as a string and rely on callers parsing it back (e.g. Decimal(str(...))).
@@ -56,3 +83,50 @@ def set_setting(session: Session, key: str, value: Any, *, actor_id: uuid.UUID |
         after={"value": value},
         context={"key": key},
     )
+
+
+def validate_settings_update(current: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    """Pure validation, no DB writes. Merges `updates` onto `current`, applies
+    the telegram cascade to the merged view, then re-runs the same t/r density
+    and relax-ceiling checks the settings route has always enforced. Raises
+    SettingsValidationError on violation; otherwise returns the merged dict."""
+    merged = {**current, **updates}
+
+    if merged.get("telegram.enabled") is False:
+        merged["registration.telegram_required"] = False
+
+    def _density(key: str) -> int:
+        return int(merged.get(key, _DENSITY_DEFAULTS[key]))
+
+    t = _density("algorithm.max_duties_per_window")
+    r = _density("algorithm.max_total_duties_per_window")
+    t_ceil = _density("algorithm.relax_t_ceiling")
+    r_ceil = _density("algorithm.relax_r_ceiling")
+
+    if t > r:
+        raise SettingsValidationError("t_exceeds_r")
+    if t_ceil > r_ceil or t > t_ceil or r > r_ceil:
+        raise SettingsValidationError("relax_ceiling_invalid")
+
+    return merged
+
+
+def apply_settings(
+    session: Session, current: dict[str, Any], updates: dict[str, Any], *, actor_id: uuid.UUID | None
+) -> dict[str, Any]:
+    """Validates `updates` against `current` (raises SettingsValidationError on
+    failure), then writes each non-hidden key via set_setting — including the
+    telegram cascade's forced registration.telegram_required=False, so that
+    write actually lands even though it wasn't in the caller's `updates`."""
+    merged = validate_settings_update(current, updates)
+
+    to_write = dict(updates)
+    if merged.get("telegram.enabled") is False:
+        to_write["registration.telegram_required"] = False
+
+    for key, value in to_write.items():
+        if key in _HIDDEN_KEYS:
+            continue
+        set_setting(session, key=key, value=value, actor_id=actor_id)
+
+    return merged

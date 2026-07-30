@@ -200,14 +200,25 @@ def db_admin_url(pg_container: PostgresContainer) -> str:
 def _apply_schema(db_admin_url: str) -> None:
     """Run migrations against the throwaway container at session start.
 
-    Also sets env vars BEFORE any app module is imported, so settings cache picks
-    them up. Pumps the login rate limit high so the multi-login test suite isn't
-    artificially throttled.
+    Sets env vars, then explicitly invalidates the settings cache and the
+    global DB engine — both of which may already have been created (and
+    baked in the wrong DATABASE_URL/DB_ADMIN_URL) by a test module that
+    imports a route module at collection time, which happens before any
+    fixture runs. Pumps the login rate limit high so the multi-login test
+    suite isn't artificially throttled.
     """
     os.environ["DATABASE_URL"] = db_admin_url
     os.environ["DB_ADMIN_URL"] = db_admin_url
     os.environ["JWT_SECRET"] = "test-secret-32-bytes-of-padding-_-x"
     os.environ["LOGIN_RATE_LIMIT"] = "10000/minute"
+
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+
+    from app.db.session import reset_engine
+
+    reset_engine()
 
     from alembic.config import Config
 
