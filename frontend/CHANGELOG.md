@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-30
+
+### Features
+- Excel export/import now covers system settings and bug reports as two new sheets in the existing unified pipeline. System settings round-trip as key/value pairs, validated against the same density and relax-ceiling rules the settings screen already enforces, with internal-only keys staying non-editable; bug reports round-trip with reporter, description, severity, route, status, and their JSON snapshot columns, and a mismatched reporter on an update row now surfaces as a warning rather than silently changing who's credited. Both sheets — in the export picker and the import review page — are admin-only.
+- Added a "🏅 ניקוד" (scoring) tab to the help modal, showing every duty type's score-per-day live from the current configuration.
+
+### Chores
+- Fixed a test-infrastructure bug where a test file importing a route module during pytest collection could bake the wrong database host into the global DB engine before the test-container fixture had a chance to run, causing unrelated route tests to fail with a DNS resolution error; also updated a couple of tests whose expected error-message assertions had drifted from the app's current machine-readable error codes.
+
 ## 2026-07-29
 
 ### Features
