@@ -1086,7 +1086,10 @@
     "type_gimelim_demoted_to_reserve": "הומרת לרזרבה (גימלים)",
     "type_gimelim_reassigned": "שובצת מחדש (גימלים)",
     "type_exemption_revoked": "פטור בוטל",
-    "type_transfer_request_pending": "בקשת העברה ממתינה"
+    "type_transfer_request_pending": "בקשת העברה ממתינה",
+    "type_transfer_request_rejected": "בקשת העברה נדחתה",
+    "type_system_announcement": "הודעת מערכת",
+    "type_enrollment_fields_edited": "פרטי הרשמה עודכנו"
   },
   "announcements": {
     "title": "הכרזות",
