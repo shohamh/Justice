@@ -573,6 +573,7 @@ export default function TransparencyPage() {
       sortValue: (r) => r._rank_order,
       filterValue: (r) => r.rank ?? "",
       columnFilter: true,
+      sortDescFirst: true, // senior ranks (higher _rank_order) should sort first on first click
     },
     {
       id: "shift_count", header: t("transparency.shift_count"),

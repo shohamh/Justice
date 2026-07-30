@@ -232,7 +232,7 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
       {
         key: "telegram.enabled",
         label: "טלגרם מופעל",
-        description: "כיבוי מסתיר את כל ממשק הטלגרם ומפסיק שליחת התראות דרכו",
+        description: "מפעיל או מכבה את שליחת התראות המערכת דרך בוט הטלגרם, בנוסף להתראות באפליקציה ובאימייל. כיבוי גם מסתיר את כל ממשק הטלגרם במערכת.",
         type: "boolean",
         defaultValue: false,
       },

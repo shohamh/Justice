@@ -635,7 +635,10 @@ def update_profile(
     s = _load(session, soldier_id)
     authorize(session, user, Action.SOLDIER_UPDATE, target_node=_node_of(session, s))
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
-    update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
+    try:
+        update_soldier_profile(session, soldier=s, fields=fields, actor_id=user.id)
+    except svc.SoldierError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
     session.refresh(s)
     phone_public, email_public = _contact_visibility(session)

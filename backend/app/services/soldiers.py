@@ -50,10 +50,13 @@ def _check_soldier_dates(
         rank in CHOVAH_ONLY_RANKS
         and mandatory_end_date is not None
         and date.today() > mandatory_end_date
-        and (discharge_date is None or discharge_date > mandatory_end_date)
+        # Only a genuine inconsistency: an explicit discharge_date that is itself
+        # after mandatory_end_date. A soldier with no discharge_date yet is simply
+        # still serving past their originally-planned mandatory_end_date, which is
+        # common and not an error.
+        and discharge_date is not None
+        and discharge_date > mandatory_end_date
     ):
-        # Dates alone say מועד סיום חובה has passed with no discharge closing it out
-        # (i.e. the soldier would derive to קבע), but the rank held is חובה-only.
         raise SoldierValidationError("chovah_rank_cannot_be_keva")
 
 
@@ -259,6 +262,12 @@ PROFILE_FIELDS = {
     "profile_picture_url",
 }
 
+# Fields that feed rank/track compatibility (directly, or via is_career's
+# derivation). A PATCH that doesn't touch any of these can't move the soldier
+# into a new incompatible combination, so it shouldn't be blocked by one that
+# already existed before this validation was introduced.
+_RANK_TRACK_AFFECTING_FIELDS = {"rank", "mandatory_end_date", "discharge_date"}
+
 
 def update_soldier_profile(
     session: Session,
@@ -268,11 +277,22 @@ def update_soldier_profile(
     actor_id: uuid.UUID | None,
 ) -> Soldier:
     """DM/admin direct update of profile fields."""
-    from app.services.eligibility import derive_is_career
+    from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
+    # Only validate rank/track compatibility when this PATCH actually touches
+    # a field that affects it (rank itself, or a date that feeds is_career).
+    # Otherwise a pre-existing (possibly grandfathered, pre-validation) bad
+    # combination would permanently lock the soldier out of unrelated edits
+    # like phone/email, since re-validating the whole current state on every
+    # save would keep rejecting the untouched, already-broken combination.
+    if _RANK_TRACK_AFFECTING_FIELDS & fields.keys():
+        try:
+            validate_rank_track_compatibility(soldier.rank, soldier.is_career)
+        except ValueError as exc:
+            raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
     write_audit(
         session,
@@ -348,7 +368,7 @@ def approve_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
-    from app.services.eligibility import derive_is_career
+    from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     if update.status != "pending":
         raise SoldierError("not_pending")
     soldier = session.get(Soldier, update.soldier_id)
@@ -376,6 +396,10 @@ def approve_field_update(
         expiry = payload.get("expiry_date")
         soldier.military_driving_license_expiry = date.fromisoformat(expiry) if expiry else None
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
+    try:
+        validate_rank_track_compatibility(soldier.rank, soldier.is_career)
+    except ValueError as exc:
+        raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
     update.status = "approved"
     update.decided_by = actor_id

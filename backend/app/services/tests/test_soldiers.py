@@ -80,12 +80,53 @@ def test_update_soldier_profile_rejects_chovah_only_rank_while_career(admin_sess
 
     soldier = create_soldier(admin_session, personal_number="7920010")
     soldier.mandatory_end_date = date(2020, 1, 1)  # long past -> derives to קבע
+    # An explicit discharge_date after mandatory_end_date is the genuine
+    # inconsistency this check targets. A soldier with mandatory_end_date in the
+    # past but no discharge_date yet is simply still serving and must NOT be
+    # rejected (see test_chovah_private_with_past_mandatory_end_and_no_discharge_date_is_allowed).
+    soldier.discharge_date = date(2020, 6, 1)
     admin_session.commit()
 
     with pytest.raises(SoldierValidationError, match="rank"):
         update_soldier_profile(
             admin_session, soldier=soldier,
             fields={"rank": "טוראי"}, actor_id=None,
+        )
+
+
+def test_chovah_private_with_past_mandatory_end_and_no_discharge_date_is_allowed():
+    """A currently-serving טוראי whose mandatory_end_date field is in the past
+    but who has no discharge_date yet (i.e. still serving, discharge just not
+    logged) must NOT be rejected as an inconsistent 'chovah rank cannot be keva'.
+    """
+    from app.services.soldiers import _check_soldier_dates
+
+    past_end = date.today() - timedelta(days=10)
+    # Should not raise.
+    _check_soldier_dates(
+        rank="טוראי",
+        enlistment_date=date.today() - timedelta(days=400),
+        discharge_date=None,
+        mandatory_end_date=past_end,
+        is_career=False,
+    )
+
+
+def test_chovah_private_with_explicit_inconsistent_discharge_date_still_rejected():
+    """If a discharge_date IS provided and it's after mandatory_end_date for a
+    CHOVAH-only rank, that's a genuine inconsistency and must still be rejected.
+    """
+    from app.services.soldiers import _check_soldier_dates, SoldierValidationError
+
+    past_end = date.today() - timedelta(days=10)
+    later_discharge = date.today() + timedelta(days=5)
+    with pytest.raises(SoldierValidationError):
+        _check_soldier_dates(
+            rank="טוראי",
+            enlistment_date=date.today() - timedelta(days=400),
+            discharge_date=later_discharge,
+            mandatory_end_date=past_end,
+            is_career=False,
         )
 
 
@@ -99,6 +140,58 @@ def test_update_soldier_profile_derives_is_career_from_dates(admin_session):
         fields={"rank": "רסן", "mandatory_end_date": date(2020, 1, 1)}, actor_id=None,
     )
     assert soldier.is_career is True
+
+
+def test_update_soldier_profile_allows_unrelated_edit_on_grandfathered_bad_rank_track(admin_session):
+    """A pre-existing soldier row with an incompatible rank/track combo (e.g.
+    created before validate_rank_track_compatibility existed) must not be
+    permanently locked out of unrelated edits like phone. Only a PATCH that
+    actually touches rank/mandatory_end_date/discharge_date should re-validate
+    the rank/track combination.
+    """
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920020")
+    # סרן is קבע-only, but is_career derives to False here because
+    # mandatory_end_date is None -> a grandfathered-bad combination that
+    # predates this validation.
+    soldier.rank = "סרן"
+    soldier.is_career = False
+    admin_session.commit()
+
+    # Editing an unrelated field must succeed, not be blocked by the
+    # pre-existing bad combination.
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"phone": "0501234567"}, actor_id=None,
+    )
+    assert soldier.phone == "0501234567"
+    # The bad combination is untouched (not silently "fixed" either).
+    assert soldier.rank == "סרן"
+    assert soldier.is_career is False
+
+
+def test_update_soldier_profile_rejects_new_incompatible_rank_track(admin_session):
+    """Editing rank into a genuinely new incompatible combination must still
+    be rejected, even for a soldier who previously had a grandfathered bad
+    combination."""
+    from app.services.soldiers import update_soldier_profile, SoldierValidationError
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920021")
+    soldier.rank = "סרן"
+    soldier.is_career = False
+    admin_session.commit()
+
+    # Actively moving the soldier's rank while still חובה (no mandatory_end_date)
+    # keeps/creates an incompatible combination -> must be rejected since
+    # `rank` is part of this PATCH.
+    with pytest.raises(SoldierValidationError, match="rank_track_incompatible"):
+        update_soldier_profile(
+            admin_session, soldier=soldier,
+            fields={"rank": "רסן"}, actor_id=None,
+        )
 
 
 def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admin_session):

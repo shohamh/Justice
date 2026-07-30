@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import BugReport, Soldier
+from app.db.models import BugReport, BugReportComment, BugReportCommentAttachment, Soldier
 from app.db.session import get_session
 from app.services import bug_reports as svc
 
@@ -23,6 +24,24 @@ _MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024  # 5 MB
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _MAX_IMPORT_FILES = 50
 _MAX_IMPORT_FILE_BYTES = 1 * 1024 * 1024  # 1 MB — JSON mirror files are lightweight text
+
+# Comment attachments: same magic-byte-validation convention as
+# exemption_requests.py's module-private `_magic_bytes_match` — that helper
+# isn't exported/imported cross-module anywhere in this codebase (checked:
+# approvals_export.py also touches ExemptionRequestFile but does not import
+# it), so per that established convention this is a small local duplicate,
+# not a shared import.
+_COMMENT_ATTACHMENT_MAGIC: dict[str, list[bytes]] = {
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/gif": [b"GIF87a", b"GIF89a"],
+}
+_ALLOWED_COMMENT_ATTACHMENT_TYPES = set(_COMMENT_ATTACHMENT_MAGIC)
+_MAX_COMMENT_ATTACHMENT_BYTES = 5 * 1024 * 1024  # 5 MB, matching the bug report's own screenshot cap
+
+
+def _comment_attachment_magic_bytes_match(content_type: str, data: bytes) -> bool:
+    return any(data[: len(prefix)] == prefix for prefix in _COMMENT_ATTACHMENT_MAGIC.get(content_type, []))
 
 
 class NavHistoryEntry(BaseModel):
@@ -94,7 +113,7 @@ class PaginatedBugReports(BaseModel):
 
 
 class UpdateBugReportStatusBody(BaseModel):
-    status: Literal["open", "in_progress", "resolved"]
+    status: Literal["open", "in_progress", "resolved", "wont_fix"]
 
 
 def _summary_out(report: BugReport) -> BugReportSummaryOut:
@@ -119,7 +138,7 @@ def list_bug_reports(
     session: Session = Depends(get_session),
     _admin: Soldier = Depends(require_roles("admin")),
     severity: Literal["low", "medium", "high"] | None = None,
-    status_filter: Literal["open", "in_progress", "resolved"] | None = Query(default=None, alias="status"),
+    status_filter: Literal["open", "in_progress", "resolved", "wont_fix"] | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> PaginatedBugReports:
@@ -226,3 +245,182 @@ def update_bug_report_status(
     session.commit()
     session.refresh(report)
     return _summary_out(report)
+
+
+@router.get("/my/bug-reports", response_model=PaginatedBugReports)
+def list_my_bug_reports(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> PaginatedBugReports:
+    """Reporters' own bug reports, reusing the same `_summary_out` serializer
+    (and `BugReportSummaryOut`/`PaginatedBugReports` response shape) as
+    `GET /admin/bug-reports` so the frontend can share one client-side type."""
+    reports = session.execute(
+        select(BugReport).where(BugReport.reporter_id == user.id).order_by(BugReport.created_at.desc())
+    ).scalars().all()
+    return PaginatedBugReports(items=[_summary_out(r) for r in reports], total=len(reports))
+
+
+class BugReportCommentBody(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class BugReportCommentAttachmentOut(BaseModel):
+    id: uuid.UUID
+    file_name: str
+
+
+class BugReportCommentOut(BaseModel):
+    id: uuid.UUID
+    bug_report_id: uuid.UUID
+    author_id: uuid.UUID
+    author_name: str
+    body: str
+    created_at: datetime
+    # Embedded like ExemptionRequest.files (see exemption_requests.py) rather than
+    # requiring a second round-trip per comment to discover its attachments.
+    attachments: list[BugReportCommentAttachmentOut] = Field(default_factory=list)
+
+
+def _require_reporter_or_admin(session: Session, user: Soldier, report_id: uuid.UUID) -> BugReport:
+    report = session.get(BugReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    # Soldier.role is a single string field ("admin" is one possible value), not a
+    # list — matches the `user.role == "admin"` convention used throughout this
+    # codebase (e.g. exemption_requests.py's escalate_commander_exemption_route).
+    # The existing admin-only endpoints in this file use the require_roles("admin")
+    # dependency instead, but that dependency can't express "OR the reporter", so
+    # this inline check is the ownership-fallback equivalent.
+    if report.reporter_id != user.id and user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return report
+
+
+@router.post(
+    "/bug-reports/{report_id}/comments",
+    response_model=BugReportCommentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_bug_report_comment(
+    report_id: uuid.UUID,
+    body: BugReportCommentBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BugReportCommentOut:
+    _require_reporter_or_admin(session, user, report_id)
+    comment = BugReportComment(bug_report_id=report_id, author_id=user.id, body=body.body)
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    return BugReportCommentOut(
+        id=comment.id,
+        bug_report_id=comment.bug_report_id,
+        author_id=comment.author_id,
+        author_name=user.full_name,
+        body=comment.body,
+        created_at=comment.created_at,
+        attachments=[],
+    )
+
+
+@router.get("/bug-reports/{report_id}/comments", response_model=list[BugReportCommentOut])
+def list_bug_report_comments(
+    report_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[BugReportCommentOut]:
+    _require_reporter_or_admin(session, user, report_id)
+    comments = session.execute(
+        select(BugReportComment)
+        .where(BugReportComment.bug_report_id == report_id)
+        .order_by(BugReportComment.created_at)
+    ).scalars().all()
+    author_ids = {c.author_id for c in comments}
+    authors = (
+        {s.id: s.full_name for s in session.execute(select(Soldier).where(Soldier.id.in_(author_ids))).scalars().all()}
+        if author_ids
+        else {}
+    )
+    comment_ids = [c.id for c in comments]
+    attachments_by_comment: dict[uuid.UUID, list[BugReportCommentAttachmentOut]] = {cid: [] for cid in comment_ids}
+    if comment_ids:
+        attachments = session.execute(
+            select(BugReportCommentAttachment)
+            .where(BugReportCommentAttachment.comment_id.in_(comment_ids))
+            .order_by(BugReportCommentAttachment.created_at)
+        ).scalars().all()
+        for a in attachments:
+            attachments_by_comment[a.comment_id].append(BugReportCommentAttachmentOut(id=a.id, file_name=a.file_name))
+    return [
+        BugReportCommentOut(
+            id=c.id,
+            bug_report_id=c.bug_report_id,
+            author_id=c.author_id,
+            author_name=authors.get(c.author_id, "?"),
+            body=c.body,
+            created_at=c.created_at,
+            attachments=attachments_by_comment.get(c.id, []),
+        )
+        for c in comments
+    ]
+
+
+@router.post(
+    "/bug-reports/{report_id}/comments/{comment_id}/attachments",
+    response_model=BugReportCommentAttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_bug_report_comment_attachment(
+    report_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> BugReportCommentAttachmentOut:
+    _require_reporter_or_admin(session, user, report_id)
+    comment = session.get(BugReportComment, comment_id)
+    if comment is None or comment.bug_report_id != report_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if comment.author_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    data = await file.read()
+    if len(data) > _MAX_COMMENT_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file_too_large")
+    if file.content_type not in _ALLOWED_COMMENT_ATTACHMENT_TYPES or not _comment_attachment_magic_bytes_match(
+        file.content_type, data
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_file_type")
+    safe_name = re.sub(r"[^\w.\-]", "_", (file.filename or "attachment")).replace("..", "_")[:200]
+    attachment = BugReportCommentAttachment(
+        comment_id=comment_id,
+        file_name=safe_name,
+        content_type=file.content_type,
+        data=data,
+        uploaded_by=user.id,
+    )
+    session.add(attachment)
+    session.commit()
+    return BugReportCommentAttachmentOut(id=attachment.id, file_name=attachment.file_name)
+
+
+@router.get("/bug-reports/{report_id}/comments/{comment_id}/attachments/{attachment_id}")
+def download_bug_report_comment_attachment(
+    report_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> Response:
+    _require_reporter_or_admin(session, user, report_id)
+    comment = session.get(BugReportComment, comment_id)
+    if comment is None or comment.bug_report_id != report_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    attachment = session.get(BugReportCommentAttachment, attachment_id)
+    if attachment is None or attachment.comment_id != comment_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    return Response(
+        content=attachment.data,
+        media_type=attachment.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{attachment.file_name}"'},
+    )

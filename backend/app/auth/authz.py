@@ -53,6 +53,7 @@ class Action:
     ALGORITHM_RUN = "algorithm.run"
     SWAP_APPROVE = "swap.approve"
     ENROLLMENT_APPROVE = "enrollment.approve"
+    HIERARCHY_TRANSFER = "hierarchy.transfer"
     DM_SCOPE_MANAGE = "dm_scope.manage"
     SHIFT_MANAGE = "shift.manage"
     POTENTIAL_READ = "potential.read"
@@ -79,6 +80,7 @@ _DM_ACTIONS = {
     Action.POTENTIAL_READ,
     Action.POTENTIAL_MODIFIER_MANAGE,
     Action.MILITARY_LICENSE_DECIDE,
+    Action.HIERARCHY_TRANSFER,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -96,6 +98,7 @@ _COMMANDER_ACTIONS = {
     Action.CONSTRAINT_APPROVE,
     Action.SWAP_APPROVE,
     Action.ENROLLMENT_APPROVE,
+    Action.HIERARCHY_TRANSFER,
 }
 
 _DM_GLOBAL_ACTIONS = {

@@ -87,6 +87,26 @@ def test_register_rejects_discharge_before_enlistment(admin_session):
         )
 
 
+def test_register_rejects_incompatible_rank_track(admin_session):
+    # Registration always starts a soldier as חובה (is_career=False, see
+    # test_register_always_starts_as_chovah), so a קבע-only rank like רסל is
+    # always incompatible at registration time.
+    from app.services.registration import register, RegistrationError
+    from app.services.invite_codes import create_invite_code
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="rank_track_incompatible"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[], personal_constraints=[],
+            **_base(rank="רסל"),
+        )
+
+
 def test_register_decrements_invite_code(admin_session):
     _make_holding(admin_session)
     node = create_node(admin_session, level="division", name=f"div_{_uid()}")

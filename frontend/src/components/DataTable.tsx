@@ -8,6 +8,7 @@ import {
   type ColumnDef as TanColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import CheckboxListDropdown from "./CheckboxListDropdown";
 
 export interface ColDef<T> {
   id: string;
@@ -33,6 +34,8 @@ export interface ColDef<T> {
   minWidth?: number;
   /** Plain value for Excel export. Falls back to filterValue, then sortValue, then "". */
   exportValue?: (row: T) => string | number | boolean | null | undefined;
+  /** When true, this column sorts descending on its first header click instead of ascending. */
+  sortDescFirst?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -68,19 +71,6 @@ function ColumnFilterDropdown<T>({
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
   const uniqueValues = useMemo(() => {
     const vals = new Set<string>();
     for (const row of data) {
@@ -91,79 +81,33 @@ function ColumnFilterDropdown<T>({
   }, [data, col]);
 
   const isFiltered = selected.size > 0 && selected.size < uniqueValues.length;
-  const allSelected = selected.size === 0 || selected.size === uniqueValues.length;
 
-  function toggleAll() {
-    onChange(new Set()); // empty = all
-  }
+  // ColumnFilterDropdown's Set-based "empty = all selected" convention is
+  // translated to/from CheckboxListDropdown's plain array-of-selected-ids API.
+  const checkedIds = selected.size === 0 ? uniqueValues : [...selected];
 
-  function toggle(val: string) {
-    const next = new Set(selected.size === 0 ? uniqueValues : [...selected]);
-    if (next.has(val)) {
-      next.delete(val);
-      if (next.size === uniqueValues.length) onChange(new Set()); // back to "all"
-      else onChange(next);
-    } else {
-      next.add(val);
-      if (next.size === uniqueValues.length) onChange(new Set());
-      else onChange(next);
-    }
-  }
-
-  function isChecked(val: string) {
-    return selected.size === 0 || selected.has(val);
+  function handleChange(ids: string[]) {
+    onChange(ids.length === uniqueValues.length ? new Set() : new Set(ids));
   }
 
   return (
-    <div ref={ref} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
+    <span className="inline-block" onClick={(e) => e.stopPropagation()}>
+      <CheckboxListDropdown
+        items={uniqueValues.map((val) => ({ id: val, label: val }))}
+        selected={checkedIds}
+        onChange={handleChange}
+        triggerLabel={isFiltered ? "▼●" : "▼"}
+        badgeCount={0}
         title="סנן עמודה"
-        onClick={() => setOpen((o) => !o)}
-        className={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
+        triggerClassName={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
           isFiltered
             ? "border-indigo-500 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900"
             : "border-gray-300 text-gray-400 hover:text-gray-600 dark:border-gray-500 dark:text-gray-500 dark:hover:text-gray-300"
         }`}
-      >
-        {isFiltered ? "▼●" : "▼"}
-      </button>
-
-      {open && (
-        <div className="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl min-w-32 max-h-56 flex flex-col"
-          style={{ right: 0 }}
-          dir="rtl"
-        >
-          {/* Select all */}
-          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700 text-xs font-medium text-gray-700 dark:text-gray-200">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={toggleAll}
-              className="accent-indigo-600"
-            />
-            הכל
-          </label>
-          {/* Values list */}
-          <div className="overflow-y-auto">
-            {uniqueValues.map((val) => (
-              <label
-                key={val}
-                className="flex items-center gap-2 px-3 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer text-xs text-gray-700 dark:text-gray-300"
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked(val)}
-                  onChange={() => toggle(val)}
-                  className="accent-indigo-600"
-                />
-                {val}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+        panelDir="rtl"
+        panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl min-w-32 max-h-56 flex flex-col right-0"
+      />
+    </span>
   );
 }
 
@@ -264,6 +208,7 @@ export function DataTable<T>({
         cell: ({ row }) => col.cell(row.original),
         enableSorting: !!col.sortValue,
         enableGlobalFilter: !!col.filterValue,
+        sortDescFirst: col.sortDescFirst,
         accessorFn: col.filterValue
           ? (row: T) => col.filterValue!(row)
           : col.sortValue

@@ -604,16 +604,23 @@ def soldier_score_breakdown(session: Session, *, soldier_id: uuid.UUID) -> dict[
     scores = _duty_type_scores(session)
     dt_names = {dt.id: dt.name for dt in session.execute(select(DutyType)).scalars().all()}
     by_type: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
-    days_by_type: dict[uuid.UUID, int] = defaultdict(int)
-    for _day, eff, dtid, mult in effective_duty_days(session):
+    days_past_by_type: dict[uuid.UUID, int] = defaultdict(int)
+    days_future_by_type: dict[uuid.UUID, int] = defaultdict(int)
+    today = date.today()
+    for day, eff, dtid, mult in effective_duty_days(session):
         if eff == soldier_id:
             by_type[dtid] += scores.get(dtid, Decimal("0")) * mult
-            days_by_type[dtid] += 1
+            if day <= today:
+                days_past_by_type[dtid] += 1
+            else:
+                days_future_by_type[dtid] += 1
     per_type = [
         {
             "duty_type_id": dtid,
             "duty_type_name": dt_names.get(dtid),
-            "days": days_by_type[dtid],
+            "days": days_past_by_type[dtid] + days_future_by_type[dtid],
+            "days_past": days_past_by_type[dtid],
+            "days_future": days_future_by_type[dtid],
             "score": score,
         }
         for dtid, score in by_type.items()

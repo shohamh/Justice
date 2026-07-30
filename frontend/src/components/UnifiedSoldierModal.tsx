@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { NodeDTO } from "../api/hierarchy";
 import { sortNodesByTree } from "../utils/sortNodesByTree";
 import { SoldierDTO, SoldierScoreDTO, updateSoldier, updateSoldierProfile, getRanks } from "../api/soldiers";
+import { translateApiError } from "../utils/translateApiError";
 import { PersonalConstraint, listSoldierConstraints, approveConstraint, rejectConstraint } from "../api/constraints";
 import Combobox from "./Combobox";
 import ExemptionsPanel from "./ExemptionsPanel";
@@ -77,6 +78,7 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
   const [constraints, setConstraints] = useState<PersonalConstraint[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   // Profile fields
   const [profileGender, setProfileGender] = useState(soldier.gender ?? "");
   const [profileRank, setProfileRank] = useState(soldier.rank ?? "");
@@ -134,22 +136,28 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
     e.preventDefault();
     if (isCommander) return;  // UI hides button, but guard against keyboard submit
     setSavingProfile(true);
-    await updateSoldierProfile(soldierData.id, {
-      gender: profileGender || null,
-      rank: profileRank || null,
-      enlistment_date: profileEnlistment || null,
-      mandatory_end_date: profileMandEnd || null,
-      discharge_date: profileDischarge || null,
-      last_mitvahim_date: profileMitvahim || null,
-      ...(soldierData.is_officer ? { last_alal_date: profileAlal || null } : {}),
-      ...(isAdmin ? { email: profileEmail || null } : {}),
-      profile_picture_url: profilePictureUrl || null,
-      has_military_driving_license: profileHasLicense,
-      military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
-    });
-    setSavingProfile(false);
-    onRefresh();
-    onClose();
+    setProfileError(null);
+    try {
+      await updateSoldierProfile(soldierData.id, {
+        gender: profileGender || null,
+        rank: profileRank || null,
+        enlistment_date: profileEnlistment || null,
+        mandatory_end_date: profileMandEnd || null,
+        discharge_date: profileDischarge || null,
+        last_mitvahim_date: profileMitvahim || null,
+        ...(soldierData.is_officer ? { last_alal_date: profileAlal || null } : {}),
+        ...(isAdmin ? { email: profileEmail || null } : {}),
+        profile_picture_url: profilePictureUrl || null,
+        has_military_driving_license: profileHasLicense,
+        military_driving_license_expiry: profileHasLicense ? (profileLicenseExpiry || null) : null,
+      });
+      onRefresh();
+      onClose();
+    } catch (err: unknown) {
+      setProfileError(translateApiError(err, t));
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function handleApprove(id: string) {
@@ -462,9 +470,10 @@ export default function UnifiedSoldierModal({ soldier, score, nodes, onClose, on
                 <input type="url" className="border rounded p-1 w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" value={profilePictureUrl} onChange={(e) => setProfilePictureUrl(e.target.value)} placeholder="https://..." dir="ltr" />
               </label>
             </div>
+            {profileError && <p className="text-red-500 text-xs">{profileError}</p>}
             {!isCommander && (
               <div className="flex justify-end gap-2">
-                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => setEditing(false)}>{t("team.cancel")}</button>
+                <button type="button" className="border dark:border-gray-600 dark:text-gray-300 rounded px-3 py-1" onClick={() => { setProfileError(null); setEditing(false); }}>{t("team.cancel")}</button>
                 <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" disabled={savingProfile}>{t("duty_config.save")}</button>
               </div>
             )}

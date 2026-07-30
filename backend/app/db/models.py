@@ -999,6 +999,7 @@ class NotificationType(str, _enum.Enum):
     constraint_pending = "constraint_pending"
     exemption_request_pending = "exemption_request_pending"
     swap_offer_incoming = "swap_offer_incoming"
+    swap_pending_approval = "swap_pending_approval"
     gimelim_dismissed = "gimelim_dismissed"
     gimelim_reserve_called_up = "gimelim_reserve_called_up"
     gimelim_demoted_to_reserve = "gimelim_demoted_to_reserve"
@@ -1261,7 +1262,7 @@ class BugReport(Base):
     )
     route: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
-        Enum("open", "in_progress", "resolved", name="bug_report_status"),
+        Enum("open", "in_progress", "resolved", "wont_fix", name="bug_report_status"),
         server_default="open", default="open",
     )
     screenshot: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True, default=None)
@@ -1273,5 +1274,43 @@ class BugReport(Base):
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class BugReportComment(Base):
+    __tablename__ = "bug_report_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    bug_report_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bug_reports.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class BugReportCommentAttachment(Base):
+    __tablename__ = "bug_report_comment_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    comment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bug_report_comments.id", ondelete="CASCADE")
+    )
+    file_name: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(sa.LargeBinary)
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )

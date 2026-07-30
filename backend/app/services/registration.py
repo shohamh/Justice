@@ -15,6 +15,7 @@ from app.db.models import (
     Soldier,
     SoldierEnrollmentRequest,
 )
+from app.services.eligibility import validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import SoldierError, _check_soldier_dates
@@ -72,6 +73,11 @@ def register(
             mandatory_end_date=mandatory_end_date, is_career=False,
         )
     except SoldierError as exc:
+        raise RegistrationError(str(exc)) from exc
+
+    try:
+        validate_rank_track_compatibility(rank=rank, is_career=False)
+    except ValueError as exc:
         raise RegistrationError(str(exc)) from exc
 
     soldier = Soldier(

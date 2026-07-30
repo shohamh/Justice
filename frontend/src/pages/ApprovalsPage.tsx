@@ -626,7 +626,13 @@ export default function ApprovalsPage() {
               ];
               return (
                 <div key={swap.id} className="border rounded p-3 text-sm space-y-2">
-                  <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                  <div>
+                    {[swap.duty_type_name, swap.duty_location_name].filter(Boolean).join(" — ") && (
+                      <p className="font-medium">{[swap.duty_type_name, swap.duty_location_name].filter(Boolean).join(" — ")}</p>
+                    )}
+                    <p className="text-gray-500" dir="ltr">{swap.duty_date}</p>
+                    {swap.reason && <p className="text-xs text-gray-400 mt-0.5">{swap.reason}</p>}
+                  </div>
                   <SwapApprovalColumns columns={statusColumns} />
                   <div className="text-xs text-gray-500 space-y-1">
                     <SwapKindApproval

@@ -14,6 +14,8 @@ import {
   BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
+import BugReportDetailModal from "./BugReportDetailModal";
+import { usePagePagination } from "../../hooks/usePagePagination";
 
 const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
@@ -21,14 +23,20 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   medium: "bg-yellow-100 text-yellow-800",
   high: "bg-red-100 text-red-800",
 };
-const STATUS_LABELS: Record<BugReportStatus, string> = { open: "פתוח", in_progress: "בטיפול", resolved: "טופל" };
+const STATUS_LABELS: Record<BugReportStatus, string> = {
+  open: "פתוח",
+  in_progress: "בטיפול",
+  resolved: "טופל",
+  wont_fix: "לא יטופל",
+};
 
 export function BugReportsContent() {
   const { t } = useTranslation();
   const [severityFilter, setSeverityFilter] = useState<BugReportSeverity | "">("");
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
-  const [offset, setOffset] = useState(0);
+  const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
@@ -38,7 +46,6 @@ export function BugReportsContent() {
   const [importSummary, setImportSummary] = useState<BugReportImportSummary | null>(null);
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement>(null);
-  const limit = 20;
 
   // Keep a ref in sync so the unmount cleanup can revoke whatever URLs were
   // accumulated without re-registering the effect on every fetch.
@@ -174,7 +181,7 @@ export function BugReportsContent() {
       <div className="flex gap-2 mb-4">
         <select
           value={severityFilter}
-          onChange={(e) => { setSeverityFilter(e.target.value as BugReportSeverity | ""); setOffset(0); }}
+          onChange={(e) => { setSeverityFilter(e.target.value as BugReportSeverity | ""); setPage(1); }}
           className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600"
           data-testid="bug-report-filter-severity"
         >
@@ -185,7 +192,7 @@ export function BugReportsContent() {
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as BugReportStatus | ""); setOffset(0); }}
+          onChange={(e) => { setStatusFilter(e.target.value as BugReportStatus | ""); setPage(1); }}
           className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:border-gray-600"
           data-testid="bug-report-filter-status"
         >
@@ -193,6 +200,7 @@ export function BugReportsContent() {
           <option value="open">פתוח</option>
           <option value="in_progress">בטיפול</option>
           <option value="resolved">טופל</option>
+          <option value="wont_fix">לא יטופל</option>
         </select>
       </div>
 
@@ -228,16 +236,18 @@ export function BugReportsContent() {
                     {SEVERITY_LABELS[report.severity]}
                   </span>
                 </td>
-                <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2">
                   <select
                     value={report.status}
                     onChange={(e) => handleStatusChange(report.id, e.target.value as BugReportStatus)}
+                    onClick={(e) => e.stopPropagation()}
                     className="border rounded px-1 py-0.5 text-xs dark:bg-gray-700 dark:border-gray-600"
                     data-testid={`bug-report-status-${report.id}`}
                   >
                     <option value="open">{STATUS_LABELS.open}</option>
                     <option value="in_progress">{STATUS_LABELS.in_progress}</option>
                     <option value="resolved">{STATUS_LABELS.resolved}</option>
+                    <option value="wont_fix">{STATUS_LABELS.wont_fix}</option>
                   </select>
                   {statusErrorById[report.id] && (
                     <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
@@ -294,6 +304,13 @@ export function BugReportsContent() {
                     >
                       הצג JSON
                     </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenCommentsFor(report.id); }}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 mr-3"
+                      data-testid={`bug-report-comments-${report.id}`}
+                    >
+                      {t("bug_reports.comment_button")}
+                    </button>
                     {jsonErrorById[report.id] && (
                       <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
                         {jsonErrorById[report.id]}
@@ -318,13 +335,17 @@ export function BugReportsContent() {
           {Array.from({ length: pages }, (_, i) => (
             <button
               key={i}
-              onClick={() => setOffset(i * limit)}
-              className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
+              onClick={() => setPage(i + 1)}
+              className={`px-3 py-1 rounded text-sm ${page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
             >
               {i + 1}
             </button>
           ))}
         </div>
+      )}
+
+      {openCommentsFor && (
+        <BugReportDetailModal reportId={openCommentsFor} onClose={() => setOpenCommentsFor(null)} />
       )}
     </div>
   );

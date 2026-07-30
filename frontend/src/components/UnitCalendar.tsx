@@ -175,6 +175,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           noEventsText={t("unit_calendar.none")}
           slotMinTime="00:00:00"
           slotMaxTime="24:00:00"
+          slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
           views={{
             dayGridMonth: { displayEventTime: false },
             timeGridWeek: { displayEventTime: true },

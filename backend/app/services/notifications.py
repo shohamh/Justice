@@ -29,6 +29,7 @@ from app.auth.authz import scope_root_ids
 _DEPTH_FILTERED_TYPES = frozenset([
     NotificationType.constraint_pending,
     NotificationType.exemption_request_pending,
+    NotificationType.swap_pending_approval,
 ])
 
 DEFAULT_PENDING_MAX_DEPTH = 2

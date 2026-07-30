@@ -52,6 +52,36 @@ def test_reject_transfer_via_api(client: TestClient, admin_session: Session):
     assert resp2.json()["status"] == "rejected"
 
 
+def test_commander_can_create_and_approve_hierarchy_transfer(client: TestClient, admin_session: Session):
+    """A plain commander (not admin, not duty manager) who commands both the
+    source and destination nodes must be able to create and approve a
+    transfer request — regression test for the authorization gap where the
+    route checked Action.SOLDIER_UPDATE (duty-manager-only) instead of a
+    commander-reachable action."""
+    cmd = create_soldier(admin_session, personal_number="7991010", role="commander")
+    src = create_node(admin_session, level="unit", name="cmd_src", commander_id=cmd.id)
+    dst = create_node(admin_session, level="unit", name="cmd_dst", commander_id=cmd.id)
+    soldier = create_soldier(admin_session, personal_number="7991011", hierarchy_node_id=src.id)
+    admin_session.commit()
+
+    resp = client.post(
+        "/api/hierarchy-transfers",
+        json={"soldier_id": str(soldier.id), "to_node_id": str(dst.id)},
+        headers=auth_headers(cmd),
+    )
+    assert resp.status_code == 200, resp.text
+    req_id = resp.json()["id"]
+    assert resp.json()["status"] == "pending"
+
+    resp2 = client.post(f"/api/hierarchy-transfers/{req_id}/approve", headers=auth_headers(cmd))
+    assert resp2.status_code == 200, resp2.text
+    assert resp2.json()["status"] == "approved"
+
+    soldier_resp = client.get(f"/api/soldiers/{soldier.id}", headers=auth_headers(cmd))
+    assert soldier_resp.status_code == 200, soldier_resp.text
+    assert soldier_resp.json()["hierarchy_node_id"] == str(dst.id)
+
+
 def test_list_pending_via_api(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="7991005", role="admin")
     dst = create_node(admin_session, level="unit", name="api_dst3", commander_id=admin.id)

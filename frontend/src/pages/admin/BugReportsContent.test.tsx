@@ -155,6 +155,16 @@ describe("BugReportsContent", () => {
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
   });
 
+  it("expands the row when clicking empty padding in the status cell", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    const statusTd = screen.getByTestId("bug-report-status-r1").closest("td") as HTMLElement;
+    fireEvent.click(statusTd);
+
+    expect(screen.getByText("/calendar")).toBeInTheDocument();
+  });
+
   it("shows an inline error when the import request itself fails", async () => {
     vi.mocked(bugReportsApi.importBugReports).mockRejectedValue(new Error("network error"));
     renderWithProviders(<BugReportsContent />);

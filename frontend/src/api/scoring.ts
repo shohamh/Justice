@@ -33,7 +33,14 @@ export interface TransparencyOut {
 }
 
 export interface Breakdown {
-  per_type: { duty_type_id: string; duty_type_name: string | null; days: number; score: string }[];
+  per_type: {
+    duty_type_id: string;
+    duty_type_name: string | null;
+    days: number;
+    days_past: number;
+    days_future: number;
+    score: string;
+  }[];
   adjustments: { id: string; delta: string; reason: string; created_at: string }[];
 }
 

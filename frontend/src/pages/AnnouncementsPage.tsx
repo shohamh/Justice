@@ -6,6 +6,7 @@ import Layout from "../components/Layout";
 import HierarchyNodePickerModal from "../components/HierarchyNodePickerModal";
 import HierarchyCheckboxTree from "../components/HierarchyCheckboxTree";
 import { useAuth } from "../auth/AuthContext";
+import { usePagePagination } from "../hooks/usePagePagination";
 import { queryKeys } from "../queryKeys";
 import { translateApiError } from "../utils/translateApiError";
 import {
@@ -36,9 +37,9 @@ function AnnouncementsContent() {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const limit = 20;
+
+  const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
 
   const scopeQuery = useQuery({
     queryKey: queryKeys.announceScope(),
@@ -86,7 +87,7 @@ function AnnouncementsContent() {
       setBody("");
       setNarrowNodeIds([]);
       setNarrowNames({});
-      setOffset(0);
+      setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["notifications", "announcements"] });
     } catch (err) {
       setErrorMsg(translateApiError(err, t, t("announcements.send_error")));
@@ -249,8 +250,8 @@ function AnnouncementsContent() {
             {Array.from({ length: pages }, (_, i) => (
               <button
                 key={i}
-                onClick={() => setOffset(i * limit)}
-                className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
+                onClick={() => setPage(i + 1)}
+                className={`px-3 py-1 rounded text-sm ${page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
               >
                 {i + 1}
               </button>
