@@ -36,7 +36,7 @@ def upgrade() -> None:
     for row in rows:
         requirements = dict(row["requirements"])
         allowed = requirements.get("allowed_service_types")
-        if allowed == ["חובה"] and requirements.get("enlisted_allowed", True) is not False:
+        if allowed == ["חובה"]:
             requirements["allowed_service_types"] = ["חובה", "קבע"]
             conn.execute(
                 sa.update(duty_types_t)
