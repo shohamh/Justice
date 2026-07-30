@@ -991,7 +991,7 @@ def take_free(
         duty_date=assignment.start_date,
         requesting_soldier_id=assignment.soldier_id,
         status="open",
-        requester_side_approved=True,
+        requester_side_approved=False,
     )
     session.add(req)
     session.flush()
@@ -1006,16 +1006,11 @@ def take_free(
         session,
         soldier_id=assignment.soldier_id,
         type=NotificationType.swap_offer,
-        title="חייל אחר לקח את התורנות שלך",
+        title="חייל אחר מבקש לקחת את התורנות שלך - נדרש אישורך",
         reference_type="swap_request",
         reference_id=req.id,
         actor_id=actor_id,
     )
-
-    _apply_cover(session, req=req, candidate=candidate, actor_id=actor_id)
-    candidate.status = "applied"
-    candidate.decided_at = datetime.utcnow()
-    req.status = "applied"
     write_audit(
         session, actor_id=actor_id, action="swap.take_free",
         entity_type="swap_request", entity_id=req.id,
@@ -1023,7 +1018,7 @@ def take_free(
             "duty_assignment_id": str(assignment_id),
             "duty_date": req.duty_date.isoformat(),
             "covering_soldier_id": str(covering_soldier_id),
-            "status": "applied",
+            "status": "open",
         },
     )
     session.flush()

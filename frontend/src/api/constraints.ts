@@ -8,7 +8,7 @@ export interface PersonalConstraint {
   start_date: string;
   end_date: string;
   reason: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_commander" | "pending_duty_manager" | "approved" | "rejected" | "cancelled";
   decided_by: string | null;
   decided_at: string | null;
   decision_note: string | null;

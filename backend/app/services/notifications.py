@@ -33,6 +33,8 @@ _DEPTH_FILTERED_TYPES = frozenset([
 
 DEFAULT_PENDING_MAX_DEPTH = 2
 
+_ANNOUNCEMENT_DUPLICATE_COOLDOWN = timedelta(minutes=5)
+
 _FRONTEND_PATHS: dict[str, str] = {
     "constraint_pending": "/constraints",
     "constraint_approved": "/constraints",
@@ -62,6 +64,10 @@ _FRONTEND_PATHS: dict[str, str] = {
 
 class NotificationError(Exception):
     pass
+
+
+class AnnouncementRateLimitError(Exception):
+    """Raised when the same sender re-sends an identically-titled announcement too soon."""
 
 
 def _frontend_url(notification_type: NotificationType) -> str:
@@ -722,6 +728,18 @@ def remove_commander_scope(session: Session, *, scope_id: uuid.UUID, commander_i
 def broadcast_announcement(session: Session, *, title: str, body: str | None = None,
                            hierarchy_node_ids: list[uuid.UUID] | None = None,
                            actor_id: uuid.UUID | None = None) -> Announcement:
+    if actor_id is not None:
+        cutoff = datetime.now(timezone.utc) - _ANNOUNCEMENT_DUPLICATE_COOLDOWN
+        recent_duplicate = session.execute(
+            select(Announcement).where(
+                Announcement.sender_id == actor_id,
+                Announcement.title == title,
+                Announcement.created_at >= cutoff,
+            )
+        ).scalars().first()
+        if recent_duplicate is not None:
+            raise AnnouncementRateLimitError("duplicate_announcement_cooldown")
+
     if hierarchy_node_ids:
         nodes = session.execute(
             select(HierarchyNode).where(HierarchyNode.id.in_(hierarchy_node_ids))

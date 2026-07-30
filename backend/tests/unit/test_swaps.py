@@ -627,7 +627,59 @@ def test_take_free_allowed_across_hierarchy_level_when_not_restricted(admin_sess
         admin_session, assignment_id=assignment.id,
         covering_soldier_id=target.id, actor_id=target.id,
     )
-    assert req.status == "applied"
+    assert req.status == "open"
+    assert req.requester_side_approved is False
+    # requester and target have no commander/duty-manager chain in this fixture,
+    # so once the duty owner approves, the swap finalizes with no manager gate.
+    finalized = svc.approve_soldier_side(
+        admin_session, request_id=req.id, soldier_id=requester.id, actor_id=requester.id,
+    )
+    assert finalized.status == "applied"
+
+
+def test_take_free_does_not_apply_cover_without_owner_approval(admin_session):
+    a, b, assignment = _seed(admin_session)
+    req, warnings = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.commit()
+    assert req.status == "open"
+    fresh = admin_session.get(DutyAssignment, assignment.id)
+    assert fresh.soldier_id == a.id  # duty still belongs to the original owner
+
+
+def test_take_free_finalizes_only_after_owner_approves(admin_session):
+    a, b, assignment = _seed(admin_session)
+    req, warnings = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+    finalized = svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
+    admin_session.commit()
+    assert finalized.status == "applied"
+
+
+def test_take_free_blocked_by_manager_approval_gate_when_owner_has_commander(admin_session):
+    """When require_manager_approval is on and the duty owner has a commander,
+    owner approval alone must not finalize the swap."""
+    node = create_node(admin_session, level="unit", name="tf_manager_gate")
+    cmd = create_soldier(admin_session, personal_number="tf_cmd_1", role="commander")
+    node.commander_id = cmd.id
+    admin_session.flush()
+    a = create_soldier(admin_session, personal_number="tf_owner_1", hierarchy_node_id=node.id)
+    b = create_soldier(admin_session, personal_number="tf_taker_1")
+    dt = DutyType(name="dt_tf_gate", score_per_day=1)
+    loc = DutyLocation(name="loc_tf_gate")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    assignment = DutyAssignment(
+        soldier_id=a.id, duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date(2026, 6, 10), end_date=date(2026, 6, 11), status="published",
+    )
+    admin_session.add(assignment)
+    admin_session.flush()
+
+    req, warnings = svc.take_free(admin_session, assignment_id=assignment.id, covering_soldier_id=b.id, actor_id=b.id)
+    admin_session.flush()
+    after_owner_approval = svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=a.id, actor_id=a.id)
+    admin_session.commit()
+    assert after_owner_approval.status == "open"  # still waiting on the commander's SwapManagerApproval
 
 
 def _seed_multi_target(session, n=3):

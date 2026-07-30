@@ -5,6 +5,7 @@ import string
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.db.models import RegistrationInviteCode
@@ -36,13 +37,20 @@ def validate_code(session: Session, *, code: str) -> bool:
 
 
 def consume_invite_code(session: Session, *, code: str) -> RegistrationInviteCode:
-    row = session.execute(
+    result = session.execute(
+        sa_update(RegistrationInviteCode)
+        .where(RegistrationInviteCode.code == code, RegistrationInviteCode.uses_left > 0)
+        .values(uses_left=RegistrationInviteCode.uses_left - 1)
+        .returning(RegistrationInviteCode)
+    )
+    row = result.scalar_one_or_none()
+    if row is not None:
+        session.flush()
+        return row
+
+    existing = session.execute(
         select(RegistrationInviteCode).where(RegistrationInviteCode.code == code)
     ).scalar_one_or_none()
-    if row is None:
+    if existing is None:
         raise InviteCodeError("invalid invite code")
-    if row.uses_left <= 0:
-        raise InviteCodeError("invite code exhausted")
-    row.uses_left -= 1
-    session.flush()
-    return row
+    raise InviteCodeError("invite code exhausted")

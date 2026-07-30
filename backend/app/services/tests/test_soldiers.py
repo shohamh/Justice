@@ -126,7 +126,7 @@ def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admi
 
     pc = PersonalConstraint(
         soldier_id=soldier.id, start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
-        reason="soft_delete_test_constraint", status="pending",
+        reason="soft_delete_test_constraint", status="pending_commander",
     )
     admin_session.add(pc)
 

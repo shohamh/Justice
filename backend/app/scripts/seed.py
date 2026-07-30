@@ -732,7 +732,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                     start_date=today + timedelta(days=offset),
                     end_date=today + timedelta(days=offset + randint(0, 2)),
                     reason=constraint_reasons[i % len(constraint_reasons)],
-                    status=choice(["pending", "approved", "approved", "rejected"]),
+                    status=choice(["pending_commander", "pending_duty_manager", "approved", "approved", "rejected"]),
                     decided_by=choice(
                         [s_admin.id, s_focus.id, s_alom.id]
                         + [

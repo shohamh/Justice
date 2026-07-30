@@ -317,3 +317,20 @@ def test_import_bug_reports_reports_error_for_unknown_reporter(client: TestClien
     result = resp.json()["results"][0]
     assert result["status"] == "error"
     assert admin_session.get(BugReport, uuid.UUID(payload["id"])) is None
+
+
+def test_submit_bug_report_returns_429_after_daily_cap(client: TestClient, admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7900010")
+    for i in range(50):
+        r = client.post(
+            "/api/bug-reports",
+            headers=auth_headers(s),
+            json={"description": f"bug {i}", "severity": "low", "route": "/x", "nav_history": []},
+        )
+        assert r.status_code == 201, r.text
+    r = client.post(
+        "/api/bug-reports",
+        headers=auth_headers(s),
+        json={"description": "bug 51", "severity": "low", "route": "/x", "nav_history": []},
+    )
+    assert r.status_code == 429

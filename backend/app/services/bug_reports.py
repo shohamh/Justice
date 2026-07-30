@@ -4,10 +4,10 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AuditLog, BugReport, Soldier
@@ -15,9 +15,15 @@ from app.logging_config import LOG_DIR
 
 logger = logging.getLogger(__name__)
 
+_DAILY_BUG_REPORT_LIMIT = 50
+
 
 class BugReportWriteError(Exception):
     """Raised only when both the JSON mirror and the DB insert fail."""
+
+
+class BugReportRateLimitError(Exception):
+    """Raised when a reporter exceeds the daily bug-report submission cap."""
 
 
 class BugReportImportError(Exception):
@@ -81,6 +87,16 @@ def write_bug_report(
     route: str,
     nav_history: list[dict[str, Any]],
 ) -> BugReportWriteResult:
+    window_start = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_count = session.execute(
+        select(func.count()).select_from(BugReport).where(
+            BugReport.reporter_id == reporter.id,
+            BugReport.created_at >= window_start,
+        )
+    ).scalar_one()
+    if recent_count >= _DAILY_BUG_REPORT_LIMIT:
+        raise BugReportRateLimitError("daily_bug_report_limit_exceeded")
+
     report_id = uuid.uuid4()
     created_at = datetime.now(timezone.utc)
 

@@ -55,7 +55,8 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
           { value: "year", label: "שנה" },
         ],
       },
-      { key: "constraints.require_manager_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      { key: "constraints.require_commander_approval", label: "דורש אישור מפקד", description: "האם בקשות אילוץ דורשות אישור מפקד", type: "boolean", defaultValue: true },
+      { key: "constraints.require_duty_manager_approval", label: "דורש אישור אחראי תורנויות", description: "האם בקשות אילוץ דורשות אישור אחראי תורנויות (בנוסף לאישור מפקד)", type: "boolean", defaultValue: true },
     ],
   },
   {

@@ -73,7 +73,7 @@ def test_personal_constraint_existing_id_resolves_to_update(admin_session):
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
     existing = PersonalConstraint(
         soldier_id=soldier.id, start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2),
-        reason="old", status="pending",
+        reason="old", status="pending_commander",
     )
     admin_session.add(existing)
     admin_session.commit()
@@ -385,7 +385,7 @@ def test_personal_constraint_confirm_restores_decided_status(admin_session):
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
     existing = PersonalConstraint(
         soldier_id=soldier.id, start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2),
-        reason="old", status="pending",
+        reason="old", status="pending_commander",
     )
     admin_session.add(existing)
     admin_session.commit()
@@ -542,7 +542,7 @@ def test_personal_constraint_confirm_with_redacted_reason_preserves_existing(adm
     decider = create_soldier(admin_session, personal_number=f"dec_{_uid()}")
     existing = PersonalConstraint(
         soldier_id=soldier.id, start_date=date_type(2024, 1, 1), end_date=date_type(2024, 1, 2),
-        reason="real sensitive reason", status="pending",
+        reason="real sensitive reason", status="pending_commander",
     )
     admin_session.add(existing)
     admin_session.commit()
