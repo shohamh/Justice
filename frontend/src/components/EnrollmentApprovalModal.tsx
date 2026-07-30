@@ -3,10 +3,7 @@ import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollm
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
 import { useModalBackClose } from "../hooks/useModalBackClose";
-
-// Rank lists for the rank selector
-const RANKS_ENLISTED = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
-const RANKS_OFFICER = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
+import { ENLISTED_RANKS as RANKS_ENLISTED, OFFICER_RANKS as RANKS_OFFICER } from "../constants/ranks";
 
 interface NodeItem {
   id: string;

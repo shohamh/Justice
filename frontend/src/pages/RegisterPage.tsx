@@ -13,9 +13,8 @@ import PasswordStrengthHint, { passwordValid } from "../components/PasswordStren
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
+import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST } from "../constants/ranks";
 
-const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
-const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
 const OFFICER_RANKS = new Set(OFFICER_RANKS_LIST);
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
