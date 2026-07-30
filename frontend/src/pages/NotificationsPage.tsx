@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
+import { usePagePagination } from "../hooks/usePagePagination";
 import { listNotifications, markRead, markAllRead, deleteNotification } from "../api/notifications";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
-  const [offset, setOffset] = useState(0);
-  const limit = 20;
+  const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
 
   const notificationsQuery = useQuery({
     queryKey: queryKeys.notifications(filter, offset),
@@ -58,11 +58,11 @@ export default function NotificationsPage() {
           </button>
         </div>
         <div className="flex gap-2 mb-4">
-          <button onClick={() => { setFilter("all"); setOffset(0); }}
+          <button onClick={() => { setFilter("all"); setPage(1); }}
                   className={`px-3 py-1 rounded text-sm ${filter === "all" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
             {t("notifications.all")} ({total})
           </button>
-          <button onClick={() => { setFilter("unread"); setOffset(0); }}
+          <button onClick={() => { setFilter("unread"); setPage(1); }}
                   className={`px-3 py-1 rounded text-sm ${filter === "unread" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
             {t("notifications.unread")}
           </button>
@@ -96,8 +96,11 @@ export default function NotificationsPage() {
         {pages > 1 && (
           <div className="flex justify-center gap-2 mt-4">
             {Array.from({ length: pages }, (_, i) => (
-              <button key={i} onClick={() => setOffset(i * limit)}
-                      className={`px-3 py-1 rounded text-sm ${offset === i * limit ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}>
+              <button
+                key={i}
+                onClick={() => setPage(i + 1)}
+                className={`px-3 py-1 rounded text-sm ${page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-700 dark:text-gray-300"}`}
+              >
                 {i + 1}
               </button>
             ))}
