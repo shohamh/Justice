@@ -64,6 +64,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,16 +77,27 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   async function handleSend() {
     if (!text.trim() || sending) return;
     setError(null);
+    setAttachmentError(null);
     setSending(true);
+    const pendingFile = file;
     try {
       const comment = await createComment(reportId, text.trim());
-      if (file) {
-        await uploadCommentAttachment(reportId, comment.id, file);
-      }
+      // The comment is now saved server-side — reset the draft and refresh the
+      // list immediately so the UI never implies the comment itself was lost,
+      // even if the attachment upload below fails.
       setText("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
+
+      if (pendingFile) {
+        try {
+          await uploadCommentAttachment(reportId, comment.id, pendingFile);
+          await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
+        } catch {
+          setAttachmentError(t("bug_reports.attachment_upload_failed"));
+        }
+      }
     } catch (err: unknown) {
       setError(translateApiError(err, t));
     } finally {
@@ -152,6 +164,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
             />
           </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
+          {attachmentError && <p className="text-amber-600 text-xs">{attachmentError}</p>}
           <div className="flex justify-end">
             <button
               className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50"
