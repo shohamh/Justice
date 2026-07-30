@@ -75,3 +75,46 @@ def test_sgan_is_ambiguous_and_accepts_either_track():
 def test_unknown_rank_is_not_restricted():
     from app.services.eligibility import validate_rank_track_compatibility
     validate_rank_track_compatibility(rank="not_a_real_rank", is_career=True)
+
+
+def test_enlisted_keva_soldier_is_eligible_for_at_least_one_seeded_duty_type(db_admin_url: str):
+    """Regression for the seed-data bug where every enlisted duty type's
+    requirements set allowed_service_types: ["חובה"] only, making enlisted
+    קבע soldiers (e.g. career-track רס"ל) ineligible for every duty type.
+
+    Runs the real seed script against a live test DB and checks the actual
+    seeded DutyType rows, so this fails before the seed.py fix and passes
+    after it — it is not testing a hand-written duty-type shape.
+    """
+    from app.db.models import DutyType, Soldier
+    from app.db.session import SessionLocal
+    from app.scripts import seed as seed_module
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    seed_module.seed(force=True)
+
+    with SessionLocal() as s:
+        duty_types = s.query(DutyType).all()
+
+        keva_enlisted_soldier = Soldier(
+            personal_number="99999999",
+            full_name="Test Keva NCO",
+            password_hash="x",
+            rank="רסל",
+            is_officer=False,
+            is_career=True,
+            mandatory_end_date=date(2020, 1, 1),  # long past -> inferred_service_type == "קבע"
+            discharge_date=None,
+        )
+
+        eligible = []
+        for dt in duty_types:
+            raw = dt.requirements or {}
+            reqs = DutyTypeRequirements.model_validate(raw)
+            if _is_eligible(
+                keva_enlisted_soldier, reqs,
+                mitvahim_months=6, alal_months=3, today=date(2026, 7, 29),
+            ):
+                eligible.append(dt.name)
+
+        assert len(eligible) > 0, "an enlisted קבע soldier should qualify for at least one seeded duty type"
