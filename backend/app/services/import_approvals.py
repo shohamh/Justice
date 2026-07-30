@@ -43,7 +43,7 @@ def resolve_personal_constraints(session: Session, data: ParsedImportData, overr
         decided_by = soldiers_by_pn.get(decided_by_pn) if decided_by_pn else None
         if decided_by_pn and decided_by is None:
             errors.append(f"מחליט לא מזוהה '{decided_by_pn}'")
-        if status not in ("pending", "approved", "rejected"):
+        if status not in ("pending_commander", "pending_duty_manager", "approved", "rejected"):
             errors.append(f"סטטוס לא תקין '{status}'")
 
         existing = None

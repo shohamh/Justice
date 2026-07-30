@@ -273,6 +273,35 @@ def test_cancel_not_pending(admin_session):
         cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
 
 
+def test_cancel_not_pending_after_commander_step_with_no_actor(admin_session):
+    # Regression test: _approve_commander_step sets c.commander_approved_by =
+    # actor_id, which can be None (actor_id is an optional kwarg on
+    # approve_constraint). cancel_constraint's eligibility check previously
+    # read `c.status == "pending_duty_manager" and c.commander_approved_by is
+    # None` to decide "commander step never happened" - but a commander-step
+    # approval performed with actor_id=None looks identical, wrongly making an
+    # already-approved-by-commander request cancelable again. Reaching
+    # pending_duty_manager at all means the commander step is done (or was
+    # configured off), so cancel must be rejected here regardless of actor_id.
+    s = create_soldier(admin_session, personal_number=_pn(12))
+    c = submit_constraint(
+        admin_session,
+        soldier_id=s.id,
+        start_date=date.today() + timedelta(days=5),
+        end_date=date.today() + timedelta(days=10),
+        reason="חופשה",
+        actor_id=None,
+    )
+    admin_session.flush()
+    assert c.status == "pending_commander"
+    approved = approve_constraint(admin_session, constraint_id=c.id, actor_id=None)
+    admin_session.flush()
+    assert approved.status == "pending_duty_manager"
+    assert approved.commander_approved_by is None
+    with pytest.raises(ConstraintError, match="not_pending"):
+        cancel_constraint(admin_session, constraint_id=c.id, actor_id=s.id)
+
+
 def test_list_constraints(admin_session):
     s = create_soldier(admin_session, personal_number="7400011")
     submit_constraint(
