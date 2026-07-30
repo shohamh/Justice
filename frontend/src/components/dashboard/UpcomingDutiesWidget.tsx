@@ -36,7 +36,11 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
                 key={d.assignment_id}
                 role="button"
                 tabIndex={0}
-                className="border-b dark:border-gray-600 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                className={`border-b last:border-0 cursor-pointer ${
+                  d.is_reserve
+                    ? "border-dashed border-2 border-gray-400 dark:border-gray-500 bg-gray-100/40 dark:bg-gray-700/30 hover:bg-gray-100/70 dark:hover:bg-gray-700/50"
+                    : "dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
                 onClick={() => onOpenDuty(d)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -46,7 +50,14 @@ export default function UpcomingDutiesWidget({ duties, typeNames, locationNames,
                 }}
                 title="פתח פרטים"
               >
-                <td className="py-2">{formatDutyRange(d.start_date, d.end_date)}</td>
+                <td className="py-2">
+                  {d.is_reserve && (
+                    <span className="inline-block text-[10px] px-1 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 me-1">
+                      רזרבה
+                    </span>
+                  )}
+                  {formatDutyRange(d.start_date, d.end_date)}
+                </td>
                 <td className="py-2">{typeNames[d.duty_type_id] ?? "—"}</td>
                 <td className="py-2">{locationNames[d.duty_location_id] ?? "—"}</td>
                 <td className="py-2 text-gray-400 text-xs">›</td>
