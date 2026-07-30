@@ -97,7 +97,15 @@ function ColumnFilterDropdown<T>({
         selected={checkedIds}
         onChange={handleChange}
         triggerLabel={isFiltered ? "▼●" : "▼"}
-        panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl min-w-32 max-h-56 flex flex-col"
+        badgeCount={0}
+        title="סנן עמודה"
+        triggerClassName={`ml-1 text-[10px] border rounded px-0.5 leading-none transition-colors ${
+          isFiltered
+            ? "border-indigo-500 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900"
+            : "border-gray-300 text-gray-400 hover:text-gray-600 dark:border-gray-500 dark:text-gray-500 dark:hover:text-gray-300"
+        }`}
+        panelDir="rtl"
+        panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl min-w-32 max-h-56 flex flex-col right-0"
       />
     </span>
   );

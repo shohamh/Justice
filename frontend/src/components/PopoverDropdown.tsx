@@ -4,10 +4,24 @@ interface Props {
   triggerLabel: string;
   badgeCount: number;
   panelClassName?: string;
+  /** Optional tooltip shown on the trigger button (e.g. "סנן עמודה"). */
+  title?: string;
+  /** Overrides the trigger button's default className entirely, when set. */
+  triggerClassName?: string;
+  /** Optional `dir` attribute applied to the panel (e.g. "rtl" for right-edge-anchored panels). */
+  panelDir?: "rtl" | "ltr";
   children: (close: () => void) => ReactNode;
 }
 
-export default function PopoverDropdown({ triggerLabel, badgeCount, panelClassName, children }: Props) {
+export default function PopoverDropdown({
+  triggerLabel,
+  badgeCount,
+  panelClassName,
+  title,
+  triggerClassName,
+  panelDir,
+  children,
+}: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -23,8 +37,12 @@ export default function PopoverDropdown({ triggerLabel, badgeCount, panelClassNa
     <div className="relative inline-block" ref={ref}>
       <button
         type="button"
+        title={title}
         onClick={() => setOpen((o) => !o)}
-        className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 flex items-center gap-1"
+        className={
+          triggerClassName ??
+          "border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 flex items-center gap-1"
+        }
       >
         {triggerLabel}
         {badgeCount > 0 && (
@@ -34,6 +52,7 @@ export default function PopoverDropdown({ triggerLabel, badgeCount, panelClassNa
       </button>
       {open && (
         <div
+          dir={panelDir}
           className={
             panelClassName ??
             "absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-40 max-h-56 flex flex-col"
