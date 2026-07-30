@@ -188,11 +188,11 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
         <Arrow />
         <FlowStep icon="🔗" text="חלוקה לרכיבים קשורים — קבוצות משמרות+חיילים עצמאיות" color="gray" />
         <Arrow />
-        <FlowStep icon="0️⃣" text="פאז 0: ניסיון לכסות את כל הרכיב בבת אחת" color="blue" />
+        <FlowStep icon="0️⃣" text="שלב 0: ניסיון לכסות את כל הרכיב בבת אחת" color="blue" />
         <Arrow />
-        <FlowStep icon="1️⃣" text="פאז 1: חיילים ממוינים לפי עומס, נפתרים קבוצה-קבוצה" color="indigo" />
+        <FlowStep icon="1️⃣" text="שלב 1: חיילים ממוינים לפי עומס, נפתרים קבוצה-קבוצה" color="indigo" />
         <Arrow />
-        <FlowStep icon="2️⃣" text="פאז 2: כל החיילים — כיסוי רך על מה שנשאר" color="indigo" />
+        <FlowStep icon="2️⃣" text="שלב 2: כל החיילים — כיסוי רך על מה שנשאר" color="indigo" />
         <Arrow />
         <FlowStep icon="🪜" text="עדיין חסרות? חיפוש בינארי על סולם ההרפיה (R/T)" color="amber" />
         <Arrow />
