@@ -259,6 +259,12 @@ PROFILE_FIELDS = {
     "profile_picture_url",
 }
 
+# Fields that feed rank/track compatibility (directly, or via is_career's
+# derivation). A PATCH that doesn't touch any of these can't move the soldier
+# into a new incompatible combination, so it shouldn't be blocked by one that
+# already existed before this validation was introduced.
+_RANK_TRACK_AFFECTING_FIELDS = {"rank", "mandatory_end_date", "discharge_date"}
+
 
 def update_soldier_profile(
     session: Session,
@@ -273,10 +279,17 @@ def update_soldier_profile(
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
-    try:
-        validate_rank_track_compatibility(soldier.rank, soldier.is_career)
-    except ValueError as exc:
-        raise SoldierValidationError(str(exc)) from exc
+    # Only validate rank/track compatibility when this PATCH actually touches
+    # a field that affects it (rank itself, or a date that feeds is_career).
+    # Otherwise a pre-existing (possibly grandfathered, pre-validation) bad
+    # combination would permanently lock the soldier out of unrelated edits
+    # like phone/email, since re-validating the whole current state on every
+    # save would keep rejecting the untouched, already-broken combination.
+    if _RANK_TRACK_AFFECTING_FIELDS & fields.keys():
+        try:
+            validate_rank_track_compatibility(soldier.rank, soldier.is_career)
+        except ValueError as exc:
+            raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
     write_audit(
         session,

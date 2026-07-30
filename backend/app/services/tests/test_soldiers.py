@@ -142,6 +142,58 @@ def test_update_soldier_profile_derives_is_career_from_dates(admin_session):
     assert soldier.is_career is True
 
 
+def test_update_soldier_profile_allows_unrelated_edit_on_grandfathered_bad_rank_track(admin_session):
+    """A pre-existing soldier row with an incompatible rank/track combo (e.g.
+    created before validate_rank_track_compatibility existed) must not be
+    permanently locked out of unrelated edits like phone. Only a PATCH that
+    actually touches rank/mandatory_end_date/discharge_date should re-validate
+    the rank/track combination.
+    """
+    from app.services.soldiers import update_soldier_profile
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920020")
+    # סרן is קבע-only, but is_career derives to False here because
+    # mandatory_end_date is None -> a grandfathered-bad combination that
+    # predates this validation.
+    soldier.rank = "סרן"
+    soldier.is_career = False
+    admin_session.commit()
+
+    # Editing an unrelated field must succeed, not be blocked by the
+    # pre-existing bad combination.
+    update_soldier_profile(
+        admin_session, soldier=soldier,
+        fields={"phone": "0501234567"}, actor_id=None,
+    )
+    assert soldier.phone == "0501234567"
+    # The bad combination is untouched (not silently "fixed" either).
+    assert soldier.rank == "סרן"
+    assert soldier.is_career is False
+
+
+def test_update_soldier_profile_rejects_new_incompatible_rank_track(admin_session):
+    """Editing rank into a genuinely new incompatible combination must still
+    be rejected, even for a soldier who previously had a grandfathered bad
+    combination."""
+    from app.services.soldiers import update_soldier_profile, SoldierValidationError
+    from tests.helpers import create_soldier
+
+    soldier = create_soldier(admin_session, personal_number="7920021")
+    soldier.rank = "סרן"
+    soldier.is_career = False
+    admin_session.commit()
+
+    # Actively moving the soldier's rank while still חובה (no mandatory_end_date)
+    # keeps/creates an incompatible combination -> must be rejected since
+    # `rank` is part of this PATCH.
+    with pytest.raises(SoldierValidationError, match="rank_track_incompatible"):
+        update_soldier_profile(
+            admin_session, soldier=soldier,
+            fields={"rank": "רסן"}, actor_id=None,
+        )
+
+
 def test_soft_delete_cancels_pending_exemption_constraint_and_swap_requests(admin_session):
     from decimal import Decimal
 
