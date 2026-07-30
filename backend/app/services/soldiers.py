@@ -50,10 +50,13 @@ def _check_soldier_dates(
         rank in CHOVAH_ONLY_RANKS
         and mandatory_end_date is not None
         and date.today() > mandatory_end_date
-        and (discharge_date is None or discharge_date > mandatory_end_date)
+        # Only a genuine inconsistency: an explicit discharge_date that is itself
+        # after mandatory_end_date. A soldier with no discharge_date yet is simply
+        # still serving past their originally-planned mandatory_end_date, which is
+        # common and not an error.
+        and discharge_date is not None
+        and discharge_date > mandatory_end_date
     ):
-        # Dates alone say מועד סיום חובה has passed with no discharge closing it out
-        # (i.e. the soldier would derive to קבע), but the rank held is חובה-only.
         raise SoldierValidationError("chovah_rank_cannot_be_keva")
 
 

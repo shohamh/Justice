@@ -80,12 +80,53 @@ def test_update_soldier_profile_rejects_chovah_only_rank_while_career(admin_sess
 
     soldier = create_soldier(admin_session, personal_number="7920010")
     soldier.mandatory_end_date = date(2020, 1, 1)  # long past -> derives to קבע
+    # An explicit discharge_date after mandatory_end_date is the genuine
+    # inconsistency this check targets. A soldier with mandatory_end_date in the
+    # past but no discharge_date yet is simply still serving and must NOT be
+    # rejected (see test_chovah_private_with_past_mandatory_end_and_no_discharge_date_is_allowed).
+    soldier.discharge_date = date(2020, 6, 1)
     admin_session.commit()
 
     with pytest.raises(SoldierValidationError, match="rank"):
         update_soldier_profile(
             admin_session, soldier=soldier,
             fields={"rank": "טוראי"}, actor_id=None,
+        )
+
+
+def test_chovah_private_with_past_mandatory_end_and_no_discharge_date_is_allowed():
+    """A currently-serving טוראי whose mandatory_end_date field is in the past
+    but who has no discharge_date yet (i.e. still serving, discharge just not
+    logged) must NOT be rejected as an inconsistent 'chovah rank cannot be keva'.
+    """
+    from app.services.soldiers import _check_soldier_dates
+
+    past_end = date.today() - timedelta(days=10)
+    # Should not raise.
+    _check_soldier_dates(
+        rank="טוראי",
+        enlistment_date=date.today() - timedelta(days=400),
+        discharge_date=None,
+        mandatory_end_date=past_end,
+        is_career=False,
+    )
+
+
+def test_chovah_private_with_explicit_inconsistent_discharge_date_still_rejected():
+    """If a discharge_date IS provided and it's after mandatory_end_date for a
+    CHOVAH-only rank, that's a genuine inconsistency and must still be rejected.
+    """
+    from app.services.soldiers import _check_soldier_dates, SoldierValidationError
+
+    past_end = date.today() - timedelta(days=10)
+    later_discharge = date.today() + timedelta(days=5)
+    with pytest.raises(SoldierValidationError):
+        _check_soldier_dates(
+            rank="טוראי",
+            enlistment_date=date.today() - timedelta(days=400),
+            discharge_date=later_discharge,
+            mandatory_end_date=past_end,
+            is_career=False,
         )
 
 
