@@ -136,8 +136,11 @@ Read `backend/app/services/notifications.py` lines 341-386 (`notify_duty_manager
 Read `backend/app/services/tests/test_swaps.py` (or `test_notifications.py`, whichever already has swap-notification tests, e.g. for `swap_offer_incoming`) for the exact pattern used to assert a notification was created. Add:
 
 ```python
-def test_swap_fully_candidate_approved_notifies_duty_managers(session, make_soldier, make_duty_assignment, make_swap_request, make_swap_candidate):
+def test_swap_fully_candidate_approved_notifies_duty_managers(session, make_soldier, make_hierarchy_node, make_duty_assignment, make_swap_request, make_swap_candidate):
     # Adjust to match this file's fixture helper names/signatures.
+    node = make_hierarchy_node(name="Test Node")
+    duty_manager = make_soldier(hierarchy_node_id=node.id)  # adjust to however this file grants duty-manager scope in tests
+    requester = make_soldier(hierarchy_node_id=node.id)
     ...
     # Drive the swap to the point where both soldier sides have approved
     # (_candidate_fully_approved becomes True) via the same service calls
@@ -146,7 +149,12 @@ def test_swap_fully_candidate_approved_notifies_duty_managers(session, make_sold
     notifications = session.execute(
         select(Notification).where(Notification.notification_type == NotificationType.swap_pending_approval)
     ).scalars().all()
+    # Assert on WHO was notified, not just that some notification exists —
+    # the point of this feature is that the correct next approver gets
+    # notified, not merely that a row landed in the notifications table.
     assert len(notifications) >= 1
+    recipient_ids = {n.soldier_id for n in notifications}
+    assert duty_manager.id in recipient_ids
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -161,7 +169,10 @@ Expected: FAIL — `AttributeError: swap_pending_approval` (enum value doesn't e
 swap_pending_approval = "swap_pending_approval"
 ```
 
-Generate and apply the accompanying enum migration:
+Generate and apply the accompanying enum migration. First confirm there is exactly one migration head (this repo's history has several branch-merge migrations from past collisions — don't add another):
+
+Run: `cd backend && alembic heads`
+Expected: exactly one line. If more than one, stop and resolve before proceeding.
 
 Run: `cd backend && alembic revision -m "add swap_pending_approval notification type"`
 
@@ -200,6 +211,8 @@ notify_duty_managers_of_request(
 - [ ] **Step 7: Call the notification at each approval-chain handoff**
 
 In `approve_manager_row` (`swaps.py:586-612`), after an approval row is written and before/after `_try_finalize` is called, if the swap is not yet fully finalized (i.e. there's a next required approver), call the same `notify_duty_managers_of_request` (or `notify_duty_managers_in_scope`, whichever is more appropriate for "the next specific approver in the chain" per its actual signature/semantics read in Step 1) targeting the next approver.
+
+Add a second test alongside Step 2's, following the same pattern: set up a swap with a multi-link approval chain (e.g. commander then duty manager), have the first link approve via `approve_manager_row`, and assert the *next* link's identity appears in `recipient_ids` for a `swap_pending_approval` notification — this call site is otherwise untested. Run it together with Step 2's test in Step 9.
 
 - [ ] **Step 8: Add the Hebrew notification label**
 

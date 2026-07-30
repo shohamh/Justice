@@ -215,8 +215,9 @@ git commit -m "fix: reword awkward Hebrew duty-count stat label"
 - Modify: `backend/app/services/scoring.py:603-630` (`soldier_score_breakdown`)
 - Modify: `backend/app/routes/scoring.py:204-222` (`BreakdownOut`)
 - Modify: `frontend/src/api/scoring.ts:82-86` (`getBreakdown` / response type)
-- Modify: `frontend/src/pages/HomePage.tsx:234-244, 330-363` (`typeChartData` + chart rendering)
-- Modify: `frontend/src/pages/MyDutiesPage.tsx:101-111, 174-212` (same, mirrored)
+- Create: `frontend/src/components/dashboard/DutyTypeBreakdownChart.tsx` — shared chart component, extracted so the past/future split isn't duplicated across both pages.
+- Modify: `frontend/src/pages/HomePage.tsx:234-244, 330-363` (delete inline `typeChartData` + chart rendering, use the shared component)
+- Modify: `frontend/src/pages/MyDutiesPage.tsx:101-111, 174-212` (same)
 - Test: `backend/app/services/tests/test_scoring.py`
 
 **Interfaces:**
@@ -315,34 +316,70 @@ class BreakdownPerTypeOut(BaseModel):
 Run: `cd backend && pytest -m scoring -q`
 Expected: PASS
 
-- [ ] **Step 8: Update the frontend type and chart data**
+- [ ] **Step 8: Update the frontend type**
 
 In `frontend/src/api/scoring.ts` around lines 82-86, add `days_past: number` and `days_future: number` to the per-type TS type.
 
-In `frontend/src/pages/HomePage.tsx` lines 234-244 (`typeChartData`), change from a single `days`-per-type series to two stacked series:
+- [ ] **Step 9: Extract a shared chart component instead of duplicating render logic in both pages**
+
+`HomePage.tsx` and `MyDutiesPage.tsx` currently each have their own ~40-line `typeChartData` derivation plus chart JSX for this exact same breakdown (`HomePage.tsx:234-244, 330-363` and `MyDutiesPage.tsx:101-111, 174-212`). Rather than editing both copies identically (which the plan originally called for, and which a code reviewer would rightly flag as unjustified duplication now that the change touches both), extract one shared component both pages render.
+
+First read both existing chart-render sections in full (`HomePage.tsx:330-363` and `MyDutiesPage.tsx:174-212`) to confirm they are in fact the same chart library/shape (this plan's investigation found them structurally identical — confirm before assuming). Then create:
 
 ```tsx
-const typeChartData = (breakdown?.per_type ?? []).map((p) => ({
-  name: p.duty_type_name,
-  "ימים שבוצעו": p.days_past,
-  "ימים עתידיים": p.days_future,
-}));
+// frontend/src/components/dashboard/DutyTypeBreakdownChart.tsx
+// Adjust the chart-library import and JSX to match whatever HomePage.tsx and
+// MyDutiesPage.tsx already both use (confirmed identical in this plan's
+// investigation) — this is illustrative of the data shape, not a guess at
+// the charting library's exact API.
+interface BreakdownPerType {
+  duty_type_name: string;
+  days_past: number;
+  days_future: number;
+}
+
+interface Props {
+  perType: BreakdownPerType[];
+}
+
+export default function DutyTypeBreakdownChart({ perType }: Props) {
+  const typeChartData = perType.map((p) => ({
+    name: p.duty_type_name,
+    "ימים שבוצעו": p.days_past,
+    "ימים עתידיים": p.days_future,
+  }));
+
+  // Render using the same chart library/JSX structure both pages already
+  // use today (read HomePage.tsx:330-363 for the exact current markup and
+  // move it here as-is except for the two-series split), with a second bar
+  // series for "ימים עתידיים" stacked on "ימים שבוצעו", distinct colors,
+  // and a legend.
+  return (
+    // ...move the existing chart JSX here...
+  );
+}
 ```
 
-Then in the chart render section (lines 330-363), read the current chart component usage (bar chart, whatever library) and add a second `<Bar>` (or equivalent series) for `"ימים עתידיים"` stacked on `"ימים שבוצעו"`, with distinct colors/legend entries — match the exact chart library API already in use in this file (confirm import at top of file before writing this).
+- [ ] **Step 10: Replace both pages' inline chart code with the shared component**
 
-- [ ] **Step 9: Mirror the same change in MyDutiesPage.tsx**
+In `frontend/src/pages/HomePage.tsx`, delete the `typeChartData` derivation (lines 234-244) and the inline chart JSX (lines 330-363), replacing the JSX with:
 
-Apply the identical `typeChartData` and chart-render change at `MyDutiesPage.tsx:101-111, 174-212`.
+```tsx
+<DutyTypeBreakdownChart perType={breakdown?.per_type ?? []} />
+```
 
-- [ ] **Step 10: Manually verify in the running app**
+Add the import: `import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";`
 
-Start `.\dev.ps1`, view the homepage and "היומן שלי" for a soldier with both past and future assignments of the same duty type, confirm the breakdown chart shows two distinguishable segments per duty type (past vs. future) with a legend.
+Apply the identical replacement in `frontend/src/pages/MyDutiesPage.tsx` (delete lines 101-111 and 174-212, replace with the same `<DutyTypeBreakdownChart perType={...} />` call using whatever variable this page calls its breakdown data).
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 11: Manually verify in the running app**
+
+Start `.\dev.ps1`, view the homepage and "היומן שלי" for a soldier with both past and future assignments of the same duty type, confirm the breakdown chart shows two distinguishable segments per duty type (past vs. future) with a legend, and that both pages render identically (since they now share the same component).
+
+- [ ] **Step 12: Commit**
 
 ```bash
-git add backend/app/services/scoring.py backend/app/routes/scoring.py backend/app/services/tests/test_scoring.py frontend/src/api/scoring.ts frontend/src/pages/HomePage.tsx frontend/src/pages/MyDutiesPage.tsx
+git add backend/app/services/scoring.py backend/app/routes/scoring.py backend/app/services/tests/test_scoring.py frontend/src/api/scoring.ts frontend/src/components/dashboard/DutyTypeBreakdownChart.tsx frontend/src/pages/HomePage.tsx frontend/src/pages/MyDutiesPage.tsx
 git commit -m "feat: split duty-type breakdown chart into past-served vs future-scheduled days"
 ```
 

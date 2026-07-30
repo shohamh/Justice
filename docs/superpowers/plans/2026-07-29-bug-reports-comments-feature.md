@@ -158,6 +158,11 @@ Expected: FAIL — 422 (literal not allowed) or enum error
 
 - [ ] **Step 3: Add the DB enum value via migration**
 
+First confirm there is exactly one migration head (this repo's history has several branch-merge migrations from past collisions — don't add another):
+
+Run: `cd backend && alembic heads`
+Expected: exactly one line. If more than one, stop and resolve before proceeding.
+
 Run: `cd backend && alembic revision -m "add wont_fix to bug_report_status"`
 
 ```python
@@ -321,6 +326,8 @@ class BugReportCommentAttachment(Base):
 
 - [ ] **Step 4: Generate and apply the migration**
 
+Confirm exactly one migration head first (`alembic heads` — same guard as Task 2 Step 3).
+
 Run: `cd backend && alembic revision -m "add bug report comments and attachments"`
 
 ```python
@@ -375,7 +382,13 @@ def _require_reporter_or_admin(session: Session, user: Soldier, report_id: uuid.
     report = session.get(BugReport, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="not_found")
-    if report.reporter_id != user.id and "admin" not in user.roles:  # match real role-check convention used elsewhere in this file
+    # Soldier.role is a single string field ("admin" is one possible value),
+    # not a list — confirmed via backend/app/auth/authz.py's `can()`, which
+    # checks `user.role == "admin"`. bug_reports.py's existing admin routes
+    # use the require_roles("admin") dependency instead of this inline form,
+    # but that dependency can't express "OR the reporter" — this helper needs
+    # the inline equivalent for the ownership fallback.
+    if report.reporter_id != user.id and user.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
     return report
 
@@ -408,7 +421,11 @@ def list_bug_report_comments(
     comments = session.execute(
         select(BugReportComment).where(BugReportComment.bug_report_id == report_id).order_by(BugReportComment.created_at)
     ).scalars().all()
-    authors = {s.id: s.full_name for s in session.execute(select(Soldier)).scalars().all()}
+    author_ids = {c.author_id for c in comments}
+    authors = {
+        s.id: s.full_name
+        for s in session.execute(select(Soldier).where(Soldier.id.in_(author_ids))).scalars().all()
+    } if author_ids else {}
     return [
         BugReportCommentOut(
             id=c.id, bug_report_id=c.bug_report_id, author_id=c.author_id,
@@ -418,7 +435,7 @@ def list_bug_report_comments(
     ]
 ```
 
-(Match the file's actual `require_password_changed`/role-check helper conventions exactly — read the top of `bug_reports.py` and how `PATCH /admin/bug-reports/{report_id}` checks admin role, before finalizing `_require_reporter_or_admin`'s role check.)
+(The role check and both `require_password_changed` usages above already match this file's real conventions — confirmed by reading `bug_reports.py` in full: ordinary endpoints use `Depends(require_password_changed)`, admin-only endpoints use `Depends(require_roles("admin"))`, and `Soldier.role` is the actual singular field name used for the `"admin"` check throughout the codebase, not `.roles`.)
 
 - [ ] **Step 6: Add attachment upload/download endpoints, reusing the exemption-file pattern**
 

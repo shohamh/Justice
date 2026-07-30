@@ -4,7 +4,7 @@
 
 **Goal:** Replace the marketplace page's unit ("יחידה") filter — currently a flat `<select multiple>` that silently drops sub-units — with a hierarchical tree-combobox, and replace the duty-type filter with a dropdown-with-checkboxes, matching patterns that already exist elsewhere in the codebase.
 
-**Architecture:** Two new small reusable components extracted/generalized from existing code: `HierarchyTreeDropdown` (built from the existing `HierarchyNodeFilter.tsx` recursive tree body + `CustomColumnFilterDropdown`'s popover chrome from `DataTable.tsx`), and `CheckboxListDropdown` (the checkbox-list body already inside `DataTable.tsx`'s private `ColumnFilterDropdown`, extracted into a standalone generically-propped component). Both get wired into `SwapsPage.tsx`'s marketplace/board filter row, replacing the two `<select multiple>` elements. No backend changes are needed — `GET /swaps/board` already expands a selected node to its full subtree server-side, and already accepts a flat list of `duty_type_id`s.
+**Architecture:** A shared `PopoverDropdown` shell (trigger button + outside-click-to-close popover chrome) is extracted first, since both new filter components need identical popover behavior — building them independently would duplicate that logic twice. `CheckboxListDropdown` and `HierarchyTreeDropdown` are then built on top of it: the former wraps a flat checkbox list (replacing the checkbox-list body currently duplicated inside `DataTable.tsx`'s private `ColumnFilterDropdown`), the latter wraps the existing `HierarchyNodeFilter.tsx` recursive tree component (which already accepts `{nodes, selected, onChange}` as props — it does not self-fetch). Both get wired into `SwapsPage.tsx`'s marketplace/board filter row, replacing the two `<select multiple>` elements. No backend changes are needed — `GET /swaps/board` already expands a selected node to its full subtree server-side, and already accepts a flat list of `duty_type_id`s.
 
 **Tech Stack:** React/TypeScript, Tailwind CSS, vitest, `@testing-library/react`.
 
@@ -13,20 +13,147 @@
 - Hebrew UI strings only — reuse existing i18n keys (`swaps.filter_node`, `swaps.filter_duty_type`) where already present; add new ones to `frontend/src/i18n/he.json` only if needed for new UI chrome (e.g. "בחר הכל"/"נקה").
 - Do not change `backend/app/routes/swaps.py`'s `GET /swaps/board` — it already handles subtree expansion and duty-type filtering correctly server-side.
 - New components must be dark-mode aware (match existing `dark:` class usage throughout the codebase).
+- `frontend/src/components/HierarchyNodeFilter.tsx`'s real props are `{ nodes: NodeDTO[]; selected: string[]; onChange: (ids: string[]) => void }` (confirmed by reading the file in full) — it does not self-fetch and has no `tree` prop; use `nodes`, not `tree`.
 
 ---
 
 ## File Structure
 
-- **Create:** `frontend/src/components/HierarchyTreeDropdown.tsx` — collapsed-by-default popover button containing a recursive expand/collapse checkbox tree.
-- **Create:** `frontend/src/components/CheckboxListDropdown.tsx` — collapsed-by-default popover button containing a flat checkbox list with a "select all" row.
-- **Modify:** `frontend/src/components/DataTable.tsx` — extract the checkbox-list body into `CheckboxListDropdown` and have `ColumnFilterDropdown` use it internally (keeps existing table-column filter behavior identical, removes duplication).
+- **Create:** `frontend/src/components/PopoverDropdown.tsx` — shared trigger-button + outside-click-to-close popover shell, used by both dropdowns below.
+- **Create:** `frontend/src/components/CheckboxListDropdown.tsx` — flat checkbox list with a "select all" row, built on `PopoverDropdown`.
+- **Create:** `frontend/src/components/HierarchyTreeDropdown.tsx` — wraps `HierarchyNodeFilter` in a `PopoverDropdown`.
+- **Modify:** `frontend/src/components/DataTable.tsx` — have `ColumnFilterDropdown` use `CheckboxListDropdown` internally (keeps existing table-column filter behavior identical, removes duplication).
 - **Modify:** `frontend/src/pages/SwapsPage.tsx` — replace both `<select multiple>` filters (unit at lines 554-572, duty type at lines 537-553) with the two new components; fix the unit filter's tree-flattening bug as part of the swap.
-- **Test:** `frontend/src/components/HierarchyTreeDropdown.test.tsx`, `frontend/src/components/CheckboxListDropdown.test.tsx` (new).
+- **Test:** `frontend/src/components/PopoverDropdown.test.tsx`, `frontend/src/components/HierarchyTreeDropdown.test.tsx`, `frontend/src/components/CheckboxListDropdown.test.tsx` (new).
 
 ---
 
-### Task 1: Extract `CheckboxListDropdown` from `DataTable.tsx`
+### Task 1: Extract the shared `PopoverDropdown` shell
+
+**Files:**
+- Create: `frontend/src/components/PopoverDropdown.tsx`
+- Test: `frontend/src/components/PopoverDropdown.test.tsx`
+
+**Interfaces:**
+- Produces: `<PopoverDropdown triggerLabel={string} badgeCount={number} panelClassName={string}>{(close: () => void) => ReactNode}</PopoverDropdown>` — renders a trigger button (with an optional count badge) and, when open, an absolutely-positioned panel below it that closes on outside click. The panel content is a render-prop so callers can close the popover themselves (e.g. after a selection, if desired) without lifting `open` state out.
+
+- [ ] **Step 1: Write the failing test**
+
+```tsx
+// frontend/src/components/PopoverDropdown.test.tsx
+import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import PopoverDropdown from "./PopoverDropdown";
+
+describe("PopoverDropdown", () => {
+  it("is closed by default and opens the panel on trigger click", () => {
+    render(
+      <PopoverDropdown triggerLabel="סנן" badgeCount={0}>
+        {() => <div>תוכן הפאנל</div>}
+      </PopoverDropdown>
+    );
+    expect(screen.queryByText("תוכן הפאנל")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("סנן"));
+    expect(screen.getByText("תוכן הפאנל")).toBeInTheDocument();
+  });
+
+  it("shows a count badge when badgeCount > 0, and hides it at 0", () => {
+    const { rerender } = render(
+      <PopoverDropdown triggerLabel="סנן" badgeCount={2}>{() => <div />}</PopoverDropdown>
+    );
+    expect(screen.getByText("2")).toBeInTheDocument();
+    rerender(<PopoverDropdown triggerLabel="סנן" badgeCount={0}>{() => <div />}</PopoverDropdown>);
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("closes when clicking outside the popover", () => {
+    render(
+      <div>
+        <PopoverDropdown triggerLabel="סנן" badgeCount={0}>{() => <div>תוכן הפאנל</div>}</PopoverDropdown>
+        <div data-testid="outside">מחוץ</div>
+      </div>
+    );
+    fireEvent.click(screen.getByText("סנן"));
+    expect(screen.getByText("תוכן הפאנל")).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    expect(screen.queryByText("תוכן הפאנל")).not.toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/PopoverDropdown.test.tsx`
+Expected: FAIL — module doesn't exist
+
+- [ ] **Step 3: Implement the component**
+
+```tsx
+// frontend/src/components/PopoverDropdown.tsx
+import { useState, useRef, useEffect, type ReactNode } from "react";
+
+interface Props {
+  triggerLabel: string;
+  badgeCount: number;
+  panelClassName?: string;
+  children: (close: () => void) => ReactNode;
+}
+
+export default function PopoverDropdown({ triggerLabel, badgeCount, panelClassName, children }: Props) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 flex items-center gap-1"
+      >
+        {triggerLabel}
+        {badgeCount > 0 && (
+          <span className="bg-blue-600 text-white rounded-full text-[10px] px-1.5">{badgeCount}</span>
+        )}
+        <span>▾</span>
+      </button>
+      {open && (
+        <div
+          className={
+            panelClassName ??
+            "absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-40 max-h-56 flex flex-col"
+          }
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd frontend && npx vitest run src/components/PopoverDropdown.test.tsx`
+Expected: PASS (3 tests)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/components/PopoverDropdown.tsx frontend/src/components/PopoverDropdown.test.tsx
+git commit -m "feat: add shared PopoverDropdown shell for filter dropdowns"
+```
+
+---
+
+### Task 2: Build `CheckboxListDropdown` on `PopoverDropdown`, refactor `DataTable`'s column filter to use it
 
 **Files:**
 - Create: `frontend/src/components/CheckboxListDropdown.tsx`
@@ -34,6 +161,7 @@
 - Test: `frontend/src/components/CheckboxListDropdown.test.tsx`
 
 **Interfaces:**
+- Consumes: `PopoverDropdown` from Task 1.
 - Produces: `<CheckboxListDropdown items={{id: string; label: string}[]} selected={string[]} onChange={(ids: string[]) => void} triggerLabel={string} />`
 
 - [ ] **Step 1: Write the failing test**
@@ -85,13 +213,11 @@ describe("CheckboxListDropdown", () => {
 Run: `cd frontend && npx vitest run src/components/CheckboxListDropdown.test.tsx`
 Expected: FAIL — module doesn't exist
 
-- [ ] **Step 3: Implement the component**
-
-Read `frontend/src/components/DataTable.tsx` lines 60-168 (`ColumnFilterDropdown`) and 172-210 (`CustomColumnFilterDropdown`) in full first, to copy the exact outside-click-to-close logic (`open`/`ref` state pattern) rather than reinventing it.
+- [ ] **Step 3: Implement the component on top of `PopoverDropdown`**
 
 ```tsx
 // frontend/src/components/CheckboxListDropdown.tsx
-import { useState, useRef, useEffect } from "react";
+import PopoverDropdown from "./PopoverDropdown";
 
 export interface CheckboxListItem {
   id: string;
@@ -106,17 +232,6 @@ interface Props {
 }
 
 export default function CheckboxListDropdown({ items, selected, onChange, triggerLabel }: Props) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
   const allSelected = items.length > 0 && items.every((i) => selected.includes(i.id));
 
   function toggle(id: string) {
@@ -128,18 +243,9 @@ export default function CheckboxListDropdown({ items, selected, onChange, trigge
   }
 
   return (
-    <div className="relative inline-block" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 flex items-center gap-1"
-      >
-        {triggerLabel}
-        {selected.length > 0 && <span className="bg-blue-600 text-white rounded-full text-[10px] px-1.5">{selected.length}</span>}
-        <span>▾</span>
-      </button>
-      {open && (
-        <div className="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-40 max-h-56 flex flex-col">
+    <PopoverDropdown triggerLabel={triggerLabel} badgeCount={selected.length}>
+      {() => (
+        <>
           <label className="flex items-center gap-2 px-3 py-1.5 border-b dark:border-gray-600 cursor-pointer text-sm">
             <input type="checkbox" checked={allSelected} onChange={toggleAll} />
             הכל
@@ -152,9 +258,9 @@ export default function CheckboxListDropdown({ items, selected, onChange, trigge
               </label>
             ))}
           </div>
-        </div>
+        </>
       )}
-    </div>
+    </PopoverDropdown>
   );
 }
 ```
@@ -172,7 +278,7 @@ Read the full body of `ColumnFilterDropdown` (`DataTable.tsx:60-168`) to see exa
 
 Start `.\dev.ps1`, go to any page using `DataTable` with a column filter dropdown (e.g. `/transparency` or `ShiftsPage.tsx`'s eligible-units column filter), confirm the dropdown still opens, selects, and filters exactly as before the refactor.
 
-- [ ] **Step 7: Run frontend typecheck and existing DataTable tests if any**
+- [ ] **Step 7: Run frontend typecheck**
 
 Run: `cd frontend && npm run typecheck`
 Expected: no new errors
@@ -181,26 +287,22 @@ Expected: no new errors
 
 ```bash
 git add frontend/src/components/CheckboxListDropdown.tsx frontend/src/components/CheckboxListDropdown.test.tsx frontend/src/components/DataTable.tsx
-git commit -m "refactor: extract CheckboxListDropdown as a standalone reusable component"
+git commit -m "refactor: extract CheckboxListDropdown on the shared PopoverDropdown shell"
 ```
 
 ---
 
-### Task 2: Build `HierarchyTreeDropdown`
+### Task 3: Build `HierarchyTreeDropdown` on `PopoverDropdown` + the real `HierarchyNodeFilter`
 
 **Files:**
 - Create: `frontend/src/components/HierarchyTreeDropdown.tsx`
 - Test: `frontend/src/components/HierarchyTreeDropdown.test.tsx`
 
 **Interfaces:**
-- Consumes: `NodeDTO` shape from `frontend/src/api/hierarchy.ts` (`{id, name, children, parent_id, path_ids}` — read the exact type definition before writing this component, since the investigation only summarized it).
-- Produces: `<HierarchyTreeDropdown tree={NodeDTO[]} selected={string[]} onChange={(ids: string[]) => void} triggerLabel={string} />`
+- Consumes: `PopoverDropdown` from Task 1; `HierarchyNodeFilter` from `frontend/src/components/HierarchyNodeFilter.tsx`, whose real props are `{ nodes: NodeDTO[]; selected: string[]; onChange: (ids: string[]) => void }` — it does not self-fetch. Its per-node expand/collapse toggle button has `aria-label="הרחב"` when collapsed and `aria-label="כווץ"` when expanded (rendered for every node, though the glyph is blank for leaf nodes); its checkbox has no explicit `aria-label` — its accessible name comes from the wrapping `<label>`'s text content, which is the node's name.
+- Produces: `<HierarchyTreeDropdown nodes={NodeDTO[]} selected={string[]} onChange={(ids: string[]) => void} triggerLabel={string} />`
 
-- [ ] **Step 1: Read `HierarchyNodeFilter.tsx` in full**
-
-Read `frontend/src/components/HierarchyNodeFilter.tsx` completely — this is the recursive expand/collapse checkbox-tree body to reuse/adapt. Note its exact recursion pattern (how it renders `node.children`), its expand/collapse state shape, and its props, since `HierarchyTreeDropdown` should wrap this same recursive body inside a popover trigger rather than reimplementing tree recursion from scratch.
-
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 ```tsx
 // frontend/src/components/HierarchyTreeDropdown.test.tsx
@@ -208,25 +310,28 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import HierarchyTreeDropdown from "./HierarchyTreeDropdown";
 
-const tree = [
+const nodes = [
   { id: "a", name: "פיקוד צפון", parent_id: null, path_ids: ["a"], children: [
     { id: "a1", name: "גדוד 1", parent_id: "a", path_ids: ["a", "a1"], children: [] },
   ] },
 ];
 
 describe("HierarchyTreeDropdown", () => {
-  it("shows top-level nodes collapsed by default, expands to reveal children on click", () => {
-    render(<HierarchyTreeDropdown tree={tree} selected={[]} onChange={() => {}} triggerLabel="יחידה" />);
+  it("shows top-level nodes expanded by default (matching HierarchyNodeFilter's own default), toggling collapse hides children", () => {
+    render(<HierarchyTreeDropdown nodes={nodes} selected={[]} onChange={() => {}} triggerLabel="יחידה" />);
     fireEvent.click(screen.getByText("יחידה"));
     expect(screen.getByText("פיקוד צפון")).toBeInTheDocument();
-    expect(screen.queryByText("גדוד 1")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/הרחב|expand/i)); // adjust to match HierarchyNodeFilter's real expand-toggle affordance
+    // HierarchyNodeFilter's per-node expand state defaults to expanded=true, so the
+    // child is visible immediately — this differs from a naive "collapsed by default"
+    // tree, but matches the real component's actual behavior.
     expect(screen.getByText("גדוד 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("כווץ"));
+    expect(screen.queryByText("גדוד 1")).not.toBeInTheDocument();
   });
 
   it("checking a node calls onChange with that node's id", () => {
     let selected: string[] = [];
-    render(<HierarchyTreeDropdown tree={tree} selected={[]} onChange={(ids) => { selected = ids; }} triggerLabel="יחידה" />);
+    render(<HierarchyTreeDropdown nodes={nodes} selected={[]} onChange={(ids) => { selected = ids; }} triggerLabel="יחידה" />);
     fireEvent.click(screen.getByText("יחידה"));
     fireEvent.click(screen.getByLabelText("פיקוד צפון"));
     expect(selected).toEqual(["a"]);
@@ -234,82 +339,58 @@ describe("HierarchyTreeDropdown", () => {
 });
 ```
 
-(Adjust the "expand" interaction selector to match `HierarchyNodeFilter.tsx`'s actual expand/collapse control, read in Step 1 — do not guess a label that doesn't exist in that component.)
-
-- [ ] **Step 3: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd frontend && npx vitest run src/components/HierarchyTreeDropdown.test.tsx`
 Expected: FAIL — module doesn't exist
 
-- [ ] **Step 4: Implement the component**
+- [ ] **Step 3: Implement the component**
 
 ```tsx
 // frontend/src/components/HierarchyTreeDropdown.tsx
-import { useState, useRef, useEffect } from "react";
-import HierarchyNodeFilter from "./HierarchyNodeFilter"; // reuse the existing recursive tree body — adjust import/props to its real exported shape from Step 1's reading
+import PopoverDropdown from "./PopoverDropdown";
+import HierarchyNodeFilter from "./HierarchyNodeFilter";
 import type { NodeDTO } from "../api/hierarchy";
 
 interface Props {
-  tree: NodeDTO[];
+  nodes: NodeDTO[];
   selected: string[];
   onChange: (ids: string[]) => void;
   triggerLabel: string;
 }
 
-export default function HierarchyTreeDropdown({ tree, selected, onChange, triggerLabel }: Props) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
+export default function HierarchyTreeDropdown({ nodes, selected, onChange, triggerLabel }: Props) {
   return (
-    <div className="relative inline-block" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 flex items-center gap-1"
-      >
-        {triggerLabel}
-        {selected.length > 0 && <span className="bg-blue-600 text-white rounded-full text-[10px] px-1.5">{selected.length}</span>}
-        <span>▾</span>
-      </button>
-      {open && (
-        <div className="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-56 max-h-72 overflow-y-auto p-2">
-          <HierarchyNodeFilter tree={tree} selected={selected} onChange={onChange} />
-        </div>
-      )}
-    </div>
+    <PopoverDropdown
+      triggerLabel={triggerLabel}
+      badgeCount={selected.length}
+      panelClassName="absolute top-full mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-56 max-h-72 overflow-y-auto p-2"
+    >
+      {() => <HierarchyNodeFilter nodes={nodes} selected={selected} onChange={onChange} />}
+    </PopoverDropdown>
   );
 }
 ```
 
-(This assumes `HierarchyNodeFilter` accepts `tree`/`selected`/`onChange` props directly — confirm its real prop names from Step 1's reading and adjust; if `HierarchyNodeFilter` currently self-fetches the tree rather than accepting it as a prop, either add a `tree` prop override to it or fetch once in `SwapsPage.tsx` and pass down — prefer accepting an explicit `tree` prop since `SwapsPage.tsx` already fetches it via `fetchTree()`, to avoid a duplicate fetch.)
-
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd frontend && npx vitest run src/components/HierarchyTreeDropdown.test.tsx`
-Expected: PASS
+Expected: PASS (2 tests)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/HierarchyTreeDropdown.tsx frontend/src/components/HierarchyTreeDropdown.test.tsx
-git commit -m "feat: add HierarchyTreeDropdown, a collapsed-by-default hierarchical tree filter"
+git commit -m "feat: add HierarchyTreeDropdown wrapping HierarchyNodeFilter in a popover"
 ```
 
 ---
 
-### Task 3: Wire both new dropdowns into the marketplace filter bar
+### Task 4: Wire both new dropdowns into the marketplace filter bar
 
 **Files:**
 - Modify: `frontend/src/pages/SwapsPage.tsx:28-31, 178-182, 537-572`
-- Test: manual (page-level integration; component-level behavior already covered by Tasks 1-2's unit tests)
+- Test: manual (page-level integration; component-level behavior already covered by Tasks 1-3's unit tests)
 
 - [ ] **Step 1: Fix the unit-filter data shape and flattening bug**
 
@@ -350,7 +431,7 @@ The existing fetch at lines 178-182 already calls `fetchTree()` and stores the n
   <div className="flex flex-col gap-1">
     <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
     <HierarchyTreeDropdown
-      tree={hierarchyNodes}
+      nodes={hierarchyNodes}
       selected={boardFilters.nodeIds ?? []}
       onChange={(ids) => applyFilters({ nodeIds: ids.length > 0 ? ids : undefined })}
       triggerLabel={t("swaps.filter_node")}
@@ -399,7 +480,7 @@ Expected: no errors
 - [ ] **Step 6: Manually verify in the running app**
 
 Start `.\dev.ps1`, go to the marketplace/board tab of the swaps page. Confirm:
-- The unit filter now opens a tree popover, expandable to sub-units, and selecting a top-level command still correctly filters the board to include all its sub-units (server-side subtree expansion already works — confirm end-to-end).
+- The unit filter now opens a tree popover, expandable/collapsible per node, and selecting a top-level command still correctly filters the board to include all its sub-units (server-side subtree expansion already works — confirm end-to-end).
 - The duty-type filter now opens a checkbox-list popover with a working "select all."
 - Both show a badge count when filters are active, and clearing them restores the full board.
 
@@ -414,7 +495,9 @@ git commit -m "feat: replace flat marketplace filters with hierarchical tree and
 
 ## Self-Review Notes
 
-- Both spec items (unit hierarchy filter, duty-type checkbox filter) are covered by Tasks 1-3.
+- Both spec items (unit hierarchy filter, duty-type checkbox filter) are covered by Tasks 1-4.
 - No backend changes needed, confirmed by investigation — `GET /swaps/board`'s subtree expansion already handles the corrected unit-filter selection semantics correctly.
-- Task 3 also fixes the pre-existing "only top-level nodes shown, children silently dropped" bug as a side effect of properly consuming the nested tree, called out explicitly rather than left implicit.
-- No placeholders; a few exact prop names for `HierarchyNodeFilter` are marked "confirm by reading the file first" since the investigation summarized but didn't quote its full prop signature.
+- Task 4 also fixes the pre-existing "only top-level nodes shown, children silently dropped" bug as a side effect of properly consuming the nested tree, called out explicitly rather than left implicit.
+- A pre-flight review of this plan alongside the others in this batch flagged that `CheckboxListDropdown` and `HierarchyTreeDropdown` would otherwise duplicate identical popover/outside-click boilerplate — Task 1 extracts that shell first specifically to avoid shipping the duplication this plan's own stated goal is to reduce.
+- `HierarchyNodeFilter`'s real prop names (`nodes`, not `tree`) and its actual expand/collapse `aria-label`s (`"הרחב"`/`"כווץ"`) and checkbox accessible-name behavior (via wrapping `<label>` text, not a dedicated `aria-label`) were confirmed by reading the file in full — Task 3's test uses these real values instead of a guessed selector.
+- No placeholders remain.

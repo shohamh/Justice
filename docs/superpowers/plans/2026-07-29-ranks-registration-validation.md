@@ -205,43 +205,88 @@ git commit -m "fix: stop auto-marking every officer rank as a בה\"ד 1 graduat
 
 ### Task 3: Fix transparency page rank sort direction
 
+**Correction:** an earlier pass at this plan assumed `sortDescFirst` was already a per-column option on `DataTable`'s column config (`ColDef<T>`). It is not — it is currently only a table-wide `useReactTable` option hardcoded to `false` at `DataTable.tsx:297`, and `ColDef<T>` (lines 12-36) has no such field, so `tanCols` (lines 258-286) forwards nothing per-column. TanStack Table v8.21.3 (the version installed) DOES support a per-column `sortDescFirst` natively — it just isn't wired through this app's wrapper yet. This task adds that missing plumbing, then uses it. It also corrects the rank column's real key shape: `TransparencyPage.tsx:570-576` uses `{id, header, cell, sortValue, filterValue, columnFilter}` — there is no `key`/`label` field.
+
 **Files:**
-- Modify: `frontend/src/components/DataTable.tsx` (around line 297, `sortDescFirst` column option)
-- Modify: `frontend/src/pages/TransparencyPage.tsx:50-73, 573` (rank column definition)
-- Test: `frontend/src/components/DataTable.test.tsx` if it exists (check first); otherwise manual verification only (DataTable is a generic, already-tested-elsewhere component — do not add a new full test harness for one column config change).
+- Modify: `frontend/src/components/DataTable.tsx` (`ColDef<T>` interface, lines 12-36; `tanCols` mapping, lines 258-286)
+- Modify: `frontend/src/pages/TransparencyPage.tsx:570-576` (rank column definition)
+- Test: manual (DataTable is a generic, already-tested-elsewhere component; this is a narrow, additive prop-forwarding change — do not add a new full test harness for it).
 
 **Interfaces:**
-- Consumes: existing `DataTable` column config shape (has a `sortDescFirst?: boolean` field per column, confirmed at `DataTable.tsx:297`)
+- Produces: `ColDef<T>` gains an optional `sortDescFirst?: boolean` field; when set, the column sorts descending (by whatever `sortValue` returns) on its first header click instead of ascending.
 
-- [ ] **Step 1: Confirm current default**
+- [ ] **Step 1: Add the field to `ColDef<T>`**
 
-Read `frontend/src/components/DataTable.tsx` lines 270-300 to confirm the column-level `sortDescFirst` option exists and how it's consumed by the sort comparator (already confirmed in investigation: `sortDescFirst: false` currently on the rank column means first click sorts ascending by `_rank_order`, i.e. junior rank first).
+In `frontend/src/components/DataTable.tsx`, in the `ColDef<T>` interface (lines 12-36), add:
 
-- [ ] **Step 2: Set the rank column to sort senior-first by default**
-
-In `frontend/src/pages/TransparencyPage.tsx` at line 573 (the rank column definition passed to `DataTable`), add/set `sortDescFirst: true`:
-
-```tsx
-// around TransparencyPage.tsx:573
-{
-  key: "rank",
-  label: "דרגה",
-  sortValue: (r) => r._rank_order,
-  sortDescFirst: true, // senior ranks (higher _rank_order) should sort first
-  ...
+```ts
+interface ColDef<T> {
+  // ...existing fields (id, header, cell, sortValue, filterValue, columnFilter, headerTooltip, etc.)...
+  sortDescFirst?: boolean;
 }
 ```
 
-Adjust to match the exact existing object shape at that line (read the file first to get exact key names — the investigation confirmed `_rank_order` is used as `sortValue` here).
+(Read the full existing interface first and add this as one more optional field — do not reorder or remove existing fields.)
 
-- [ ] **Step 3: Manually verify in the running app**
+- [ ] **Step 2: Forward it in `tanCols`**
 
-Start `.\dev.ps1`, go to `/transparency`, click the "דרגה" (rank) column header once, confirm אל"ם now appears above סג"ם (senior first). Click again to confirm it toggles to ascending correctly.
+In the `tanCols` mapping (lines 258-286), add `sortDescFirst: col.sortDescFirst,` to the per-column object literal:
 
-- [ ] **Step 4: Commit**
+```ts
+const tanCols: TanColumnDef<T>[] = useMemo(
+  () =>
+    columns.map((col) => ({
+      id: col.id,
+      header: col.header,
+      meta: { tooltip: col.headerTooltip } as { tooltip?: React.ReactNode },
+      cell: ({ row }) => col.cell(row.original),
+      enableSorting: !!col.sortValue,
+      enableGlobalFilter: !!col.filterValue,
+      sortDescFirst: col.sortDescFirst,
+      accessorFn: ...,   // unchanged — keep whatever is already here
+      sortingFn: ...,    // unchanged — keep whatever is already here
+    })),
+  [columns]
+);
+```
+
+(Keep every existing field in this object literal exactly as it is — this step only adds the one new line.)
+
+- [ ] **Step 3: Set the rank column to sort senior-first by default**
+
+In `frontend/src/pages/TransparencyPage.tsx` lines 570-576, using the REAL field names (`id`/`header`/`cell`, not `key`/`label`):
+
+```tsx
+// BEFORE (TransparencyPage.tsx:570-576)
+{
+  id: "rank", header: t("transparency.rank"),
+  cell: (r) => r.rank ?? "—",
+  sortValue: (r) => r._rank_order,
+  filterValue: (r) => r.rank ?? "",
+  columnFilter: true,
+},
+```
+
+```tsx
+// AFTER
+{
+  id: "rank", header: t("transparency.rank"),
+  cell: (r) => r.rank ?? "—",
+  sortValue: (r) => r._rank_order,
+  filterValue: (r) => r.rank ?? "",
+  columnFilter: true,
+  sortDescFirst: true, // senior ranks (higher _rank_order) should sort first on first click
+},
+```
+
+- [ ] **Step 4: Manually verify in the running app**
+
+Start `.\dev.ps1`, go to `/transparency`, click the "דרגה" (rank) column header once, confirm אל"ם now appears above סג"ם (senior first). Click again to confirm it toggles to ascending correctly. Also spot-check one other sortable column (e.g. name) still defaults to ascending-first as before, confirming the table-wide `sortDescFirst: false` at line 297 still governs columns that don't set their own.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/pages/TransparencyPage.tsx
+git add frontend/src/components/DataTable.tsx frontend/src/pages/TransparencyPage.tsx
 git commit -m "fix: sort transparency page rank column senior-first by default"
 ```
 
@@ -669,44 +714,63 @@ Leave `הגנ"ש` (lines 546-559, `enlisted_allowed: False`) unchanged — it's 
 
 - [ ] **Step 4: Write the data migration for existing/already-deployed databases**
 
+Before generating the revision, confirm there is exactly one migration head (this repo's history already has several branch-merge migrations from past collisions — don't add another):
+
+Run: `cd backend && alembic heads`
+Expected: exactly one line printed. If more than one, stop and resolve before proceeding (do not generate a new revision against a branched history).
+
 Run: `cd backend && alembic revision -m "add keva to enlisted duty type allowed_service_types"`
+
+This repo's established convention for reading-and-rewriting a JSONB column in a migration (confirmed from `backend/alembic/versions/4a4997526f58_unify_swap_requests_with_candidates.py`) is to declare a lightweight `sa.table()` reflection with the column typed as `postgresql.JSONB()`, then read via `select()`/`.mappings().all()` and write via `.update().values(...)` with a plain Python dict/list — SQLAlchemy/psycopg adapts it automatically, no manual `json.dumps` needed:
 
 ```python
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from alembic import op
+
+duty_types_t = sa.table(
+    "duty_types",
+    sa.column("id", postgresql.UUID(as_uuid=True)),
+    sa.column("requirements", postgresql.JSONB()),
+)
+
 
 def upgrade() -> None:
     conn = op.get_bind()
-    rows = conn.execute(sa.text(
-        "SELECT id, requirements FROM duty_types WHERE requirements IS NOT NULL"
-    )).fetchall()
+    rows = conn.execute(
+        sa.select(duty_types_t.c.id, duty_types_t.c.requirements).where(
+            duty_types_t.c.requirements.isnot(None)
+        )
+    ).mappings().all()
     for row in rows:
-        requirements = row.requirements
+        requirements = dict(row["requirements"])
         allowed = requirements.get("allowed_service_types")
         if allowed == ["חובה"] and requirements.get("enlisted_allowed", True) is not False:
             requirements["allowed_service_types"] = ["חובה", "קבע"]
             conn.execute(
-                sa.text("UPDATE duty_types SET requirements = :req WHERE id = :id"),
-                {"req": sa.func.cast(requirements, sa.JSON) if False else __import__("json").dumps(requirements), "id": row.id},
+                sa.update(duty_types_t)
+                .where(duty_types_t.c.id == row["id"])
+                .values(requirements=requirements)
             )
 
 
 def downgrade() -> None:
     conn = op.get_bind()
-    rows = conn.execute(sa.text(
-        "SELECT id, requirements FROM duty_types WHERE requirements IS NOT NULL"
-    )).fetchall()
+    rows = conn.execute(
+        sa.select(duty_types_t.c.id, duty_types_t.c.requirements).where(
+            duty_types_t.c.requirements.isnot(None)
+        )
+    ).mappings().all()
     for row in rows:
-        requirements = row.requirements
+        requirements = dict(row["requirements"])
         if requirements.get("allowed_service_types") == ["חובה", "קבע"]:
             requirements["allowed_service_types"] = ["חובה"]
             conn.execute(
-                sa.text("UPDATE duty_types SET requirements = :req WHERE id = :id"),
-                {"req": __import__("json").dumps(requirements), "id": row.id},
+                sa.update(duty_types_t)
+                .where(duty_types_t.c.id == row["id"])
+                .values(requirements=requirements)
             )
 ```
-
-(This is illustrative — read how other existing migrations in `backend/alembic/versions/` that update JSONB columns actually serialize the update, e.g. via SQLAlchemy's `JSONB` type binding vs raw `json.dumps`, and match that established convention exactly rather than the inline `__import__("json")` placeholder above, which is deliberately ugly specifically to flag "replace this with the real convention" rather than ship as-is.)
 
 Run: `cd backend && alembic upgrade head`
 

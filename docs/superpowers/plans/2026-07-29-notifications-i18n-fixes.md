@@ -13,6 +13,7 @@
 - Hebrew UI strings only for new text — add to `frontend/src/i18n/he.json`.
 - Do not remove the existing `telegram.enabled` global setting or `registration.telegram_required` per-soldier flag — both stay; this plan only fixes how the frontend reacts to their combination.
 - Run `npm run typecheck` after each frontend change in this plan.
+- **Execution order dependency: this plan's Task 2 must run AFTER the swap-requests-fixes plan's Task 3** (which adds the `swap_pending_approval` `NotificationType` enum value) — Task 2's completeness test enumerates the full backend enum including that value.
 
 ---
 
@@ -81,18 +82,27 @@ git commit -m "fix: clarify that the Telegram global setting controls the notifi
 import { describe, it, expect } from "vitest";
 import he from "./he.json";
 
-// Mirrors backend/app/db/models.py NotificationType enum values.
-// If a new notification type is added to the backend enum, add it here too —
-// this test exists specifically to catch the class of bug where a new enum
-// value ships with no matching translation key.
+// Mirrors backend/app/db/models.py NotificationType enum values verbatim —
+// the 27 members confirmed by reading the full enum body, PLUS
+// "swap_pending_approval", added by the swap-requests-fixes plan's Task 3,
+// which this plan's Global Constraints require to run BEFORE this task.
+// If a new notification type is added to the backend enum in the future,
+// add it here too — this test exists specifically to catch the class of bug
+// where a new enum value ships with no matching translation key.
 const NOTIFICATION_TYPES = [
-  "swap_offer", "swap_accepted", "swap_rejected", "swap_offer_incoming",
-  "swap_pending_approval",
-  "constraint_pending", "exemption_request_pending", "enrollment_request_received",
+  "swap_offer", "swap_accepted", "swap_rejected",
+  "exemption_approved", "exemption_rejected",
+  "constraint_approved", "constraint_rejected",
+  "assignment_created", "assignment_removed",
+  "score_adjusted", "announcement",
+  "algorithm_job_done", "algorithm_job_failed",
+  "enrollment_request_received", "enrollment_approved", "enrollment_rejected",
+  "constraint_pending", "exemption_request_pending", "swap_offer_incoming",
+  "gimelim_dismissed", "gimelim_reserve_called_up", "gimelim_demoted_to_reserve", "gimelim_reassigned",
+  "exemption_revoked",
   "transfer_request_pending", "transfer_request_rejected",
   "system_announcement", "enrollment_fields_edited",
-  // ... remaining enum values — read backend/app/db/models.py:955-983 in full
-  // and list every member here exactly, not just the ones known to be missing.
+  "swap_pending_approval",
 ];
 
 describe("he.json notification type coverage", () => {
@@ -103,7 +113,7 @@ describe("he.json notification type coverage", () => {
 });
 ```
 
-(This step requires reading the FULL `NotificationType` enum body at `backend/app/db/models.py:955-983` — the investigation named 28 members but only enumerated a subset; the implementer must transcribe every single value exactly before this test is meaningful, otherwise it will pass vacuously.)
+If `swap_pending_approval` doesn't yet exist in the backend enum when this task runs, stop — this plan's Global Constraints require swap-requests-fixes Task 3 to have already landed first (it's the task that adds that enum value); do not proceed with a stale/incomplete list.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -209,10 +219,17 @@ vi.mock("./hooks/usePublicSettings", () => ({
 import App from "./App";
 
 describe("TelegramGate routing", () => {
-  it("does not render a blank page when settings are still loading and telegramRequired is true", () => {
+  it("renders the actual TelegramSetupPage content when settings are still loading and telegramRequired is true", async () => {
     render(<MemoryRouter initialEntries={["/setup/telegram"]}><App /></MemoryRouter>);
-    // Should render either the TelegramSetupPage content or a loading state — never an empty <Outlet/>.
-    expect(document.body.textContent).not.toBe("");
+    // Assert on real, specific content from TelegramSetupPage — read
+    // frontend/src/pages/TelegramSetupPage.tsx first for its actual heading
+    // or a unique visible string (e.g. its page title or instructions text)
+    // and assert on THAT via screen.findByText(...). A generic
+    // "body is not empty" check would pass even if the wrong route/page
+    // rendered, so it must not be used here — the whole point of this test
+    // is to distinguish "the right page rendered" from "some fallback text
+    // happened to render."
+    expect(await screen.findByText(/* exact text from TelegramSetupPage, read from source */)).toBeInTheDocument();
   });
 });
 ```
