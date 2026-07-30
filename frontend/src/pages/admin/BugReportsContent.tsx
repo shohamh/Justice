@@ -228,10 +228,11 @@ export function BugReportsContent() {
                     {SEVERITY_LABELS[report.severity]}
                   </span>
                 </td>
-                <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2">
                   <select
                     value={report.status}
                     onChange={(e) => handleStatusChange(report.id, e.target.value as BugReportStatus)}
+                    onClick={(e) => e.stopPropagation()}
                     className="border rounded px-1 py-0.5 text-xs dark:bg-gray-700 dark:border-gray-600"
                     data-testid={`bug-report-status-${report.id}`}
                   >
