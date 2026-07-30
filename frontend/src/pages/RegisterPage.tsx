@@ -13,9 +13,7 @@ import PasswordStrengthHint, { passwordValid } from "../components/PasswordStren
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
-import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST } from "../constants/ranks";
-
-const OFFICER_RANKS = new Set(OFFICER_RANKS_LIST);
+import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -216,8 +214,18 @@ export default function RegisterPage() {
                 ]}
                 value={form.rank}
                 onChange={v => {
-                  const isOfficer = OFFICER_RANKS.has(v);
-                  setForm(prev => ({ ...prev, rank: v, is_officer: isOfficer, bahad1_graduate: isOfficer, last_alal_date: isOfficer ? prev.last_alal_date : "" }));
+                  const isOfficer = isOfficerRank(v);
+                  setForm(prev => ({
+                    ...prev,
+                    rank: v,
+                    is_officer: isOfficer,
+                    // bahad1_graduate is a separate fact from is_officer — e.g. קא"ב
+                    // (academic officer) is an officer who did NOT graduate בה"ד 1.
+                    // Reset to false on rank change instead of mirroring is_officer, and let
+                    // the user check the "בה"ד 1 graduate" checkbox explicitly when relevant.
+                    bahad1_graduate: false,
+                    last_alal_date: isOfficer ? prev.last_alal_date : "",
+                  }));
                 }}
                 placeholder="בחר"
               />
@@ -225,8 +233,14 @@ export default function RegisterPage() {
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
                 {form.is_officer && <span className="text-indigo-600 dark:text-indigo-300">✓ קצין</span>}
-                {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
+            )}
+            {form.is_officer && (
+              <label className="flex items-center gap-1 text-sm">
+                <input type="checkbox" checked={form.bahad1_graduate}
+                  onChange={e => set("bahad1_graduate", e.target.checked)} />
+                בוגר בה&quot;ד 1
+              </label>
             )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
