@@ -118,7 +118,27 @@
     "pending_constraints": "אילוצים ממתינים לאישור",
     "approved_constraints": "אילוצים שאושרו",
     "rejected_constraints": "אילוצים שנדחו",
-    "decision_note": "הערת מפקד"
+    "decision_note": "הערת מפקד",
+    "section_bug_reports": "הדיווחים שלי"
+  },
+  "bug_reports": {
+    "comments_title": "תגובות על הדיווח",
+    "comment_button": "תגובות",
+    "no_comments": "אין תגובות עדיין",
+    "comment_placeholder": "הוסף תגובה...",
+    "send": "שלח",
+    "sending": "שולח...",
+    "attachment_label": "צירוף תמונה (אופציונלי)",
+    "attachment_preview_alt": "צירוף לתגובה",
+    "close": "סגור",
+    "none": "לא דיווחת על באגים",
+    "status_open": "פתוח",
+    "status_in_progress": "בטיפול",
+    "status_resolved": "טופל",
+    "status_wont_fix": "לא יטופל",
+    "severity_low": "נמוכה",
+    "severity_medium": "בינונית",
+    "severity_high": "גבוהה"
   },
   "approvals": {
     "title": "אישור בקשות",
@@ -484,7 +504,10 @@
     "file_not_found": "הקובץ לא נמצא",
     "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
     "target_limit_reached": "הגעת למגבלת ההזמנות",
-    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות"
+    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
+    "not_found": "הפריט לא נמצא",
+    "file_too_large": "הקובץ חורג מהגודל המותר (5MB)",
+    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF"
   },
   "exemption_requests": {
     "title": "בקשות פטור",

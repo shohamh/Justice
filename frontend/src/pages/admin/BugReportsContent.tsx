@@ -14,6 +14,7 @@ import {
   BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
+import BugReportDetailModal from "./BugReportDetailModal";
 
 const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
@@ -34,6 +35,7 @@ export function BugReportsContent() {
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
   const [offset, setOffset] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
@@ -302,6 +304,13 @@ export function BugReportsContent() {
                     >
                       הצג JSON
                     </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setOpenCommentsFor(report.id); }}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 mr-3"
+                      data-testid={`bug-report-comments-${report.id}`}
+                    >
+                      {t("bug_reports.comment_button")}
+                    </button>
                     {jsonErrorById[report.id] && (
                       <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
                         {jsonErrorById[report.id]}
@@ -333,6 +342,10 @@ export function BugReportsContent() {
             </button>
           ))}
         </div>
+      )}
+
+      {openCommentsFor && (
+        <BugReportDetailModal reportId={openCommentsFor} onClose={() => setOpenCommentsFor(null)} />
       )}
     </div>
   );

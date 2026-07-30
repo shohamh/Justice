@@ -263,6 +263,11 @@ class BugReportCommentBody(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
 
 
+class BugReportCommentAttachmentOut(BaseModel):
+    id: uuid.UUID
+    file_name: str
+
+
 class BugReportCommentOut(BaseModel):
     id: uuid.UUID
     bug_report_id: uuid.UUID
@@ -270,11 +275,9 @@ class BugReportCommentOut(BaseModel):
     author_name: str
     body: str
     created_at: datetime
-
-
-class BugReportCommentAttachmentOut(BaseModel):
-    id: uuid.UUID
-    file_name: str
+    # Embedded like ExemptionRequest.files (see exemption_requests.py) rather than
+    # requiring a second round-trip per comment to discover its attachments.
+    attachments: list[BugReportCommentAttachmentOut] = Field(default_factory=list)
 
 
 def _require_reporter_or_admin(session: Session, user: Soldier, report_id: uuid.UUID) -> BugReport:
@@ -315,6 +318,7 @@ def create_bug_report_comment(
         author_name=user.full_name,
         body=comment.body,
         created_at=comment.created_at,
+        attachments=[],
     )
 
 
@@ -336,6 +340,16 @@ def list_bug_report_comments(
         if author_ids
         else {}
     )
+    comment_ids = [c.id for c in comments]
+    attachments_by_comment: dict[uuid.UUID, list[BugReportCommentAttachmentOut]] = {cid: [] for cid in comment_ids}
+    if comment_ids:
+        attachments = session.execute(
+            select(BugReportCommentAttachment)
+            .where(BugReportCommentAttachment.comment_id.in_(comment_ids))
+            .order_by(BugReportCommentAttachment.created_at)
+        ).scalars().all()
+        for a in attachments:
+            attachments_by_comment[a.comment_id].append(BugReportCommentAttachmentOut(id=a.id, file_name=a.file_name))
     return [
         BugReportCommentOut(
             id=c.id,
@@ -344,6 +358,7 @@ def list_bug_report_comments(
             author_name=authors.get(c.author_id, "?"),
             body=c.body,
             created_at=c.created_at,
+            attachments=attachments_by_comment.get(c.id, []),
         )
         for c in comments
     ]

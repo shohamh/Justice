@@ -78,3 +78,54 @@ export async function importBugReports(files: File[]): Promise<BugReportImportSu
     })
   ).data;
 }
+
+export async function getMyBugReports(): Promise<PaginatedBugReports> {
+  return (await api.get<PaginatedBugReports>("/my/bug-reports")).data;
+}
+
+export interface BugReportCommentAttachment {
+  id: string;
+  file_name: string;
+}
+
+export interface BugReportComment {
+  id: string;
+  bug_report_id: string;
+  author_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+  attachments: BugReportCommentAttachment[];
+}
+
+export async function listComments(reportId: string): Promise<BugReportComment[]> {
+  return (await api.get<BugReportComment[]>(`/bug-reports/${reportId}/comments`)).data;
+}
+
+export async function createComment(reportId: string, body: string): Promise<BugReportComment> {
+  return (await api.post<BugReportComment>(`/bug-reports/${reportId}/comments`, { body })).data;
+}
+
+export async function uploadCommentAttachment(
+  reportId: string,
+  commentId: string,
+  file: File,
+): Promise<BugReportCommentAttachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return (
+    await api.post<BugReportCommentAttachment>(
+      `/bug-reports/${reportId}/comments/${commentId}/attachments`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    )
+  ).data;
+}
+
+export function bugReportCommentAttachmentDownloadUrl(
+  reportId: string,
+  commentId: string,
+  attachmentId: string,
+): string {
+  return `/bug-reports/${reportId}/comments/${commentId}/attachments/${attachmentId}`;
+}
