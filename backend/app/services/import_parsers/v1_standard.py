@@ -9,6 +9,7 @@ from app.services.import_parsers._shared_parsing import parse_date as _parse_dat
 from app.services.import_parsers.registry import register
 from app.services.import_parsers.schema import (
     ImportAssignmentRow,
+    ImportBugReportRow,
     ImportDutyLocationRow,
     ImportDutyShiftRow,
     ImportDutyTypeRow,
@@ -23,6 +24,7 @@ from app.services.import_parsers.schema import (
     ImportSoldierFieldUpdateRow,
     ImportSoldierRow,
     ImportSwapRequestRow,
+    ImportSystemSettingRow,
     ParsedImportData,
 )
 
@@ -31,6 +33,7 @@ KNOWN_SHEETS = {
     "duty_types", "exemption_types", "shift_templates",
     "swap_requests", "exemption_requests", "soldier_field_updates",
     "soldier_enrollment_requests", "personal_constraints", "soldier_exemptions",
+    "system_settings", "bug_reports",
 }
 
 
@@ -410,6 +413,32 @@ class V1StandardParser:
             for r in _sheet_rows(wb, "soldier_exemptions")
         ]
 
+        system_settings = [
+            ImportSystemSettingRow(
+                source_row=r["_row"],
+                key=str(r.get("key") or "").strip(),
+                value_json=str(r["value_json"]).strip() if r.get("value_json") is not None else "",
+            )
+            for r in _sheet_rows(wb, "system_settings")
+        ]
+
+        bug_reports = [
+            ImportBugReportRow(
+                source_row=r["_row"],
+                id=str(r.get("id") or "").strip() or None,
+                reporter_personal_number=str(r.get("reporter_personal_number") or "").strip(),
+                description=str(r.get("description") or "").strip(),
+                severity=str(r.get("severity") or "").strip(),
+                route=str(r.get("route") or "").strip(),
+                status=str(r.get("status") or "").strip(),
+                created_at=str(r.get("created_at") or "").strip() or None,
+                nav_history_json=str(r.get("nav_history_json") or "").strip() or None,
+                audit_snapshot_json=str(r.get("audit_snapshot_json") or "").strip() or None,
+                user_snapshot_json=str(r.get("user_snapshot_json") or "").strip() or None,
+            )
+            for r in _sheet_rows(wb, "bug_reports")
+        ]
+
         return ParsedImportData(
             soldiers=soldiers,
             duty_shifts=duty_shifts,
@@ -425,6 +454,8 @@ class V1StandardParser:
             soldier_enrollment_requests=soldier_enrollment_requests,
             personal_constraints=personal_constraints,
             soldier_exemptions=soldier_exemptions,
+            system_settings=system_settings,
+            bug_reports=bug_reports,
             parser_id=self.id,
             parser_warnings=warnings,
         )

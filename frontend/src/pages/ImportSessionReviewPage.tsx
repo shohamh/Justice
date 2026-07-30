@@ -22,6 +22,8 @@ import {
   type HierarchyImportRow,
   type DutyTypeImportRow,
   type ExemptionTypeImportRow,
+  type SystemSettingImportRow,
+  type BugReportImportRow,
   type PersonalConstraintImportRow,
   type SoldierFieldUpdateImportRow,
   type SoldierEnrollmentRequestImportRow,
@@ -64,6 +66,8 @@ type TabKey =
   | "hierarchy"
   | "duty_types"
   | "exemption_types"
+  | "system_settings"
+  | "bug_reports"
   | "personal_constraints"
   | "soldier_field_updates"
   | "soldier_enrollment_requests"
@@ -80,6 +84,8 @@ type GroupKey =
   | "hierarchy"
   | "duty_types"
   | "exemption_types"
+  | "system_settings"
+  | "bug_reports"
   | "personal_constraints"
   | "soldier_field_updates"
   | "soldier_enrollment_requests"
@@ -495,6 +501,8 @@ export default function ImportSessionReviewPage() {
     hierarchy,
     duty_types,
     exemption_types,
+    system_settings,
+    bug_reports,
     personal_constraints,
     soldier_field_updates,
     soldier_enrollment_requests,
@@ -525,6 +533,8 @@ export default function ImportSessionReviewPage() {
               ["hierarchy", `היררכיה (${hierarchy.length})`],
               ["duty_types", `סוגי תורנות (${duty_types.length})`],
               ["exemption_types", `פטורים (${exemption_types.length})`],
+              ["system_settings", `הגדרות מערכת (${system_settings.length})`],
+              ["bug_reports", `דוחות תקלות (${bug_reports.length})`],
               ["personal_constraints", `אילוצים אישיים (${personal_constraints.length})`],
               ["soldier_field_updates", `עדכוני שדות (${soldier_field_updates.length})`],
               ["soldier_enrollment_requests", `בקשות שיבוץ (${soldier_enrollment_requests.length})`],
@@ -1941,6 +1951,138 @@ export default function ImportSessionReviewPage() {
                               className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
                               value={currentSelection("exemption_types", row)}
                               onChange={(e) => setRowAction("exemption_types", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "system_settings" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">מפתח</th>
+                  <th className="text-right p-3">ערך (JSON)</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {system_settings.map((row: SystemSettingImportRow) => {
+                  const canToggle = row.action !== "error";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.key}</td>
+                      <td className="p-3">
+                        {readOnly ? row.value_json : (
+                          <input
+                            className="border rounded p-1 text-sm w-40 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.value_json}
+                            onBlur={(e) => setFieldOverride("system_settings", row.row, "value_json", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("system_settings", row)}
+                              onChange={(e) => setRowAction("system_settings", row.row, e.target.value)}
+                            >
+                              <option value={row.action}>אישור</option>
+                              {row.action !== "skip" && <option value="skip">דלג</option>}
+                            </select>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === "bug_reports" && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 border-b dark:border-gray-700">
+                  <th className="text-right p-3">מדווח</th>
+                  <th className="text-right p-3">תיאור</th>
+                  <th className="text-right p-3">חומרה</th>
+                  <th className="text-right p-3">route</th>
+                  <th className="text-right p-3">סטטוס תקלה</th>
+                  <th className="text-right p-3">סטטוס</th>
+                  {!readOnly && <th className="text-right p-3">פעולה</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {bug_reports.map((row: BugReportImportRow) => {
+                  const canToggle = row.action !== "error";
+                  return (
+                    <tr key={row.row} className="border-b dark:border-gray-700">
+                      <td className="p-3">{row.reporter_personal_number}</td>
+                      <td className="p-3">
+                        {readOnly ? row.description : (
+                          <input
+                            className="border rounded p-1 text-sm w-48 dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.description}
+                            onBlur={(e) => setFieldOverride("bug_reports", row.row, "description", e.target.value)}
+                          />
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {readOnly ? row.severity : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.severity}
+                            onChange={(e) => setFieldOverride("bug_reports", row.row, "severity", e.target.value)}
+                          >
+                            <option value="low">low</option>
+                            <option value="medium">medium</option>
+                            <option value="high">high</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">{row.route}</td>
+                      <td className="p-3">
+                        {readOnly ? row.status : (
+                          <select
+                            className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                            defaultValue={row.status}
+                            onChange={(e) => setFieldOverride("bug_reports", row.row, "status", e.target.value)}
+                          >
+                            <option value="open">open</option>
+                            <option value="in_progress">in_progress</option>
+                            <option value="resolved">resolved</option>
+                          </select>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <StatusChip action={row.action} errors={row.errors} warnings={row.warnings} />
+                      </td>
+                      {!readOnly && (
+                        <td className="p-3">
+                          {canToggle && (
+                            <select
+                              className="border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600"
+                              value={currentSelection("bug_reports", row)}
+                              onChange={(e) => setRowAction("bug_reports", row.row, e.target.value)}
                             >
                               <option value={row.action}>אישור</option>
                               {row.action !== "skip" && <option value="skip">דלג</option>}

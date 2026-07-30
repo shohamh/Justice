@@ -3,6 +3,7 @@ import { BlockMath, InlineMath } from "react-katex";
 import { useAuth } from "../auth/AuthContext";
 import { authenticated, canApprove, canPlan, PermissionUser } from "../auth/permissions";
 import { EffortBreakdown, getEffortBreakdown } from "../api/scoring";
+import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { useModalBackClose } from "../hooks/useModalBackClose";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
@@ -24,6 +25,7 @@ interface HelpTabDef {
 const TAB_DEFS: HelpTabDef[] = [
   { id: "swaps", label: "🔄 החלפות", visible: (u) => authenticated(u) },
   { id: "algorithm", label: "⚙️ האלגוריתם", visible: (u) => authenticated(u) },
+  { id: "scoring", label: "🏅 ניקוד", visible: (u) => authenticated(u) },
   { id: "fairness", label: "⚖️ הוגנות ושקיפות", visible: (u) => authenticated(u) },
   { id: "deep", label: "🔬 מאחורי הקלעים", visible: (u) => authenticated(u) },
   { id: "approvals", label: "✅ אישורים", visible: (u) => canApprove(u) },
@@ -260,6 +262,66 @@ function AlgorithmTab({ user }: { user: PermissionUser | null }) {
             <p className="text-orange-600">⬇ עדיפות נמוכה</p>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoringTab() {
+  const [dutyTypes, setDutyTypes] = useState<DutyType[]>([]);
+
+  useEffect(() => {
+    listDutyTypes().then(setDutyTypes).catch(() => setDutyTypes([]));
+  }, []);
+
+  return (
+    <div className="space-y-4 text-sm leading-relaxed" dir="rtl">
+      <h3 className="text-base font-semibold text-indigo-700 dark:text-indigo-300">מה זה ניקוד?</h3>
+      <p className="text-gray-700 dark:text-gray-300">
+        לכל סוג תורנות יש <strong>ניקוד ליום</strong> (score_per_day) — כמה &quot;שווה&quot; יום אחד
+        של אותה תורנות. ניקוד התורנות עצמה הוא הניקוד ליום כפול מספר הימים שלה:
+      </p>
+
+      <div className="bg-indigo-50 dark:bg-indigo-950 rounded-xl p-4 border border-indigo-200 dark:border-indigo-800 space-y-2">
+        <p className="font-medium text-indigo-800 dark:text-indigo-200 font-mono text-xs">
+          ניקוד התורנות = ניקוד ליום × מספר ימים
+        </p>
+        <p className="text-indigo-700 dark:text-indigo-300 text-xs">
+          לדוגמה: תורנות &quot;שמירה&quot; עם ניקוד ליום 1.5, שאורכה יומיים, שווה 1.5 × 2 = 3.0 נקודות.
+        </p>
+      </div>
+
+      <p className="text-gray-700 dark:text-gray-300">
+        להלן סוגי התורנות המוגדרים כרגע במערכת וניקוד היום שלהם:
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b dark:border-gray-600 text-gray-500 dark:text-gray-400">
+              <th className="text-right py-1 pr-2 font-medium">סוג תורנות</th>
+              <th className="text-right py-1 pr-2 font-medium">ניקוד ליום</th>
+              <th className="text-right py-1 font-medium">תיאור</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dutyTypes.map((dt) => (
+              <tr
+                key={dt.id}
+                className={`border-b border-gray-100 dark:border-gray-700 ${dt.active ? "" : "opacity-50"}`}
+              >
+                <td className="py-1.5 pr-2 font-medium text-gray-800 dark:text-gray-200">{dt.name}</td>
+                <td className="py-1.5 pr-2 font-mono text-indigo-700 dark:text-indigo-300">{dt.score_per_day}</td>
+                <td className="py-1.5 text-gray-600 dark:text-gray-300">{dt.description ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+        📌 הניקוד שנצבר מכל התורנויות משמש לחישוב העומס הרבעוני שלך, שקובע את סדר העדיפויות
+        בשיבוץ הבא — ראו טאב &quot;⚖️ הוגנות ושקיפות&quot; להסבר המלא.
       </div>
     </div>
   );
@@ -1373,6 +1435,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnab
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {activeTab === "swaps" && <SwapsTab />}
           {activeTab === "algorithm" && <AlgorithmTab user={user as PermissionUser | null} />}
+          {activeTab === "scoring" && <ScoringTab />}
           {activeTab === "fairness" && <FairnessTab />}
           {activeTab === "deep" && <DeepDiveTab />}
           {activeTab === "approvals" && <ApprovalsTab />}

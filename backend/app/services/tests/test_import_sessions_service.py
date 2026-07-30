@@ -306,13 +306,13 @@ def test_reparse_session_non_draft_raises(admin_session):
     sess.status = "confirmed"
     admin_session.commit()
 
-    with pytest.raises(ImportSessionError, match="only draft sessions"):
+    with pytest.raises(ImportSessionError, match="only_draft_sessions_can_be_reparsed"):
         reparse_session(admin_session, session_id=sess.id, actor=admin)
 
 
 def test_reparse_session_not_found_raises(admin_session):
     admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
-    with pytest.raises(ImportSessionError, match="not found"):
+    with pytest.raises(ImportSessionError, match="session_not_found"):
         reparse_session(admin_session, session_id=uuid.uuid4(), actor=admin)
 
 
@@ -487,7 +487,7 @@ def test_confirm_session_non_draft_raises(admin_session):
     sess.status = "confirmed"
     admin_session.commit()
 
-    with pytest.raises(ImportSessionError, match="only draft sessions"):
+    with pytest.raises(ImportSessionError, match="only_draft_sessions_can_be_confirmed"):
         confirm_session(admin_session, session_id=sess.id, actor=admin)
 
 
@@ -1758,3 +1758,299 @@ def test_assignment_duty_type_resolved_via_by_row_mapping(admin_session):
     reparse_session(admin_session, session_id=sess.id, actor=admin)
     row = sess.parsed_state["assignments"][0]
     assert row["action"] == "new"
+
+
+def _wb_with_system_settings(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("system_settings")
+    ws.append(["key", "value_json"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_system_settings_import_creates_and_updates(admin_session):
+    from app.db.models import SystemSetting
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.add(SystemSetting(key="algorithm.max_duties_per_window", value=5, updated_by=admin.id))
+    admin_session.commit()
+
+    wb = _wb_with_system_settings([
+        ["algorithm.max_duties_per_window", "8"],
+        ["telegram.enabled", "true"],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    rows = sess.parsed_state["system_settings"]
+    assert {r["key"]: r["action"] for r in rows} == {
+        "algorithm.max_duties_per_window": "update",
+        "telegram.enabled": "new",
+    }
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    updated = admin_session.get(SystemSetting, "algorithm.max_duties_per_window")
+    assert updated.value == 8
+    created = admin_session.get(SystemSetting, "telegram.enabled")
+    assert created.value is True
+
+
+def test_system_settings_import_invalid_json_is_row_error(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    wb = _wb_with_system_settings([["some.key", "{not valid json"]])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["system_settings"][0]
+    assert row["action"] == "error"
+    assert row["errors"]
+
+
+def _wb_with_bug_reports(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("bug_reports")
+    ws.append([
+        "id", "reporter_personal_number", "description", "severity", "route", "status",
+        "created_at", "nav_history_json", "audit_snapshot_json", "user_snapshot_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_bug_report_import_creates_new_report(admin_session):
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    reporter = create_soldier(admin_session, personal_number="7778889", role="soldier")
+    admin_session.commit()
+
+    wb = _wb_with_bug_reports([
+        ["", "7778889", "הכפתור לא עובד", "medium", "/planning/export", "open",
+         "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "new"
+    assert row["resolved_reporter_id"] == str(reporter.id)
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    created = admin_session.execute(
+        select(BugReport).where(BugReport.description == "הכפתור לא עובד")
+    ).scalar_one()
+    assert created.reporter_id == reporter.id
+    assert created.severity == "medium"
+    assert created.status == "open"
+
+
+def test_bug_report_import_updates_status_by_id_without_changing_reporter(admin_session):
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    original_reporter = create_soldier(admin_session, personal_number="1112223", role="soldier")
+    other_soldier = create_soldier(admin_session, personal_number="3332221", role="soldier")
+    existing = BugReport(
+        reporter_id=original_reporter.id, description="ישן", severity="low",
+        route="/x", status="open",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    wb = _wb_with_bug_reports([
+        [str(existing.id), "3332221", "ישן", "low", "/x", "resolved", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "update"
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    assert existing.status == "resolved"
+    assert existing.reporter_id == original_reporter.id  # unchanged despite mismatched row
+
+
+def test_bug_report_import_unresolvable_reporter_is_row_error(admin_session):
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    wb = _wb_with_bug_reports([
+        ["", "0000000", "תקלה", "low", "/x", "open", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "error"
+    assert row["errors"]
+
+
+def test_bug_report_import_nonexistent_id_is_row_error_not_new(admin_session):
+    """Critical review finding (Important Fix 6): a well-formed but
+    nonexistent id must not silently fall through to creating an unrelated
+    new report."""
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    reporter = create_soldier(admin_session, personal_number="7778890", role="soldier")
+    admin_session.commit()
+
+    fake_id = str(uuid.uuid4())
+    wb = _wb_with_bug_reports([
+        [fake_id, "7778890", "תקלה", "low", "/x", "open", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "error"
+    assert row["errors"]
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert admin_session.execute(select(BugReport)).scalars().all() == []
+
+
+def test_bug_report_import_reporter_mismatch_warns_and_keeps_original_reporter(admin_session):
+    """Important Fix 4: a mismatched reporter_personal_number on an update
+    row is a warning, not an error — the row still proceeds, but
+    reporter_id is never changed."""
+    from app.db.models import BugReport
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    original_reporter = create_soldier(admin_session, personal_number="1112224", role="soldier")
+    other_soldier = create_soldier(admin_session, personal_number="3332222", role="soldier")
+    existing = BugReport(
+        reporter_id=original_reporter.id, description="ישן", severity="low",
+        route="/x", status="open",
+    )
+    admin_session.add(existing)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    wb = _wb_with_bug_reports([
+        [str(existing.id), "3332222", "ישן", "low", "/x", "resolved", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "update"
+    assert row["warnings"]
+    assert "3332222" in row["warnings"][0]
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+    admin_session.refresh(existing)
+
+    assert existing.status == "resolved"
+    assert existing.reporter_id == original_reporter.id
+
+
+def test_system_settings_import_by_duty_manager_is_out_of_scope(admin_session):
+    """Critical Fix 1: system_settings is admin-only end to end — a
+    duty-manager actor's rows resolve to out_of_scope and confirm_session
+    doesn't apply them."""
+    from app.db.models import SystemSetting
+
+    dm = create_soldier(admin_session, personal_number=f"dm_{_uid()}", role="duty_manager")
+    admin_session.commit()
+
+    wb = _wb_with_system_settings([
+        ["algorithm.max_duties_per_window", "9"],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=dm, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["system_settings"][0]
+    assert row["action"] == "out_of_scope"
+
+    confirm_session(admin_session, session_id=sess.id, actor=dm)
+    admin_session.commit()
+
+    assert admin_session.get(SystemSetting, "algorithm.max_duties_per_window") is None
+
+
+def test_bug_report_import_by_duty_manager_is_out_of_scope(admin_session):
+    """Critical Fix 1: bug_reports is admin-only end to end — a
+    duty-manager actor's rows resolve to out_of_scope and confirm_session
+    doesn't apply them."""
+    from app.db.models import BugReport
+
+    dm = create_soldier(admin_session, personal_number=f"dm_{_uid()}", role="duty_manager")
+    reporter = create_soldier(admin_session, personal_number="7778891", role="soldier")
+    admin_session.commit()
+
+    wb = _wb_with_bug_reports([
+        ["", "7778891", "תקלה", "low", "/x", "open", "", "", "", ""],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=dm, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["bug_reports"][0]
+    assert row["action"] == "out_of_scope"
+
+    confirm_session(admin_session, session_id=sess.id, actor=dm)
+    admin_session.commit()
+
+    assert admin_session.execute(select(BugReport)).scalars().all() == []
+
+
+def test_system_settings_import_density_conflict_is_row_error(admin_session):
+    """Critical Fix 2 extension: an admin import that would push
+    max_duties_per_window above max_total_duties_per_window produces a
+    row-level error, not a silent commit."""
+    from app.db.models import SystemSetting
+
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    admin_session.add(SystemSetting(key="algorithm.max_total_duties_per_window", value=7, updated_by=admin.id))
+    admin_session.commit()
+
+    wb = _wb_with_system_settings([
+        ["algorithm.max_duties_per_window", "9"],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["system_settings"][0]
+    assert row["action"] == "error"
+    assert row["errors"]
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    assert admin_session.get(SystemSetting, "algorithm.max_duties_per_window") is None
+
+
+def test_system_settings_import_hidden_key_is_row_error(admin_session):
+    """Critical Fix 3: system.holding_node_id is not editable via Excel
+    import — a row targeting it is a row-level error, not a silent apply."""
+    admin = create_soldier(admin_session, personal_number=f"adm_{_uid()}", role="admin")
+    wb = _wb_with_system_settings([
+        ["system.holding_node_id", '"abc"'],
+    ])
+    sess = create_session(
+        admin_session, filename="f.xlsx", content=_to_bytes(wb), actor=admin, parser_id="v1_standard",
+    )
+    row = sess.parsed_state["system_settings"][0]
+    assert row["action"] == "error"
+    assert row["errors"]
+
+    confirm_session(admin_session, session_id=sess.id, actor=admin)
+    admin_session.commit()
+
+    from app.db.models import SystemSetting
+    setting = admin_session.get(SystemSetting, "system.holding_node_id")
+    assert setting is None

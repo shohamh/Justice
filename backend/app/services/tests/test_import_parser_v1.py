@@ -512,3 +512,87 @@ def test_shift_templates_row_defaults():
     assert row.required_count is None
     assert row.auto_roll is None
     assert row.duration_days is None
+
+
+def _wb_with_system_settings_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("system_settings")
+    ws.append(["key", "value_json"])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_system_settings_sheet():
+    wb = _wb_with_system_settings_sheet([
+        ["algorithm.max_duties_per_window", "8"],
+        ["telegram.enabled", "true"],
+        ["registration.default_role", '"soldier"'],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.system_settings) == 3
+    assert data.system_settings[0].key == "algorithm.max_duties_per_window"
+    assert data.system_settings[0].value_json == "8"
+    assert data.system_settings[1].value_json == "true"
+    assert data.system_settings[2].value_json == '"soldier"'
+
+
+def test_system_settings_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.system_settings == []
+
+
+def _wb_with_bug_reports_sheet(rows):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    ws = wb.create_sheet("bug_reports")
+    ws.append([
+        "id", "reporter_personal_number", "description", "severity", "route", "status",
+        "created_at", "nav_history_json", "audit_snapshot_json", "user_snapshot_json",
+    ])
+    for r in rows:
+        ws.append(r)
+    return wb
+
+
+def test_parses_bug_reports_sheet():
+    wb = _wb_with_bug_reports_sheet([
+        ["", "1234567", "הכפתור לא עובד", "medium", "/planning/export", "open",
+         "", "", "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert len(data.bug_reports) == 1
+    row = data.bug_reports[0]
+    assert row.id is None
+    assert row.reporter_personal_number == "1234567"
+    assert row.description == "הכפתור לא עובד"
+    assert row.severity == "medium"
+    assert row.route == "/planning/export"
+    assert row.status == "open"
+    assert row.nav_history_json is None
+
+
+def test_parses_bug_reports_sheet_with_id_and_json_columns():
+    wb = _wb_with_bug_reports_sheet([
+        ["11111111-1111-1111-1111-111111111111", "1234567", "תקלה", "high",
+         "/x", "resolved", "2026-01-01T00:00:00+00:00",
+         '[{"path": "/a"}]', '[{"action": "x"}]', '{"role": "soldier"}'],
+    ])
+    data = V1StandardParser().parse(wb)
+    row = data.bug_reports[0]
+    assert row.id == "11111111-1111-1111-1111-111111111111"
+    assert row.nav_history_json == '[{"path": "/a"}]'
+    assert row.audit_snapshot_json == '[{"action": "x"}]'
+    assert row.user_snapshot_json == '{"role": "soldier"}'
+
+
+def test_bug_reports_sheet_absent_gives_empty_list():
+    wb = _wb_with_duty_shifts_sheet([
+        ["שמירה", "בסיס א", "15.06.2024", "16.06.2024", "", "", 5, "", ""],
+    ])
+    data = V1StandardParser().parse(wb)
+    assert data.bug_reports == []

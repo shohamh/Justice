@@ -70,6 +70,8 @@ const CONFIG_SHEET_OPTIONS = [
   { key: "duty_locations", label: "מיקומי תורנות" },
   { key: "hierarchy", label: "היררכיה" },
   { key: "exemption_types", label: "פטורים" },
+  { key: "system_settings", label: "הגדרות מערכת" },
+  { key: "bug_reports", label: "דוחות תקלות" },
 ] as const;
 
 const DATA_SHEET_OPTIONS = [

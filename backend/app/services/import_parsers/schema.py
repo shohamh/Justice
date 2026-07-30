@@ -199,6 +199,26 @@ class ImportSoldierExemptionRow(BaseModel):
     revoke_reason: str | None = None
 
 
+class ImportSystemSettingRow(BaseModel):
+    source_row: int
+    key: str
+    value_json: str
+
+
+class ImportBugReportRow(BaseModel):
+    source_row: int
+    id: str | None = None
+    reporter_personal_number: str
+    description: str
+    severity: str
+    route: str
+    status: str
+    created_at: str | None = None
+    nav_history_json: str | None = None
+    audit_snapshot_json: str | None = None
+    user_snapshot_json: str | None = None
+
+
 class ParsedImportData(BaseModel):
     """Canonical output every import parser implementation must produce.
 
@@ -223,5 +243,7 @@ class ParsedImportData(BaseModel):
     soldier_enrollment_requests: list[ImportSoldierEnrollmentRequestRow] = []
     personal_constraints: list[ImportPersonalConstraintRow] = []
     soldier_exemptions: list[ImportSoldierExemptionRow] = []
+    system_settings: list[ImportSystemSettingRow] = []
+    bug_reports: list[ImportBugReportRow] = []
     parser_id: str
     parser_warnings: list[str] = []

@@ -10,22 +10,9 @@ from sqlalchemy.orm import Session
 from app.auth.deps import require_roles
 from app.db.models import SystemSetting
 from app.db.session import get_session
-from app.services.settings_loader import set_setting
+from app.services.settings_loader import _HIDDEN_KEYS, SettingsValidationError, apply_settings
 
 router = APIRouter(prefix="/admin/system-settings", tags=["system_settings"])
-
-# Keys that the UI should never expose (internal/read-only)
-_HIDDEN_KEYS = {"system.holding_node_id"}
-
-_DENSITY_DEFAULTS = {
-    "algorithm.max_duties_per_window": 8,
-    "algorithm.max_total_duties_per_window": 15,
-    "algorithm.window_t": 14,
-    "algorithm.window_r": 28,
-    "algorithm.batch_window_days": 28,
-    "algorithm.relax_t_ceiling": 10,
-    "algorithm.relax_r_ceiling": 20,
-}
 
 
 class SettingsOut(BaseModel):
@@ -52,29 +39,10 @@ def update_settings(
     user=Depends(require_roles("admin")),
 ) -> SettingsOut:
     existing = {r.key: r.value for r in session.execute(select(SystemSetting)).scalars().all()}
-    merged = {**existing, **body.settings}
-
-    if merged.get("telegram.enabled") is False:
-        merged["registration.telegram_required"] = False
-        body.settings["registration.telegram_required"] = False
-
-    def _density(key: str) -> int:
-        return int(merged.get(key, _DENSITY_DEFAULTS[key]))
-
-    t = _density("algorithm.max_duties_per_window")
-    r = _density("algorithm.max_total_duties_per_window")
-    t_ceil = _density("algorithm.relax_t_ceiling")
-    r_ceil = _density("algorithm.relax_r_ceiling")
-
-    if t > r:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="t_exceeds_r")
-    if t_ceil > r_ceil or t > t_ceil or r > r_ceil:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relax_ceiling_invalid")
-
-    for key, value in body.settings.items():
-        if key in _HIDDEN_KEYS:
-            continue
-        set_setting(session, key=key, value=value, actor_id=user.id)
+    try:
+        apply_settings(session, existing, body.settings, actor_id=user.id)
+    except SettingsValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.code)
     session.commit()
     rows = session.execute(select(SystemSetting)).scalars().all()
     return SettingsOut(settings={r.key: r.value for r in rows if r.key not in _HIDDEN_KEYS})
