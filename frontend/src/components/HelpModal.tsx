@@ -1415,7 +1415,7 @@ export default function HelpModal({ onClose, gimelimEnabled = false, hakpazaEnab
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b dark:border-gray-600 px-2 pt-1 overflow-x-auto shrink-0" dir="rtl">
+        <div className="flex border-b dark:border-gray-600 px-2 pt-1 overflow-x-auto overflow-y-hidden shrink-0" dir="rtl">
           {TABS.map((tab) => (
             <button
               key={tab.id}
