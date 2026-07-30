@@ -306,7 +306,7 @@ export default function HomePage() {
         {/* היומן שלי — stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard
-            label="תורנויות שירתתי"
+            label="תורנויות שביצעתי"
             value={pastCount}
             sub={`ממוצע יחידה: ${unitAvgShifts}`}
           />

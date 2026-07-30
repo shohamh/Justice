@@ -143,7 +143,7 @@ export default function MyDutiesPage() {
           data-testid="my-diary-stat-cards"
         >
           <StatCard
-            label="תורנויות שירתתי"
+            label="תורנויות שביצעתי"
             value={pastCount}
             sub={`ממוצע יחידה: ${unitAvgShifts}`}
           />
