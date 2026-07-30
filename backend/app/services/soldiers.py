@@ -268,11 +268,15 @@ def update_soldier_profile(
     actor_id: uuid.UUID | None,
 ) -> Soldier:
     """DM/admin direct update of profile fields."""
-    from app.services.eligibility import derive_is_career
+    from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     for k, v in fields.items():
         if k in PROFILE_FIELDS:
             setattr(soldier, k, v)
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
+    try:
+        validate_rank_track_compatibility(soldier.rank, soldier.is_career)
+    except ValueError as exc:
+        raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
     write_audit(
         session,
@@ -348,7 +352,7 @@ def approve_field_update(
     actor_id: uuid.UUID,
     decision_note: str | None = None,
 ) -> SoldierFieldUpdate:
-    from app.services.eligibility import derive_is_career
+    from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
     if update.status != "pending":
         raise SoldierError("not_pending")
     soldier = session.get(Soldier, update.soldier_id)
@@ -376,6 +380,10 @@ def approve_field_update(
         expiry = payload.get("expiry_date")
         soldier.military_driving_license_expiry = date.fromisoformat(expiry) if expiry else None
     soldier.is_career = derive_is_career(soldier.rank, soldier.mandatory_end_date, soldier.discharge_date)
+    try:
+        validate_rank_track_compatibility(soldier.rank, soldier.is_career)
+    except ValueError as exc:
+        raise SoldierValidationError(str(exc)) from exc
     validate_soldier_dates(soldier)
     update.status = "approved"
     update.decided_by = actor_id
