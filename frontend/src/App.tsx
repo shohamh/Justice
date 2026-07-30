@@ -46,7 +46,16 @@ function ForcedPasswordGate({ children }: { children: ReactElement }) {
 
 function TelegramGate({ children }: { children: ReactElement }) {
   const { telegramRequired, telegramLinked } = useAuth();
-  if (telegramRequired && !telegramLinked) return <Navigate to="/setup/telegram" replace />;
+  const settings = usePublicSettings();
+  const settingsLoaded = settings !== null;
+  const telegramEnabled = settings?.["telegram.enabled"] === true;
+
+  // Wait for the global setting to load before deciding whether to redirect,
+  // so we never redirect into a route that turns out not to apply (it's
+  // registered unconditionally below, but showing telegram setup when the
+  // feature is actually disabled would still be wrong).
+  if (!settingsLoaded) return children;
+  if (telegramEnabled && telegramRequired && !telegramLinked) return <Navigate to="/setup/telegram" replace />;
   return children;
 }
 
@@ -56,7 +65,6 @@ function AppGate({ children }: { children: ReactElement }) {
 
 export default function App() {
   const settings = usePublicSettings();
-  const telegramEnabled = settings?.["telegram.enabled"] === true;
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
 
   return (
@@ -73,9 +81,7 @@ export default function App() {
               <Route path="/action" element={<ActionPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/change-password" element={<ChangePasswordPage />} />
-                {telegramEnabled && (
-                  <Route path="/setup/telegram" element={<TelegramSetupPage />} />
-                )}
+                <Route path="/setup/telegram" element={<TelegramSetupPage />} />
                 <Route path="/" element={<AppGate><HomePage /></AppGate>} />
                 <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
                 <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
@@ -112,6 +118,10 @@ export default function App() {
                 <Route path="/planning/templates" element={<Navigate to="/planning/shifts" replace />} />
                 <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
                 <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
+                {/* Safety net: an unmatched authenticated URL (stale bookmark,
+                    typo, or a redirect target that raced a settings load)
+                    should land somewhere real instead of a blank Outlet. */}
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
           </SoldierModalProvider>

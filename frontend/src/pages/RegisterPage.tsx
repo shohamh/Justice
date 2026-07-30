@@ -7,6 +7,7 @@ import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
 import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
@@ -65,6 +66,8 @@ export default function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { loginWithToken } = useAuth();
+  const settings = usePublicSettings();
+  const telegramEnabled = settings?.["telegram.enabled"] === true;
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +135,13 @@ export default function RegisterPage() {
         personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
       });
       await loginWithToken(resp.access_token);
-      navigate("/setup/telegram", { replace: true });
+      // telegramRequired from useAuth() here would reflect this component's
+      // last render (before loginWithToken populated `user`), so it can't be
+      // trusted right after login — telegramEnabled is a global setting
+      // independent of the just-logged-in user, so gate on that instead.
+      // TelegramSetupPage itself further gates on telegramRequired to decide
+      // whether to show a "skip" option for soldiers where it's optional.
+      navigate(telegramEnabled ? "/setup/telegram" : "/", { replace: true });
     } catch (err) {
       const detail = isAxiosError(err) ? (err.response?.data?.detail as string | undefined) : undefined;
       const knownErrors: Record<string, string> = {
