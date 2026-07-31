@@ -35,4 +35,20 @@ describe("PopoverDropdown", () => {
     fireEvent.mouseDown(screen.getByTestId("outside"));
     expect(screen.queryByText("תוכן הפאנל")).not.toBeInTheDocument();
   });
+
+  it("closes on Escape key when open", () => {
+    render(<PopoverDropdown triggerLabel="סנן" badgeCount={0}>{() => <div>תוכן</div>}</PopoverDropdown>);
+    fireEvent.click(screen.getByText("סנן"));
+    expect(screen.getByText("תוכן")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText("תוכן")).not.toBeInTheDocument();
+  });
+
+  it("sets aria-expanded to reflect open state", () => {
+    render(<PopoverDropdown triggerLabel="סנן" badgeCount={0}>{() => <div />}</PopoverDropdown>);
+    const trigger = screen.getByText("סנן").closest("button")!;
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
 });
