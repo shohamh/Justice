@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-07-31
+
+### Features
+- Hierarchy transfer requests can now be approved by commanders (not just duty managers) — approving one previously failed silently with no way to complete the transfer.
+- Registration and profile edits now validate that a soldier's rank is compatible with their service track (חובה/קבע), with inline validation on the registration form; the underlying rank/track compatibility table also fixed seed data that made every enlisted קבע soldier ineligible for every duty type.
+- The duty-type breakdown chart (homepage and "היומן שלי") now splits days into past-served vs. future-scheduled, and the homepage visually distinguishes reserve duty assignments from primary ones with a dashed border and badge.
+- Swap approval cards now show the duty type, location, and reason being swapped; duty managers/commanders are now notified when a swap request is pending their decision; the organizational-distance number next to a swap candidate is now labeled.
+- Bug reports: added a "לא יטופל" (won't fix) status, a full comment thread with image attachments for both admins and reporters (with upload retry on failure), row-level status icon buttons that color the row by status, and a sortable/filterable table.
+- The marketplace's unit and duty-type filters were replaced with a hierarchical tree dropdown and a checkbox-list dropdown, fixing a bug where sub-units were silently dropped from the old flat unit filter.
+- List pagination (bug reports, announcements, notifications) now persists in the URL and clamps back to a valid page if a stale/out-of-range page is requested.
+
+### Fixes
+- Fixed סג"ם and קמ"א being misclassified as enlisted instead of officer ranks during registration and enrollment approval; officers are no longer automatically marked as בה"ד 1 graduates just for being officers.
+- Fixed the transparency page's rank column not actually sorting senior-first by default — an earlier attempt only changed the sort direction on a header click, not the page's initial (no-click) order; now verified against the full rank hierarchy, not just the two originally-reported ranks.
+- Fixed a false-positive registration rejection for חובה-track privates whose discharge date simply hadn't been recorded yet.
+- Fixed duty locations not showing for non-admin users on the homepage's upcoming-duties list.
+- Reworded an awkward Hebrew duty-count stat label, changed calendar hour labels to show "HH:00" instead of bare numbers, and replaced "פאז" with "שלב" in the algorithm help text.
+- Fixed clicking a bug report row's status cell not always expanding the row; fixed a confusing UI state when a comment posts successfully but its attachment fails to upload (including a stale-state race when retrying the upload).
+- Fixed login sometimes redirecting to a blank `/setup/telegram` page during a settings-load race; added a catch-all route as a safety net.
+- Added missing Hebrew translations for 3 notification types and clarified the Telegram global setting's description.
+- Fixed duplicate notifications when multiple swap candidates approve the same request.
+- Bug report comments/attachments: added database indexes, per-report/per-comment count caps, and switched attachment uploads to a bounded read that rejects oversized files without buffering the whole file first.
+
+### Chores
+- Extracted a shared `PopoverDropdown` component (with keyboard Escape-to-close and ARIA attributes) and `CheckboxListDropdown`, removing duplicated dropdown logic from the shared data table component.
+- Added test coverage for the duty-type breakdown chart and for the full rank-ordering hierarchy (not just the two ranks from the original bug report).
+
 ## 2026-07-30
 
 ### Features
