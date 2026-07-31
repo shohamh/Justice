@@ -89,6 +89,29 @@ test("sorts descending on first header click when sortDescFirst is set on the co
   expect(rows[2].textContent).toContain("Bob"); // score 1
 });
 
+test("applies defaultSort on initial render without requiring a header click", () => {
+  const { container } = render(
+    <DataTable columns={cols} data={data} defaultSort={[{ id: "score", desc: true }]} />
+  );
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Alice");   // score 3
+  expect(rows[1].textContent).toContain("Charlie"); // score 2
+  expect(rows[2].textContent).toContain("Bob");     // score 1
+});
+
+test("defaultSort can still be overridden by clicking a header afterward", () => {
+  const { container } = render(
+    <DataTable columns={cols} data={data} defaultSort={[{ id: "score", desc: true }]} />
+  );
+  // TanStack's toggle cycle from an already-desc-sorted column goes to
+  // "unsorted" first, then to ascending — so it takes two clicks to reach
+  // ascending order here (unlike starting from a genuinely unsorted table).
+  fireEvent.click(screen.getByText("Score"));
+  fireEvent.click(screen.getByText("Score"));
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Bob"); // score 1 (ascending)
+});
+
 test("non-sortable column header does not show arrow", () => {
   render(<DataTable columns={[{ id: "x", header: "NoSort", cell: () => "—" }]} data={[]} />);
   const header = screen.getByText("NoSort");

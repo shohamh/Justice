@@ -1044,6 +1044,7 @@ export default function TransparencyPage() {
               columns={soldierCols}
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
+              defaultSort={[{ id: "rank", desc: true }]}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               rowStyle={(r) => {
                 const g = r._group;

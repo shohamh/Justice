@@ -56,6 +56,8 @@ interface DataTableProps<T> {
     onToggle: (row: T) => void;
     content: (row: T) => React.ReactNode;
   };
+  /** Initial sort applied before any header click — without this, the table shows rows in their incoming order. */
+  defaultSort?: SortingState;
 }
 
 // ─── Column filter dropdown ───────────────────────────────────────────────────
@@ -167,8 +169,9 @@ export function DataTable<T>({
   rowTestId,
   onVisibleRowsChange,
   expandable,
+  defaultSort,
 }: DataTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(defaultSort ?? []);
   const [globalFilter, setGlobalFilter] = useState("");
   const [tooltipModal, setTooltipModal] = useState<React.ReactNode | null>(null);
   // colId → selected values (empty Set = all / no filter)

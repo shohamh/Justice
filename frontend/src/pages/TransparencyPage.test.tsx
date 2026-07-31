@@ -136,6 +136,33 @@ describe("TransparencyPage exemptions column", () => {
   });
 });
 
+describe("TransparencyPage default rank ordering", () => {
+  it("shows senior ranks above junior ranks by default, with no column click required", async () => {
+    const out: TransparencyOut = {
+      rows: [
+        makeRow({ soldier_id: "s-segen-mishne", full_name: 'סג"ם בדיקה', rank: "סגמ", is_officer: true }),
+        makeRow({ soldier_id: "s-aluf-mishne", full_name: 'אל"ם בדיקה', rank: "אלמ", is_officer: true }),
+      ],
+      can_see_exemption_aggregates: true,
+    };
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    const table = await screen.findByTestId("transparency-table");
+    await waitFor(() => {
+      expect(screen.getByText('אל"ם בדיקה')).toBeInTheDocument();
+    });
+
+    const rowTexts = Array.from(table.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
+    const alufIndex = rowTexts.findIndex((t) => t.includes('אל"ם בדיקה'));
+    const segenIndex = rowTexts.findIndex((t) => t.includes('סג"ם בדיקה'));
+    expect(alufIndex).toBeGreaterThanOrEqual(0);
+    expect(segenIndex).toBeGreaterThanOrEqual(0);
+    expect(alufIndex).toBeLessThan(segenIndex);
+  });
+});
+
 describe("TransparencyPage cumulative score column", () => {
   it("rounds the cumulative score to 3 decimal places", async () => {
     const out: TransparencyOut = {
