@@ -15,6 +15,7 @@ _PUBLIC_KEYS = {
     "gimalim.enabled",
     "gimalim.default_rest_days",
     "gimalim.reserve_fate",
+    "mitvachim.enabled",
     "shifts.auto_split_node_quotas",
     "telegram.enabled",
     "forced_callup.enabled",
