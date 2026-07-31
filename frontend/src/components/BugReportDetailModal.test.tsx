@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import BugReportDetailModal from "./BugReportDetailModal";
@@ -57,5 +57,34 @@ describe("BugReportDetailModal - attachment thumbnail failure", () => {
     renderModal();
 
     expect(await screen.findByTestId("attachment-thumbnail-fallback")).toBeInTheDocument();
+  });
+});
+
+describe("BugReportDetailModal - attachment upload retry", () => {
+  it("offers a retry button when the attachment upload fails, and retrying succeeds", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: new Blob() });
+    vi.mocked(bugReportsApi.createComment).mockResolvedValue({ ...comment, id: "c2" });
+    vi.mocked(bugReportsApi.uploadCommentAttachment)
+      .mockRejectedValueOnce(new Error("upload failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const { container } = renderModal();
+
+    const textarea = await screen.findByPlaceholderText("bug_reports.comment_placeholder");
+    fireEvent.change(textarea, { target: { value: "a comment" } });
+
+    const file = new File(["data"], "photo.png", { type: "image/png" });
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    const sendButton = screen.getByRole("button", { name: "bug_reports.send" });
+    fireEvent.click(sendButton);
+
+    expect(await screen.findByText(/attachment_upload_failed/i)).toBeInTheDocument();
+    const retryButton = screen.getByRole("button", { name: /נסה שוב/ });
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(screen.queryByText(/attachment_upload_failed/i)).not.toBeInTheDocument());
+    expect(bugReportsApi.uploadCommentAttachment).toHaveBeenCalledTimes(2);
   });
 });

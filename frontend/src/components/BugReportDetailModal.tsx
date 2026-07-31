@@ -78,6 +78,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{ commentId: string; file: File } | null>(null);
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +92,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
     if (!text.trim() || sending) return;
     setError(null);
     setAttachmentError(null);
+    setFailedUpload(null);
     setSending(true);
     const pendingFile = file;
     try {
@@ -109,12 +111,25 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
           await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
         } catch {
           setAttachmentError(t("bug_reports.attachment_upload_failed"));
+          setFailedUpload({ commentId: comment.id, file: pendingFile });
         }
       }
     } catch (err: unknown) {
       setError(translateApiError(err, t));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleRetryAttachment() {
+    if (!failedUpload) return;
+    try {
+      await uploadCommentAttachment(reportId, failedUpload.commentId, failedUpload.file);
+      await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
+      setAttachmentError(null);
+      setFailedUpload(null);
+    } catch {
+      setAttachmentError(t("bug_reports.attachment_upload_failed"));
     }
   }
 
@@ -177,7 +192,16 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
             />
           </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
-          {attachmentError && <p className="text-amber-600 text-xs">{attachmentError}</p>}
+          {attachmentError && (
+            <p className="text-amber-600 text-xs mt-1 flex items-center gap-2">
+              {attachmentError}
+              {failedUpload && (
+                <button type="button" onClick={() => void handleRetryAttachment()} className="underline">
+                  נסה שוב
+                </button>
+              )}
+            </p>
+          )}
           <div className="flex justify-end">
             <button
               className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50"
