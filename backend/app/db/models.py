@@ -1285,7 +1285,7 @@ class BugReportComment(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     bug_report_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("bug_reports.id", ondelete="CASCADE")
+        UUID(as_uuid=True), ForeignKey("bug_reports.id", ondelete="CASCADE"), index=True
     )
     author_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
@@ -1303,7 +1303,7 @@ class BugReportCommentAttachment(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
     )
     comment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("bug_report_comments.id", ondelete="CASCADE")
+        UUID(as_uuid=True), ForeignKey("bug_report_comments.id", ondelete="CASCADE"), index=True
     )
     file_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(Text)

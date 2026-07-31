@@ -39,6 +39,15 @@ _COMMENT_ATTACHMENT_MAGIC: dict[str, list[bytes]] = {
 _ALLOWED_COMMENT_ATTACHMENT_TYPES = set(_COMMENT_ATTACHMENT_MAGIC)
 _MAX_COMMENT_ATTACHMENT_BYTES = 5 * 1024 * 1024  # 5 MB, matching the bug report's own screenshot cap
 
+# Count caps to bound unbounded growth on a single report/comment. No existing
+# product-defined cap for either was found elsewhere in the codebase; these are
+# reasonable defaults. 400 (not 429) matches this file's own `too_many_files`
+# precedent (see import_bug_reports below) and swaps.py's `too_many_targets` —
+# 429 in this codebase is reserved for time-based rate limiting (auth.py login
+# attempts, this file's own submit_bug_report, notifications.py), not count caps.
+MAX_COMMENTS_PER_REPORT = 200
+MAX_ATTACHMENTS_PER_COMMENT = 10
+
 
 def _comment_attachment_magic_bytes_match(content_type: str, data: bytes) -> bool:
     return any(data[: len(prefix)] == prefix for prefix in _COMMENT_ATTACHMENT_MAGIC.get(content_type, []))
@@ -309,6 +318,11 @@ def create_bug_report_comment(
     user: Soldier = Depends(require_password_changed),
 ) -> BugReportCommentOut:
     _require_reporter_or_admin(session, user, report_id)
+    existing_count = session.execute(
+        select(func.count()).select_from(BugReportComment).where(BugReportComment.bug_report_id == report_id)
+    ).scalar_one()
+    if existing_count >= MAX_COMMENTS_PER_REPORT:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="too_many_comments")
     comment = BugReportComment(bug_report_id=report_id, author_id=user.id, body=body.body)
     session.add(comment)
     session.commit()
@@ -384,7 +398,14 @@ async def upload_bug_report_comment_attachment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if comment.author_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-    data = await file.read()
+    existing_count = session.execute(
+        select(func.count()).select_from(BugReportCommentAttachment).where(
+            BugReportCommentAttachment.comment_id == comment_id
+        )
+    ).scalar_one()
+    if existing_count >= MAX_ATTACHMENTS_PER_COMMENT:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="too_many_attachments")
+    data = await file.read(_MAX_COMMENT_ATTACHMENT_BYTES + 1)
     if len(data) > _MAX_COMMENT_ATTACHMENT_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file_too_large")
     if file.content_type not in _ALLOWED_COMMENT_ATTACHMENT_TYPES or not _comment_attachment_magic_bytes_match(
