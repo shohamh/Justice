@@ -59,6 +59,7 @@ class Action:
     POTENTIAL_READ = "potential.read"
     POTENTIAL_MODIFIER_MANAGE = "potential.modifier_manage"
     MILITARY_LICENSE_DECIDE = "military_license.decide"
+    RANGE_MANAGE = "range.manage"
 
 
 _DM_ACTIONS = {
@@ -81,6 +82,7 @@ _DM_ACTIONS = {
     Action.POTENTIAL_MODIFIER_MANAGE,
     Action.MILITARY_LICENSE_DECIDE,
     Action.HIERARCHY_TRANSFER,
+    Action.RANGE_MANAGE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
