@@ -26,16 +26,6 @@ def _has_covering_weapon_exemption(session: Session, *, soldier_id, event_date: 
     return False
 
 
-def _has_any_exemption(session: Session, *, soldier_id) -> bool:
-    """Check if the soldier has any non-revoked exemption."""
-    return session.execute(
-        select(SoldierExemption).where(
-            SoldierExemption.soldier_id == soldier_id,
-            SoldierExemption.revoked_at.is_(None),
-        )
-    ).scalars().first() is not None
-
-
 def _has_any_eligible_weapon_duty_type(session: Session, *, soldier: Soldier) -> bool:
     if soldier.hierarchy_node_id is None:
         return False
@@ -57,7 +47,4 @@ def is_range_exempt(session: Session, *, soldier: Soldier, event_date: date) -> 
     (2) structural ineligibility for any weapon-requiring duty type."""
     if _has_covering_weapon_exemption(session, soldier_id=soldier.id, event_date=event_date):
         return True
-    # Structurally ineligible only if no exemptions exist and ineligible for all weapon duties
-    if _has_any_exemption(session, soldier_id=soldier.id):
-        return False
     return not _has_any_eligible_weapon_duty_type(session, soldier=soldier)

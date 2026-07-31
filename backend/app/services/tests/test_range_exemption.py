@@ -51,6 +51,14 @@ def test_expired_forbids_weapons_exemption_does_not_exempt(app_session: Session)
         app_session, soldier.id, forbids_weapons=True,
         start_date=date(2025, 1, 1), end_date=date(2025, 12, 31),
     )
+    # Make the soldier structurally eligible for a weapon duty type so the only
+    # thing under test is whether the expired exemption still exempts (it must not).
+    weapon_duty = DutyType(
+        name="שמירה עם נשק 3", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
 
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
 
@@ -59,6 +67,14 @@ def test_plain_exemption_not_global_not_forbids_weapons_does_not_exempt(app_sess
     node = create_node(app_session, level="פלוגה", name="פלוגה ד")
     soldier = create_soldier(app_session, personal_number="2000004", hierarchy_node_id=node.id)
     _grant_exemption(app_session, soldier.id, is_global=False, forbids_weapons=False, end_date=None)
+    # Make the soldier structurally eligible for a weapon duty type so the only
+    # thing under test is whether the irrelevant exemption itself exempts (it must not).
+    weapon_duty = DutyType(
+        name="שמירה עם נשק 4", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
 
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
 
@@ -93,5 +109,15 @@ def test_eligible_for_a_weapon_duty_type_does_not_exempt(app_session: Session) -
 def test_no_weapon_duty_types_exist_at_all_exempts(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ח")
     soldier = create_soldier(app_session, personal_number="2000007", hierarchy_node_id=node.id)
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
+
+
+def test_plain_exemption_plus_structural_ineligibility_still_exempts(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה תת-בדיקה")
+    soldier = create_soldier(app_session, personal_number="2000008", hierarchy_node_id=node.id)
+    _grant_exemption(app_session, soldier.id, is_global=False, forbids_weapons=False, end_date=None)
+    # No requires_weapon=True duty type is eligible for this node -> structurally exempt,
+    # and the presence of the unrelated plain exemption above must not change that.
 
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
