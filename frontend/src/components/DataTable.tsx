@@ -55,6 +55,8 @@ interface DataTableProps<T> {
     isExpanded: (row: T) => boolean;
     onToggle: (row: T) => void;
     content: (row: T) => React.ReactNode;
+    /** When true, clicking anywhere on the row (not just the toggle button) also toggles expansion. Defaults to false. */
+    expandOnRowClick?: boolean;
   };
 }
 
@@ -334,13 +336,21 @@ export function DataTable<T>({
                     className={rowClassName ? rowClassName(row.original) : undefined}
                     style={rowStyle ? rowStyle(row.original) : undefined}
                     data-testid={rowTestId ? rowTestId(row.original) : undefined}
+                    onClick={
+                      expandable?.expandOnRowClick
+                        ? () => expandable.onToggle(row.original)
+                        : undefined
+                    }
                   >
                     {expandable && (
                       <td className="border dark:border-gray-600 px-2 py-1 text-center">
                         <button
                           type="button"
                           aria-label={isExpanded ? "כווץ" : "הרחב"}
-                          onClick={() => expandable.onToggle(row.original)}
+                          onClick={(e) => {
+                            if (expandable.expandOnRowClick) e.stopPropagation();
+                            expandable.onToggle(row.original);
+                          }}
                           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                         >
                           {isExpanded ? "▾" : "◂"}

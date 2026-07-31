@@ -197,6 +197,24 @@ describe("BugReportsContent", () => {
     expect(screen.getByText("/calendar")).toBeInTheDocument();
   });
 
+  it("expands the row by clicking anywhere on it, not just the toggle button", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+
+    expect(screen.getByText("/calendar")).toBeInTheDocument();
+  });
+
+  it("clicking a status icon button does not also expand the row", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
+
+    expect(screen.queryByText("/calendar")).not.toBeInTheDocument();
+  });
+
   it("sorts rows by date when the date column header is clicked", async () => {
     const olderReport = {
       ...SAMPLE_REPORT,

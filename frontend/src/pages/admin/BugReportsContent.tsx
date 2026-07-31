@@ -302,6 +302,7 @@ export function BugReportsContent() {
           expandable={{
             isExpanded: (report) => expandedId === report.id,
             onToggle: (report) => toggleExpand(report),
+            expandOnRowClick: true,
             content: (report) => (
               <div className="p-4">
                 <p className="mb-2"><strong>תיאור מלא:</strong> {report.description}</p>
