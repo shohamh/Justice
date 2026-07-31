@@ -54,6 +54,7 @@ from app.routes import potential as potential_routes
 from app.routes import bug_reports as bug_report_routes
 from app.routes import search as search_routes
 from app.routes import no_show as no_show_routes
+from app.routes import ranges as ranges_routes
 from app.settings import get_settings
 
 # Importing v1_standard registers it in the import-parser registry as a
@@ -189,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(bug_report_routes.router, prefix="/api")
     app.include_router(search_routes.router, prefix="/api")
     app.include_router(no_show_routes.router, prefix="/api")
+    app.include_router(ranges_routes.router, prefix="/api")
     return app
 
 
