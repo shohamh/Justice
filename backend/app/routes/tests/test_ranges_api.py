@@ -29,8 +29,12 @@ def test_ranges_routes_404_when_disabled(client: TestClient, admin_session: Sess
     #     the request body as part of dependency resolution. `GET /ranges`
     #     (list endpoint, no request body) exercises the same
     #     _require_enabled() 404 path without that unrelated 422 noise.
+    #  3. Task 15 made `node_id` a required query param on the list route,
+    #     so a node_id must be supplied here too (any value works — the
+    #     enabled-check runs before the node lookup in the handler body).
     soldier = create_soldier(admin_session, personal_number="6000000")
-    response = client.get("/api/ranges", headers=auth_headers(soldier))
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת0")
+    response = client.get(f"/api/ranges?node_id={node.id}", headers=auth_headers(soldier))
     assert response.status_code == 404
 
 
@@ -175,3 +179,62 @@ def test_mark_attendance_requires_elevated_dm_scope(client: TestClient, admin_se
     )
     assert allowed_resp.status_code == 200, allowed_resp.text
     assert allowed_resp.json()["attendance_status"] == "present"
+
+
+def test_list_range_events_requires_node_id(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת1")
+    dm = create_soldier(admin_session, personal_number="6200001", role="duty_manager", hierarchy_node_id=node.id)
+
+    response = client.get("/api/ranges", headers=auth_headers(dm))
+    assert response.status_code == 422
+
+
+def test_list_range_events_filters_by_node_and_date(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת2")
+    other_node = create_node(admin_session, level="פלוגה", name="פלוגה תת3")
+    dm = create_soldier(admin_session, personal_number="6200002", role="duty_manager", hierarchy_node_id=node.id)
+    client.post(
+        "/api/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח בתוך", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+    other_dm = create_soldier(admin_session, personal_number="6200003", role="duty_manager", hierarchy_node_id=other_node.id)
+    client.post(
+        "/api/ranges",
+        json={"hierarchy_node_id": str(other_node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח מחוץ", "required_count": 1},
+        headers=auth_headers(other_dm),
+    )
+
+    response = client.get(f"/api/ranges?node_id={node.id}", headers=auth_headers(dm))
+    assert response.status_code == 200
+    locations = [e["location"] for e in response.json()]
+    assert locations == ["מטווח בתוך"]
+
+
+def test_list_range_events_filters_by_date_range(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת4")
+    dm = create_soldier(admin_session, personal_number="6200004", role="duty_manager", hierarchy_node_id=node.id)
+    client.post(
+        "/api/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח ספטמבר", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+    client.post(
+        "/api/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-10-01",
+              "location": "מטווח אוקטובר", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+
+    response = client.get(
+        f"/api/ranges?node_id={node.id}&date_from=2026-09-15&date_to=2026-10-15", headers=auth_headers(dm),
+    )
+    assert response.status_code == 200
+    locations = [e["location"] for e in response.json()]
+    assert locations == ["מטווח אוקטובר"]

@@ -198,10 +198,22 @@ def get_range_event(
 
 @router.get("", response_model=list[RangeEventOut])
 def list_range_events(
-    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed),
+    node_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
 ) -> list[RangeEventOut]:
     _require_enabled(session)
-    events = session.query(RangeEvent).order_by(RangeEvent.date).all()
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_id)
+    if date_from is not None:
+        query = query.filter(RangeEvent.date >= date_from)
+    if date_to is not None:
+        query = query.filter(RangeEvent.date <= date_to)
+    events = query.order_by(RangeEvent.date).all()
     return [_event_out(session, e) for e in events]
 
 
