@@ -3,14 +3,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getRanges,
   getRangeEvent,
+  addRangeAssignment,
   removeRangeAssignment,
   RangeEvent,
 } from "../api/ranges";
 import { queryKeys } from "../queryKeys";
 import { useAuth } from "../auth/AuthContext";
+import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
+import { SoldierDTO } from "../api/soldiers";
 
 export default function RangesPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -30,6 +34,13 @@ export default function RangesPage() {
     if (!selectedEventId) return;
     await removeRangeAssignment(selectedEventId, assignmentId);
     queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+  }
+
+  async function handleAddSoldier(soldier: SoldierDTO | null) {
+    if (!soldier || !selectedEventId) return;
+    await addRangeAssignment(selectedEventId, soldier.id, false);
+    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    setShowPicker(false);
   }
 
   return (
@@ -58,6 +69,10 @@ export default function RangesPage() {
       {selectedEvent && (
         <div>
           <h2>{selectedEvent.location}</h2>
+          <button data-testid="add-soldier-button" onClick={() => setShowPicker(true)}>
+            הוסף חייל
+          </button>
+          {showPicker && <SoldierSearchAutocomplete onSelect={handleAddSoldier} />}
           <ul>
             {selectedEvent.assignments.map((a) => (
               <li key={a.id}>
