@@ -6,7 +6,13 @@ import * as rangesApi from "../api/ranges";
 
 vi.mock("../api/ranges");
 vi.mock("../components/SoldierSearchAutocomplete", () => ({
-  default: () => <div data-testid="soldier-picker" />,
+  default: (props: { onSelect: (soldier: { id: string } | null) => void }) => (
+    <div data-testid="soldier-picker">
+      <button data-testid="select-soldier-1" onClick={() => props.onSelect({ id: "soldier-1" })}>
+        select
+      </button>
+    </div>
+  ),
 }));
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => ({ user: { id: "me", hierarchy_node_id: "node-1" } }),
@@ -52,5 +58,10 @@ describe("RangesPage roster add", () => {
     fireEvent.click(await screen.findByTestId("add-soldier-button"));
 
     expect(await screen.findByTestId("soldier-picker")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId("select-soldier-1"));
+
+    await waitFor(() => expect(rangesApi.addRangeAssignment).toHaveBeenCalledWith("event-1", "soldier-1", false));
+    await waitFor(() => expect(screen.queryByTestId("soldier-picker")).not.toBeInTheDocument());
   });
 });
