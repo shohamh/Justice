@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Circle, Clock, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
 import {
   listBugReports,
   updateBugReportStatus,
@@ -24,11 +25,11 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   high: "bg-red-100 text-red-800",
 };
 
-const STATUS_ICONS: Record<BugReportStatus, string> = {
-  open: "🔴",
-  in_progress: "🟡",
-  resolved: "🟢",
-  wont_fix: "⚪",
+const STATUS_ICONS: Record<BugReportStatus, LucideIcon> = {
+  open: Circle,
+  in_progress: Clock,
+  resolved: CheckCircle2,
+  wont_fix: XCircle,
 };
 
 const STATUS_ROW_BG: Record<BugReportStatus, string> = {
@@ -186,21 +187,24 @@ export function BugReportsContent() {
       cell: (report) => (
         <>
           <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-            {STATUS_ORDER.map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={report.status === s}
-                title={bugReportStatusLabel(s)}
-                onClick={() => handleStatusChange(report.id, s)}
-                className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
-                  report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
-                }`}
-                data-testid={`bug-report-status-${s}-${report.id}`}
-              >
-                {STATUS_ICONS[s]}
-              </button>
-            ))}
+            {STATUS_ORDER.map((s) => {
+              const StatusIcon = STATUS_ICONS[s];
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={report.status === s}
+                  title={bugReportStatusLabel(s)}
+                  onClick={() => handleStatusChange(report.id, s)}
+                  className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
+                    report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
+                  }`}
+                  data-testid={`bug-report-status-${s}-${report.id}`}
+                >
+                  <StatusIcon className="w-3.5 h-3.5" />
+                </button>
+              );
+            })}
           </div>
           {statusErrorById[report.id] && (
             <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
