@@ -133,6 +133,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 _ALL_DATA_TABLES = [
     "audit_log",
     "bug_reports",
+    "bug_report_comments",
+    "bug_report_comment_attachments",
     "duty_day_overrides",
     "duty_dismissals",
     "score_adjustments",

@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { Circle, Clock, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
 import {
   listBugReports,
   updateBugReportStatus,
@@ -14,24 +15,36 @@ import {
   BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
-import BugReportDetailModal from "./BugReportDetailModal";
+import BugReportDetailModal from "../../components/BugReportDetailModal";
 import { usePagePagination } from "../../hooks/usePagePagination";
+import { DataTable, ColDef } from "../../components/DataTable";
 
-const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   low: "bg-gray-100 text-gray-700",
   medium: "bg-yellow-100 text-yellow-800",
   high: "bg-red-100 text-red-800",
 };
-const STATUS_LABELS: Record<BugReportStatus, string> = {
-  open: "פתוח",
-  in_progress: "בטיפול",
-  resolved: "טופל",
-  wont_fix: "לא יטופל",
+
+const STATUS_ICONS: Record<BugReportStatus, LucideIcon> = {
+  open: Circle,
+  in_progress: Clock,
+  resolved: CheckCircle2,
+  wont_fix: XCircle,
 };
+
+const STATUS_ROW_BG: Record<BugReportStatus, string> = {
+  open: "bg-red-50 dark:bg-red-950/30",
+  in_progress: "bg-yellow-50 dark:bg-yellow-950/30",
+  resolved: "bg-green-50 dark:bg-green-950/30",
+  wont_fix: "bg-gray-50 dark:bg-gray-800/50",
+};
+
+const STATUS_ORDER: BugReportStatus[] = ["open", "in_progress", "resolved", "wont_fix"];
 
 export function BugReportsContent() {
   const { t } = useTranslation();
+  const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
+  const bugReportStatusLabel = (status: BugReportStatus) => t(`bug_reports.status_${status}`);
   const [severityFilter, setSeverityFilter] = useState<BugReportSeverity | "">("");
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
   const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
@@ -72,6 +85,10 @@ export function BugReportsContent() {
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
   const pages = Math.ceil(total / limit);
+
+  useEffect(() => {
+    if (pages > 0 && page > pages) setPage(pages);
+  }, [page, pages, setPage]);
 
   async function handleStatusChange(id: string, status: BugReportStatus) {
     setStatusErrorById((prev) => ({ ...prev, [id]: "" }));
@@ -140,6 +157,72 @@ export function BugReportsContent() {
     }
   }
 
+  const bugReportColumns: ColDef<BugReportSummary>[] = [
+    {
+      id: "created_at",
+      header: "תאריך",
+      cell: (report) => new Date(report.created_at).toLocaleString("he-IL"),
+      sortValue: (report) => report.created_at,
+    },
+    {
+      id: "reporter",
+      header: "מדווח",
+      cell: (report) => (report.user_snapshot?.full_name as string) ?? "—",
+      sortValue: (report) => (report.user_snapshot?.full_name as string) ?? "",
+      filterValue: (report) => (report.user_snapshot?.full_name as string) ?? "",
+    },
+    {
+      id: "severity",
+      header: "חומרה",
+      cell: (report) => (
+        <span className={`px-2 py-0.5 rounded text-xs ${SEVERITY_COLORS[report.severity]}`}>
+          {bugReportSeverityLabel(report.severity)}
+        </span>
+      ),
+      sortValue: (report) => report.severity,
+    },
+    {
+      id: "status",
+      header: "סטטוס",
+      cell: (report) => (
+        <>
+          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            {STATUS_ORDER.map((s) => {
+              const StatusIcon = STATUS_ICONS[s];
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={report.status === s}
+                  title={bugReportStatusLabel(s)}
+                  onClick={() => handleStatusChange(report.id, s)}
+                  className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
+                    report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
+                  }`}
+                  data-testid={`bug-report-status-${s}-${report.id}`}
+                >
+                  <StatusIcon className="w-3.5 h-3.5" />
+                </button>
+              );
+            })}
+          </div>
+          {statusErrorById[report.id] && (
+            <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
+              {statusErrorById[report.id]}
+            </p>
+          )}
+        </>
+      ),
+      sortValue: (report) => report.status,
+    },
+    {
+      id: "description",
+      header: "תיאור",
+      cell: (report) => <span className="truncate max-w-xs block">{report.description}</span>,
+      filterValue: (report) => report.description,
+    },
+  ];
+
   return (
     <div dir="rtl">
       <div className="flex items-center gap-2 mb-4">
@@ -186,9 +269,9 @@ export function BugReportsContent() {
           data-testid="bug-report-filter-severity"
         >
           <option value="">כל החומרות</option>
-          <option value="low">נמוכה</option>
-          <option value="medium">בינונית</option>
-          <option value="high">גבוהה</option>
+          <option value="low">{bugReportSeverityLabel("low")}</option>
+          <option value="medium">{bugReportSeverityLabel("medium")}</option>
+          <option value="high">{bugReportSeverityLabel("high")}</option>
         </select>
         <select
           value={statusFilter}
@@ -197,10 +280,10 @@ export function BugReportsContent() {
           data-testid="bug-report-filter-status"
         >
           <option value="">כל הסטטוסים</option>
-          <option value="open">פתוח</option>
-          <option value="in_progress">בטיפול</option>
-          <option value="resolved">טופל</option>
-          <option value="wont_fix">לא יטופל</option>
+          <option value="open">{bugReportStatusLabel("open")}</option>
+          <option value="in_progress">{bugReportStatusLabel("in_progress")}</option>
+          <option value="resolved">{bugReportStatusLabel("resolved")}</option>
+          <option value="wont_fix">{bugReportStatusLabel("wont_fix")}</option>
         </select>
       </div>
 
@@ -211,123 +294,82 @@ export function BugReportsContent() {
         <p className="text-sm text-red-500 p-4" data-testid="bug-reports-error">שגיאה בטעינת הדיווחים</p>
       )}
       {!query.isLoading && !query.isError && (
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-right border-b dark:border-gray-700">
-            <th className="p-2">תאריך</th>
-            <th className="p-2">מדווח</th>
-            <th className="p-2">חומרה</th>
-            <th className="p-2">סטטוס</th>
-            <th className="p-2">תיאור</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((report) => (
-            <Fragment key={report.id}>
-              <tr
-                className="border-b dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                onClick={() => toggleExpand(report)}
-                data-testid={`bug-report-row-${report.id}`}
-              >
-                <td className="p-2">{new Date(report.created_at).toLocaleString("he-IL")}</td>
-                <td className="p-2">{(report.user_snapshot?.full_name as string) ?? "—"}</td>
-                <td className="p-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${SEVERITY_COLORS[report.severity]}`}>
-                    {SEVERITY_LABELS[report.severity]}
-                  </span>
-                </td>
-                <td className="p-2">
-                  <select
-                    value={report.status}
-                    onChange={(e) => handleStatusChange(report.id, e.target.value as BugReportStatus)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="border rounded px-1 py-0.5 text-xs dark:bg-gray-700 dark:border-gray-600"
-                    data-testid={`bug-report-status-${report.id}`}
-                  >
-                    <option value="open">{STATUS_LABELS.open}</option>
-                    <option value="in_progress">{STATUS_LABELS.in_progress}</option>
-                    <option value="resolved">{STATUS_LABELS.resolved}</option>
-                    <option value="wont_fix">{STATUS_LABELS.wont_fix}</option>
-                  </select>
-                  {statusErrorById[report.id] && (
-                    <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
-                      {statusErrorById[report.id]}
-                    </p>
-                  )}
-                </td>
-                <td className="p-2 truncate max-w-xs">{report.description}</td>
-              </tr>
-              {expandedId === report.id && (
-                <tr className="border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-                  <td colSpan={5} className="p-4">
-                    <p className="mb-2"><strong>תיאור מלא:</strong> {report.description}</p>
-                    <p className="mb-2"><strong>מסלול:</strong> {report.route}</p>
-                    {report.has_screenshot && screenshotUrlById[report.id] && (
-                      <img
-                        src={screenshotUrlById[report.id]}
-                        alt=""
-                        className="max-w-md rounded border dark:border-gray-600 mb-2"
-                      />
-                    )}
-                    {screenshotErrorById[report.id] && (
-                      <p className="text-xs text-red-500 mb-2" data-testid={`bug-report-screenshot-error-${report.id}`}>
-                        {screenshotErrorById[report.id]}
-                      </p>
-                    )}
-                    <p className="mb-1"><strong>תמונת מצב משתמש:</strong></p>
-                    <ul className="list-disc pr-5 mb-2 text-xs">
-                      <li>דרגה: {(report.user_snapshot?.rank as string) ?? "—"}</li>
-                      <li>תפקיד: {(report.user_snapshot?.role as string) ?? "—"}</li>
-                      <li>מספר אישי: {(report.user_snapshot?.personal_number as string) ?? "—"}</li>
-                    </ul>
-                    <p className="mb-1"><strong>מסלול ניווט:</strong></p>
-                    <ul className="list-disc pr-5 mb-2 text-xs">
-                      {(report.nav_history ?? []).map((h, i) => (
-                        <li key={i}>
-                          <Link to={h.path} className="text-indigo-600 hover:text-indigo-800 hover:underline" target="_blank" rel="noopener noreferrer">
-                            {h.path}
-                          </Link>
-                          {" — "}{new Date(h.timestamp).toLocaleString("he-IL")}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mb-1"><strong>פעולות אחרונות ביומן:</strong></p>
-                    <ul className="list-disc pr-5 mb-2 text-xs">
-                      {(report.audit_snapshot ?? []).map((a, i) => (
-                        <li key={i}>{String(a.action)} — {String(a.entity_type)}</li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => loadJson(report.id)}
-                      className="text-xs text-indigo-600 hover:text-indigo-800"
-                      data-testid={`bug-report-view-json-${report.id}`}
-                    >
-                      הצג JSON
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setOpenCommentsFor(report.id); }}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 mr-3"
-                      data-testid={`bug-report-comments-${report.id}`}
-                    >
-                      {t("bug_reports.comment_button")}
-                    </button>
-                    {jsonErrorById[report.id] && (
-                      <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
-                        {jsonErrorById[report.id]}
-                      </p>
-                    )}
-                    {jsonById[report.id] && (
-                      <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2 overflow-x-auto">
-                        {jsonById[report.id]}
-                      </pre>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+        <DataTable<BugReportSummary>
+          columns={bugReportColumns}
+          data={items}
+          rowTestId={(report) => `bug-report-row-${report.id}`}
+          rowClassName={(report) => `border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${STATUS_ROW_BG[report.status]}`}
+          expandable={{
+            isExpanded: (report) => expandedId === report.id,
+            onToggle: (report) => toggleExpand(report),
+            expandOnRowClick: true,
+            content: (report) => (
+              <div className="p-4">
+                <p className="mb-2"><strong>תיאור מלא:</strong> {report.description}</p>
+                <p className="mb-2"><strong>מסלול:</strong> {report.route}</p>
+                {report.has_screenshot && screenshotUrlById[report.id] && (
+                  <img
+                    src={screenshotUrlById[report.id]}
+                    alt=""
+                    className="max-w-md rounded border dark:border-gray-600 mb-2"
+                  />
+                )}
+                {screenshotErrorById[report.id] && (
+                  <p className="text-xs text-red-500 mb-2" data-testid={`bug-report-screenshot-error-${report.id}`}>
+                    {screenshotErrorById[report.id]}
+                  </p>
+                )}
+                <p className="mb-1"><strong>תמונת מצב משתמש:</strong></p>
+                <ul className="list-disc pr-5 mb-2 text-xs">
+                  <li>דרגה: {(report.user_snapshot?.rank as string) ?? "—"}</li>
+                  <li>תפקיד: {(report.user_snapshot?.role as string) ?? "—"}</li>
+                  <li>מספר אישי: {(report.user_snapshot?.personal_number as string) ?? "—"}</li>
+                </ul>
+                <p className="mb-1"><strong>מסלול ניווט:</strong></p>
+                <ul className="list-disc pr-5 mb-2 text-xs">
+                  {(report.nav_history ?? []).map((h, i) => (
+                    <li key={i}>
+                      <Link to={h.path} className="text-indigo-600 hover:text-indigo-800 hover:underline" target="_blank" rel="noopener noreferrer">
+                        {h.path}
+                      </Link>
+                      {" — "}{new Date(h.timestamp).toLocaleString("he-IL")}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mb-1"><strong>פעולות אחרונות ביומן:</strong></p>
+                <ul className="list-disc pr-5 mb-2 text-xs">
+                  {(report.audit_snapshot ?? []).map((a, i) => (
+                    <li key={i}>{String(a.action)} — {String(a.entity_type)}</li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => loadJson(report.id)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800"
+                  data-testid={`bug-report-view-json-${report.id}`}
+                >
+                  הצג JSON
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenCommentsFor(report.id); }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 mr-3"
+                  data-testid={`bug-report-comments-${report.id}`}
+                >
+                  {t("bug_reports.comment_button")}
+                </button>
+                {jsonErrorById[report.id] && (
+                  <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
+                    {jsonErrorById[report.id]}
+                  </p>
+                )}
+                {jsonById[report.id] && (
+                  <pre className="text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded mt-2 overflow-x-auto">
+                    {jsonById[report.id]}
+                  </pre>
+                )}
+              </div>
+            ),
+          }}
+        />
       )}
 
       {pages > 1 && (

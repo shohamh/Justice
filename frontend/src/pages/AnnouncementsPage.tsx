@@ -112,6 +112,11 @@ function AnnouncementsContent() {
   }
 
   const pages = Math.ceil(total / limit);
+
+  useEffect(() => {
+    if (pages > 0 && page > pages) setPage(pages);
+  }, [page, pages, setPage]);
+
   const typeIcon = (type: string) => (type === "system_announcement" ? "📣" : "📢");
 
   return (

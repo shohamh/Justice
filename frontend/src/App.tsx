@@ -44,6 +44,12 @@ function ForcedPasswordGate({ children }: { children: ReactElement }) {
   return children;
 }
 
+// If usePublicSettings() has permanently failed to fetch (rather than still
+// loading), `settings` resolves to `{}` (not `null`) — settingsLoaded becomes
+// true and telegramEnabled becomes false, so this gate fails OPEN (lets the
+// user through) rather than blocking them on a broken settings fetch. This
+// is intentional: a settings-fetch outage should not lock users out of the
+// app entirely.
 function TelegramGate({ children }: { children: ReactElement }) {
   const { telegramRequired, telegramLinked } = useAuth();
   const settings = usePublicSettings();
@@ -65,6 +71,8 @@ function AppGate({ children }: { children: ReactElement }) {
 
 export default function App() {
   const settings = usePublicSettings();
+  // Like TelegramGate above: if settings fetch fails, this becomes false and the
+  // route conditionally renders (fails OPEN), which is safer than blocking it.
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
 
   return (

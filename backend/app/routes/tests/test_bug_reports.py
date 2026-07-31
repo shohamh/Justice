@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import BugReport
+from app.routes.bug_reports import MAX_ATTACHMENTS_PER_COMMENT, MAX_COMMENTS_PER_REPORT
 from tests.helpers import auth_headers, create_soldier
 
 
@@ -264,3 +265,61 @@ def test_list_my_bug_reports_scoped_to_own_reports(client: TestClient, admin_ses
     assert len(body["items"]) == 1
     assert body["items"][0]["description"] == "mine"
     assert body["items"][0]["reporter_id"] == str(soldier.id)
+
+
+def test_create_comment_rejected_after_report_hits_comment_cap(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugcap001")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    for _ in range(MAX_COMMENTS_PER_REPORT):
+        _post_comment(client, report_id, reporter)
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments",
+        json={"body": "one too many"},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "too_many_comments"
+
+
+def test_upload_attachment_rejected_after_comment_hits_attachment_cap(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugcap002")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+    comment_id = _post_comment(client, report_id, reporter)
+
+    for _ in range(MAX_ATTACHMENTS_PER_COMMENT):
+        _upload_attachment(client, report_id, comment_id, reporter)
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments/{comment_id}/attachments",
+        files={"file": ("one_too_many.png", _PNG_BYTES, "image/png")},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "too_many_attachments"
+
+
+def test_upload_attachment_rejects_oversized_file_without_reading_entire_body(
+    client: TestClient, admin_session: Session
+):
+    """Same external behavior as test_attachment_upload_rejects_oversized_file
+    above — this test exists to guard the Step 8 bounded-read refactor from
+    accidentally changing the response, not to test something new from
+    outside. (The "doesn't buffer the whole body" property is verified by
+    code review, not by this test — impractical to measure memory here.)"""
+    reporter = create_soldier(admin_session, personal_number="bugcap003")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+    comment_id = _post_comment(client, report_id, reporter)
+
+    oversized = _PNG_BYTES + b"\x00" * (5 * 1024 * 1024)  # well past the 5 MB cap
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments/{comment_id}/attachments",
+        files={"file": ("big.png", oversized, "image/png")},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "file_too_large"

@@ -195,3 +195,59 @@ test("column filter trigger still shows no numeric badge once a filter is applie
   const badge = trigger.parentElement?.querySelector("span.bg-blue-600");
   expect(badge).toBeNull();
 });
+
+test("expandable without expandOnRowClick: clicking a row does not expand it (existing consumers unaffected)", () => {
+  const onToggle = vi.fn();
+  const { container } = render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+      }}
+    />
+  );
+  const row = container.querySelectorAll("tbody tr")[0];
+  fireEvent.click(row);
+  expect(onToggle).not.toHaveBeenCalled();
+});
+
+test("expandable with expandOnRowClick: clicking anywhere on the row toggles expansion", () => {
+  const onToggle = vi.fn();
+  const { container } = render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+        expandOnRowClick: true,
+      }}
+    />
+  );
+  const row = container.querySelectorAll("tbody tr")[0];
+  fireEvent.click(row);
+  expect(onToggle).toHaveBeenCalledWith(data[0]);
+});
+
+test("expandable with expandOnRowClick: the dedicated toggle button still works and does not double-toggle", () => {
+  const onToggle = vi.fn();
+  render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+        expandOnRowClick: true,
+      }}
+    />
+  );
+  fireEvent.click(screen.getAllByRole("button", { name: "הרחב" })[0]);
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  expect(onToggle).toHaveBeenCalledWith(data[0]);
+});

@@ -53,14 +53,47 @@ describe("BugReportsContent", () => {
     expect(screen.getByText("Test Soldier")).toBeInTheDocument();
   });
 
-  it("updates status via the dropdown", async () => {
+  it("updates status via the icon buttons", async () => {
     vi.mocked(bugReportsApi.updateBugReportStatus).mockResolvedValue({ ...SAMPLE_REPORT, status: "resolved" });
     renderWithProviders(<BugReportsContent />);
-    await waitFor(() => expect(screen.getByTestId("bug-report-status-r1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByTestId("bug-report-status-r1"), { target: { value: "resolved" } });
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
     await waitFor(() => expect(bugReportsApi.updateBugReportStatus).toHaveBeenCalledWith("r1", "resolved"));
+  });
+
+  it("renders one status icon button per status, highlighting the current status", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-open-r1")).toBeInTheDocument());
+
+    expect(screen.getByTestId("bug-report-status-open-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-in_progress-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-wont_fix-r1")).toBeInTheDocument();
+
+    // SAMPLE_REPORT.status is "open" — only that button should be marked pressed/active.
+    expect(screen.getByTestId("bug-report-status-open-r1")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("bug-report-status-in_progress-r1")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("bug-report-status-resolved-r1")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("bug-report-status-wont_fix-r1")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("colors the row background according to the report's status", async () => {
+    const resolvedReport = { ...SAMPLE_REPORT, id: "r2", status: "resolved" as const };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [SAMPLE_REPORT, resolvedReport],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    const openRow = screen.getByTestId("bug-report-row-r1");
+    const resolvedRow = screen.getByTestId("bug-report-row-r2");
+
+    expect(openRow.className).toMatch(/bg-red/);
+    expect(resolvedRow.className).toMatch(/bg-green/);
+    expect(openRow.className).not.toBe(resolvedRow.className);
   });
 
   it("filters by severity", async () => {
@@ -77,9 +110,9 @@ describe("BugReportsContent", () => {
   it("shows an inline error and does not crash when the status update fails", async () => {
     vi.mocked(bugReportsApi.updateBugReportStatus).mockRejectedValue(new Error("network error"));
     renderWithProviders(<BugReportsContent />);
-    await waitFor(() => expect(screen.getByTestId("bug-report-status-r1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByTestId("bug-report-status-r1"), { target: { value: "resolved" } });
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
     await waitFor(() => expect(screen.getByTestId("bug-report-status-error-r1")).toBeInTheDocument());
   });
@@ -105,7 +138,7 @@ describe("BugReportsContent", () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
 
     expect(screen.getByText("/calendar")).toBeInTheDocument();
     expect(screen.getByText(/סמל/)).toBeInTheDocument();
@@ -125,7 +158,7 @@ describe("BugReportsContent", () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
     await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalled());
 
     cleanup();
@@ -155,14 +188,64 @@ describe("BugReportsContent", () => {
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
   });
 
-  it("expands the row when clicking empty padding in the status cell", async () => {
+  it("expands the row via the dedicated expand toggle button", async () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    const statusTd = screen.getByTestId("bug-report-status-r1").closest("td") as HTMLElement;
-    fireEvent.click(statusTd);
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
 
     expect(screen.getByText("/calendar")).toBeInTheDocument();
+  });
+
+  it("expands the row by clicking anywhere on it, not just the toggle button", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+
+    expect(screen.getByText("/calendar")).toBeInTheDocument();
+  });
+
+  it("clicking a status icon button does not also expand the row", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
+
+    expect(screen.queryByText("/calendar")).not.toBeInTheDocument();
+  });
+
+  it("sorts rows by date when the date column header is clicked", async () => {
+    const olderReport = {
+      ...SAMPLE_REPORT,
+      id: "r-older",
+      description: "older report",
+      created_at: "2026-07-20T10:05:00Z",
+    };
+    const newerReport = {
+      ...SAMPLE_REPORT,
+      id: "r-newer",
+      description: "newer report",
+      created_at: "2026-07-28T10:05:00Z",
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [olderReport, newerReport],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByText("older report")).toBeInTheDocument());
+
+    const getDescriptionOrder = () =>
+      screen.getAllByTestId(/^bug-report-row-/).map((row) => row.textContent);
+
+    // Initial (unsorted/server) order: older, then newer.
+    expect(getDescriptionOrder()[0]).toContain("older report");
+
+    fireEvent.click(screen.getByText("תאריך"));
+    await waitFor(() => expect(getDescriptionOrder()[0]).toContain("older report"));
+
+    fireEvent.click(screen.getByText("תאריך"));
+    await waitFor(() => expect(getDescriptionOrder()[0]).toContain("newer report"));
   });
 
   it("shows an inline error when the import request itself fails", async () => {

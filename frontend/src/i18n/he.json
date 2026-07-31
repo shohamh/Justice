@@ -404,6 +404,8 @@
     "cover_for_free": "כסה בחינם"
   },
   "errors": {
+    "too_many_comments": "הדיווח הגיע למכסת התגובות המרבית",
+    "too_many_attachments": "התגובה הגיעה למכסת הצירופים המרבית",
     "bad_date_range": "טווח תאריכים לא תקין",
     "start_date_in_past": "תאריך התחלה לא יכול להיות בעבר",
     "cap_exceeded": "חרגת ממכסת הימים המותרת",

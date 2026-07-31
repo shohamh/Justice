@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
-import { queryKeys } from "../../queryKeys";
+import { api } from "../api/client";
+import { queryKeys } from "../queryKeys";
 import {
   listComments,
   createComment,
   uploadCommentAttachment,
   bugReportCommentAttachmentDownloadUrl,
   BugReportComment,
-} from "../../api/bugReports";
-import { translateApiError } from "../../utils/translateApiError";
+} from "../api/bugReports";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   reportId: string;
@@ -25,10 +25,12 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
 }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     let cancelled = false;
+    setFailed(false);
     api
       .get(bugReportCommentAttachmentDownloadUrl(reportId, commentId, attachmentId), { responseType: "blob" })
       .then((res) => {
@@ -37,7 +39,7 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
         setUrl(objectUrl);
       })
       .catch(() => {
-        // Silently ignored — a broken thumbnail isn't worth its own error banner here.
+        if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
@@ -45,6 +47,17 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
     };
   }, [reportId, commentId, attachmentId]);
 
+  if (failed) {
+    return (
+      <div
+        data-testid="attachment-thumbnail-fallback"
+        className="w-16 h-16 flex items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 text-xs"
+        title={fileName}
+      >
+        ⚠
+      </div>
+    );
+  }
   if (!url) return null;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer">
@@ -65,8 +78,27 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{ commentId: string; file: File } | null>(null);
   const [sending, setSending] = useState(false);
+  const [retryingCommentId, setRetryingCommentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Mirrors `failedUpload` synchronously so an in-flight retry can tell, after
+  // its await resolves, whether it still targets the current failure or has
+  // been superseded by a newer one (state read via closure would be stale).
+  const failedUploadRef = useRef<{ commentId: string; file: File } | null>(null);
+  function updateFailedUpload(value: { commentId: string; file: File } | null) {
+    failedUploadRef.current = value;
+    setFailedUpload(value);
+  }
+  // Mirrors `retryingCommentId` synchronously for the same reason as
+  // `failedUploadRef` above: lets an in-flight retry's `finally` block tell,
+  // after its await resolves, whether it's still the current in-flight
+  // retry or has been superseded by a retry for a different comment.
+  const retryingCommentIdRef = useRef<string | null>(null);
+  function updateRetryingCommentId(value: string | null) {
+    retryingCommentIdRef.current = value;
+    setRetryingCommentId(value);
+  }
 
   const commentsQuery = useQuery({
     queryKey: queryKeys.bugReportComments(reportId),
@@ -78,6 +110,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
     if (!text.trim() || sending) return;
     setError(null);
     setAttachmentError(null);
+    updateFailedUpload(null);
     setSending(true);
     const pendingFile = file;
     try {
@@ -96,12 +129,39 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
           await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
         } catch {
           setAttachmentError(t("bug_reports.attachment_upload_failed"));
+          updateFailedUpload({ commentId: comment.id, file: pendingFile });
         }
       }
     } catch (err: unknown) {
       setError(translateApiError(err, t));
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleRetryAttachment() {
+    if (!failedUpload || retryingCommentId === failedUpload.commentId) return;
+    // Capture the target this retry is for. If a newer failure supersedes it
+    // (e.g. a subsequent comment's attachment also fails) while this upload
+    // is still in flight, the stale result below must not clobber the newer
+    // state.
+    const target = failedUpload;
+    updateRetryingCommentId(target.commentId);
+    try {
+      await uploadCommentAttachment(reportId, target.commentId, target.file);
+      await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
+      if (failedUploadRef.current?.commentId === target.commentId) {
+        setAttachmentError(null);
+        updateFailedUpload(null);
+      }
+    } catch {
+      if (failedUploadRef.current?.commentId === target.commentId) {
+        setAttachmentError(t("bug_reports.attachment_upload_failed"));
+      }
+    } finally {
+      if (retryingCommentIdRef.current === target.commentId) {
+        updateRetryingCommentId(null);
+      }
     }
   }
 
@@ -164,7 +224,21 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
             />
           </div>
           {error && <p className="text-red-500 text-xs">{error}</p>}
-          {attachmentError && <p className="text-amber-600 text-xs">{attachmentError}</p>}
+          {attachmentError && (
+            <p className="text-amber-600 text-xs mt-1 flex items-center gap-2">
+              {attachmentError}
+              {failedUpload && (
+                <button
+                  type="button"
+                  onClick={() => void handleRetryAttachment()}
+                  disabled={retryingCommentId === failedUpload.commentId}
+                  className="underline disabled:opacity-50"
+                >
+                  נסה שוב
+                </button>
+              )}
+            </p>
+          )}
           <div className="flex justify-end">
             <button
               className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm disabled:opacity-50"
