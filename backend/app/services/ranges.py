@@ -95,3 +95,32 @@ def cancel_range_event(session: Session, *, event: RangeEvent) -> RangeEvent:
     session.commit()
     session.refresh(event)
     return event
+
+
+from app.db.models import RangeAssignment, Soldier
+from app.services.range_exemption import is_range_exempt
+
+
+def add_range_assignment(
+    session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
+) -> RangeAssignment:
+    soldier = session.get(Soldier, soldier_id)
+    if soldier is None:
+        raise RangeValidationError("soldier_not_found")
+    node = session.get(HierarchyNode, soldier.hierarchy_node_id) if soldier.hierarchy_node_id else None
+    event_node = session.get(HierarchyNode, event.hierarchy_node_id)
+    if node is None or event_node is None or event.hierarchy_node_id not in node.path_ids:
+        raise RangeValidationError("soldier_outside_event_subunit")
+    if is_range_exempt(session, soldier=soldier, event_date=event.date):
+        raise RangeValidationError("soldier_range_exempt")
+
+    assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
+    session.add(assignment)
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def remove_range_assignment(session: Session, *, assignment: RangeAssignment) -> None:
+    session.delete(assignment)
+    session.commit()
