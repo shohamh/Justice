@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-07-31
+
+### Features
+- Hierarchy transfer requests can now be approved by commanders (not just duty managers) — approving one previously failed silently with no way to complete the transfer.
+- Registration and profile edits now validate that a soldier's rank is compatible with their service track (חובה/קבע), with inline validation on the registration form; the underlying rank/track compatibility table also fixed seed data that made every enlisted קבע soldier ineligible for every duty type.
+- The duty-type breakdown chart (homepage and "היומן שלי") now splits days into past-served vs. future-scheduled, and the homepage visually distinguishes reserve duty assignments from primary ones with a dashed border and badge.
+- Swap approval cards now show the duty type, location, and reason being swapped; duty managers/commanders are now notified when a swap request is pending their decision; the organizational-distance number next to a swap candidate is now labeled.
+- Bug reports: added a "לא יטופל" (won't fix) status, a full comment thread with image attachments for both admins and reporters (with upload retry on failure), row-level status icon buttons that color the row by status, and a sortable/filterable table.
+- The marketplace's unit and duty-type filters were replaced with a hierarchical tree dropdown and a checkbox-list dropdown, fixing a bug where sub-units were silently dropped from the old flat unit filter.
+- List pagination (bug reports, announcements, notifications) now persists in the URL and clamps back to a valid page if a stale/out-of-range page is requested.
+
+### Fixes
+- Fixed סג"ם and קמ"א being misclassified as enlisted instead of officer ranks during registration and enrollment approval; officers are no longer automatically marked as בה"ד 1 graduates just for being officers.
+- Fixed the transparency page's rank column not actually sorting senior-first by default — an earlier attempt only changed the sort direction on a header click, not the page's initial (no-click) order; now verified against the full rank hierarchy, not just the two originally-reported ranks.
+- Fixed a false-positive registration rejection for חובה-track privates whose discharge date simply hadn't been recorded yet.
+- Fixed duty locations not showing for non-admin users on the homepage's upcoming-duties list.
+- Reworded an awkward Hebrew duty-count stat label, changed calendar hour labels to show "HH:00" instead of bare numbers, and replaced "פאז" with "שלב" in the algorithm help text.
+- Fixed clicking a bug report row's status cell not always expanding the row; fixed a confusing UI state when a comment posts successfully but its attachment fails to upload (including a stale-state race when retrying the upload).
+- Fixed login sometimes redirecting to a blank `/setup/telegram` page during a settings-load race; added a catch-all route as a safety net.
+- Added missing Hebrew translations for 3 notification types and clarified the Telegram global setting's description.
+- Fixed duplicate notifications when multiple swap candidates approve the same request.
+- Bug report comments/attachments: added database indexes, per-report/per-comment count caps, and switched attachment uploads to a bounded read that rejects oversized files without buffering the whole file first.
+
+### Chores
+- Extracted a shared `PopoverDropdown` component (with keyboard Escape-to-close and ARIA attributes) and `CheckboxListDropdown`, removing duplicated dropdown logic from the shared data table component.
+- Added test coverage for the duty-type breakdown chart and for the full rank-ordering hierarchy (not just the two ranks from the original bug report).
+
+## 2026-07-30
+
+### Features
+- Personal constraint approval is now a two-step process — commander approval followed by duty-manager approval, both required by default and independently configurable in system settings — replacing the previous single-step approval.
+- Commanders and duty managers can now mark a past duty as a no-show, which records an audit trail and automatically applies a score penalty.
+- Hierarchy transfer requests are now capped at 5 per soldier per rolling 24 hours, and bug report submissions at 50 per reporter per rolling 24 hours, to stop abuse.
+- Announcements now block a duplicate resend (same title, same sender) within 5 minutes of the original.
+- Exemption requests now require a real, non-empty reason.
+
+### Fixes
+- Invite-code redemption is now atomic, closing a race condition that could let a single-use code be redeemed more than once by concurrent requests.
+- Hierarchy transfer requests targeting a nonexistent destination node are now rejected instead of silently creating a broken request, and a soldier can no longer approve or reject their own transfer request even if they hold commander authority over the destination.
+- Taking an open duty ("take free") now requires the original duty owner's consent and goes through the normal manager-approval gate, instead of instantly reassigning the duty.
+- Fixed the personal-constraint approval change breaking legacy approvals-import workbooks and the frontend: a soldier's pending constraints no longer disappear from their requests list, and no longer show the wrong (rejected) status to approvers.
+
+## 2026-07-30
+
+### Features
+- Excel export/import now covers system settings and bug reports as two new sheets in the existing unified pipeline. System settings round-trip as key/value pairs, validated against the same density and relax-ceiling rules the settings screen already enforces, with internal-only keys staying non-editable; bug reports round-trip with reporter, description, severity, route, status, and their JSON snapshot columns, and a mismatched reporter on an update row now surfaces as a warning rather than silently changing who's credited. Both sheets — in the export picker and the import review page — are admin-only.
+- Added a "🏅 ניקוד" (scoring) tab to the help modal, showing every duty type's score-per-day live from the current configuration.
+
+### Chores
+- Fixed a test-infrastructure bug where a test file importing a route module during pytest collection could bake the wrong database host into the global DB engine before the test-container fixture had a chance to run, causing unrelated route tests to fail with a DNS resolution error; also updated a couple of tests whose expected error-message assertions had drifted from the app's current machine-readable error codes.
+
+## 2026-07-29
+
+### Features
+- Soldier names throughout the swap cards (candidate list, approval status columns, marketplace requester line) are now clickable and open that soldier's profile, matching the pattern already used on the approvals screen.
+- Two new system settings, soldiers.phone_public and soldiers.email_public (both default on), control whether a soldier's phone number and email are visible to anyone who can see their record at all, rather than only in-scope commanders/duty-managers. The soldier profile modal also gained a read-only email row — previously it showed phone but never email in view mode.
+
+### Fixes
+- Fixed stale default levels for the exemptions settings (who can grant a commander exemption, and who can view the underlying medical document) — fresh installs with no saved value now default to מרכז/מדור/ענף instead of the previous, incorrect defaults.
+
 ## 2026-07-28
 
 ### Fixes
