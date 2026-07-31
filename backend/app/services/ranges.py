@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -158,22 +158,24 @@ def _validity_days(session: Session, range_type: str) -> int:
     return int(value)
 
 
-def _upsert_qualification(session: Session, *, soldier_id: uuid.UUID, range_type: str, valid_until: date,
+def _record_qualification(session: Session, *, soldier_id: uuid.UUID, range_type: str, valid_until: date,
                            source_range_assignment_id: uuid.UUID) -> None:
-    existing = session.execute(
-        select(SoldierRangeQualification).where(
+    session.add(SoldierRangeQualification(
+        soldier_id=soldier_id, range_type=range_type, valid_until=valid_until,
+        source_range_assignment_id=source_range_assignment_id,
+    ))
+
+
+def get_effective_range_qualification(session: Session, *, soldier_id: uuid.UUID, range_type: str) -> date | None:
+    """Returns the soldier's current valid_until for range_type (the furthest-out
+    valid_until among all non-deleted qualification rows for that soldier/type), or
+    None if they have no qualification record at that type."""
+    return session.execute(
+        select(func.max(SoldierRangeQualification.valid_until)).where(
             SoldierRangeQualification.soldier_id == soldier_id,
             SoldierRangeQualification.range_type == range_type,
         )
     ).scalar_one_or_none()
-    if existing is not None:
-        existing.valid_until = valid_until
-        existing.source_range_assignment_id = source_range_assignment_id
-    else:
-        session.add(SoldierRangeQualification(
-            soldier_id=soldier_id, range_type=range_type, valid_until=valid_until,
-            source_range_assignment_id=source_range_assignment_id,
-        ))
 
 
 def _delete_qualification_from_this_assignment(session: Session, *, assignment: RangeAssignment) -> None:
@@ -204,6 +206,10 @@ def mark_attendance(
 
     # Reverse the previous side effect, if any.
     if previous_status == RangeAttendanceStatus.no_show and assignment.score_adjustment_id is not None:
+        create_adjustment(
+            session, soldier_id=assignment.soldier_id, delta=Decimal("1"),
+            reason="range_no_show_reversed", actor_id=marked_by,
+        )
         write_audit(
             session, actor_id=marked_by, action="range_attendance_correction_reverse_no_show",
             entity_type="range_assignment", entity_id=assignment.id,
@@ -216,7 +222,7 @@ def mark_attendance(
     # Apply the new side effect.
     if status == RangeAttendanceStatus.present:
         valid_until = event.date + timedelta(days=_validity_days(session, event.range_type))
-        _upsert_qualification(
+        _record_qualification(
             session, soldier_id=assignment.soldier_id, range_type=event.range_type,
             valid_until=valid_until, source_range_assignment_id=assignment.id,
         )

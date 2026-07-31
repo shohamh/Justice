@@ -888,9 +888,6 @@ class RangeAssignment(Base):
 
 class SoldierRangeQualification(Base):
     __tablename__ = "soldier_range_qualifications"
-    __table_args__ = (
-        sa.UniqueConstraint("soldier_id", "range_type", name="uq_soldier_range_qualification"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False

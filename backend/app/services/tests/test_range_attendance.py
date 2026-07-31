@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -12,6 +12,7 @@ from app.db.models import (
     RangeAttendanceStatus,
     RangeEventStatus,
     RangeType,
+    ScoreAdjustment,
     SoldierRangeQualification,
 )
 from app.services.ranges import (
@@ -138,3 +139,46 @@ def test_correcting_no_show_to_present_reverses_penalty_and_sets_qualification(a
         )
     ).scalar_one()
     assert qualification.valid_until == past_date + timedelta(days=180)
+
+
+def test_correcting_newer_present_to_no_show_preserves_older_still_valid_qualification(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.laser_validity_days": 180}, actor_id=None)
+    older_date = date.today() - timedelta(days=10)
+    newer_date = date.today() - timedelta(days=1)
+    node = create_node(app_session, level="פלוגה", name="פלוגה היסטוריה")
+    weapon_duty = DutyType(name="שמירה עם נשק היסטוריה", score_per_day=Decimal("1.00"),
+                            requires_weapon=True, eligible_node_ids=[node.id])
+    app_session.add(weapon_duty)
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="5900001", hierarchy_node_id=node.id)
+
+    event_a = create_range_event(app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+                                  event_date=older_date, location="מטווח א", required_count=1)
+    assignment_a = add_range_assignment(app_session, event=event_a, soldier_id=soldier.id, is_reserve=False)
+    mark_attendance(app_session, assignment=assignment_a, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    event_b = create_range_event(app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+                                  event_date=newer_date, location="מטווח ב", required_count=1)
+    assignment_b = add_range_assignment(app_session, event=event_b, soldier_id=soldier.id, is_reserve=False)
+    mark_attendance(app_session, assignment=assignment_b, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    mark_attendance(app_session, assignment=assignment_b, status=RangeAttendanceStatus.no_show,
+                     marked_by=soldier.id, note="תיקון - לא היה נוכח במטווח ב")
+
+    from app.services.ranges import get_effective_range_qualification
+    effective = get_effective_range_qualification(app_session, soldier_id=soldier.id, range_type=RangeType.laser)
+    assert effective == older_date + timedelta(days=180)
+
+
+def test_correcting_no_show_to_present_actually_reverses_the_score_penalty(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+                     marked_by=soldier.id, note="סימון ראשוני")
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    total = app_session.execute(
+        select(func.coalesce(func.sum(ScoreAdjustment.delta), 0)).where(ScoreAdjustment.soldier_id == soldier.id)
+    ).scalar_one()
+    assert total == 0
