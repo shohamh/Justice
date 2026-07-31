@@ -53,14 +53,47 @@ describe("BugReportsContent", () => {
     expect(screen.getByText("Test Soldier")).toBeInTheDocument();
   });
 
-  it("updates status via the dropdown", async () => {
+  it("updates status via the icon buttons", async () => {
     vi.mocked(bugReportsApi.updateBugReportStatus).mockResolvedValue({ ...SAMPLE_REPORT, status: "resolved" });
     renderWithProviders(<BugReportsContent />);
-    await waitFor(() => expect(screen.getByTestId("bug-report-status-r1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByTestId("bug-report-status-r1"), { target: { value: "resolved" } });
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
     await waitFor(() => expect(bugReportsApi.updateBugReportStatus).toHaveBeenCalledWith("r1", "resolved"));
+  });
+
+  it("renders one status icon button per status, highlighting the current status", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-open-r1")).toBeInTheDocument());
+
+    expect(screen.getByTestId("bug-report-status-open-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-in_progress-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-status-wont_fix-r1")).toBeInTheDocument();
+
+    // SAMPLE_REPORT.status is "open" — only that button should be marked pressed/active.
+    expect(screen.getByTestId("bug-report-status-open-r1")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("bug-report-status-in_progress-r1")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("bug-report-status-resolved-r1")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("bug-report-status-wont_fix-r1")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("colors the row background according to the report's status", async () => {
+    const resolvedReport = { ...SAMPLE_REPORT, id: "r2", status: "resolved" as const };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [SAMPLE_REPORT, resolvedReport],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    const openRow = screen.getByTestId("bug-report-row-r1");
+    const resolvedRow = screen.getByTestId("bug-report-row-r2");
+
+    expect(openRow.className).toMatch(/bg-red/);
+    expect(resolvedRow.className).toMatch(/bg-green/);
+    expect(openRow.className).not.toBe(resolvedRow.className);
   });
 
   it("filters by severity", async () => {
@@ -77,9 +110,9 @@ describe("BugReportsContent", () => {
   it("shows an inline error and does not crash when the status update fails", async () => {
     vi.mocked(bugReportsApi.updateBugReportStatus).mockRejectedValue(new Error("network error"));
     renderWithProviders(<BugReportsContent />);
-    await waitFor(() => expect(screen.getByTestId("bug-report-status-r1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("bug-report-status-resolved-r1")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByTestId("bug-report-status-r1"), { target: { value: "resolved" } });
+    fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
     await waitFor(() => expect(screen.getByTestId("bug-report-status-error-r1")).toBeInTheDocument());
   });

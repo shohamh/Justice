@@ -24,6 +24,22 @@ const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
   high: "bg-red-100 text-red-800",
 };
 
+const STATUS_ICONS: Record<BugReportStatus, string> = {
+  open: "🔴",
+  in_progress: "🟡",
+  resolved: "🟢",
+  wont_fix: "⚪",
+};
+
+const STATUS_ROW_BG: Record<BugReportStatus, string> = {
+  open: "bg-red-50 dark:bg-red-950/30",
+  in_progress: "bg-yellow-50 dark:bg-yellow-950/30",
+  resolved: "bg-green-50 dark:bg-green-950/30",
+  wont_fix: "bg-gray-50 dark:bg-gray-800/50",
+};
+
+const STATUS_ORDER: BugReportStatus[] = ["open", "in_progress", "resolved", "wont_fix"];
+
 export function BugReportsContent() {
   const { t } = useTranslation();
   const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
@@ -169,18 +185,23 @@ export function BugReportsContent() {
       header: "סטטוס",
       cell: (report) => (
         <>
-          <select
-            value={report.status}
-            onChange={(e) => handleStatusChange(report.id, e.target.value as BugReportStatus)}
-            onClick={(e) => e.stopPropagation()}
-            className="border rounded px-1 py-0.5 text-xs dark:bg-gray-700 dark:border-gray-600"
-            data-testid={`bug-report-status-${report.id}`}
-          >
-            <option value="open">{bugReportStatusLabel("open")}</option>
-            <option value="in_progress">{bugReportStatusLabel("in_progress")}</option>
-            <option value="resolved">{bugReportStatusLabel("resolved")}</option>
-            <option value="wont_fix">{bugReportStatusLabel("wont_fix")}</option>
-          </select>
+          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            {STATUS_ORDER.map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={report.status === s}
+                title={bugReportStatusLabel(s)}
+                onClick={() => handleStatusChange(report.id, s)}
+                className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
+                  report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
+                }`}
+                data-testid={`bug-report-status-${s}-${report.id}`}
+              >
+                {STATUS_ICONS[s]}
+              </button>
+            ))}
+          </div>
           {statusErrorById[report.id] && (
             <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-status-error-${report.id}`}>
               {statusErrorById[report.id]}
@@ -273,7 +294,7 @@ export function BugReportsContent() {
           columns={bugReportColumns}
           data={items}
           rowTestId={(report) => `bug-report-row-${report.id}`}
-          rowClassName={() => "border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"}
+          rowClassName={(report) => `border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${STATUS_ROW_BG[report.status]}`}
           expandable={{
             isExpanded: (report) => expandedId === report.id,
             onToggle: (report) => toggleExpand(report),
