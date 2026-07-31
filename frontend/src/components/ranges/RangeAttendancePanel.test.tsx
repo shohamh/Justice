@@ -30,4 +30,15 @@ describe("RangeAttendancePanel", () => {
     await waitFor(() => expect(rangesApi.markRangeAttendance).toHaveBeenCalledWith("e1", "a1", "present", undefined));
     await waitFor(() => expect(onMarked).toHaveBeenCalled());
   });
+
+  it("shows an error and re-enables submit if markRangeAttendance rejects", async () => {
+    vi.mocked(rangesApi.markRangeAttendance).mockRejectedValue(new Error("network error"));
+    render(<RangeAttendancePanel eventId="e1" assignments={[assignment]} onMarked={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("present-a1"));
+    fireEvent.click(screen.getByTestId("submit-a1"));
+
+    await waitFor(() => expect(screen.getByTestId("error-a1")).toBeInTheDocument());
+    expect(screen.getByTestId("submit-a1")).not.toBeDisabled();
+  });
 });
