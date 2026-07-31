@@ -80,7 +80,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [failedUpload, setFailedUpload] = useState<{ commentId: string; file: File } | null>(null);
   const [sending, setSending] = useState(false);
-  const [retrying, setRetrying] = useState(false);
+  const [retryingCommentId, setRetryingCommentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Mirrors `failedUpload` synchronously so an in-flight retry can tell, after
   // its await resolves, whether it still targets the current failure or has
@@ -89,6 +89,15 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   function updateFailedUpload(value: { commentId: string; file: File } | null) {
     failedUploadRef.current = value;
     setFailedUpload(value);
+  }
+  // Mirrors `retryingCommentId` synchronously for the same reason as
+  // `failedUploadRef` above: lets an in-flight retry's `finally` block tell,
+  // after its await resolves, whether it's still the current in-flight
+  // retry or has been superseded by a retry for a different comment.
+  const retryingCommentIdRef = useRef<string | null>(null);
+  function updateRetryingCommentId(value: string | null) {
+    retryingCommentIdRef.current = value;
+    setRetryingCommentId(value);
   }
 
   const commentsQuery = useQuery({
@@ -131,13 +140,13 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
   }
 
   async function handleRetryAttachment() {
-    if (!failedUpload || retrying) return;
+    if (!failedUpload || retryingCommentId === failedUpload.commentId) return;
     // Capture the target this retry is for. If a newer failure supersedes it
     // (e.g. a subsequent comment's attachment also fails) while this upload
     // is still in flight, the stale result below must not clobber the newer
     // state.
     const target = failedUpload;
-    setRetrying(true);
+    updateRetryingCommentId(target.commentId);
     try {
       await uploadCommentAttachment(reportId, target.commentId, target.file);
       await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
@@ -150,7 +159,9 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
         setAttachmentError(t("bug_reports.attachment_upload_failed"));
       }
     } finally {
-      setRetrying(false);
+      if (retryingCommentIdRef.current === target.commentId) {
+        updateRetryingCommentId(null);
+      }
     }
   }
 
@@ -220,7 +231,7 @@ export default function BugReportDetailModal({ reportId, onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => void handleRetryAttachment()}
-                  disabled={retrying}
+                  disabled={retryingCommentId === failedUpload.commentId}
                   className="underline disabled:opacity-50"
                 >
                   נסה שוב

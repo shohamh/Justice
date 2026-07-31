@@ -164,4 +164,54 @@ describe("BugReportDetailModal - attachment upload retry", () => {
     await waitFor(() => expect(bugReportsApi.uploadCommentAttachment).toHaveBeenCalledTimes(4));
     expect(bugReportsApi.uploadCommentAttachment).toHaveBeenNthCalledWith(4, "r1", "cB", fileB);
   });
+
+  it("does not disable comment B's never-attempted retry button while comment A's unrelated retry is still pending", async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: new Blob() });
+
+    vi.mocked(bugReportsApi.createComment)
+      .mockResolvedValueOnce({ ...comment, id: "cA" })
+      .mockResolvedValueOnce({ ...comment, id: "cB" });
+
+    // A's retry hangs forever (from this test's perspective) so we can assert
+    // on B's button state while A is still in flight.
+    const retryAPromise = new Promise<void>(() => {});
+
+    vi.mocked(bugReportsApi.uploadCommentAttachment)
+      .mockRejectedValueOnce(new Error("upload A failed"))
+      .mockImplementationOnce(() => retryAPromise)
+      .mockRejectedValueOnce(new Error("upload B failed"));
+
+    const { container } = renderModal();
+
+    const textarea = await screen.findByPlaceholderText("bug_reports.comment_placeholder");
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const sendButton = screen.getByRole("button", { name: "bug_reports.send" });
+
+    // Send comment A; its attachment upload fails.
+    fireEvent.change(textarea, { target: { value: "comment A" } });
+    const fileA = new File(["data"], "photoA.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [fileA] } });
+    fireEvent.click(sendButton);
+    expect(await screen.findByText(/attachment_upload_failed/i)).toBeInTheDocument();
+
+    // Kick off a retry for A — it never resolves in this test.
+    const retryButton = screen.getByRole("button", { name: /נסה שוב/ });
+    fireEvent.click(retryButton);
+
+    // While A's retry is in flight, send comment B; its attachment also
+    // fails, so its own (never-attempted) retry button now renders.
+    fireEvent.change(textarea, { target: { value: "comment B" } });
+    const fileB = new File(["data"], "photoB.png", { type: "image/png" });
+    fireEvent.change(fileInput, { target: { files: [fileB] } });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => expect(bugReportsApi.uploadCommentAttachment).toHaveBeenCalledTimes(3));
+    await screen.findByText(/attachment_upload_failed/i);
+
+    // B's retry button has nothing to do with A's still-pending retry, so it
+    // must not be disabled — otherwise, since A's request never resolves,
+    // the user could never retry B's upload.
+    const retryButtonForB = screen.getByRole("button", { name: /נסה שוב/ });
+    expect(retryButtonForB).not.toBeDisabled();
+  });
 });
