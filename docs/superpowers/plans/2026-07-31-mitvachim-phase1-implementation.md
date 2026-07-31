@@ -2667,7 +2667,438 @@ git commit -m "feat: add upcoming ranges widget to homepage"
 
 ---
 
-## Task 15: Full verification pass
+## Task 15: Scope the `GET /ranges` list endpoint
+
+**Files:**
+- Modify: `backend/app/routes/ranges.py` (`list_range_events`)
+- Modify: `backend/app/routes/tests/test_ranges_api.py` (append tests)
+
+**Interfaces:**
+- Consumes: `scope_root_ids()` (existing, `app.auth.authz`), the existing `GET /calendar/shifts` pattern (`backend/app/routes/calendar.py:211-230`) as the mirrored precedent — required `node_id` query param, optional `date_from`/`date_to`.
+- Produces: `GET /ranges?node_id=...&date_from=...&date_to=...` scoped the same way `GET /calendar/shifts` is — consumed by Task 12's `RangesPage` and Task 14's homepage widget (both must now pass `node_id`).
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `backend/app/routes/tests/test_ranges_api.py`:
+
+```python
+def test_list_range_events_requires_node_id(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת1")
+    dm = create_soldier(admin_session, personal_number="6200001", role="duty_manager", hierarchy_node_id=node.id)
+
+    response = client.get("/ranges", headers=auth_headers(dm))
+    assert response.status_code == 422
+
+
+def test_list_range_events_filters_by_node_and_date(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת2")
+    other_node = create_node(admin_session, level="פלוגה", name="פלוגה תת3")
+    dm = create_soldier(admin_session, personal_number="6200002", role="duty_manager", hierarchy_node_id=node.id)
+    client.post(
+        "/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח בתוך", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+    other_dm = create_soldier(admin_session, personal_number="6200003", role="duty_manager", hierarchy_node_id=other_node.id)
+    client.post(
+        "/ranges",
+        json={"hierarchy_node_id": str(other_node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח מחוץ", "required_count": 1},
+        headers=auth_headers(other_dm),
+    )
+
+    response = client.get(f"/ranges?node_id={node.id}", headers=auth_headers(dm))
+    assert response.status_code == 200
+    locations = [e["location"] for e in response.json()]
+    assert locations == ["מטווח בתוך"]
+
+
+def test_list_range_events_filters_by_date_range(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת4")
+    dm = create_soldier(admin_session, personal_number="6200004", role="duty_manager", hierarchy_node_id=node.id)
+    client.post(
+        "/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-01",
+              "location": "מטווח ספטמבר", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+    client.post(
+        "/ranges",
+        json={"hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-10-01",
+              "location": "מטווח אוקטובר", "required_count": 1},
+        headers=auth_headers(dm),
+    )
+
+    response = client.get(
+        f"/ranges?node_id={node.id}&date_from=2026-09-15&date_to=2026-10-15", headers=auth_headers(dm),
+    )
+    assert response.status_code == 200
+    locations = [e["location"] for e in response.json()]
+    assert locations == ["מטווח אוקטובר"]
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `cd backend && .venv/Scripts/python -m pytest app/routes/tests/test_ranges_api.py -v -k list_range_events`
+Expected: FAIL — current `list_range_events` takes no query params, so the "requires node_id" test gets 200 instead of 422, and the filter tests get all events back instead of the scoped subset.
+
+- [ ] **Step 3: Implement node/date scoping**
+
+Replace the existing `list_range_events` in `backend/app/routes/ranges.py`:
+
+```python
+@router.get("", response_model=list[RangeEventOut])
+def list_range_events(
+    node_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[RangeEventOut]:
+    _require_enabled(session)
+    node = session.get(HierarchyNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_id)
+    if date_from is not None:
+        query = query.filter(RangeEvent.date >= date_from)
+    if date_to is not None:
+        query = query.filter(RangeEvent.date <= date_to)
+    events = query.order_by(RangeEvent.date).all()
+    return [_event_out(session, e) for e in events]
+```
+
+(This mirrors `calendar_shifts`'s exact-node filtering — it does not walk the subtree, matching the precedent function's behavior of filtering by the single `node_id` passed in, since the calendar view already lets the caller pick which node to view.)
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `cd backend && .venv/Scripts/python -m pytest app/routes/tests/test_ranges_api.py -v`
+Expected: all pass.
+
+- [ ] **Step 5: Update the frontend API wrapper and callers to pass `node_id`**
+
+In `frontend/src/api/ranges.ts`, change `getRanges`:
+
+```typescript
+export function getRanges(nodeId: string, dateFrom?: string, dateTo?: string): Promise<RangeEvent[]> {
+  const params = new URLSearchParams({ node_id: nodeId });
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  return api.get(`/ranges?${params.toString()}`).then((r) => r.data);
+}
+```
+
+Update `frontend/src/api/ranges.test.ts`'s `getRanges` test to pass a `nodeId` argument and assert the call includes `node_id=`. Update `frontend/src/pages/RangesPage.tsx` and `frontend/src/pages/HomePage.tsx` (from Task 12/14) to pass the current user's `hierarchy_node_id` (from `useAuth().user`) as `nodeId` into `getRanges`.
+
+- [ ] **Step 6: Run the frontend test suite and typecheck**
+
+Run: `cd frontend && npm test && npm run typecheck`
+Expected: all pass, no type errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd backend
+git add app/routes/ranges.py app/routes/tests/test_ranges_api.py
+git commit -m "feat: scope GET /ranges by node_id and optional date range"
+cd ../frontend
+git add src/api/ranges.ts src/api/ranges.test.ts src/pages/RangesPage.tsx src/pages/HomePage.tsx
+git commit -m "feat: pass node_id/date range to scoped ranges list endpoint"
+```
+
+---
+
+## Task 16: Soldier picker in the planning page roster
+
+**Files:**
+- Modify: `frontend/src/pages/RangesPage.tsx`
+- Modify: `frontend/src/pages/RangesPage.test.tsx` (append test)
+
+**Interfaces:**
+- Consumes: `SoldierSearchAutocomplete` (existing, `frontend/src/components/SoldierSearchAutocomplete.tsx`, props `{ onSelect: (soldier: SoldierDTO | null) => void; onCreateNew?: (personalNumber: string, fullName: string) => void }`), `SoldierDTO` (existing, `frontend/src/api/soldiers.ts`), `addRangeAssignment` (Task 11).
+- Produces: nothing new for later tasks — completes Task 12's roster UI.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `frontend/src/pages/RangesPage.test.tsx`:
+
+```tsx
+import { fireEvent } from "@testing-library/react";
+
+describe("RangesPage roster add", () => {
+  it("adds a soldier to the roster via the picker", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
+    });
+    vi.mocked(rangesApi.addRangeAssignment).mockResolvedValue({
+      id: "assignment-1", soldier_id: "soldier-1", is_reserve: false, attendance_status: "pending", note: null,
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+    fireEvent.click(await screen.findByTestId("add-soldier-button"));
+
+    expect(await screen.findByTestId("soldier-picker")).toBeInTheDocument();
+  });
+});
+```
+
+Add `vi.mock("../components/SoldierSearchAutocomplete", () => ({ default: (props: any) => <div data-testid="soldier-picker" /> }));` near the top of `RangesPage.test.tsx`, alongside the existing `vi.mock("../api/ranges")`.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd frontend && npm test -- RangesPage.test.tsx`
+Expected: FAIL — no `data-testid="add-soldier-button"` exists yet.
+
+- [ ] **Step 3: Wire the picker into `RangesPage.tsx`**
+
+In `frontend/src/pages/RangesPage.tsx`, add the import and state, and render the picker conditionally:
+
+```tsx
+import { useState } from "react";
+import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
+import { SoldierDTO } from "../api/soldiers";
+```
+
+Add state alongside the existing `selectedEventId` state:
+
+```tsx
+const [showPicker, setShowPicker] = useState(false);
+```
+
+Add a handler:
+
+```tsx
+async function handleAddSoldier(soldier: SoldierDTO | null) {
+  if (!soldier || !selectedEventId) return;
+  await addRangeAssignment(selectedEventId, soldier.id, false);
+  queryClient.invalidateQueries({ queryKey: ["ranges", selectedEventId] });
+  setShowPicker(false);
+}
+```
+
+In the `selectedEvent` block, add the button and conditional picker right after the `<h2>`:
+
+```tsx
+<button data-testid="add-soldier-button" onClick={() => setShowPicker(true)}>
+  הוסף חייל
+</button>
+{showPicker && <SoldierSearchAutocomplete onSelect={handleAddSoldier} />}
+```
+
+Import `addRangeAssignment` alongside the other `../api/ranges` imports already at the top of the file.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd frontend && npm test -- RangesPage.test.tsx`
+Expected: all pass.
+
+- [ ] **Step 5: Run lint and typecheck**
+
+Run: `cd frontend && npm run lint && npm run typecheck`
+Expected: no errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd frontend
+git add src/pages/RangesPage.tsx src/pages/RangesPage.test.tsx
+git commit -m "feat: wire soldier picker into the ranges roster panel"
+```
+
+---
+
+## Task 17: Calendar widget integration
+
+**Files:**
+- Modify: `frontend/src/components/dashboard/DutyCalendarWidget.tsx`
+- Modify: `frontend/src/components/dashboard/DutyCalendarWidget.test.tsx` (append test)
+
+**Interfaces:**
+- Consumes: `RangeEvent` (Task 11).
+- Produces: `DutyCalendarWidget` accepts an optional `ranges` prop and an optional `onOpenRange` callback — no other task consumes this further (it's the calendar's terminal integration point).
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `frontend/src/components/dashboard/DutyCalendarWidget.test.tsx`:
+
+```tsx
+it("renders range events distinctly from duty events", () => {
+  const ranges = [
+    { id: "r1", hierarchy_node_id: "n1", range_type: "laser" as const, date: "2026-09-01",
+      location: "מטווח דרום", required_count: 3, reserve_count: 1, status: "planned" as const, assignments: [] },
+  ];
+
+  const { container } = render(
+    <DutyCalendarWidget duties={[]} typeNames={{}} onOpenDuty={() => {}} ranges={ranges} onOpenRange={() => {}} />,
+  );
+
+  expect(container.textContent).toContain("מטווח דרום");
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd frontend && npm test -- DutyCalendarWidget.test.tsx`
+Expected: FAIL — the `ranges`/`onOpenRange` props don't exist yet, TypeScript error or the range title never renders.
+
+- [ ] **Step 3: Add the `ranges` prop**
+
+In `frontend/src/components/dashboard/DutyCalendarWidget.tsx`, update the `Props` interface and component signature:
+
+```tsx
+import { RangeEvent } from "../../api/ranges";
+
+interface Props {
+  duties: EffectiveDuty[];
+  typeNames: Record<string, string>;
+  onOpenDuty: (duty: EffectiveDuty) => void;
+  ranges?: RangeEvent[];
+  onOpenRange?: (range: RangeEvent) => void;
+}
+
+export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty, ranges = [], onOpenRange }: Props) {
+```
+
+Add a memoized events array for ranges, mirroring `dutyEvents`:
+
+```tsx
+const rangeEvents = useMemo(() =>
+  ranges.map((r) => ({
+    id: `range-${r.id}`,
+    title: r.location,
+    start: r.date,
+    allDay: true,
+    backgroundColor: "#7c3aed",
+    borderColor: "#7c3aed",
+    extendedProps: { range: r },
+  })),
+[ranges]);
+```
+
+Find where `dutyEvents` and `holidayEvents` are combined into the `<FullCalendar events={...} />` prop, and add `...rangeEvents` to that combined array. Find the calendar's `eventClick` handler (which currently calls `onOpenDuty` using `extendedProps.duty`) and extend it to check for `extendedProps.range` first, calling `onOpenRange?.(range)` when present instead of `onOpenDuty`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd frontend && npm test -- DutyCalendarWidget.test.tsx`
+Expected: all pass.
+
+- [ ] **Step 5: Wire `ranges`/`onOpenRange` from the calendar's parent page**
+
+Find wherever `DutyCalendarWidget` is rendered (likely `UnitCalendarPage.tsx`), pass the same `ranges` data already fetched for Task 14's homepage widget (reuse the same `useQuery(["ranges", ...])` call, scoped to whatever node the calendar page is currently viewing), and `onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}`.
+
+- [ ] **Step 6: Run lint and typecheck**
+
+Run: `cd frontend && npm run lint && npm run typecheck`
+Expected: no errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd frontend
+git add src/components/dashboard/DutyCalendarWidget.tsx src/components/dashboard/DutyCalendarWidget.test.tsx src/pages/UnitCalendarPage.tsx
+git commit -m "feat: render range events on the duty calendar widget"
+```
+
+---
+
+## Task 18: Commander read-only roster view
+
+**Files:**
+- Modify: `frontend/src/pages/RangesPage.tsx`
+- Modify: `frontend/src/pages/RangesPage.test.tsx` (append test)
+
+**Interfaces:**
+- Consumes: `useAuth()` (existing, `frontend/src/auth/AuthContext.tsx`, returns `{ user: Me | null, ... }` where `Me.is_duty_manager: boolean`, `Me.role: "soldier" | "commander" | "duty_manager" | "admin"`).
+- Produces: nothing new for later tasks — this is Phase 1's final UI gap closure.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `frontend/src/pages/RangesPage.test.tsx`:
+
+```tsx
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: vi.fn(),
+}));
+
+import { useAuth } from "../auth/AuthContext";
+
+describe("RangesPage read-only mode for commanders", () => {
+  it("hides add/remove controls for a commander (not a duty manager)", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "u1", role: "commander", is_commander: true, is_duty_manager: false } as any,
+    } as any);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned",
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+
+    expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
+    expect(screen.queryByText("הסר")).not.toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd frontend && npm test -- RangesPage.test.tsx`
+Expected: FAIL — controls currently render unconditionally regardless of role.
+
+- [ ] **Step 3: Gate the edit controls by role**
+
+In `frontend/src/pages/RangesPage.tsx`, import and use `useAuth`:
+
+```tsx
+import { useAuth } from "../auth/AuthContext";
+```
+
+Inside the component body:
+
+```tsx
+const { user } = useAuth();
+const canManage = user?.role === "admin" || user?.is_duty_manager === true;
+```
+
+Wrap the "הוסף חייל" button and each roster row's "הסר" button in `{canManage && (...)}`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd frontend && npm test -- RangesPage.test.tsx`
+Expected: all pass.
+
+- [ ] **Step 5: Run lint and typecheck**
+
+Run: `cd frontend && npm run lint && npm run typecheck`
+Expected: no errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd frontend
+git add src/pages/RangesPage.tsx src/pages/RangesPage.test.tsx
+git commit -m "feat: restrict range roster edit controls to duty managers and admins"
+```
+
+---
+
+## Task 19: Full verification pass
 
 **Files:** none (verification only)
 
@@ -2714,15 +3145,11 @@ No commit for this task — it's pure verification.
 - Retroactive correction (flip present ↔ no_show) reversing prior side effect — Task 7. ✓
 - Calendar/homepage display — Task 14 (homepage widget implemented; calendar-widget integration into `DutyCalendarWidget.tsx`/`UnitCalendarPage.tsx` is noted as a follow-up — see gap below). Planning page — Task 12. Commander read-only view — noted as a gap below (not included in this plan; see note).
 - Cancellation blocking further attendance marking — Task 7 (`event.status == cancelled` check). ✓
+- Calendar widget integration — Task 17 (`DutyCalendarWidget.tsx` renders `RangeEvent`s alongside duty shifts). ✓
+- Commander read-only roster view — Task 18 (edit controls gated to DM/admin; commanders get a read-only roster). ✓
+- `GET /ranges` scoping — Task 15 (mirrors `GET /calendar/shifts`'s `node_id`/`date_from`/`date_to` shape). ✓
+- Soldier picker wiring — Task 16 (`SoldierSearchAutocomplete` wired into the roster panel). ✓
 
-**Known gaps intentionally deferred / flagged for follow-up (not full spec coverage — call these out to the user before considering Phase 1 "done"):**
-1. **Calendar widget integration** (`DutyCalendarWidget.tsx`/`UnitCalendarPage.tsx` rendering `RangeEvent`s alongside duty shifts) is not implemented as its own task — only the homepage widget (Task 14) is. Add a follow-up task before shipping if the calendar view is required for the initial release.
-2. **Commander read-only roster page** (spec's "commander page") is not implemented as a separate page in this plan — Task 12's planning page is DM-facing only. Add a follow-up task for a read-only variant if needed before release.
-3. **List-endpoint scoping** (`GET /ranges`) is flagged in Task 9 as returning all events unfiltered — needs alignment with whatever scoping the existing duty list endpoint uses before this is production-ready.
-4. **Soldier picker wiring** in Task 12's roster UI is left as a follow-up integration point (reusing an existing component whose exact props weren't available during planning) rather than fully implemented.
-
-These four gaps should be resolved either as small follow-up tasks appended to this plan or explicitly accepted as out-of-scope for the first cut before moving to Phase 2.
-
-**Placeholder scan:** no TBD/TODO markers; the four gaps above are explicitly named with a concrete reason (missing exact existing-component interface, deliberate scope decision) rather than vague "handle later" language.
+**Placeholder scan:** no TBD/TODO markers.
 
 **Type consistency check:** `RangeType`, `RangeEventStatus`, `RangeAttendanceStatus` (Task 1) are used identically in Task 5/6/7 (service), Task 9/10 (routes/schemas), and Task 11 (frontend types) — verified same string values (`laser`/`live`/`alal`, `planned`/`completed`/`cancelled`, `pending`/`present`/`no_show`) throughout. Function names (`create_range_event`, `update_range_event`, `cancel_range_event`, `add_range_assignment`, `remove_range_assignment`, `mark_attendance`) match between their defining task and every consuming task.
