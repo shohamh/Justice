@@ -105,7 +105,7 @@ describe("BugReportsContent", () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
 
     expect(screen.getByText("/calendar")).toBeInTheDocument();
     expect(screen.getByText(/סמל/)).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe("BugReportsContent", () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId("bug-report-row-r1"));
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
     await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalled());
 
     cleanup();
@@ -155,14 +155,46 @@ describe("BugReportsContent", () => {
     expect(bugReportsApi.listBugReports).toHaveBeenCalledTimes(2);
   });
 
-  it("expands the row when clicking empty padding in the status cell", async () => {
+  it("expands the row via the dedicated expand toggle button", async () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
-    const statusTd = screen.getByTestId("bug-report-status-r1").closest("td") as HTMLElement;
-    fireEvent.click(statusTd);
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
 
     expect(screen.getByText("/calendar")).toBeInTheDocument();
+  });
+
+  it("sorts rows by date when the date column header is clicked", async () => {
+    const olderReport = {
+      ...SAMPLE_REPORT,
+      id: "r-older",
+      description: "older report",
+      created_at: "2026-07-20T10:05:00Z",
+    };
+    const newerReport = {
+      ...SAMPLE_REPORT,
+      id: "r-newer",
+      description: "newer report",
+      created_at: "2026-07-28T10:05:00Z",
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [olderReport, newerReport],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByText("older report")).toBeInTheDocument());
+
+    const getDescriptionOrder = () =>
+      screen.getAllByTestId(/^bug-report-row-/).map((row) => row.textContent);
+
+    // Initial (unsorted/server) order: older, then newer.
+    expect(getDescriptionOrder()[0]).toContain("older report");
+
+    fireEvent.click(screen.getByText("תאריך"));
+    await waitFor(() => expect(getDescriptionOrder()[0]).toContain("older report"));
+
+    fireEvent.click(screen.getByText("תאריך"));
+    await waitFor(() => expect(getDescriptionOrder()[0]).toContain("newer report"));
   });
 
   it("shows an inline error when the import request itself fails", async () => {
