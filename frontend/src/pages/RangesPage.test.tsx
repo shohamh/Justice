@@ -5,6 +5,9 @@ import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
 
 vi.mock("../api/ranges");
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "me", hierarchy_node_id: "node-1" } }),
+}));
 
 function renderWithQuery(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

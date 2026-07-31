@@ -7,12 +7,19 @@ import {
   RangeEvent,
 } from "../api/ranges";
 import { queryKeys } from "../queryKeys";
+import { useAuth } from "../auth/AuthContext";
 
 export default function RangesPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const nodeId = user?.hierarchy_node_id ?? null;
 
-  const { data: events } = useQuery({ queryKey: queryKeys.ranges(), queryFn: getRanges });
+  const { data: events } = useQuery({
+    queryKey: queryKeys.ranges(),
+    queryFn: () => getRanges(nodeId as string),
+    enabled: !!nodeId,
+  });
   const { data: selectedEvent } = useQuery({
     queryKey: queryKeys.rangeEvent(selectedEventId as string),
     queryFn: () => getRangeEvent(selectedEventId as string),

@@ -84,7 +84,11 @@ export default function HomePage() {
   const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
   const settings = settingsQuery.data ?? ({} as SettingsMap);
 
-  const rangesQuery = useQuery({ queryKey: queryKeys.ranges(), queryFn: getRanges });
+  const rangesQuery = useQuery({
+    queryKey: queryKeys.ranges(),
+    queryFn: () => getRanges(user!.hierarchy_node_id as string),
+    enabled: !!user?.hierarchy_node_id,
+  });
   const ranges = rangesQuery.data ?? [];
 
   const transparencyQuery = useQuery({

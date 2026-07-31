@@ -50,8 +50,11 @@ export interface UpdateRangeEventBody {
   cancel?: boolean;
 }
 
-export function getRanges(): Promise<RangeEvent[]> {
-  return api.get("/ranges").then((r) => r.data);
+export function getRanges(nodeId: string, dateFrom?: string, dateTo?: string): Promise<RangeEvent[]> {
+  const params = new URLSearchParams({ node_id: nodeId });
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  return api.get(`/ranges?${params.toString()}`).then((r) => r.data);
 }
 
 export function getRangeEvent(id: string): Promise<RangeEvent> {

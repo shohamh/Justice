@@ -12,11 +12,11 @@ vi.mock("./client", () => ({
 }));
 
 describe("ranges api", () => {
-  it("getRanges calls GET /ranges", async () => {
+  it("getRanges calls GET /ranges with node_id", async () => {
     mockGet.mockResolvedValue({ data: [] });
     const { getRanges } = await import("./ranges");
-    const result = await getRanges();
-    expect(mockGet).toHaveBeenCalledWith("/ranges");
+    const result = await getRanges("node-1");
+    expect(mockGet).toHaveBeenCalledWith(expect.stringContaining("node_id=node-1"));
     expect(result).toEqual([]);
   });
 
