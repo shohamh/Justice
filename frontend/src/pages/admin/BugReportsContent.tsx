@@ -73,6 +73,10 @@ export function BugReportsContent() {
   const total = query.data?.total ?? 0;
   const pages = Math.ceil(total / limit);
 
+  useEffect(() => {
+    if (pages > 0 && page > pages) setPage(pages);
+  }, [page, pages, setPage]);
+
   async function handleStatusChange(id: string, status: BugReportStatus) {
     setStatusErrorById((prev) => ({ ...prev, [id]: "" }));
     try {

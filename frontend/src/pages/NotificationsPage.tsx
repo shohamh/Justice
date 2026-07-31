@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
@@ -47,6 +47,10 @@ export default function NotificationsPage() {
   };
 
   const pages = Math.ceil(total / limit);
+
+  useEffect(() => {
+    if (pages > 0 && page > pages) setPage(pages);
+  }, [page, pages, setPage]);
 
   return (
     <Layout>
