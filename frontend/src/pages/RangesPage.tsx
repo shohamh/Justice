@@ -18,6 +18,7 @@ export default function RangesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
+  const canManage = user?.role === "admin" || user?.is_duty_manager === true;
 
   const { data: events } = useQuery({
     queryKey: queryKeys.ranges(),
@@ -69,15 +70,19 @@ export default function RangesPage() {
       {selectedEvent && (
         <div>
           <h2>{selectedEvent.location}</h2>
-          <button data-testid="add-soldier-button" onClick={() => setShowPicker(true)}>
-            הוסף חייל
-          </button>
+          {canManage && (
+            <button data-testid="add-soldier-button" onClick={() => setShowPicker(true)}>
+              הוסף חייל
+            </button>
+          )}
           {showPicker && <SoldierSearchAutocomplete onSelect={handleAddSoldier} />}
           <ul>
             {selectedEvent.assignments.map((a) => (
               <li key={a.id}>
                 {a.soldier_id} {a.is_reserve ? "(רזרבה)" : ""}
-                <button onClick={() => handleRemoveAssignment(a.id)}>הסר</button>
+                {canManage && (
+                  <button onClick={() => handleRemoveAssignment(a.id)}>הסר</button>
+                )}
               </li>
             ))}
           </ul>
