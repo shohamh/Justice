@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../api/client";
-import { queryKeys } from "../../queryKeys";
+import { api } from "../api/client";
+import { queryKeys } from "../queryKeys";
 import {
   listComments,
   createComment,
   uploadCommentAttachment,
   bugReportCommentAttachmentDownloadUrl,
   BugReportComment,
-} from "../../api/bugReports";
-import { translateApiError } from "../../utils/translateApiError";
+} from "../api/bugReports";
+import { translateApiError } from "../utils/translateApiError";
 
 interface Props {
   reportId: string;
@@ -25,10 +25,12 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
 }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let objectUrl: string | null = null;
     let cancelled = false;
+    setFailed(false);
     api
       .get(bugReportCommentAttachmentDownloadUrl(reportId, commentId, attachmentId), { responseType: "blob" })
       .then((res) => {
@@ -37,7 +39,7 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
         setUrl(objectUrl);
       })
       .catch(() => {
-        // Silently ignored — a broken thumbnail isn't worth its own error banner here.
+        if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
@@ -45,6 +47,17 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
     };
   }, [reportId, commentId, attachmentId]);
 
+  if (failed) {
+    return (
+      <div
+        data-testid="attachment-thumbnail-fallback"
+        className="w-16 h-16 flex items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 text-xs"
+        title={fileName}
+      >
+        ⚠
+      </div>
+    );
+  }
   if (!url) return null;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer">

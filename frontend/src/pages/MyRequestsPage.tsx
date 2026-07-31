@@ -25,7 +25,7 @@ import {
   uploadExemptionFile,
 } from "../api/exemptions";
 import { getMyBugReports, BugReportSeverity, BugReportStatus } from "../api/bugReports";
-import BugReportDetailModal from "./admin/BugReportDetailModal";
+import BugReportDetailModal from "../components/BugReportDetailModal";
 
 export default function MyRequestsPage() {
   const { t } = useTranslation();

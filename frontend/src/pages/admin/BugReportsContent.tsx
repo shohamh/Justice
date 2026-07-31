@@ -14,7 +14,7 @@ import {
   BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
-import BugReportDetailModal from "./BugReportDetailModal";
+import BugReportDetailModal from "../../components/BugReportDetailModal";
 import { usePagePagination } from "../../hooks/usePagePagination";
 
 const SEVERITY_LABELS: Record<BugReportSeverity, string> = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
