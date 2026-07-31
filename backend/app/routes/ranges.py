@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, RangeAssignment, RangeEvent, RangeType, Soldier
+from app.db.models import HierarchyNode, RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeType, Soldier
 from app.db.session import get_session
 from app.services import ranges as svc
+from app.services.authority import range_attendance_edit_authorized
 from app.services.settings_loader import SettingNotFound, get_setting
 
 router = APIRouter(prefix="/ranges", tags=["ranges"])
@@ -202,3 +203,30 @@ def list_range_events(
     _require_enabled(session)
     events = session.query(RangeEvent).order_by(RangeEvent.date).all()
     return [_event_out(session, e) for e in events]
+
+
+class MarkAttendanceBody(BaseModel):
+    status: RangeAttendanceStatus
+    note: str | None = Field(default=None, max_length=1000)
+
+
+@router.patch("/{event_id}/assignments/{assignment_id}/attendance", response_model=RangeAssignmentOut)
+def mark_attendance_route(
+    event_id: uuid.UUID, assignment_id: uuid.UUID, body: MarkAttendanceBody,
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    assignment = session.get(RangeAssignment, assignment_id)
+    if assignment is None or assignment.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    node = _event_node(session, event)
+    if user.role != "admin" and not range_attendance_edit_authorized(session, user=user, target_node=node):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        updated = svc.mark_attendance(
+            session, assignment=assignment, status=body.status, marked_by=user.id, note=body.note,
+        )
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _assignment_out(updated)

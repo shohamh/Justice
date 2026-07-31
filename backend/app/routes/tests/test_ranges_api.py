@@ -130,3 +130,48 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
     assert get_resp.status_code == 200
     assert get_resp.json()["id"] == event_id
     assert get_resp.json()["assignments"] == []
+
+
+def test_mark_attendance_requires_elevated_dm_scope(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    apply_settings(admin_session, {}, {"mitvachim.attendance_edit_min_level": "branch"}, actor_id=None)
+    battalion = create_node(admin_session, level="unit", name="גדוד ט1")
+    company = create_node(admin_session, level="branch", name="ענף ט1", parent=battalion)
+    platoon = create_node(admin_session, level="group", name="פלוגה ט1", parent=company)
+    low_dm = create_soldier(admin_session, personal_number="6100001", role="duty_manager", hierarchy_node_id=platoon.id)
+    high_dm = create_soldier(admin_session, personal_number="6100002", role="duty_manager", hierarchy_node_id=company.id)
+    weapon_duty = DutyType(name="שמירה עם נשק ט1", score_per_day=Decimal("1.00"),
+                            requires_weapon=True, eligible_node_ids=[platoon.id])
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    soldier = create_soldier(admin_session, personal_number="6100003", hierarchy_node_id=platoon.id)
+
+    past_date = date.today() - timedelta(days=1)
+    create_resp = client.post(
+        "/api/ranges",
+        json={"hierarchy_node_id": str(platoon.id), "range_type": "laser", "date": past_date.isoformat(),
+              "location": "מטווח", "required_count": 1},
+        headers=auth_headers(high_dm),
+    )
+    event_id = create_resp.json()["id"]
+    add_resp = client.post(
+        f"/api/ranges/{event_id}/assignments",
+        json={"soldier_id": str(soldier.id), "is_reserve": False},
+        headers=auth_headers(high_dm),
+    )
+    assignment_id = add_resp.json()["id"]
+
+    denied_resp = client.patch(
+        f"/api/ranges/{event_id}/assignments/{assignment_id}/attendance",
+        json={"status": "present"},
+        headers=auth_headers(low_dm),
+    )
+    assert denied_resp.status_code == 403
+
+    allowed_resp = client.patch(
+        f"/api/ranges/{event_id}/assignments/{assignment_id}/attendance",
+        json={"status": "present"},
+        headers=auth_headers(high_dm),
+    )
+    assert allowed_resp.status_code == 200, allowed_resp.text
+    assert allowed_resp.json()["attendance_status"] == "present"
