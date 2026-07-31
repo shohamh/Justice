@@ -6,14 +6,15 @@ import {
   removeRangeAssignment,
   RangeEvent,
 } from "../api/ranges";
+import { queryKeys } from "../queryKeys";
 
 export default function RangesPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { data: events } = useQuery({ queryKey: ["ranges"], queryFn: getRanges });
+  const { data: events } = useQuery({ queryKey: queryKeys.ranges(), queryFn: getRanges });
   const { data: selectedEvent } = useQuery({
-    queryKey: ["ranges", selectedEventId],
+    queryKey: queryKeys.rangeEvent(selectedEventId as string),
     queryFn: () => getRangeEvent(selectedEventId as string),
     enabled: selectedEventId !== null,
   });
@@ -21,7 +22,7 @@ export default function RangesPage() {
   async function handleRemoveAssignment(assignmentId: string) {
     if (!selectedEventId) return;
     await removeRangeAssignment(selectedEventId, assignmentId);
-    queryClient.invalidateQueries({ queryKey: ["ranges", selectedEventId] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
   }
 
   return (
