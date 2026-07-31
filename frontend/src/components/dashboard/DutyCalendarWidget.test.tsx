@@ -18,4 +18,17 @@ describe("DutyCalendarWidget", () => {
     expect(container.textContent).toContain("שמירה ראשית");
     expect(container.textContent).not.toContain("תורנות");
   });
+
+  it("renders range events distinctly from duty events", () => {
+    const ranges = [
+      { id: "r1", hierarchy_node_id: "n1", range_type: "laser" as const, date: "2026-09-01",
+        location: "מטווח דרום", required_count: 3, reserve_count: 1, status: "planned" as const, assignments: [] },
+    ];
+
+    const { container } = render(
+      <DutyCalendarWidget duties={[]} typeNames={{}} onOpenDuty={() => {}} ranges={ranges} onOpenRange={() => {}} />,
+    );
+
+    expect(container.textContent).toContain("מטווח דרום");
+  });
 });

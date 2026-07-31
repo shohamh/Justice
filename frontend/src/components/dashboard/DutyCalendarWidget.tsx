@@ -7,6 +7,7 @@ import heLocale from "@fullcalendar/core/locales/he";
 import type { DatesSetArg } from "@fullcalendar/core";
 import { EffectiveDuty } from "../../api/assignments";
 import { Holiday, listHolidays } from "../../api/calendarHolidays";
+import { RangeEvent } from "../../api/ranges";
 import { dutyTypeColor } from "../../utils/dutyTypeColor";
 import { calendarViewMinWidth } from "../../utils/calendarViewWidth";
 
@@ -14,9 +15,11 @@ interface Props {
   duties: EffectiveDuty[];
   typeNames: Record<string, string>;
   onOpenDuty: (duty: EffectiveDuty) => void;
+  ranges?: RangeEvent[];
+  onOpenRange?: (range: RangeEvent) => void;
 }
 
-export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Props) {
+export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty, ranges = [], onOpenRange }: Props) {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
@@ -51,6 +54,18 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
       };
     }),
   [duties, typeNames]);
+
+  const rangeEvents = useMemo(() =>
+    ranges.map((r) => ({
+      id: `range-${r.id}`,
+      title: r.location,
+      start: r.date,
+      allDay: true,
+      backgroundColor: "#7c3aed",
+      borderColor: "#7c3aed",
+      extendedProps: { range: r },
+    })),
+  [ranges]);
 
   const holidayEvents = useMemo(() =>
     holidays.map((h) => ({
@@ -87,7 +102,7 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
           initialView="dayGridMonth"
           firstDay={0}
           locale={heLocale}
-          events={[...dutyEvents, ...holidayEvents]}
+          events={[...dutyEvents, ...rangeEvents, ...holidayEvents]}
           headerToolbar={{ start: "prev,next", center: "title", end: "timeGridThreeDay,timeGridWeek,dayGridMonth" }}
           datesSet={handleDatesSet}
           slotMinTime="00:00:00"
@@ -103,6 +118,11 @@ export default function DutyCalendarWidget({ duties, typeNames, onOpenDuty }: Pr
           selectable={false}
           eventClick={(info) => {
             if (info.event.extendedProps.isHoliday) return;
+            const range = info.event.extendedProps.range as RangeEvent | undefined;
+            if (range) {
+              onOpenRange?.(range);
+              return;
+            }
             const duty = info.event.extendedProps.duty as EffectiveDuty;
             onOpenDuty(duty);
           }}

@@ -265,7 +265,13 @@ export default function HomePage() {
           settings={settings}
         />
 
-        <DutyCalendarWidget duties={duties} typeNames={typeNames} onOpenDuty={handleOpenDuty} />
+        <DutyCalendarWidget
+          duties={duties}
+          typeNames={typeNames}
+          onOpenDuty={handleOpenDuty}
+          ranges={publicSettings?.["mitvachim.enabled"] === true ? ranges : []}
+          onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}
+        />
 
         <UpcomingDutiesWidget
           duties={duties}
