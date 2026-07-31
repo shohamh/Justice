@@ -14,7 +14,7 @@ from app.db.models import (
 )
 from app.services import assignments as assignments_svc
 from app.services.approval_scope import commander_chain_for_soldier, duty_manager_chain_for_soldier
-from app.services.notifications import create_notification
+from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.settings_loader import SettingNotFound, get_setting, get_setting_int
 from app.services.reserves import check_reserve_cap
 from app.services.eligibility import check_soldier_for_assignment
@@ -359,6 +359,72 @@ def _candidate_fully_approved(session: Session, req: SwapRequest, candidate: Swa
     return True
 
 
+_SWAP_PENDING_APPROVAL_TITLE = "בקשת החלפה ממתינה לאישורך"
+
+
+def _notify_requester_side_awaiting_manager_decision(
+    session: Session, *, req: SwapRequest, candidate: SwapCandidate, actor_id: uuid.UUID | None
+) -> None:
+    """The requester-side half of `_notify_awaiting_manager_decision` — split
+    out so callers that loop over multiple live candidates for the same
+    request can call it once per request instead of once per candidate. Still
+    gated on `candidate.soldier_side_approved` (matching the original
+    combined function's behavior): the "awaiting manager decision" transition
+    only applies once at least one candidate has fully approved both sides."""
+    if not (req.requester_side_approved and candidate.soldier_side_approved):
+        return
+    if not _require_approval(session) or not _require_duty_manager_approval(session):
+        return
+    if (
+        duty_manager_chain_for_soldier(session, req.requesting_soldier_id)
+        and not _has_decision(session, req.id, None, "requester", "duty_manager", approved=True)
+    ):
+        notify_duty_managers_in_scope(
+            session, soldier_id=req.requesting_soldier_id,
+            type=NotificationType.swap_pending_approval, title=_SWAP_PENDING_APPROVAL_TITLE,
+            reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+        )
+
+
+def _notify_covering_side_awaiting_manager_decision(
+    session: Session, *, req: SwapRequest, candidate: SwapCandidate, actor_id: uuid.UUID | None
+) -> None:
+    """The covering-side half of `_notify_awaiting_manager_decision` — varies
+    per candidate, so it stays called once per live candidate."""
+    if not (req.requester_side_approved and candidate.soldier_side_approved):
+        return
+    if not _require_approval(session) or not _require_duty_manager_approval(session):
+        return
+    if (
+        duty_manager_chain_for_soldier(session, candidate.soldier_id)
+        and not _has_decision(session, req.id, candidate.id, "covering", "duty_manager", approved=True)
+    ):
+        notify_duty_managers_in_scope(
+            session, soldier_id=candidate.soldier_id,
+            type=NotificationType.swap_pending_approval, title=_SWAP_PENDING_APPROVAL_TITLE,
+            reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+        )
+
+
+def _notify_awaiting_manager_decision(
+    session: Session, *, req: SwapRequest, candidate: SwapCandidate, actor_id: uuid.UUID | None
+) -> None:
+    """Both soldier sides have just approved this candidate. If duty-manager
+    approval is still required and outstanding for either side, notify the
+    duty managers scoped over that side so they know a decision is now
+    pending — this is the "awaiting manager decision" transition. A no-op if
+    manager/duty-manager approval isn't required, or if there's no live duty-
+    manager chain to notify, or if that chain already has an approved row.
+
+    Convenience wrapper combining both halves for call sites that only ever
+    deal with a single candidate (unlike `approve_soldier_side`'s
+    requester-side branch, which loops over every live candidate and must
+    call the requester-side half at most once per request — see
+    `_notify_requester_side_awaiting_manager_decision`)."""
+    _notify_requester_side_awaiting_manager_decision(session, req=req, candidate=candidate, actor_id=actor_id)
+    _notify_covering_side_awaiting_manager_decision(session, req=req, candidate=candidate, actor_id=actor_id)
+
+
 def _try_finalize(session: Session, req: SwapRequest, actor_id: uuid.UUID | None) -> None:
     """Race: check every live (pending/accepted) candidate; the first one
     found fully approved wins — applies the cover, marks the request
@@ -464,6 +530,27 @@ def approve_soldier_side(
             entity_type="swap_request", entity_id=req.id, after={"soldier_id": str(soldier_id), "side": "requester"},
         )
         session.flush()
+        live_candidates = session.execute(
+            select(SwapCandidate).where(
+                SwapCandidate.swap_request_id == req.id,
+                SwapCandidate.status.in_(["pending", "accepted"]),
+            )
+        ).scalars().all()
+        # The requester-side half only depends on `req`, not on which
+        # candidate triggered it — call it at most once per invocation
+        # (using any one candidate that already has its soldier side
+        # approved, since that's the only per-candidate field the guard
+        # checks) rather than once per live candidate, or it would fire a
+        # duplicate notification for every additional live candidate. The
+        # covering-side half genuinely varies per candidate, so it still runs
+        # once per live candidate.
+        already_approved_candidate = next((c for c in live_candidates if c.soldier_side_approved), None)
+        if already_approved_candidate is not None:
+            _notify_requester_side_awaiting_manager_decision(
+                session, req=req, candidate=already_approved_candidate, actor_id=actor_id or soldier_id,
+            )
+        for live_candidate in live_candidates:
+            _notify_covering_side_awaiting_manager_decision(session, req=req, candidate=live_candidate, actor_id=actor_id or soldier_id)
         _try_finalize(session, req, actor_id or soldier_id)
         session.flush()
         return req
@@ -500,6 +587,7 @@ def approve_soldier_side(
         after={"soldier_id": str(soldier_id), "side": "covering", "candidate_id": str(candidate.id)},
     )
     session.flush()
+    _notify_awaiting_manager_decision(session, req=req, candidate=candidate, actor_id=actor_id or soldier_id)
     _try_finalize(session, req, actor_id or soldier_id)
     session.flush()
     return req
@@ -595,6 +683,7 @@ def approve_manager_row(
     if not qualifying:
         raise SwapError("not_required_approver")
     now = datetime.utcnow()
+    newly_approved_sides: set[str] = set()
     for side, kind in qualifying:
         row_candidate_id = candidate_id if side == "covering" else None
         row = _get_or_create_row(session, request_id=request_id, candidate_id=row_candidate_id, side=side, actor_id=actor_id, kind=kind)
@@ -602,11 +691,35 @@ def approve_manager_row(
             row.approved = True
             row.approved_by = actor_id
             row.approved_at = now
+            newly_approved_sides.add(side)
             write_audit(
                 session, actor_id=actor_id, action="swap.manager_approve", entity_type="swap_request",
                 entity_id=req.id, after={"side": side, "kind": kind, "candidate_id": str(candidate_id) if candidate_id else None},
             )
     session.flush()
+    # Approval-chain handoff: a link (e.g. the commander) just cleared their
+    # row for a side. If duty-manager approval is still required and
+    # outstanding for that same side, notify the scoped duty managers that
+    # the swap is now pending their decision.
+    for side in newly_approved_sides:
+        if side == "requester":
+            side_soldier_id: uuid.UUID | None = req.requesting_soldier_id
+        else:
+            side_candidate = _get_candidate_for_request(session, request_id, candidate_id)
+            side_soldier_id = side_candidate.soldier_id if side_candidate else None
+        if side_soldier_id is None:
+            continue
+        if not _require_duty_manager_approval(session):
+            continue
+        if (
+            duty_manager_chain_for_soldier(session, side_soldier_id)
+            and not _has_decision(session, req.id, candidate_id if side == "covering" else None, side, "duty_manager", approved=True)
+        ):
+            notify_duty_managers_in_scope(
+                session, soldier_id=side_soldier_id,
+                type=NotificationType.swap_pending_approval, title=_SWAP_PENDING_APPROVAL_TITLE,
+                reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
+            )
     _try_finalize(session, req, actor_id)
     session.flush()
     return req
@@ -842,6 +955,7 @@ def claim_request(
         title="הייתה הצעת החלפה", reference_type="swap_request", reference_id=req.id, actor_id=actor_id,
     )
     session.flush()
+    _notify_awaiting_manager_decision(session, req=req, candidate=candidate, actor_id=actor_id)
     _try_finalize(session, req, actor_id)
     session.flush()
     return req
@@ -1077,6 +1191,7 @@ def cover_offer(
         entity_id=req.id, after={"soldier_id": str(covering_soldier_id), "candidate_id": str(candidate.id)},
     )
     session.flush()
+    _notify_awaiting_manager_decision(session, req=req, candidate=candidate, actor_id=actor_id)
     _try_finalize(session, req, actor_id)
     session.flush()
     return req

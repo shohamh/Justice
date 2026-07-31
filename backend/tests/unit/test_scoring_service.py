@@ -345,6 +345,40 @@ def test_breakdown(admin_session):
     assert len(bd["adjustments"]) == 1
 
 
+def test_soldier_score_breakdown_splits_past_and_future_days(admin_session):
+    s = create_soldier(admin_session, personal_number="8500006")
+    dt = _dt(admin_session, "שמירה-pf", "1.00")
+    loc = _loc(admin_session, "מוצב-pf")
+    past_date = date.today() - timedelta(days=5)
+    future_date = date.today() + timedelta(days=5)
+    create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=past_date,
+        end_date=past_date + timedelta(days=1),
+        notes=None,
+        actor_id=None,
+    )
+    create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=future_date,
+        end_date=future_date + timedelta(days=1),
+        notes=None,
+        actor_id=None,
+    )
+    admin_session.flush()
+    result = soldier_score_breakdown(admin_session, soldier_id=s.id)
+    entry = next(p for p in result["per_type"] if p["duty_type_id"] == dt.id)
+    assert entry["days_past"] == 1
+    assert entry["days_future"] == 1
+    assert entry["days"] == 2
+
+
 def test_effective_spans_split_on_override(admin_session):
     s = create_soldier(admin_session, personal_number="8600001")
     repl = create_soldier(admin_session, personal_number="8600002")

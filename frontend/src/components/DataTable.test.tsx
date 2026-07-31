@@ -21,6 +21,23 @@ const cols: ColDef<Row>[] = [
   },
 ];
 
+const filterableCols: ColDef<Row>[] = [
+  {
+    id: "name",
+    header: "Name",
+    cell: (r) => r.name,
+    sortValue: (r) => r.name,
+    filterValue: (r) => r.name,
+    columnFilter: true,
+  },
+  {
+    id: "score",
+    header: "Score",
+    cell: (r) => String(r.score),
+    sortValue: (r) => r.score,
+  },
+];
+
 const data: Row[] = [
   { name: "Alice", score: 3 },
   { name: "Bob", score: 1 },
@@ -57,6 +74,42 @@ test("sorts descending on second header click", () => {
   fireEvent.click(screen.getByText("Score"));
   const rows = container.querySelectorAll("tbody tr");
   expect(rows[0].textContent).toContain("Alice");  // score 3
+});
+
+test("sorts descending on first header click when sortDescFirst is set on the column", () => {
+  const descFirstCols: ColDef<Row>[] = [
+    cols[0],
+    { ...cols[1], sortDescFirst: true },
+  ];
+  const { container } = render(<DataTable columns={descFirstCols} data={data} />);
+  fireEvent.click(screen.getByText("Score"));
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Alice"); // score 3 (descending first)
+  expect(rows[1].textContent).toContain("Charlie"); // score 2
+  expect(rows[2].textContent).toContain("Bob"); // score 1
+});
+
+test("applies defaultSort on initial render without requiring a header click", () => {
+  const { container } = render(
+    <DataTable columns={cols} data={data} defaultSort={[{ id: "score", desc: true }]} />
+  );
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Alice");   // score 3
+  expect(rows[1].textContent).toContain("Charlie"); // score 2
+  expect(rows[2].textContent).toContain("Bob");     // score 1
+});
+
+test("defaultSort can still be overridden by clicking a header afterward", () => {
+  const { container } = render(
+    <DataTable columns={cols} data={data} defaultSort={[{ id: "score", desc: true }]} />
+  );
+  // TanStack's toggle cycle from an already-desc-sorted column goes to
+  // "unsorted" first, then to ascending — so it takes two clicks to reach
+  // ascending order here (unlike starting from a genuinely unsorted table).
+  fireEvent.click(screen.getByText("Score"));
+  fireEvent.click(screen.getByText("Score"));
+  const rows = container.querySelectorAll("tbody tr");
+  expect(rows[0].textContent).toContain("Bob"); // score 1 (ascending)
 });
 
 test("non-sortable column header does not show arrow", () => {
@@ -119,4 +172,82 @@ test("onVisibleRowsChange does not fire again when parent re-renders without dat
   // onVisibleRowsChange were wired to setState, per Task 4).
   expect(spy).toHaveBeenCalledTimes(1);
   expect(spy.mock.calls[0][0]).toBe(firstRows);
+});
+
+test("column filter trigger shows no numeric badge in the unfiltered default state", () => {
+  const { container } = render(<DataTable columns={filterableCols} data={data} />);
+  // Distinct values for "name" is 3 (Alice, Bob, Charlie); if the badge were
+  // wired to raw selected-count instead of isFiltered, the trigger button
+  // would show a "3" badge here even though nothing is actually filtered.
+  const trigger = screen.getByText("▼");
+  const badge = trigger.parentElement?.querySelector("span.bg-blue-600");
+  expect(badge).toBeNull();
+  expect(container).toBeTruthy();
+});
+
+test("column filter trigger still shows no numeric badge once a filter is applied (dot indicator only)", () => {
+  render(<DataTable columns={filterableCols} data={data} />);
+  fireEvent.click(screen.getByText("▼"));
+  fireEvent.click(screen.getByLabelText("Alice"));
+  // DataTable's column filter never showed a numeric count badge, only the
+  // "▼●" dot indicator on the trigger itself.
+  const trigger = screen.getByText("▼●");
+  const badge = trigger.parentElement?.querySelector("span.bg-blue-600");
+  expect(badge).toBeNull();
+});
+
+test("expandable without expandOnRowClick: clicking a row does not expand it (existing consumers unaffected)", () => {
+  const onToggle = vi.fn();
+  const { container } = render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+      }}
+    />
+  );
+  const row = container.querySelectorAll("tbody tr")[0];
+  fireEvent.click(row);
+  expect(onToggle).not.toHaveBeenCalled();
+});
+
+test("expandable with expandOnRowClick: clicking anywhere on the row toggles expansion", () => {
+  const onToggle = vi.fn();
+  const { container } = render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+        expandOnRowClick: true,
+      }}
+    />
+  );
+  const row = container.querySelectorAll("tbody tr")[0];
+  fireEvent.click(row);
+  expect(onToggle).toHaveBeenCalledWith(data[0]);
+});
+
+test("expandable with expandOnRowClick: the dedicated toggle button still works and does not double-toggle", () => {
+  const onToggle = vi.fn();
+  render(
+    <DataTable
+      columns={cols}
+      data={data}
+      expandable={{
+        isExpanded: () => false,
+        onToggle,
+        content: () => <div>details</div>,
+        expandOnRowClick: true,
+      }}
+    />
+  );
+  fireEvent.click(screen.getAllByRole("button", { name: "הרחב" })[0]);
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  expect(onToggle).toHaveBeenCalledWith(data[0]);
 });

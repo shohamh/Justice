@@ -120,7 +120,28 @@
     "pending_constraints": "אילוצים ממתינים לאישור",
     "approved_constraints": "אילוצים שאושרו",
     "rejected_constraints": "אילוצים שנדחו",
-    "decision_note": "הערת מפקד"
+    "decision_note": "הערת מפקד",
+    "section_bug_reports": "הדיווחים שלי"
+  },
+  "bug_reports": {
+    "comments_title": "תגובות על הדיווח",
+    "comment_button": "תגובות",
+    "no_comments": "אין תגובות עדיין",
+    "comment_placeholder": "הוסף תגובה...",
+    "send": "שלח",
+    "sending": "שולח...",
+    "attachment_label": "צירוף תמונה (אופציונלי)",
+    "attachment_preview_alt": "צירוף לתגובה",
+    "attachment_upload_failed": "התגובה נשלחה בהצלחה, אך העלאת הצירוף נכשלה",
+    "close": "סגור",
+    "none": "לא דיווחת על באגים",
+    "status_open": "פתוח",
+    "status_in_progress": "בטיפול",
+    "status_resolved": "טופל",
+    "status_wont_fix": "לא יטופל",
+    "severity_low": "נמוכה",
+    "severity_medium": "בינונית",
+    "severity_high": "גבוהה"
   },
   "approvals": {
     "title": "אישור בקשות",
@@ -383,6 +404,8 @@
     "cover_for_free": "כסה בחינם"
   },
   "errors": {
+    "too_many_comments": "הדיווח הגיע למכסת התגובות המרבית",
+    "too_many_attachments": "התגובה הגיעה למכסת הצירופים המרבית",
     "bad_date_range": "טווח תאריכים לא תקין",
     "start_date_in_past": "תאריך התחלה לא יכול להיות בעבר",
     "cap_exceeded": "חרגת ממכסת הימים המותרת",
@@ -422,6 +445,7 @@
     "reorder_would_violate_tree": "הסידור המבוקש יפר את מבנה העץ ההיררכי",
     "discharge_date_before_enlistment": "תאריך השחרור חייב להיות אחרי תאריך הגיוס",
     "mandatory_end_after_discharge": "תאריך סיום החובה לא יכול להיות אחרי תאריך השחרור",
+    "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר",
     "career_discharge_in_past": "תאריך השחרור של חייל בקבע לא יכול להיות בעבר",
     "chovah_rank_cannot_be_keva": "דרג חובה אינו יכול להיות משויך למעמד קבע",
     "personal_number_exists": "מספר אישי זה כבר קיים במערכת",
@@ -486,7 +510,10 @@
     "file_not_found": "הקובץ לא נמצא",
     "already_invited": "המשתמש כבר הוזמן — רענן את הדף",
     "target_limit_reached": "הגעת למגבלת ההזמנות",
-    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות"
+    "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
+    "not_found": "הפריט לא נמצא",
+    "file_too_large": "הקובץ חורג מהגודל המותר (5MB)",
+    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF"
   },
   "exemption_requests": {
     "title": "בקשות פטור",
@@ -799,6 +826,7 @@
     "board": "לוח מחליפים",
     "mine": "הבקשות שלי",
     "cover": "אני מחליף",
+    "organizational_distance": "מרחק ארגוני",
     "status_open": "פתוח",
     "status_pending_approval": "ממתין לאישור",
     "status_applied": "בוצע",
@@ -1076,6 +1104,7 @@
     "type_constraint_pending": "בקשת אילוץ ממתינה",
     "type_exemption_request_pending": "בקשת פטור ממתינה",
     "type_swap_offer_incoming": "הצעת החלפה נכנסת",
+    "type_swap_pending_approval": "בקשת החלפה ממתינה לאישורך",
     "type_algorithm_job_done": "הרצת אלגוריתם הסתיימה",
     "type_algorithm_job_failed": "הרצת אלגוריתם נכשלה",
     "type_enrollment_request_received": "בקשת הצטרפות התקבלה",
@@ -1087,6 +1116,9 @@
     "type_gimelim_reassigned": "שובצת מחדש (גימלים)",
     "type_exemption_revoked": "פטור בוטל",
     "type_transfer_request_pending": "בקשת העברה ממתינה",
+    "type_transfer_request_rejected": "בקשת העברה נדחתה",
+    "type_system_announcement": "הודעת מערכת",
+    "type_enrollment_fields_edited": "פרטי הרשמה עודכנו",
     "type_no_show_marked": "נרשמה אי-הופעה לתורנות"
   },
   "announcements": {
@@ -1146,7 +1178,8 @@
       "exemption_missing_fields": "יש למלא סוג פטור ותאריך התחלה לכל בקשת פטור, או להסיר את השורה",
       "constraint_missing_fields": "יש למלא תאריך התחלה וסיום לכל אילוץ, או להסיר את השורה",
       "network": "שגיאת רשת. נסה שוב."
-    }
+    },
+    "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר"
   },
   "telegram_setup": {
     "title": "חיבור טלגרם",

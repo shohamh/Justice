@@ -301,8 +301,11 @@ def _loc_out(loc: DutyLocation) -> LocationOut:
 
 @router.get("/locations", response_model=list[LocationOut])
 def list_locations(
-    session: Session = Depends(get_session), user: Soldier = Depends(require_config_manager)
+    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed)
 ) -> list[LocationOut]:
+    # Reference data: any authenticated (password-changed) user may list location
+    # names, same precedent as list_duty_types above. Mutations stay gated behind
+    # require_config_manager.
     return [_loc_out(loc) for loc in session.execute(select(DutyLocation)).scalars().all()]
 
 

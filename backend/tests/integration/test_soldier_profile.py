@@ -27,6 +27,20 @@ def test_dm_can_patch_profile(client, admin_session):
     assert data["gender"] == "male"  # DM can see gender
 
 
+def test_profile_update_rank_track_incompatible_returns_400(client, admin_session):
+    dm, node = _setup_dm(admin_session, "prof_dm_incompat")
+    s = create_soldier(admin_session, personal_number="prof_s_incompat", hierarchy_node_id=node.id)
+    # No mandatory_end_date set -> is_career derives False ("חובה" track).
+    # "רסן" is a קבע-only rank, so this combination is structurally incompatible.
+    resp = client.patch(
+        f"/api/soldiers/{s.id}/profile",
+        json={"rank": "רסן"},
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 400, resp.text
+    assert "rank_track_incompatible" in resp.json()["detail"]
+
+
 def test_gender_hidden_from_peer(client, admin_session):
     dm, node = _setup_dm(admin_session, "prof_dm_002")
     node2 = create_node(admin_session, level="branch", name="branch_peer_002")

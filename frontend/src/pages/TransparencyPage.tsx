@@ -573,6 +573,7 @@ export default function TransparencyPage() {
       sortValue: (r) => r._rank_order,
       filterValue: (r) => r.rank ?? "",
       columnFilter: true,
+      sortDescFirst: true, // senior ranks (higher _rank_order) should sort first on first click
     },
     {
       id: "shift_count", header: t("transparency.shift_count"),
@@ -1043,6 +1044,7 @@ export default function TransparencyPage() {
               columns={soldierCols}
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
+              defaultSort={[{ id: "rank", desc: true }]}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               rowStyle={(r) => {
                 const g = r._group;

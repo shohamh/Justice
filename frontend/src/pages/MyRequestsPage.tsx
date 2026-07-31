@@ -24,6 +24,8 @@ import {
   submitExemptionRequest,
   uploadExemptionFile,
 } from "../api/exemptions";
+import { getMyBugReports, BugReportSeverity, BugReportStatus } from "../api/bugReports";
+import BugReportDetailModal from "../components/BugReportDetailModal";
 
 export default function MyRequestsPage() {
   const { t } = useTranslation();
@@ -45,6 +47,7 @@ export default function MyRequestsPage() {
   const [uploadSizeErrors, setUploadSizeErrors] = useState<string[]>([]);
   const [erMedical, setErMedical] = useState(false);
   const [expandedExemption, setExpandedExemption] = useState<Set<string>>(new Set());
+  const [openBugReportComments, setOpenBugReportComments] = useState<string | null>(null);
 
   const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -89,6 +92,9 @@ export default function MyRequestsPage() {
     }
     return named;
   }, [dutyTypeMapQuery.data, dutyTypesForMapQuery.data]);
+
+  const myBugReportsQuery = useQuery({ queryKey: queryKeys.myBugReports(), queryFn: getMyBugReports });
+  const myBugReports = myBugReportsQuery.data?.items ?? [];
 
   const exemptionsQuery = useQuery({
     queryKey: user ? queryKeys.myExemptions(user.id) : ["exemptions", "mine", "anonymous"],
@@ -163,6 +169,9 @@ export default function MyRequestsPage() {
       setErSubmitting(false);
     }
   }
+
+  const bugReportSeverityLabel = (severity: BugReportSeverity) => t(`bug_reports.severity_${severity}`);
+  const bugReportStatusLabel = (status: BugReportStatus) => t(`bug_reports.status_${status}`);
 
   const statusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -505,7 +514,45 @@ export default function MyRequestsPage() {
             })}
           </ul>
         </div>
+
+        <div className="pt-4 border-t dark:border-gray-600">
+          <h3 className="font-medium mb-2">{t("my_requests.section_bug_reports")}</h3>
+          {myBugReports.length === 0 && (
+            <p className="text-sm text-gray-500" data-testid="no-bug-reports">{t("bug_reports.none")}</p>
+          )}
+          <ul className="space-y-2 text-sm" data-testid="my-bug-reports-list">
+            {myBugReports.map((report) => (
+              <li
+                key={report.id}
+                className="border dark:border-gray-600 rounded-lg p-3 flex items-center gap-3 bg-white dark:bg-gray-800"
+                data-testid={`bug-report-row-${report.id}`}
+              >
+                <span dir="ltr" className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                  {new Date(report.created_at).toLocaleString("he-IL")}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">
+                  {bugReportSeverityLabel(report.severity)}
+                </span>
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 shrink-0">
+                  {bugReportStatusLabel(report.status)}
+                </span>
+                <span className="flex-1 truncate">{report.description}</span>
+                <button
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0"
+                  onClick={() => setOpenBugReportComments(report.id)}
+                  data-testid={`bug-report-comments-${report.id}`}
+                >
+                  {t("bug_reports.comment_button")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
+
+      {openBugReportComments && (
+        <BugReportDetailModal reportId={openBugReportComments} onClose={() => setOpenBugReportComments(null)} />
+      )}
     </Layout>
   );
 }

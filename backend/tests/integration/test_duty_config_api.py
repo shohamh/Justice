@@ -78,6 +78,14 @@ def test_plain_soldier_cannot_create_duty_type(client, admin_session):
     assert r.status_code == 403
 
 
+def test_plain_soldier_can_list_locations(client: TestClient, admin_session: Session):
+    # Homepage duty widget fetches locations the same way it fetches duty-types;
+    # any authenticated (password-changed) soldier should be able to read them.
+    s = create_soldier(admin_session, personal_number="7800003")
+    r = client.get("/api/duty-config/locations", headers=auth_headers(s))
+    assert r.status_code == 200
+
+
 def test_commander_can_list_exemption_types(client: TestClient, admin_session: Session):
     # Reference data is readable by any authenticated user (needed to fill the grant form).
     c = create_soldier(admin_session, personal_number="5100041", role="commander")

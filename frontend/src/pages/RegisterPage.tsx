@@ -7,16 +7,14 @@ import Fuse from "fuse.js";
 import { validateInviteCode, fetchRegisterNodes, register, NodeOut, listPublicExemptionTypes, PublicExemptionType } from "../api/auth";
 import { getRegistrationPublicSettings } from "../api/registrationSettings";
 import { useAuth } from "../auth/AuthContext";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import Combobox from "../components/Combobox";
 import DateInput from "../components/DateInput";
 import PasswordStrengthHint, { passwordValid } from "../components/PasswordStrengthHint";
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
-
-const ENLISTED_RANKS = ["טוראי","רבט","סמל","סמר","רסל","רסר","רסמ","רסב","רנג","קמא","סגמ"];
-const OFFICER_RANKS_LIST = ["סגן","קאב","סרן","רסן","סאל","אלמ","תאל","אלוף","רב אלוף"];
-const OFFICER_RANKS = new Set(OFFICER_RANKS_LIST);
+import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -68,6 +66,8 @@ export default function RegisterPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { loginWithToken } = useAuth();
+  const settings = usePublicSettings();
+  const telegramEnabled = settings?.["telegram.enabled"] === true;
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormData>(INITIAL);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +135,13 @@ export default function RegisterPage() {
         personal_constraints: form.personal_constraints.filter(pc => pc.start_date && pc.end_date),
       });
       await loginWithToken(resp.access_token);
-      navigate("/setup/telegram", { replace: true });
+      // telegramRequired from useAuth() here would reflect this component's
+      // last render (before loginWithToken populated `user`), so it can't be
+      // trusted right after login — telegramEnabled is a global setting
+      // independent of the just-logged-in user, so gate on that instead.
+      // TelegramSetupPage itself further gates on telegramRequired to decide
+      // whether to show a "skip" option for soldiers where it's optional.
+      navigate(telegramEnabled ? "/setup/telegram" : "/", { replace: true });
     } catch (err) {
       const detail = isAxiosError(err) ? (err.response?.data?.detail as string | undefined) : undefined;
       const knownErrors: Record<string, string> = {
@@ -147,13 +153,22 @@ export default function RegisterPage() {
         "exemption_missing_fields": t("register.errors.exemption_missing_fields"),
         "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
       };
-      setError(detail ? (knownErrors[detail] ?? detail) : t("register.errors.network"));
+      const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
+        ? t("register.rank_track_incompatible")
+        : detail ? knownErrors[detail] : undefined;
+      setError(detail ? (mappedDetail ?? detail) : t("register.errors.network"));
     } finally {
       setSubmitting(false);
     }
   }
 
   const selectedNode = nodes.find(n => n.id === form.requested_node_id);
+  // Registration always starts a soldier as חובה (is_career=False — see
+  // backend/app/services/registration.py), so the compatibility check always
+  // runs against the חובה track here.
+  const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, false)
+    ? t("register.rank_track_incompatible")
+    : null;
 
   return (
     <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6" dir="rtl">
@@ -217,17 +232,34 @@ export default function RegisterPage() {
                 ]}
                 value={form.rank}
                 onChange={v => {
-                  const isOfficer = OFFICER_RANKS.has(v);
-                  setForm(prev => ({ ...prev, rank: v, is_officer: isOfficer, bahad1_graduate: isOfficer, last_alal_date: isOfficer ? prev.last_alal_date : "" }));
+                  const isOfficer = isOfficerRank(v);
+                  setForm(prev => ({
+                    ...prev,
+                    rank: v,
+                    is_officer: isOfficer,
+                    // bahad1_graduate is a separate fact from is_officer — e.g. קא"ב
+                    // (academic officer) is an officer who did NOT graduate בה"ד 1.
+                    // Reset to false on rank change instead of mirroring is_officer, and let
+                    // the user check the "בה"ד 1 graduate" checkbox explicitly when relevant.
+                    bahad1_graduate: false,
+                    last_alal_date: isOfficer ? prev.last_alal_date : "",
+                  }));
                 }}
                 placeholder="בחר"
               />
+              {rankTrackError && <p className="text-red-600 text-xs mt-1">{rankTrackError}</p>}
             </label>
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
                 {form.is_officer && <span className="text-indigo-600 dark:text-indigo-300">✓ קצין</span>}
-                {form.bahad1_graduate && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
+            )}
+            {form.is_officer && (
+              <label className="flex items-center gap-1 text-sm">
+                <input type="checkbox" checked={form.bahad1_graduate}
+                  onChange={e => set("bahad1_graduate", e.target.checked)} />
+                בוגר בה&quot;ד 1
+              </label>
             )}
             {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
@@ -269,7 +301,7 @@ export default function RegisterPage() {
               <button className="flex-1 bg-indigo-600 text-white py-2 rounded disabled:opacity-50"
                 disabled={
                   !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email ||
-                  !form.gender || !form.rank || !form.enlistment_date || !form.mandatory_end_date ||
+                  !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
                   !form.discharge_date || !form.last_mitvahim_date ||
                   !passwordValid(form.password) || form.password !== form.confirm_password
                 }

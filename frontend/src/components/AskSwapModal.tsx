@@ -160,7 +160,7 @@ export default function AskSwapModal({
                           disabled={alreadyInvited || limitReached}
                           onChange={() => toggleTarget(s.soldier_id)}
                         />
-                        <span>{s.full_name}{s.node_name ? ` — ${s.node_name}` : ""} ({s.hierarchy_distance})</span>
+                        <span>{s.full_name}{s.node_name ? ` — ${s.node_name}` : ""} ({t("swaps.organizational_distance")}: {s.hierarchy_distance})</span>
                         {alreadyInvited && <span className="text-xs text-gray-400">(<span>{t("swaps.already_invited")}</span>)</span>}
                         {limitReached && <span className="text-xs text-gray-400">(<span>{t("swaps.invite_limit_reached")}</span>)</span>}
                       </li>

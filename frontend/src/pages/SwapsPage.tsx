@@ -20,15 +20,12 @@ import {
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, type DutyType } from "../api/dutyConfig";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
-import { fetchTree } from "../api/hierarchy";
+import { fetchTree, type NodeDTO } from "../api/hierarchy";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import DateInput from "../components/DateInput";
-
-interface HierarchyNode {
-  id: string;
-  name: string;
-}
+import HierarchyTreeDropdown from "../components/HierarchyTreeDropdown";
+import CheckboxListDropdown from "../components/CheckboxListDropdown";
 
 const STATUS_COLORS: Record<string, string> = {
   applied: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
@@ -177,7 +174,7 @@ export default function SwapsPage() {
 
   const hierarchyNodesQuery = useQuery({
     queryKey: queryKeys.hierarchyTreeVisible(),
-    queryFn: () => fetchTree().catch(() => [] as HierarchyNode[]),
+    queryFn: () => fetchTree().catch(() => [] as NodeDTO[]),
   });
   const hierarchyNodes = hierarchyNodesQuery.data ?? [];
 
@@ -536,38 +533,22 @@ export default function SwapsPage() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_duty_type")}</label>
-                  <select
-                    multiple
-                    size={Math.min(4, dutyTypeList.length || 1)}
-                    value={boardFilters.dutyTypeIds ?? []}
-                    onChange={e => {
-                      const sel = Array.from(e.target.selectedOptions).map(o => o.value);
-                      applyFilters({ dutyTypeIds: sel.length > 0 ? sel : undefined });
-                    }}
-                    className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-[8rem]"
-                  >
-                    {dutyTypeList.map(dt => (
-                      <option key={dt.id} value={dt.id}>{dt.name}</option>
-                    ))}
-                  </select>
+                  <CheckboxListDropdown
+                    items={dutyTypeList.map((dt) => ({ id: dt.id, label: dt.name }))}
+                    selected={boardFilters.dutyTypeIds ?? []}
+                    onChange={(ids) => applyFilters({ dutyTypeIds: ids.length > 0 ? ids : undefined })}
+                    triggerLabel={t("swaps.filter_duty_type")}
+                  />
                 </div>
                 {hierarchyNodes.length > 0 && (
                   <div className="flex flex-col gap-1">
                     <label className="text-xs text-gray-500 dark:text-gray-400">{t("swaps.filter_node")}</label>
-                    <select
-                      multiple
-                      size={Math.min(4, hierarchyNodes.length)}
-                      value={boardFilters.nodeIds ?? []}
-                      onChange={e => {
-                        const sel = Array.from(e.target.selectedOptions).map(o => o.value);
-                        applyFilters({ nodeIds: sel.length > 0 ? sel : undefined });
-                      }}
-                      className="border rounded px-2 py-1 text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 min-w-[8rem]"
-                    >
-                      {hierarchyNodes.map(n => (
-                        <option key={n.id} value={n.id}>{n.name}</option>
-                      ))}
-                    </select>
+                    <HierarchyTreeDropdown
+                      nodes={hierarchyNodes}
+                      selected={boardFilters.nodeIds ?? []}
+                      onChange={(ids) => applyFilters({ nodeIds: ids.length > 0 ? ids : undefined })}
+                      triggerLabel={t("swaps.filter_node")}
+                    />
                   </div>
                 )}
               </div>

@@ -739,6 +739,138 @@ def test_add_targets_happy_path(admin_session):
     assert added.status == "pending"
 
 
+def test_swap_fully_candidate_approved_notifies_duty_managers(admin_session):
+    """Once both soldier sides have approved a candidate but duty-manager
+    approval is still outstanding, the duty managers scoped over the
+    requester's/candidate's node should get a swap_pending_approval
+    notification — this is the "awaiting manager decision" transition.
+    No commander is configured here, so this isolates the transition-point
+    call site from the approve_manager_row chain-handoff call site (covered
+    by test_swap_manager_chain_handoff_notifies_next_approver below)."""
+    from app.db.models import Notification, NotificationType
+
+    node = create_node(admin_session, level="unit", name="swap-svc-notif-dm-1")
+    requester = create_soldier(admin_session, personal_number="7730001", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number="7730002", hierarchy_node_id=node.id)
+    duty_manager = create_soldier(
+        admin_session, personal_number="7730003", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[covering.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id, actor_id=requester.id)
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=covering.id, actor_id=covering.id)
+    admin_session.flush()
+
+    admin_session.refresh(req)
+    assert req.status == "open"  # still awaiting the duty manager, not finalized
+
+    notifications = admin_session.execute(
+        select(Notification).where(Notification.type == NotificationType.swap_pending_approval)
+    ).scalars().all()
+    assert len(notifications) >= 1
+    recipient_ids = {n.soldier_id for n in notifications}
+    assert duty_manager.id in recipient_ids
+
+
+def test_approve_soldier_side_does_not_duplicate_requester_notification_across_candidates(admin_session):
+    """When the requester approves their side and there are 2+ live
+    candidates on the request, approve_soldier_side loops over the
+    candidates and calls the awaiting-manager-decision notifier once per
+    candidate. The requester-side half of that notification only depends on
+    the request (not the candidate), so it must fire once per
+    approve_soldier_side call — not once per live candidate. Covering
+    soldiers are placed in a separate node with no duty-manager scope so
+    their (unrelated, per-candidate) covering-side notifications can't
+    contaminate this count."""
+    from app.db.models import Notification, NotificationType
+
+    node = create_node(admin_session, level="unit", name="swap-svc-notif-dedup-1")
+    other_node = create_node(admin_session, level="unit", name="swap-svc-notif-dedup-2")
+    requester = create_soldier(admin_session, personal_number="7730020", hierarchy_node_id=node.id)
+    covering_a = create_soldier(admin_session, personal_number="7730021", hierarchy_node_id=other_node.id)
+    covering_b = create_soldier(admin_session, personal_number="7730022", hierarchy_node_id=other_node.id)
+    duty_manager = create_soldier(
+        admin_session, personal_number="7730023", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[covering_a.id, covering_b.id], reason=None,
+        open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    # Both candidates already have their soldier-side approved (simulated
+    # directly — not via approve_soldier_side — so the requester's own
+    # approve_soldier_side call is the one that loops over 2+ live,
+    # soldier-side-approved candidates).
+    candidates = admin_session.query(SwapCandidate).filter_by(swap_request_id=req.id).all()
+    assert len(candidates) == 2
+    for c in candidates:
+        c.soldier_side_approved = True
+        c.status = "accepted"
+    admin_session.flush()
+
+    svc.approve_soldier_side(admin_session, request_id=req.id, soldier_id=requester.id, actor_id=requester.id)
+    admin_session.flush()
+
+    notifications = admin_session.execute(
+        select(Notification).where(
+            Notification.type == NotificationType.swap_pending_approval,
+            Notification.soldier_id == duty_manager.id,
+        )
+    ).scalars().all()
+    assert len(notifications) == 1
+
+
+def test_swap_manager_chain_handoff_notifies_next_approver(admin_session):
+    """When the commander clears their (side, "commander") approval row via
+    approve_manager_row, and the duty-manager approval for that same side is
+    still outstanding, the scoped duty manager should be notified that the
+    swap is now pending their decision — the approval-chain handoff. This is
+    driven directly off approve_manager_row, before either soldier side has
+    approved, so it can only pass if the handoff call site (not the
+    both-sides-approved transition tested above) actually fires."""
+    from app.db.models import Notification, NotificationType
+
+    node = create_node(admin_session, level="unit", name="swap-svc-notif-chain-1")
+    commander = create_soldier(admin_session, personal_number="7730004", role="commander")
+    node.commander_id = commander.id
+    admin_session.commit()
+
+    duty_manager = create_soldier(
+        admin_session, personal_number="7730005", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    requester = create_soldier(admin_session, personal_number="7730006", hierarchy_node_id=node.id)
+    covering = create_soldier(admin_session, personal_number="7730007", hierarchy_node_id=node.id)
+    assignment = _published_assignment(admin_session, soldier_id=requester.id, node_id=node.id)
+
+    req = svc.create_request(
+        admin_session, requesting_soldier_id=requester.id, duty_assignment_id=assignment.id,
+        target_soldier_id=None, target_soldier_ids=[covering.id], reason=None, open_to_marketplace=False,
+    )
+    admin_session.flush()
+
+    # Neither soldier side has approved yet — only the commander clears
+    # their row here, so the both-sides-approved transition never fires.
+    svc.approve_manager_row(admin_session, request_id=req.id, actor_id=commander.id, candidate_id=None)
+    admin_session.flush()
+
+    notifications = admin_session.execute(
+        select(Notification).where(Notification.type == NotificationType.swap_pending_approval)
+    ).scalars().all()
+    assert len(notifications) >= 1
+    recipient_ids = {n.soldier_id for n in notifications}
+    assert duty_manager.id in recipient_ids
+
+
 def test_add_targets_rejects_already_invited_soldier(admin_session):
     node = create_node(admin_session, level="unit", name="swap-svc-addtargets-2")
     requester = create_soldier(admin_session, personal_number="7720004", hierarchy_node_id=node.id)

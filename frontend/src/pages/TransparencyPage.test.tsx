@@ -136,6 +136,75 @@ describe("TransparencyPage exemptions column", () => {
   });
 });
 
+describe("TransparencyPage default rank ordering", () => {
+  it("shows senior ranks above junior ranks by default, with no column click required", async () => {
+    const out: TransparencyOut = {
+      rows: [
+        makeRow({ soldier_id: "s-segen-mishne", full_name: 'סג"ם בדיקה', rank: "סגמ", is_officer: true }),
+        makeRow({ soldier_id: "s-aluf-mishne", full_name: 'אל"ם בדיקה', rank: "אלמ", is_officer: true }),
+      ],
+      can_see_exemption_aggregates: true,
+    };
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    const table = await screen.findByTestId("transparency-table");
+    await waitFor(() => {
+      expect(screen.getByText('אל"ם בדיקה')).toBeInTheDocument();
+    });
+
+    const rowTexts = Array.from(table.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
+    const alufIndex = rowTexts.findIndex((t) => t.includes('אל"ם בדיקה'));
+    const segenIndex = rowTexts.findIndex((t) => t.includes('סג"ם בדיקה'));
+    expect(alufIndex).toBeGreaterThanOrEqual(0);
+    expect(segenIndex).toBeGreaterThanOrEqual(0);
+    expect(alufIndex).toBeLessThan(segenIndex);
+  });
+
+  it("sorts the entire rank hierarchy senior-first by default, not just a two-rank sample", async () => {
+    // Full hierarchy, junior to senior, mirroring backend/app/services/eligibility.py's
+    // ENLISTED_RANKS + OFFICER_RANKS order exactly (verified byte-for-byte against that
+    // file). Listed here shuffled (not already in order) so a passing test can't be
+    // satisfied by coincidental array order.
+    const juniorToSenior = [
+      "טוראי", "רבט", "סמל", "סמר", "רסל", "רסר", "רסמ", "רסב", "רנג",
+      "קמא", "סגמ", "סגן", "קאב", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
+    ];
+    // Fully reversed (senior-to-junior) input order — deliberately the
+    // opposite of the expected output, so a passing test can't be satisfied
+    // by coincidental array order.
+    const shuffled = [...juniorToSenior].reverse();
+    const out: TransparencyOut = {
+      rows: shuffled.map((rank, i) =>
+        makeRow({ soldier_id: `s-${i}`, full_name: `חייל-${rank}-${i}`, rank, is_officer: true })
+      ),
+      can_see_exemption_aggregates: true,
+    };
+    vi.mocked(scoringApi.getTransparency).mockResolvedValue(out);
+
+    renderWithProviders(<MemoryRouter><SoldierModalProvider><TransparencyPage /></SoldierModalProvider></MemoryRouter>);
+
+    const table = await screen.findByTestId("transparency-table");
+    await waitFor(() => {
+      expect(table.querySelectorAll("tbody tr").length).toBe(juniorToSenior.length);
+    });
+
+    const rowTexts = Array.from(table.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
+    const renderedRankOrder = juniorToSenior
+      .map((rank) => rowTexts.findIndex((t) => t.includes(`חייל-${rank}-`)))
+      .map((idx, originalJuniorToSeniorIndex) => ({ idx, rank: juniorToSenior[originalJuniorToSeniorIndex] }));
+
+    // Senior-first means the LAST rank in juniorToSenior (רב אלוף) should have
+    // the SMALLEST row index, and the FIRST rank (טוראי) the LARGEST.
+    for (let i = 0; i < renderedRankOrder.length - 1; i++) {
+      const moreJunior = renderedRankOrder[i];
+      const moreSenior = renderedRankOrder[i + 1];
+      expect(moreSenior.idx).toBeLessThan(moreJunior.idx);
+    }
+  });
+});
+
 describe("TransparencyPage cumulative score column", () => {
   it("rounds the cumulative score to 3 decimal places", async () => {
     const out: TransparencyOut = {

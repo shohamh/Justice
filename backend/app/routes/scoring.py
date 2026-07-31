@@ -62,6 +62,8 @@ class PerTypeRow(BaseModel):
     duty_type_id: uuid.UUID
     duty_type_name: str | None
     days: int
+    days_past: int
+    days_future: int
     score: Decimal
 
 
