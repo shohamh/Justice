@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType
+from app.db.models import DutyType, RangeAssignment
 from app.services.settings_loader import apply_settings
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -160,7 +160,7 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
     assert get_resp.json()["assignments"] == []
 
 
-def test_get_range_event_allowed_for_commander_in_scope(
+def test_get_range_event_hides_drafts_from_commander_but_not_range_managers(
     client: TestClient, admin_session: Session
 ) -> None:
     _enable_mitvachim(admin_session)
@@ -170,6 +170,15 @@ def test_get_range_event_allowed_for_commander_in_scope(
     )
     commander = create_soldier(
         admin_session, personal_number="6300002", role="commander", hierarchy_node_id=node.id
+    )
+    admin = create_soldier(
+        admin_session, personal_number="6300005", role="admin", hierarchy_node_id=node.id
+    )
+    confirmed_soldier = create_soldier(
+        admin_session, personal_number="6300006", hierarchy_node_id=node.id
+    )
+    draft_soldier = create_soldier(
+        admin_session, personal_number="6300007", hierarchy_node_id=node.id
     )
     node.commander_id = commander.id
     admin_session.commit()
@@ -186,10 +195,36 @@ def test_get_range_event_allowed_for_commander_in_scope(
         headers=auth_headers(dm),
     )
     event_id = create_resp.json()["id"]
+    confirmed = RangeAssignment(
+        range_event_id=event_id,
+        soldier_id=confirmed_soldier.id,
+        is_reserve=False,
+        is_draft=False,
+    )
+    draft = RangeAssignment(
+        range_event_id=event_id,
+        soldier_id=draft_soldier.id,
+        is_reserve=False,
+        is_draft=True,
+    )
+    admin_session.add_all([confirmed, draft])
+    admin_session.commit()
+
+    dm_response = client.get(f"/api/ranges/{event_id}", headers=auth_headers(dm))
+    admin_response = client.get(f"/api/ranges/{event_id}", headers=auth_headers(admin))
+    assert dm_response.status_code == 200
+    assert admin_response.status_code == 200
+    assert {row["id"] for row in dm_response.json()["assignments"]} == {
+        str(confirmed.id), str(draft.id)
+    }
+    assert {row["id"] for row in admin_response.json()["assignments"]} == {
+        str(confirmed.id), str(draft.id)
+    }
 
     get_resp = client.get(f"/api/ranges/{event_id}", headers=auth_headers(commander))
     assert get_resp.status_code == 200
     assert get_resp.json()["id"] == event_id
+    assert [row["id"] for row in get_resp.json()["assignments"]] == [str(confirmed.id)]
 
 
 def test_get_range_event_forbidden_for_commander_outside_scope(

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyType,
+    Notification,
     RangeAttendanceStatus,
-    RangeEventStatus,
     RangeType,
     ScoreAdjustment,
     SoldierRangeQualification,
@@ -79,6 +79,63 @@ def test_mark_no_show_creates_score_adjustment_and_audit(app_session: Session) -
 
     assert updated.attendance_status == RangeAttendanceStatus.no_show
     assert updated.score_adjustment_id is not None
+
+
+def test_mark_present_rejects_draft_before_creating_qualification(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    _event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+    assignment.is_draft = True
+    app_session.commit()
+
+    with pytest.raises(RangeValidationError, match="assignment_not_confirmed"):
+        mark_attendance(
+            app_session,
+            assignment=assignment,
+            status=RangeAttendanceStatus.present,
+            marked_by=soldier.id,
+        )
+
+    assert assignment.attendance_status == RangeAttendanceStatus.pending
+    qualification_count = app_session.execute(
+        select(func.count()).select_from(SoldierRangeQualification).where(
+            SoldierRangeQualification.soldier_id == soldier.id
+        )
+    ).scalar_one()
+    assert qualification_count == 0
+
+
+def test_mark_no_show_rejects_draft_before_score_or_notification_side_effects(
+    app_session: Session,
+) -> None:
+    past_date = date.today() - timedelta(days=1)
+    _event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+    assignment.is_draft = True
+    app_session.commit()
+    score_count_before = app_session.execute(
+        select(func.count()).select_from(ScoreAdjustment).where(ScoreAdjustment.soldier_id == soldier.id)
+    ).scalar_one()
+    notification_count_before = app_session.execute(
+        select(func.count()).select_from(Notification).where(Notification.soldier_id == soldier.id)
+    ).scalar_one()
+
+    with pytest.raises(RangeValidationError, match="assignment_not_confirmed"):
+        mark_attendance(
+            app_session,
+            assignment=assignment,
+            status=RangeAttendanceStatus.no_show,
+            marked_by=soldier.id,
+            note="לא הגיע",
+        )
+
+    assert assignment.attendance_status == RangeAttendanceStatus.pending
+    score_count_after = app_session.execute(
+        select(func.count()).select_from(ScoreAdjustment).where(ScoreAdjustment.soldier_id == soldier.id)
+    ).scalar_one()
+    notification_count_after = app_session.execute(
+        select(func.count()).select_from(Notification).where(Notification.soldier_id == soldier.id)
+    ).scalar_one()
+    assert score_count_after == score_count_before
+    assert notification_count_after == notification_count_before
 
 
 def test_mark_attendance_rejects_future_event(app_session: Session) -> None:

@@ -113,13 +113,18 @@ def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
 
 
 def _event_out(
-    session: Session, event: RangeEvent, *, include_assignments: bool = False
+    session: Session,
+    event: RangeEvent,
+    *,
+    include_assignments: bool = False,
+    include_drafts: bool = True,
 ) -> RangeEventOut:
     assignments: list[RangeAssignmentOut] = []
     if include_assignments:
-        rows = (
-            session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id).all()
-        )
+        query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
+        if not include_drafts:
+            query = query.filter(RangeAssignment.is_draft.is_(False))
+        rows = query.all()
         assignments = [_assignment_out(a) for a in rows]
     return RangeEventOut(
         id=event.id,
@@ -250,16 +255,23 @@ def get_range_event(
     _require_enabled(session)
     event = _load_event(session, event_id)
     node = _event_node(session, event)
+    can_manage = True
     try:
         authorize(session, user, Action.RANGE_MANAGE, target_node=node)
     except HTTPException:
+        can_manage = False
         # Commanders get read-only access to this endpoint (roster view), scoped
         # to their own command — mutation routes remain RANGE_MANAGE (DM-only).
         if not (
             is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user))
         ):
             raise
-    return _event_out(session, event, include_assignments=True)
+    return _event_out(
+        session,
+        event,
+        include_assignments=True,
+        include_drafts=can_manage,
+    )
 
 
 @router.get("", response_model=list[RangeEventOut])

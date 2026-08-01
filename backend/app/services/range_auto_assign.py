@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
 from app.db.models import (
+    RANGE_TYPE_RANK,
     DutyAssignment,
     DutyType,
     HierarchyNode,
     NotificationType,
-    RANGE_TYPE_RANK,
     RangeAssignment,
     RangeEvent,
     RangeEventStatus,
@@ -23,7 +22,7 @@ from app.db.models import (
 from app.services.constraints import get_approved_constraint_dates
 from app.services.notifications import create_notification
 from app.services.range_exemption import is_range_exempt
-from app.services.ranges import RangeValidationError
+from app.services.ranges import RangeValidationError, _acquire_range_assignment_date_lock
 
 
 def _qualification_types_at_or_above(range_type: str) -> list[str]:
@@ -76,7 +75,7 @@ def _has_duty_assignment_on_date(session: Session, *, soldier_id: uuid.UUID, eve
         select(DutyAssignment.id).where(
             DutyAssignment.soldier_id == soldier_id,
             DutyAssignment.start_date <= event_date,
-            DutyAssignment.end_date >= event_date,
+            DutyAssignment.end_date > event_date,
         ).limit(1)
     ).scalar_one_or_none() is not None
 
@@ -135,6 +134,8 @@ def propose_range_assignments(
     RangeAssignment rows (is_draft=True), ranked by the Phase 2 tier ordering.
     Returns (created_drafts, shortfall) where shortfall is how many slots
     could not be filled because the candidate pool ran out."""
+    _acquire_range_assignment_date_lock(session, event_date=event.date)
+    session.refresh(event)
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
 
@@ -169,13 +170,9 @@ def propose_range_assignments(
     return created, shortfall
 
 
-def confirm_draft_assignment(
-    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None,
-) -> RangeAssignment:
-    event = session.get(RangeEvent, assignment.range_event_id)
-    if event is None or event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
-
+def _stage_draft_confirmation(
+    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None,
+) -> None:
     if not assignment.is_draft:
         raise RangeValidationError("assignment_not_draft")
 
@@ -188,6 +185,16 @@ def confirm_draft_assignment(
         session, soldier_id=assignment.soldier_id, type=NotificationType.range_assignment_confirmed,
         title="שובצת למטווח", reference_type="range_assignment", reference_id=assignment.id, actor_id=actor_id,
     )
+
+
+def confirm_draft_assignment(
+    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None,
+) -> RangeAssignment:
+    event = session.get(RangeEvent, assignment.range_event_id)
+    if event is None or event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+
+    _stage_draft_confirmation(session, assignment=assignment, actor_id=actor_id)
     session.commit()
     session.refresh(assignment)
     return assignment
@@ -196,9 +203,20 @@ def confirm_draft_assignment(
 def confirm_all_drafts(
     session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None,
 ) -> list[RangeAssignment]:
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
     drafts = session.execute(
         select(RangeAssignment).where(
             RangeAssignment.range_event_id == event.id, RangeAssignment.is_draft.is_(True),
         )
     ).scalars().all()
-    return [confirm_draft_assignment(session, assignment=d, actor_id=actor_id) for d in drafts]
+    try:
+        for draft in drafts:
+            _stage_draft_confirmation(session, assignment=draft, actor_id=actor_id)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    for draft in drafts:
+        session.refresh(draft)
+    return drafts

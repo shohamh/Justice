@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+from threading import Event, Thread
 
 import pytest
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.models import (
     DutyAssignment,
@@ -16,12 +18,13 @@ from app.db.models import (
     RangeType,
     SoldierRangeQualification,
 )
-from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
+from app.services import range_auto_assign as range_auto_assign_service
 from app.services.range_auto_assign import (
     confirm_all_drafts,
     confirm_draft_assignment,
     propose_range_assignments,
 )
+from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
 from tests.helpers import create_node, create_soldier
 
 
@@ -113,13 +116,37 @@ def test_candidate_pool_excludes_soldier_on_duty_that_day(app_session: Session) 
     )
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
-        start_date=event_date, end_date=event_date, status="published",
+        start_date=event_date, end_date=event_date + timedelta(days=1), status="published",
     ))
     app_session.flush()
 
     created, shortfall = propose_range_assignments(app_session, event=event)
 
     assert soldier.id not in {a.soldier_id for a in created}
+
+
+def test_candidate_pool_includes_soldier_when_duty_ends_on_event_date(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה סוף-תורנות-בלעדי")
+    from tests.helpers import create_duty_location
+
+    location = create_duty_location(app_session)
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-duty-exclusive-end")
+    soldier = create_soldier(app_session, personal_number="6000008", hierarchy_node_id=node.id)
+    event_date = date.today() + timedelta(days=5)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, location="מטווח", required_count=1,
+    )
+    app_session.add(DutyAssignment(
+        soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
+        start_date=event_date - timedelta(days=1), end_date=event_date, status="published",
+    ))
+    app_session.flush()
+
+    created, shortfall = propose_range_assignments(app_session, event=event)
+
+    assert [assignment.soldier_id for assignment in created] == [soldier.id]
+    assert shortfall == 0
 
 
 def test_candidate_pool_excludes_soldier_at_another_range_same_day(app_session: Session) -> None:
@@ -255,10 +282,12 @@ def test_fill_respects_primary_then_reserve_counts(app_session: Session) -> None
     node = create_node(app_session, level="פלוגה", name="פלוגה מילוי")
     _weapon_duty_type(app_session, node=node, name="weapon-fill")
     event_date = date.today() + timedelta(days=5)
-    soldiers = [
-        create_soldier(app_session, personal_number=f"650000{i}", hierarchy_node_id=node.id)
-        for i in range(3)
-    ]
+    for i in range(3):
+        create_soldier(
+            app_session,
+            personal_number=f"650000{i}",
+            hierarchy_node_id=node.id,
+        )
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=event_date, location="מטווח", required_count=2, reserve_count=1,
@@ -299,6 +328,11 @@ def test_created_drafts_have_is_draft_true(app_session: Session) -> None:
     created, shortfall = propose_range_assignments(app_session, event=event)
 
     assert all(a.is_draft for a in created)
+    assignment_notifications = app_session.query(Notification).filter(
+        Notification.soldier_id == soldier.id,
+        Notification.type == NotificationType.assignment_created,
+    ).count()
+    assert assignment_notifications == 0
 
 
 def test_auto_assign_only_fills_remaining_slots(app_session: Session) -> None:
@@ -329,6 +363,63 @@ def test_propose_rejects_non_planned_event(app_session: Session) -> None:
 
     with pytest.raises(RangeValidationError):
         propose_range_assignments(app_session, event=event)
+
+
+def test_propose_waits_for_date_lock_and_revalidates_event_before_reading_candidates(
+    app_session: Session, app_engine,
+) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה נעילת-מטווח")
+    _weapon_duty_type(app_session, node=node, name="weapon-date-lock")
+    create_soldier(app_session, personal_number="6800003", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+    )
+    event_id = event.id
+    event_date = event.date
+    loaded = Event()
+    finished = Event()
+    errors: list[str] = []
+    created_counts: list[int] = []
+    SessionLocal = sessionmaker(bind=app_engine, expire_on_commit=False)
+
+    def run_auto_assign() -> None:
+        with SessionLocal() as worker_session:
+            worker_event = worker_session.get(range_auto_assign_service.RangeEvent, event_id)
+            assert worker_event is not None
+            loaded.set()
+            try:
+                created, _shortfall = propose_range_assignments(
+                    worker_session, event=worker_event
+                )
+                created_counts.append(len(created))
+            except Exception as exc:  # captured for assertion in the main test thread
+                errors.append(str(exc))
+            finally:
+                finished.set()
+
+    with SessionLocal() as lock_session:
+        lock_session.execute(
+            select(func.pg_advisory_xact_lock(0x52414E47, event_date.toordinal()))
+        )
+        locked_event = lock_session.get(range_auto_assign_service.RangeEvent, event_id)
+        assert locked_event is not None
+        worker = Thread(target=run_auto_assign)
+        worker.start()
+        assert loaded.wait(timeout=5)
+        was_blocked = not finished.wait(timeout=0.2)
+        locked_event.status = RangeEventStatus.cancelled
+        lock_session.commit()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert was_blocked
+    assert errors == ["event_not_planned"]
+    assert created_counts == []
+    assignment_count = app_session.query(range_auto_assign_service.RangeAssignment).filter(
+        range_auto_assign_service.RangeAssignment.range_event_id == event_id
+    ).count()
+    assert assignment_count == 0
 
 
 def test_confirm_draft_assignment_flips_is_draft_and_notifies(app_session: Session) -> None:
@@ -366,7 +457,9 @@ def test_confirm_draft_assignment_rejects_non_draft(app_session: Session) -> Non
         confirm_draft_assignment(app_session, assignment=manual, actor_id=soldier.id)
 
 
-def test_confirm_all_drafts_confirms_every_draft_for_the_event(app_session: Session) -> None:
+def test_confirm_all_drafts_confirms_every_draft_with_one_commit_and_one_notification_each(
+    app_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה אישור-הכל")
     _weapon_duty_type(app_session, node=node, name="weapon-confirm-all")
     create_soldier(app_session, personal_number="6900003", hierarchy_node_id=node.id)
@@ -376,11 +469,71 @@ def test_confirm_all_drafts_confirms_every_draft_for_the_event(app_session: Sess
         event_date=date.today() + timedelta(days=5), location="מטווח", required_count=2,
     )
     propose_range_assignments(app_session, event=event)
+    real_commit = app_session.commit
+    commit_count = 0
+
+    def counting_commit() -> None:
+        nonlocal commit_count
+        commit_count += 1
+        real_commit()
+
+    monkeypatch.setattr(app_session, "commit", counting_commit)
 
     confirmed = confirm_all_drafts(app_session, event=event, actor_id=None)
 
     assert len(confirmed) == 2
     assert all(a.is_draft is False for a in confirmed)
+    assert commit_count == 1
+    notification_count = app_session.query(Notification).filter(
+        Notification.type == NotificationType.range_assignment_confirmed,
+        Notification.reference_id.in_([assignment.id for assignment in confirmed]),
+    ).count()
+    assert notification_count == 2
+
+
+def test_confirm_all_drafts_rolls_back_everything_when_mid_batch_notification_fails(
+    app_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אישור-הכל-חזרה")
+    _weapon_duty_type(app_session, node=node, name="weapon-confirm-all-rollback")
+    create_soldier(app_session, personal_number="6900009", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="6900010", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=2,
+    )
+    drafts, _ = propose_range_assignments(app_session, event=event)
+    draft_ids = [assignment.id for assignment in drafts]
+    real_create_notification = range_auto_assign_service.create_notification
+    notification_attempts = 0
+
+    def fail_second_notification(*args, **kwargs):
+        nonlocal notification_attempts
+        notification_attempts += 1
+        if notification_attempts == 2:
+            raise RuntimeError("notification failure")
+        return real_create_notification(*args, **kwargs)
+
+    monkeypatch.setattr(
+        range_auto_assign_service,
+        "create_notification",
+        fail_second_notification,
+    )
+
+    with pytest.raises(RuntimeError, match="notification failure"):
+        confirm_all_drafts(app_session, event=event, actor_id=None)
+
+    app_session.rollback()
+    persisted_drafts = app_session.query(range_auto_assign_service.RangeAssignment).filter(
+        range_auto_assign_service.RangeAssignment.id.in_(draft_ids)
+    ).all()
+    assert len(persisted_drafts) == 2
+    assert all(assignment.is_draft for assignment in persisted_drafts)
+    notification_count = app_session.query(Notification).filter(
+        Notification.type == NotificationType.range_assignment_confirmed,
+        Notification.reference_id.in_(draft_ids),
+    ).count()
+    assert notification_count == 0
 
 
 def test_confirm_all_drafts_leaves_non_draft_assignments_untouched(app_session: Session) -> None:

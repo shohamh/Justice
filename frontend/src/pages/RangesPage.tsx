@@ -43,6 +43,8 @@ export default function RangesPage() {
   const [newRequiredCount, setNewRequiredCount] = useState(0);
   const [newReserveCount, setNewReserveCount] = useState(0);
   const [autoAssignShortfall, setAutoAssignShortfall] = useState<number | null>(null);
+  const [isAutoAssignPending, setIsAutoAssignPending] = useState(false);
+  const [isConfirmPending, setIsConfirmPending] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -68,22 +70,37 @@ export default function RangesPage() {
   }
 
   async function handleAutoAssign() {
-    if (!selectedEventId) return;
-    const result = await autoAssignRange(selectedEventId);
-    setAutoAssignShortfall(result.shortfall > 0 ? result.shortfall : null);
-    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    if (!selectedEventId || isAutoAssignPending) return;
+    setIsAutoAssignPending(true);
+    try {
+      const result = await autoAssignRange(selectedEventId);
+      setAutoAssignShortfall(result.shortfall > 0 ? result.shortfall : null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsAutoAssignPending(false);
+    }
   }
 
   async function handleConfirmDraft(assignmentId: string) {
-    if (!selectedEventId) return;
-    await confirmDraftAssignment(selectedEventId, assignmentId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    if (!selectedEventId || isConfirmPending) return;
+    setIsConfirmPending(true);
+    try {
+      await confirmDraftAssignment(selectedEventId, assignmentId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsConfirmPending(false);
+    }
   }
 
   async function handleConfirmAll() {
-    if (!selectedEventId) return;
-    await confirmAllDrafts(selectedEventId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    if (!selectedEventId || isConfirmPending) return;
+    setIsConfirmPending(true);
+    try {
+      await confirmAllDrafts(selectedEventId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsConfirmPending(false);
+    }
   }
 
   async function handleAddSoldier(soldier: SoldierDTO | null) {
@@ -254,17 +271,19 @@ export default function RangesPage() {
                         selectedEvent.reserve_count) && (
                       <button
                         data-testid="auto-assign-button"
+                        disabled={isAutoAssignPending}
                         onClick={handleAutoAssign}
-                        className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
                       >
                         שבץ אוטומטית
                       </button>
                     )}
-                  {selectedEvent.assignments.some((a) => a.is_draft) && (
+                  {selectedEvent.status === "planned" && selectedEvent.assignments.some((a) => a.is_draft) && (
                     <button
                       data-testid="confirm-all-button"
+                      disabled={isConfirmPending}
                       onClick={handleConfirmAll}
-                      className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                      className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
                     >
                       אשר הכל
                     </button>
@@ -320,11 +339,12 @@ export default function RangesPage() {
                   </span>
                   {canManage && (
                     <span className="flex items-center gap-2">
-                      {a.is_draft && (
+                      {selectedEvent.status === "planned" && a.is_draft && (
                         <button
                           data-testid="confirm-draft-button"
+                          disabled={isConfirmPending}
                           onClick={() => handleConfirmDraft(a.id)}
-                          className="text-xs text-green-600 dark:text-green-400 hover:underline"
+                          className="text-xs text-green-600 dark:text-green-400 hover:underline disabled:opacity-40"
                         >
                           אשר
                         </button>
@@ -347,7 +367,7 @@ export default function RangesPage() {
             {canManage && selectedEvent.date <= localTodayIsoDate() && (
               <RangeAttendancePanel
                 eventId={selectedEvent.id}
-                assignments={selectedEvent.assignments}
+                assignments={selectedEvent.assignments.filter((assignment) => !assignment.is_draft)}
                 soldierName={soldierName}
                 onMarked={() => {
                   queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId!) });

@@ -256,6 +256,27 @@ describe("RangesPage attendance panel", () => {
     expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
   });
+
+  it("excludes draft assignments from attendance controls", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const, date: "2020-01-01",
+      location: "מטווח דרום", required_count: 2, reserve_count: 0, status: "completed" as const,
+      assignments: [
+        { id: "confirmed", soldier_id: "s1", is_reserve: false, is_draft: false,
+          attendance_status: "pending" as const, note: null },
+        { id: "draft", soldier_id: "s2", is_reserve: false, is_draft: true,
+          attendance_status: "pending" as const, note: null },
+      ],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    expect(await screen.findByTestId("present-confirmed")).toBeInTheDocument();
+    expect(screen.queryByTestId("present-draft")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("no-show-draft")).not.toBeInTheDocument();
+  });
 });
 
 describe("RangesPage deep link via ?event=", () => {
@@ -320,6 +341,30 @@ describe("RangesPage auto-assign", () => {
 
     await waitFor(() => expect(screen.getByText("s0")).toBeInTheDocument());
     expect(screen.getByTestId("auto-assign-button")).toBeInTheDocument();
+  });
+
+  it("disables auto-assign while the request is pending", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "planned" as const,
+      assignments: [],
+    };
+    let resolveAutoAssign!: (result: rangesApi.AutoAssignResult) => void;
+    const pendingAutoAssign = new Promise<rangesApi.AutoAssignResult>((resolve) => {
+      resolveAutoAssign = resolve;
+    });
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.autoAssignRange).mockReturnValue(pendingAutoAssign);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const button = await screen.findByTestId("auto-assign-button");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    resolveAutoAssign({ created: [], shortfall: 1 });
+    await waitFor(() => expect(button).not.toBeDisabled());
   });
 
   it("hides the auto-assign button when the roster is full", async () => {
@@ -428,6 +473,53 @@ describe("RangesPage draft confirm/reject", () => {
     fireEvent.click(await screen.findByTestId("confirm-all-button"));
 
     await waitFor(() => expect(rangesApi.confirmAllDrafts).toHaveBeenCalledWith("event-1"));
+  });
+
+  it("disables all confirm controls while a confirm request is pending", async () => {
+    const draft = {
+      id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+      attendance_status: "pending" as const, note: null,
+    };
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "planned" as const,
+      assignments: [draft],
+    };
+    let resolveConfirm!: (assignment: rangesApi.RangeAssignment) => void;
+    const pendingConfirm = new Promise<rangesApi.RangeAssignment>((resolve) => {
+      resolveConfirm = resolve;
+    });
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.confirmDraftAssignment).mockReturnValue(pendingConfirm);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const rowConfirm = await screen.findByTestId("confirm-draft-button");
+    const confirmAll = screen.getByTestId("confirm-all-button");
+    fireEvent.click(rowConfirm);
+
+    await waitFor(() => expect(rowConfirm).toBeDisabled());
+    expect(confirmAll).toBeDisabled();
+    resolveConfirm({ ...draft, is_draft: false });
+    await waitFor(() => expect(rowConfirm).not.toBeDisabled());
+  });
+
+  it("hides confirm controls when the event is not planned", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "completed" as const,
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    expect(await screen.findByTestId("draft-badge")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-draft-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-all-button")).not.toBeInTheDocument();
   });
 
   it("removes a draft via the existing remove button", async () => {
