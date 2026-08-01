@@ -281,3 +281,23 @@ describe("UnifiedNav — forced-callup (hakpaza) gating", () => {
     expect(screen.queryByTestId("nav-hakpaza")).not.toBeInTheDocument();
   });
 });
+
+describe("UnifiedNav — ranges (mitvachim) gating", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { role: "duty_manager", is_commander: false, is_duty_manager: true } });
+  });
+
+  test("shows ranges item in planning sheet when mitvachim.enabled is true", () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+    expect(screen.getByTestId("nav-ranges")).toBeInTheDocument();
+  });
+
+  test("hides ranges item in planning sheet when mitvachim.enabled is false", () => {
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": false });
+    render(<UnifiedNav />);
+    fireEvent.click(screen.getAllByTestId("nav-planning")[0]);
+    expect(screen.queryByTestId("nav-ranges")).not.toBeInTheDocument();
+  });
+});
