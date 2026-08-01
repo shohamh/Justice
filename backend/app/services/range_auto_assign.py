@@ -172,6 +172,10 @@ def propose_range_assignments(
 def confirm_draft_assignment(
     session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None,
 ) -> RangeAssignment:
+    event = session.get(RangeEvent, assignment.range_event_id)
+    if event is None or event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+
     if not assignment.is_draft:
         raise RangeValidationError("assignment_not_draft")
 

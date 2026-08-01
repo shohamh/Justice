@@ -419,3 +419,19 @@ def test_rejecting_a_draft_deletes_the_row_and_reopens_the_slot(app_session: Ses
     created_again, shortfall = propose_range_assignments(app_session, event=event)
     assert len(created_again) == 1
     assert shortfall == 0
+
+def test_confirm_draft_rejects_event_not_planned(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה בוטלה")
+    _weapon_duty_type(app_session, node=node, name="weapon-cancelled-confirm")
+    create_soldier(app_session, personal_number="6900008", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+    )
+    created, _ = propose_range_assignments(app_session, event=event)
+    draft = created[0]
+    from app.services.ranges import cancel_range_event
+    cancel_range_event(app_session, event=event)
+
+    with pytest.raises(RangeValidationError):
+        confirm_draft_assignment(app_session, assignment=draft)
