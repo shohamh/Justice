@@ -44,6 +44,8 @@ export default function NotificationsPage() {
     constraint_approved: "✔️", constraint_rejected: "✖️",
     assignment_created: "📋", assignment_removed: "🗑️",
     range_assignment_confirmed: "🎯",
+    range_reminder: "🔔",
+    range_reminder_shortfall: "⚠️",
     score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
   };
 

@@ -1,4 +1,4 @@
-﻿{
+{
   "app": {
     "title": "Justice",
     "loading": "טוען...",
@@ -1122,7 +1122,9 @@
     "type_system_announcement": "הודעת מערכת",
     "type_enrollment_fields_edited": "פרטי הרשמה עודכנו",
     "type_no_show_marked": "נרשמה אי-הופעה לתורנות",
-    "type_range_assignment_confirmed": "שיבוץ למטווח אושר"
+    "type_range_assignment_confirmed": "שיבוץ למטווח אושר",
+    "type_range_reminder": "תזכורת למטווח קרוב",
+    "type_range_reminder_shortfall": "אזהרת מחסור בשיבוץ למטווח"
   },
   "announcements": {
     "title": "הכרזות",
