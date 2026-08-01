@@ -42,6 +42,11 @@ from app.db.models import (
     ExemptionType,
     HierarchyNode,
     PersonalConstraint,
+    RangeAssignment,
+    RangeAttendanceStatus,
+    RangeEvent,
+    RangeEventStatus,
+    RangeType,
     RegistrationInviteCode,
     ScoreAdjustment,
     ShiftTemplate,
@@ -55,6 +60,7 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.services.invite_codes import create_invite_code
+from app.services.ranges import mark_attendance
 
 
 def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = False):
@@ -1543,6 +1549,96 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 open_to_marketplace=True,
                 reason=demo_reasons[i % len(demo_reasons)],
             ))
+
+        # ── מטווחים (ranges) demo data ──────────────────────────────
+        # "שמירות"/"ליווים" require a weapon (eligible_node_ids stays None ==
+        # unrestricted, so this alone keeps everyone range-eligible per the
+        # exemption rule) and mitvachim.enabled is flipped on so the seeded
+        # events are actually visible without a manual admin-settings toggle.
+        dt_by_name["שמירות"].requires_weapon = True
+        dt_by_name["ליווים"].requires_weapon = True
+
+        mitvachim_setting = session.get(SystemSetting, "mitvachim.enabled")
+        if mitvachim_setting is not None:
+            mitvachim_setting.value = True
+
+        range_node = all_teams[0]
+        range_soldiers = [s for s in all_soldiers if s.hierarchy_node_id == range_node.id]
+        if len(range_soldiers) >= 4:
+            # Past laser range: attended (present ×2), one no-show — exercises
+            # qualification-expiry and score-penalty side effects end to end.
+            past_event = RangeEvent(
+                hierarchy_node_id=range_node.id,
+                range_type=RangeType.laser,
+                date=today - timedelta(days=14),
+                location="מטווח דרום",
+                required_count=3,
+                reserve_count=1,
+                status=RangeEventStatus.planned,
+                arrival_instructions="התייצבות בשער הראשי בשעה 06:30, ציוד אישי מלא.",
+                contact_name="סמל מטווחים",
+                contact_phone="050-1112233",
+                created_by=s_admin.id,
+                notes="מטווח לייזר תקופתי",
+            )
+            session.add(past_event)
+            session.flush()
+
+            past_assignments = []
+            for i, s in enumerate(range_soldiers[:4]):
+                a = RangeAssignment(range_event_id=past_event.id, soldier_id=s.id, is_reserve=(i == 3))
+                session.add(a)
+                session.flush()
+                past_assignments.append(a)
+
+            mark_attendance(
+                session, assignment=past_assignments[0],
+                status=RangeAttendanceStatus.present, marked_by=s_admin.id,
+            )
+            mark_attendance(
+                session, assignment=past_assignments[1],
+                status=RangeAttendanceStatus.present, marked_by=s_admin.id,
+            )
+            mark_attendance(
+                session, assignment=past_assignments[2], status=RangeAttendanceStatus.no_show,
+                marked_by=s_admin.id, note="לא הגיע ולא דיווח מראש",
+            )
+
+            # Upcoming live-fire range, roster + reserves already assigned.
+            upcoming_event = RangeEvent(
+                hierarchy_node_id=range_node.id,
+                range_type=RangeType.live,
+                date=today + timedelta(days=10),
+                location="מטווח חי - שדה האש הצפוני",
+                required_count=4,
+                reserve_count=2,
+                status=RangeEventStatus.planned,
+                arrival_instructions="התייצבות ליד מוסך הרכבים בשעה 05:30. חובה קסדה ואפוד.",
+                contact_name="קצין מטווחים",
+                contact_phone="050-2223344",
+                created_by=s_admin.id,
+            )
+            session.add(upcoming_event)
+            session.flush()
+            for i, s in enumerate(range_soldiers):
+                session.add(RangeAssignment(
+                    range_event_id=upcoming_event.id, soldier_id=s.id, is_reserve=(i >= 4),
+                ))
+
+            # Further-out אל"ל, no roster yet — exercises the empty-roster/
+            # planning-page create flow.
+            far_event = RangeEvent(
+                hierarchy_node_id=range_node.id,
+                range_type=RangeType.alal,
+                date=today + timedelta(days=30),
+                location="שטח אימונים - אלל",
+                required_count=6,
+                reserve_count=2,
+                status=RangeEventStatus.planned,
+                created_by=s_admin.id,
+                notes='אימון לפני לחימה - שיבוץ יבוצע בהמשך',
+            )
+            session.add(far_event)
 
         session.commit()
         import sys
