@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import asyncio
 import logging
+
 from app.db.session import session_scope
 from app.services.range_reminders import send_due_range_reminders
+
 logger = logging.getLogger(__name__)
 _POLL_SECONDS = 300
 

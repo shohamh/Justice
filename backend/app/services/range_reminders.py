@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyManagerScope, HierarchyNode, NotificationType, RangeAssignment, RangeEvent, RangeEventStatus, Soldier, SystemSetting
+from app.db.models import (
+    DutyManagerScope,
+    HierarchyNode,
+    NotificationType,
+    RangeAssignment,
+    RangeEvent,
+    RangeEventStatus,
+    SystemSetting,
+)
 from app.services.notifications import create_notification
 
 _DEFAULT_DAYS = 3
@@ -72,7 +81,7 @@ def send_due_range_reminders(session: Session, *, today: date | None = None) -> 
             create_notification(session, soldier_id=manager_id, type=manager_type,
                                 title="אזהרת מחסור בשיבוץ למטווח" if shortfall else "תזכורת למטווח קרוב",
                                 body=body, reference_type="range_event", reference_id=event.id)
-        event.reminder_sent_at = datetime.now(timezone.utc)
+        event.reminder_sent_at = datetime.now(UTC)
         sent += 1
     if sent:
         session.commit()

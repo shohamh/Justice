@@ -1,6 +1,8 @@
 """add range reminder fields and notification types"""
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
+
 revision = "f4a1b2c3d4e5"
 down_revision = "7f2c1a9d4e6b"
 branch_labels = None
