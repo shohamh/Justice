@@ -64,6 +64,27 @@ def test_update_and_deactivate_duty_type(admin_session):
     assert dt.active is False
 
 
+def test_create_duty_type_with_requires_weapon(admin_session):
+    dt = create_duty_type(
+        admin_session, name="שמירה-נשק", score_per_day=Decimal("1.00"),
+        requires_weapon=True, actor_id=None,
+    )
+    admin_session.commit()
+    assert dt.requires_weapon is True
+
+
+def test_update_duty_type_sets_requires_weapon(admin_session):
+    dt = create_duty_type(admin_session, name="שמירה-נשק2", score_per_day=Decimal("1.00"), actor_id=None)
+    admin_session.flush()
+    assert dt.requires_weapon is False
+    update_duty_type(
+        admin_session, duty_type=dt, name=None, score_per_day=None, description=None,
+        requires_weapon=True, actor_id=None,
+    )
+    admin_session.commit()
+    assert dt.requires_weapon is True
+
+
 def test_create_location(admin_session):
     loc = create_location(admin_session, name="עמדת שער", base="בסיס דרום", actor_id=None)
     admin_session.commit()
@@ -107,6 +128,26 @@ def test_create_exemption_type_and_map(admin_session):
     admin_session.commit()
     assert et.is_medical is False
     assert et.is_commander_exemption is False
+
+
+def test_create_exemption_type_with_forbids_weapons(admin_session):
+    et = create_exemption_type(
+        admin_session, name="פטור-נשק", forbids_weapons=True, actor_id=None,
+    )
+    admin_session.commit()
+    assert et.forbids_weapons is True
+
+
+def test_update_exemption_type_sets_forbids_weapons(admin_session):
+    et = create_exemption_type(admin_session, name="פטור-נשק2", actor_id=None)
+    admin_session.flush()
+    assert et.forbids_weapons is False
+    update_exemption_type(
+        admin_session, exemption_type=et, name=None, description=None,
+        forbids_weapons=True, actor_id=None,
+    )
+    admin_session.commit()
+    assert et.forbids_weapons is True
 
 
 def test_set_exemption_duty_types_diffs(admin_session):

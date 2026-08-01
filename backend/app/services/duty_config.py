@@ -36,6 +36,7 @@ def create_duty_type(
     end_time: time | None = None,
     instructions: str | None = None,
     is_external: bool = False,
+    requires_weapon: bool = False,
     eligible_node_ids: list[uuid.UUID] | None = None,
     requirements: dict | None = None,
     actor_id: uuid.UUID | None = None,
@@ -59,6 +60,7 @@ def create_duty_type(
         end_time=end_time,
         instructions=instructions,
         is_external=is_external,
+        requires_weapon=requires_weapon,
         eligible_node_ids=eligible_node_ids,
         **({"requirements": requirements} if requirements is not None else {}),
     )
@@ -76,6 +78,7 @@ def create_duty_type(
             "reserve_ratio": str(reserve_ratio),
             "reserve_minimum": reserve_minimum,
             "is_external": is_external,
+            "requires_weapon": requires_weapon,
         },
     )
     return dt
@@ -98,6 +101,7 @@ def update_duty_type(
     end_time: time | None = None,
     instructions: str | None = None,
     is_external: bool | None = None,
+    requires_weapon: bool | None = None,
     eligible_node_ids: object = ...,
 ) -> DutyType:
     before = {
@@ -137,6 +141,8 @@ def update_duty_type(
         duty_type.instructions = instructions
     if is_external is not None:
         duty_type.is_external = is_external
+    if requires_weapon is not None:
+        duty_type.requires_weapon = requires_weapon
     if eligible_node_ids is not ...:
         duty_type.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
     write_audit(
@@ -152,6 +158,7 @@ def update_duty_type(
             "description": duty_type.description,
             "reserve_ratio": str(duty_type.reserve_ratio),
             "reserve_minimum": duty_type.reserve_minimum,
+            "requires_weapon": duty_type.requires_weapon,
         },
     )
     return duty_type
@@ -241,6 +248,7 @@ def create_exemption_type(
     is_global: bool = False,
     is_medical: bool = False,
     is_commander_exemption: bool = False,
+    forbids_weapons: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
     if session.execute(select(ExemptionType.id).where(ExemptionType.name == name)).first():
@@ -251,6 +259,7 @@ def create_exemption_type(
         is_global=is_global,
         is_medical=is_medical,
         is_commander_exemption=is_commander_exemption,
+        forbids_weapons=forbids_weapons,
     )
     session.add(et)
     session.flush()
@@ -265,6 +274,7 @@ def create_exemption_type(
             "is_global": is_global,
             "is_medical": is_medical,
             "is_commander_exemption": is_commander_exemption,
+            "forbids_weapons": forbids_weapons,
         },
     )
     return et
@@ -279,6 +289,7 @@ def update_exemption_type(
     is_global: bool | None = None,
     is_medical: bool | None = None,
     is_commander_exemption: bool | None = None,
+    forbids_weapons: bool | None = None,
     active: bool | None = None,
     actor_id: uuid.UUID | None = None,
 ) -> ExemptionType:
@@ -288,6 +299,7 @@ def update_exemption_type(
         "is_global": exemption_type.is_global,
         "is_medical": exemption_type.is_medical,
         "is_commander_exemption": exemption_type.is_commander_exemption,
+        "forbids_weapons": exemption_type.forbids_weapons,
         "active": exemption_type.active,
     }
     if name is not None and name != exemption_type.name:
@@ -302,6 +314,8 @@ def update_exemption_type(
         exemption_type.is_medical = is_medical
     if is_commander_exemption is not None:
         exemption_type.is_commander_exemption = is_commander_exemption
+    if forbids_weapons is not None:
+        exemption_type.forbids_weapons = forbids_weapons
     if active is not None:
         exemption_type.active = active
     write_audit(
@@ -317,6 +331,7 @@ def update_exemption_type(
             "is_global": exemption_type.is_global,
             "is_medical": exemption_type.is_medical,
             "is_commander_exemption": exemption_type.is_commander_exemption,
+            "forbids_weapons": exemption_type.forbids_weapons,
             "active": exemption_type.active,
         },
     )
