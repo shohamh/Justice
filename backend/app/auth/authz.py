@@ -60,6 +60,7 @@ class Action:
     POTENTIAL_MODIFIER_MANAGE = "potential.modifier_manage"
     MILITARY_LICENSE_DECIDE = "military_license.decide"
     RANGE_MANAGE = "range.manage"
+    RANGE_EXCUSAL_DECIDE = "range.excusal_decide"
     # Named for documentation/future-proofing only: this action's authorization
     # is genuinely bespoke via app.services.authority.range_attendance_edit_authorized
     # (level-scoped DM check, commanders never qualify) rather than the generic
@@ -89,6 +90,7 @@ _DM_ACTIONS = {
     Action.MILITARY_LICENSE_DECIDE,
     Action.HIERARCHY_TRANSFER,
     Action.RANGE_MANAGE,
+    Action.RANGE_EXCUSAL_DECIDE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,
@@ -100,6 +102,7 @@ _COMMANDER_ACTIONS = {
     # matches via path_ids containment, this covers descendants of the
     # commanded node too, mirroring how duty-manager scope already works.
     Action.HIERARCHY_MANAGE,
+    Action.RANGE_EXCUSAL_DECIDE,
     Action.EXEMPTION_GRANT,
     Action.EXEMPTION_READ,
     Action.CONSTRAINT_READ,

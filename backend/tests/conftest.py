@@ -158,6 +158,7 @@ _ALL_DATA_TABLES = [
     "duty_shifts",
     "shift_templates",
     "range_events",
+    "range_excusal_requests",
     "range_assignments",
     "soldier_range_qualifications",
     "commander_notification_scopes",
@@ -248,6 +249,7 @@ _SYSTEM_SETTINGS_DEFAULTS = [
     ("auth.login_rate_limit_per_5m", "5"),
     ("eligibility.mitvahim_months", "6"),
     ("eligibility.alal_months", "3"),
+    ("mitvachim.excusal_approve_min_commander_level", '"מדור"'),
 ]
 
 _LEVEL_TYPE_DEFAULTS = [
