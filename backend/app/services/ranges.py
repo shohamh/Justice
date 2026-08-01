@@ -137,6 +137,9 @@ def add_range_assignment(
 
 
 def remove_range_assignment(session: Session, *, assignment: RangeAssignment) -> None:
+    event = session.get(RangeEvent, assignment.range_event_id)
+    if event is not None and event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
     session.delete(assignment)
     session.commit()
 
