@@ -363,7 +363,7 @@ def app_session(app_engine) -> Iterator[Session]:
 
 
 @pytest.fixture()
-def client(db_admin_url: str) -> Iterator["TestClient"]:  # noqa: F821
+def client() -> Iterator["TestClient"]:  # noqa: F821
     from fastapi.testclient import TestClient
 
     from app.main import create_app

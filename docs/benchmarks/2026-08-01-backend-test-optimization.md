@@ -16,3 +16,19 @@ Pytest also emitted `PytestCacheWarning` because it could not create entries und
 ## Focused fixture-selection test
 
 `pytest tests/unit/test_test_fixtures.py --confcutdir=tests/unit -o "addopts=-q -n 0"` completed with 5 passed in 0.67 seconds. `--confcutdir` prevents pytest from registering the root autouse database fixtures; the test still imports and exercises the real predicate without starting Docker.
+
+## Post-change results (Tasks 1-3) - 2026-08-01
+
+The focused fixture test improved from 5 passed in 0.67 seconds before the change to 9 passed after Task 3. The pure JWT test set completed with 5 passed. These are valid Docker-independent results.
+
+The root/default/full-database timings are invalid: Docker named-pipe access was denied (`//./pipe/dockerDesktopLinuxEngine`, `pywintypes.error: (5, ''CreateFile'', ''Access is denied.'')`). They must not be treated as runtime measurements or passing whole-suite results.
+
+Because the baseline and post-change database-backed timings are unavailable, no valid whole-suite speedup can be claimed.
+
+## Focused Docker-independent evidence - 2026-08-01
+
+| Command | Test count | Elapsed | Exit code |
+| --- | ---: | ---: | ---: |
+| `pytest tests/unit/test_test_fixtures.py tests/unit/test_jwt_tokens.py --confcutdir=tests/unit -o "addopts=-q -n 0" --no-header --tb=short` | 14 passed | 2.78s | 0 |
+
+This is focused Docker-independent evidence. Whole-suite DB timing is blocked by the Docker named pipe, and no whole-suite speedup is claimed.
