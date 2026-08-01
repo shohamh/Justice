@@ -76,6 +76,7 @@ class RangeAssignmentOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
     is_reserve: bool
+    is_draft: bool
     attendance_status: str
     note: str | None
 
@@ -94,7 +95,7 @@ class RangeEventOut(BaseModel):
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
     return RangeAssignmentOut(
-        id=a.id, soldier_id=a.soldier_id, is_reserve=a.is_reserve,
+        id=a.id, soldier_id=a.soldier_id, is_reserve=a.is_reserve, is_draft=a.is_draft,
         attendance_status=a.attendance_status, note=a.note,
     )
 

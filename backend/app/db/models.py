@@ -868,6 +868,7 @@ class RangeAssignment(Base):
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
     )
     is_reserve: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_draft: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     attendance_status: Mapped[str] = mapped_column(
         Enum(RangeAttendanceStatus, name="range_attendance_status"),
         server_default=text("'pending'"),
@@ -1122,6 +1123,7 @@ class NotificationType(str, _enum.Enum):
     system_announcement = "system_announcement"
     enrollment_fields_edited = "enrollment_fields_edited"
     no_show_marked = "no_show_marked"
+    range_assignment_confirmed = "range_assignment_confirmed"
 
 
 class Notification(Base):
