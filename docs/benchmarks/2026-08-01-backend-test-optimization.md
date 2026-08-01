@@ -32,3 +32,9 @@ Because the baseline and post-change database-backed timings are unavailable, no
 | `pytest tests/unit/test_test_fixtures.py tests/unit/test_jwt_tokens.py --confcutdir=tests/unit -o "addopts=-q -n 0" --no-header --tb=short` | 14 passed | 2.78s | 0 |
 
 This is focused Docker-independent evidence. Whole-suite DB timing is blocked by the Docker named pipe, and no whole-suite speedup is claimed.
+
+## Full-suite profiling - 2026-08-01
+
+With Docker access and the existing four-worker configuration, pytest -q --durations=40 completed with 1,014 passed and 3 skipped in 319.73 seconds wall time. The largest repeatable call hotspot was 	ests/unit/test_tiebreak_e2e.py::test_range_mode_improves_average_spread_across_scenarios at 35.13 seconds; the largest setup costs were the first database-backed test on each xdist worker, ranging from about 7.35 to 12.53 seconds while each worker initialized its isolated Postgres container and schema.
+
+A two-worker run took 404.41 seconds and had one unrelated/flaky soldier-API failure, so reducing workers is not an optimization. A reduced fairness scenario matrix and a temporary slow-test classification were also tested and reverted: their wall times were not better than the baseline. No unproven optimization is retained; the remaining fixture bottleneck requires a shared-container/per-worker-database design and separate isolation validation.
