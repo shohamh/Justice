@@ -2,7 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.conftest import _apply_schema, _item_needs_database, _truncate_tables
+from tests.conftest import (
+    _apply_schema,
+    _item_needs_database,
+    _shared_postgres_enabled,
+    _truncate_tables,
+    _worker_database_name,
+)
 
 
 @pytest.mark.parametrize(
@@ -89,3 +95,44 @@ def test_truncate_tables_requests_admin_engine_for_database_item() -> None:
 
     with pytest.raises(AdminEngineRequested):
         next(fixture)
+
+
+def test_shared_postgres_enabled_for_full_parallel_suite(tmp_path) -> None:
+    config = SimpleNamespace(
+        workerinput=None,
+        option=SimpleNamespace(numprocesses=4),
+        rootpath=tmp_path,
+        args=[str(tmp_path / "tests")],
+    )
+
+    assert _shared_postgres_enabled(config) is True
+
+
+@pytest.mark.parametrize(
+    ("numprocesses", "args", "workerinput"),
+    [
+        (0, ["tests"], None),
+        (4, ["tests/unit/test_jwt_tokens.py"], None),
+        (4, ["tests"], {"workerid": "gw0"}),
+    ],
+)
+def test_shared_postgres_disabled_outside_full_parallel_controller(
+    tmp_path, numprocesses, args, workerinput
+) -> None:
+    config = SimpleNamespace(
+        workerinput=workerinput,
+        option=SimpleNamespace(numprocesses=numprocesses),
+        rootpath=tmp_path,
+        args=[str(tmp_path / arg) for arg in args],
+    )
+
+    assert _shared_postgres_enabled(config) is False
+
+
+def test_worker_database_name_is_safe_and_bounded() -> None:
+    name = _worker_database_name({"testrunuid": "ABC-123/unsafe" * 10, "workerid": "gw-7"})
+
+    assert name.startswith("pytest_")
+    assert name.replace("_", "").isalnum()
+    assert name == name.lower()
+    assert len(name) <= 63
