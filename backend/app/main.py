@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
 
 from app.email_worker import run_email_worker
+from app.range_reminder_worker import run_range_reminder_worker
 from app.swap_expiry_worker import run_swap_expiry_worker
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -122,10 +123,11 @@ async def lifespan(app: FastAPI):
     _fail_orphaned_algorithm_jobs()
     email_task = asyncio.create_task(run_email_worker())
     swap_expiry_task = asyncio.create_task(run_swap_expiry_worker())
+    range_reminder_task = asyncio.create_task(run_range_reminder_worker())
     yield
-    for task in (email_task, swap_expiry_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task):
         task.cancel()
-    for task in (email_task, swap_expiry_task):
+    for task in (email_task, swap_expiry_task, range_reminder_task):
         try:
             await task
         except asyncio.CancelledError:

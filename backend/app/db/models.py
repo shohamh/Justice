@@ -856,6 +856,9 @@ class RangeEvent(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class RangeAssignment(Base):
@@ -1169,6 +1172,8 @@ class NotificationType(str, _enum.Enum):
     enrollment_fields_edited = "enrollment_fields_edited"
     no_show_marked = "no_show_marked"
     range_assignment_confirmed = "range_assignment_confirmed"
+    range_reminder = "range_reminder"
+    range_reminder_shortfall = "range_reminder_shortfall"
     range_excusal_pending = "range_excusal_pending"
     range_excusal_approved = "range_excusal_approved"
     range_excusal_rejected = "range_excusal_rejected"

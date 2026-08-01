@@ -288,7 +288,14 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
         description: "אחראי תורנויות ברמה זו ומעלה בלבד יכולים לערוך/לתקן רישומי נוכחות במטווח.",
         type: "text" as const,
         defaultValue: "ענף",
+      },      {
+        key: "mitvachim.reminder_days_before",
+        label: "כמה ימים מראש לשלוח תזכורת למטווח",
+        description: "מספר הימים לפני המטווח שבהם תישלח תזכורת חד-פעמית",
+        type: "number" as const,
+        defaultValue: 3,
       },
+
     ],
   },
   {
