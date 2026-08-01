@@ -6,6 +6,9 @@ import {
   getRangeEvent,
   addRangeAssignment,
   removeRangeAssignment,
+  autoAssignRange,
+  confirmDraftAssignment,
+  confirmAllDrafts,
   createRangeEvent,
   RangeEvent,
   RangeType,
@@ -39,6 +42,7 @@ export default function RangesPage() {
   const [newLocation, setNewLocation] = useState("");
   const [newRequiredCount, setNewRequiredCount] = useState(0);
   const [newReserveCount, setNewReserveCount] = useState(0);
+  const [autoAssignShortfall, setAutoAssignShortfall] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -60,6 +64,25 @@ export default function RangesPage() {
   async function handleRemoveAssignment(assignmentId: string) {
     if (!selectedEventId) return;
     await removeRangeAssignment(selectedEventId, assignmentId);
+    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+  }
+
+  async function handleAutoAssign() {
+    if (!selectedEventId) return;
+    const result = await autoAssignRange(selectedEventId);
+    setAutoAssignShortfall(result.shortfall > 0 ? result.shortfall : null);
+    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+  }
+
+  async function handleConfirmDraft(assignmentId: string) {
+    if (!selectedEventId) return;
+    await confirmDraftAssignment(selectedEventId, assignmentId);
+    queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+  }
+
+  async function handleConfirmAll() {
+    if (!selectedEventId) return;
+    await confirmAllDrafts(selectedEventId);
     queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
   }
 
@@ -220,13 +243,35 @@ export default function RangesPage() {
             <div className="flex flex-wrap justify-between items-center gap-2">
               <h2 className="text-lg font-semibold">{selectedEvent.location}</h2>
               {canManage && (
-                <button
-                  data-testid="add-soldier-button"
-                  onClick={() => setShowPicker(true)}
-                  className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
-                >
-                  הוסף חייל
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedEvent.status === "planned" &&
+                    selectedEvent.assignments.length <
+                      selectedEvent.required_count + selectedEvent.reserve_count && (
+                      <button
+                        data-testid="auto-assign-button"
+                        onClick={handleAutoAssign}
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                      >
+                        שבץ אוטומטית
+                      </button>
+                    )}
+                  {selectedEvent.assignments.some((a) => a.is_draft) && (
+                    <button
+                      data-testid="confirm-all-button"
+                      onClick={handleConfirmAll}
+                      className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                    >
+                      אשר הכל
+                    </button>
+                  )}
+                  <button
+                    data-testid="add-soldier-button"
+                    onClick={() => setShowPicker(true)}
+                    className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                  >
+                    הוסף חייל
+                  </button>
+                </div>
               )}
             </div>
 
@@ -245,22 +290,47 @@ export default function RangesPage() {
               </div>
             )}
 
+            {autoAssignShortfall !== null && (
+              <div
+                data-testid="shortfall-banner"
+                className="bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-3 py-2 rounded text-sm"
+              >
+                לא נמצאו מספיק מועמדים — חסרים {autoAssignShortfall} משבצים
+              </div>
+            )}
+
             <ul className="divide-y dark:divide-gray-700">
               {selectedEvent.assignments.map((a) => (
                 <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <span>
                     <SoldierLink id={a.soldier_id} name={soldierName(a.soldier_id)} />
+                    {a.is_draft && (
+                      <span data-testid="draft-badge" className="text-xs text-amber-600 dark:text-amber-400 mr-1">
+                        טיוטה
+                      </span>
+                    )}
                     {a.is_reserve && (
                       <span className="text-xs text-amber-600 dark:text-amber-400 mr-1">(רזרבה)</span>
                     )}
                   </span>
                   {canManage && (
-                    <button
-                      onClick={() => handleRemoveAssignment(a.id)}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline"
-                    >
-                      הסר
-                    </button>
+                    <span className="flex items-center gap-2">
+                      {a.is_draft && (
+                        <button
+                          data-testid="confirm-draft-button"
+                          onClick={() => handleConfirmDraft(a.id)}
+                          className="text-xs text-green-600 dark:text-green-400 hover:underline"
+                        >
+                          אשר
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveAssignment(a.id)}
+                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                      >
+                        הסר
+                      </button>
+                    </span>
                   )}
                 </li>
               ))}
