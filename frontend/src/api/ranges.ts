@@ -102,3 +102,29 @@ export function confirmDraftAssignment(eventId: string, assignmentId: string): P
 export function confirmAllDrafts(eventId: string): Promise<RangeAssignment[]> {
   return api.post(`/ranges/${eventId}/assignments/confirm-all`).then((r) => r.data);
 }
+
+export interface RangeExcusalRequest {
+  id: string;
+  range_assignment_id: string;
+  requested_by: string | null;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  promoted_assignment_id: string | null;
+}
+
+export function excuseRangeAssignment(eventId: string, assignmentId: string, reason: string): Promise<RangeExcusalRequest> {
+  return api.post(`/ranges/${eventId}/assignments/${assignmentId}/excuse`, { reason }).then((r) => r.data);
+}
+
+export function getRangeExcusalRequests(eventId: string): Promise<RangeExcusalRequest[]> {
+  return api.get(`/ranges/${eventId}/excusal-requests`).then((r) => r.data);
+}
+
+export function decideRangeExcusal(
+  eventId: string, requestId: string, approve: boolean, note?: string,
+): Promise<RangeExcusalRequest> {
+  return api.post(`/ranges/${eventId}/excusal-requests/${requestId}/decide`, { approve, note }).then((r) => r.data);
+}

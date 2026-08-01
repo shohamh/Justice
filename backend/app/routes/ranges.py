@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -10,17 +10,20 @@ from sqlalchemy.orm import Session
 from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import (
+    DutyManagerScope,
     HierarchyNode,
     RangeAssignment,
     RangeAttendanceStatus,
     RangeEvent,
+    RangeExcusalRequest,
     RangeType,
     Soldier,
 )
 from app.db.session import get_session
 from app.services import range_auto_assign as auto_assign_svc
+from app.services import range_excusal as excusal_svc
 from app.services import ranges as svc
-from app.services.authority import range_attendance_edit_authorized
+from app.services.authority import dm_scope_covers_target, range_attendance_edit_authorized
 from app.services.settings_loader import SettingNotFound, get_setting
 
 router = APIRouter(prefix="/ranges", tags=["ranges"])
@@ -295,6 +298,34 @@ def list_range_events(
     return [_event_out(session, e) for e in events]
 
 
+class RangeExcusalOut(BaseModel):
+    id: uuid.UUID
+    range_assignment_id: uuid.UUID
+    requested_by: uuid.UUID | None
+    reason: str
+    status: str
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    promoted_assignment_id: uuid.UUID | None
+
+
+class ExcuseBody(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class DecideExcusalBody(BaseModel):
+    approve: bool
+    note: str | None = Field(default=None, max_length=1000)
+
+
+def _excusal_out(request: RangeExcusalRequest) -> RangeExcusalOut:
+    return RangeExcusalOut(
+        id=request.id, range_assignment_id=request.range_assignment_id, requested_by=request.requested_by,
+        reason=request.reason, status=request.status, decided_by=request.decided_by, decided_at=request.decided_at,
+        decision_note=request.decision_note, promoted_assignment_id=request.promoted_assignment_id,
+    )
+
 class MarkAttendanceBody(BaseModel):
     status: RangeAttendanceStatus
     note: str | None = Field(default=None, max_length=1000)
@@ -390,3 +421,88 @@ def confirm_all_assignments(
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return [_assignment_out(a) for a in confirmed]
+
+
+def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEvent) -> None:
+    node = _event_node(session, event)
+    authorize(session, user, Action.RANGE_EXCUSAL_DECIDE, target_node=node)
+    if user.role == "admin" or not is_commander(session, user.id):
+        return
+    dm_roots = session.query(DutyManagerScope).filter_by(duty_manager_id=user.id).all()
+    if dm_roots:
+        return
+    try:
+        required_level = str(get_setting(session, "mitvachim.excusal_approve_min_commander_level"))
+    except SettingNotFound:
+        required_level = "????"
+    if not dm_scope_covers_target(
+        session, scope_root_ids=scope_root_ids(session, user), target_node=node,
+        required_level_key=required_level,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+
+@router.post("/{event_id}/assignments/{assignment_id}/excuse", response_model=RangeExcusalOut)
+def excuse_assignment(
+    event_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    body: ExcuseBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeExcusalOut:
+    _require_enabled(session)
+    _load_event(session, event_id)
+    assignment = session.get(RangeAssignment, assignment_id)
+    if assignment is None or assignment.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    if assignment.soldier_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    try:
+        request = (
+            excusal_svc.request_reserve_excusal(
+                session, assignment=assignment, reason=body.reason, requested_by=user.id
+            ) if assignment.is_reserve else excusal_svc.request_primary_excusal(
+                session, assignment=assignment, reason=body.reason, requested_by=user.id
+            )
+        )
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _excusal_out(request)
+
+
+@router.get("/{event_id}/excusal-requests", response_model=list[RangeExcusalOut])
+def list_excusal_requests(
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[RangeExcusalOut]:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    _authorize_excusal_decision(session, user, event)
+    return [_excusal_out(r) for r in excusal_svc.list_pending_excusal_requests(session, event=event)]
+
+
+@router.post("/{event_id}/excusal-requests/{request_id}/decide", response_model=RangeExcusalOut)
+def decide_excusal_request(
+    event_id: uuid.UUID,
+    request_id: uuid.UUID,
+    body: DecideExcusalBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeExcusalOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    request = session.get(RangeExcusalRequest, request_id)
+    if request is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="excusal_request_not_found")
+    assignment = session.get(RangeAssignment, request.range_assignment_id)
+    if assignment is None or assignment.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="excusal_request_not_found")
+    _authorize_excusal_decision(session, user, event)
+    try:
+        decided = excusal_svc.decide_primary_excusal(
+            session, request=request, approve=body.approve, decided_by=user.id, note=body.note
+        )
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _excusal_out(decided)

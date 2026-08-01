@@ -9,6 +9,9 @@ import {
   autoAssignRange,
   confirmDraftAssignment,
   confirmAllDrafts,
+  excuseRangeAssignment,
+  getRangeExcusalRequests,
+  decideRangeExcusal,
   createRangeEvent,
   RangeEvent,
   RangeType,
@@ -45,6 +48,10 @@ export default function RangesPage() {
   const [autoAssignShortfall, setAutoAssignShortfall] = useState<number | null>(null);
   const [isAutoAssignPending, setIsAutoAssignPending] = useState(false);
   const [isConfirmPending, setIsConfirmPending] = useState(false);
+  const [excuseAssignmentId, setExcuseAssignmentId] = useState<string | null>(null);
+  const [excuseReason, setExcuseReason] = useState("");
+  const [isExcusePending, setIsExcusePending] = useState(false);
+  const [excusalOutcome, setExcusalOutcome] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -59,6 +66,11 @@ export default function RangesPage() {
     queryKey: queryKeys.rangeEvent(selectedEventId as string),
     queryFn: () => getRangeEvent(selectedEventId as string),
     enabled: selectedEventId !== null,
+  });
+  const { data: excusalRequests } = useQuery({
+    queryKey: queryKeys.rangeExcusalRequests(selectedEventId as string),
+    queryFn: () => getRangeExcusalRequests(selectedEventId as string) ?? Promise.resolve([]),
+    enabled: selectedEventId !== null && (!!user?.is_duty_manager || !!user?.is_commander),
   });
   const { data: soldiers } = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
   const soldierName = (id: string) => soldiers?.find((s) => s.id === id)?.full_name ?? id;
@@ -103,6 +115,29 @@ export default function RangesPage() {
     }
   }
 
+  async function handleExcuseAssignment(assignmentId: string) {
+    if (!selectedEventId || !excuseReason.trim() || isExcusePending) return;
+    setIsExcusePending(true);
+    try {
+      const assignment = selectedEvent?.assignments.find((item) => item.id === assignmentId);
+      await excuseRangeAssignment(selectedEventId, assignmentId, excuseReason.trim());
+      setExcusalOutcome(assignment?.is_reserve ? "הוסרת משיבוץ המילואים" : "הבקשה נשלחה לאישור");
+      setExcuseAssignmentId(null);
+      setExcuseReason("");
+      await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(selectedEventId) });
+    } finally {
+      setIsExcusePending(false);
+    }
+  }
+
+  async function handleDecideExcusal(requestId: string, approve: boolean) {
+    if (!selectedEventId) return;
+    const result = await decideRangeExcusal(selectedEventId, requestId, approve);
+    setExcusalOutcome(!approve ? "הבקשה נדחתה" : result.promoted_assignment_id ? "הבקשה אושרה וחייל מילואים קודם" : "הבקשה אושרה, אך נדרש שיבוץ חלופי");
+    await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(selectedEventId) });
+  }
   async function handleAddSoldier(soldier: SoldierDTO | null) {
     if (!soldier || !selectedEventId) return;
     await addRangeAssignment(selectedEventId, soldier.id, isReserveToggle);
@@ -337,7 +372,18 @@ export default function RangesPage() {
                       <span className="text-xs text-amber-600 dark:text-amber-400 mr-1">(רזרבה)</span>
                     )}
                   </span>
-                  {canManage && (
+                  {user?.id === a.soldier_id && selectedEvent.date > localTodayIsoDate() && !a.is_draft && (
+                    <span className="flex items-center gap-2">
+                      {excuseAssignmentId === a.id ? (
+                        <span className="flex items-center gap-1">
+                          <input aria-label="סיבת היעדרות" value={excuseReason} onChange={(e) => setExcuseReason(e.target.value)} placeholder="סיבת היעדרות" className="border rounded px-1 py-0.5 text-xs" />
+                          <button data-testid="submit-excuse-button" disabled={!excuseReason.trim() || isExcusePending} onClick={() => handleExcuseAssignment(a.id)} className="text-xs text-green-600 hover:underline disabled:opacity-40">שלח</button>
+                        </span>
+                      ) : (
+                        <button data-testid={`excuse-button-${a.id}`} onClick={() => setExcuseAssignmentId(a.id)} className="text-xs text-amber-600 hover:underline">לא אוכל להגיע</button>
+                      )}
+                    </span>
+                  )}                  {canManage && (
                     <span className="flex items-center gap-2">
                       {selectedEvent.status === "planned" && a.is_draft && (
                         <button
@@ -364,6 +410,21 @@ export default function RangesPage() {
               )}
             </ul>
 
+            {excusalOutcome && <div data-testid="excusal-outcome" className="bg-blue-100 px-3 py-2 rounded text-sm">{excusalOutcome}</div>}
+            {excusalRequests && excusalRequests.length > 0 && (
+              <section data-testid="excusal-review-queue" className="border rounded p-3 space-y-2">
+                <h3 className="font-medium">בקשות היעדרות</h3>
+                {excusalRequests.map((request) => (
+                  <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span>{request.reason}</span>
+                    <span className="flex gap-2">
+                      <button data-testid={`approve-excusal-${request.id}`} onClick={() => handleDecideExcusal(request.id, true)} className="text-green-600 hover:underline">אשר וקדם</button>
+                      <button data-testid={`reject-excusal-${request.id}`} onClick={() => handleDecideExcusal(request.id, false)} className="text-red-600 hover:underline">דחה</button>
+                    </span>
+                  </div>
+                ))}
+              </section>
+            )}
             {canManage && selectedEvent.date <= localTodayIsoDate() && (
               <RangeAttendancePanel
                 eventId={selectedEvent.id}

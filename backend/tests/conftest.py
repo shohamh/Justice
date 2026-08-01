@@ -1,12 +1,164 @@
 # tests/conftest.py
 import os
+import re
+import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+
+_SHARED_URL_KEY = "shared_postgres_url"
+_SHARED_TEMPLATE_KEY = "shared_postgres_template"
+_SHARED_CONTAINER_ATTR = "_shared_postgres_container"
+_SHARED_URL_ATTR = "_shared_postgres_url"
+_SHARED_TEMPLATE_ATTR = "_shared_postgres_template"
+
+
+def _new_postgres_container() -> PostgresContainer:
+    return PostgresContainer(
+        "postgres:16-alpine",
+        username="db_admin",
+        password="db_admin_pw",
+        dbname="justice",
+    ).with_command("postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off")
+
+
+def _render_psycopg_url(url: str) -> str:
+    return make_url(url).set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+
+
+def _shared_postgres_enabled(config: pytest.Config) -> bool:
+    """Use the controller-owned database only for a complete parallel suite."""
+    if getattr(config, "workerinput", None):
+        return False
+    if not getattr(config.option, "numprocesses", 0):
+        return False
+
+    suite_root = (Path(config.rootpath) / "tests").resolve()
+    selected_paths = [Path(arg).resolve() for arg in config.args]
+    return selected_paths == [suite_root]
+
+
+def _worker_database_name(workerinput: dict[str, object]) -> str:
+    raw = f"{workerinput['testrunuid']}_{workerinput['workerid']}".lower()
+    safe = re.sub(r"[^a-z0-9_]", "_", raw)
+    return f"pytest_{safe}"[:63].rstrip("_")
+
+
+def _database_url(base_url: str, database: str) -> str:
+    return make_url(base_url).set(database=database).render_as_string(hide_password=False)
+
+
+def _quoted_database_name(name: str) -> str:
+    if not re.fullmatch(r"[a-z0-9_]{1,63}", name):
+        raise ValueError(f"unsafe PostgreSQL database name: {name!r}")
+    return f'"{name}"'
+
+
+def _run_migrations(database_url: str, rootpath: Path) -> None:
+    os.environ["DATABASE_URL"] = database_url
+    os.environ["DB_ADMIN_URL"] = database_url
+
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+
+    from alembic.config import Config
+
+    from alembic import command
+
+    cfg = Config(str(rootpath / "alembic.ini"))
+    cfg.set_main_option("script_location", str(rootpath / "alembic"))
+    command.upgrade(cfg, "head")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Build one migrated template database before xdist workers start."""
+    if not _shared_postgres_enabled(config):
+        return
+
+    container = _new_postgres_container()
+    container.start()
+    base_url = _render_psycopg_url(container.get_connection_url())
+    template_name = f"pytest_template_{uuid.uuid4().hex[:16]}"
+    template_sql = _quoted_database_name(template_name)
+    server_engine = create_engine(base_url, isolation_level="AUTOCOMMIT", future=True)
+
+    previous_database_url = os.environ.get("DATABASE_URL")
+    previous_admin_url = os.environ.get("DB_ADMIN_URL")
+    try:
+        with server_engine.connect() as conn:
+            conn.execute(text(f"CREATE DATABASE {template_sql} TEMPLATE template0"))
+        _run_migrations(_database_url(base_url, template_name), Path(config.rootpath))
+        with server_engine.connect() as conn:
+            conn.execute(text(f"ALTER DATABASE {template_sql} ALLOW_CONNECTIONS false"))
+    except BaseException:
+        server_engine.dispose()
+        container.stop()
+        raise
+    finally:
+        if previous_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_database_url
+        if previous_admin_url is None:
+            os.environ.pop("DB_ADMIN_URL", None)
+        else:
+            os.environ["DB_ADMIN_URL"] = previous_admin_url
+        from app.settings import get_settings
+
+        get_settings.cache_clear()
+
+    server_engine.dispose()
+    setattr(config, _SHARED_CONTAINER_ATTR, container)
+    setattr(config, _SHARED_URL_ATTR, base_url)
+    setattr(config, _SHARED_TEMPLATE_ATTR, template_name)
+
+
+def pytest_configure_node(node) -> None:
+    base_url = getattr(node.config, _SHARED_URL_ATTR, None)
+    if base_url is None:
+        return
+
+    database_name = _worker_database_name(node.workerinput)
+    database_sql = _quoted_database_name(database_name)
+    template_sql = _quoted_database_name(getattr(node.config, _SHARED_TEMPLATE_ATTR))
+    maintenance_url = _database_url(base_url, "postgres")
+    server_engine = create_engine(maintenance_url, isolation_level="AUTOCOMMIT", future=True)
+    try:
+        with server_engine.connect() as conn:
+            conn.execute(text(f"CREATE DATABASE {database_sql} TEMPLATE {template_sql}"))
+            conn.execute(text(f"GRANT CONNECT ON DATABASE {database_sql} TO app"))
+    finally:
+        server_engine.dispose()
+
+    node.workerinput[_SHARED_URL_KEY] = _database_url(base_url, database_name)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    container = getattr(config, _SHARED_CONTAINER_ATTR, None)
+    if container is not None:
+        container.stop()
+
+
+_DATABASE_FIXTURES = {
+    "client",
+    "admin_session",
+    "app_session",
+    "admin_engine",
+    "app_engine",
+    "pg_container",
+    "db_admin_url",
+}
+
+
+def _item_needs_database(item: pytest.Item) -> bool:
+    return bool(_DATABASE_FIXTURES.intersection(item.fixturenames))
+
 
 # Test file stem -> system-area marker. Applied automatically in
 # pytest_collection_modifyitems so individual test files don't need decorators.
@@ -137,6 +289,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         if area is not None:
             item.add_marker(getattr(pytest.mark, area))
 
+
 # All data tables in dependency order (referenced-by-FK tables first so CASCADE handles the rest)
 _ALL_DATA_TABLES = [
     "audit_log",
@@ -158,6 +311,7 @@ _ALL_DATA_TABLES = [
     "duty_shifts",
     "shift_templates",
     "range_events",
+    "range_excusal_requests",
     "range_assignments",
     "soldier_range_qualifications",
     "commander_notification_scopes",
@@ -184,42 +338,39 @@ _ALL_DATA_TABLES = [
 
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[PostgresContainer]:
-    # Match the prod database/role names so migration 0001's hardcoded
-    # `GRANT CONNECT ON DATABASE justice` and the 'app'/'app_pw' role line apply cleanly.
-    #
-    # fsync/full_page_writes/synchronous_commit are disabled: this container is
-    # throwaway (destroyed at session end), so crash-durability guarantees are
-    # irrelevant, but Postgres pays their fsync cost on every TRUNCATE (new
-    # relfilenode per truncated table). On Docker Desktop/Windows that fsync cost
-    # measured ~3s for the per-test _truncate_tables truncate — the dominant
-    # per-test cost in the whole suite. With these off it drops to ~2ms.
-    with PostgresContainer(
-        "postgres:16-alpine", username="db_admin", password="db_admin_pw", dbname="justice"
-    ).with_command(
-        "postgres -c fsync=off -c full_page_writes=off -c synchronous_commit=off"
-    ) as pg:
+    # Focused and single-process runs retain an independent throwaway database.
+    with _new_postgres_container() as pg:
         yield pg
 
 
 @pytest.fixture(scope="session")
-def db_admin_url(pg_container: PostgresContainer) -> str:
-    """Superuser URL from testcontainers, normalised to the psycopg3 driver."""
-    url = make_url(pg_container.get_connection_url()).set(drivername="postgresql+psycopg")
-    # str(url) masks the password as *** in SQLAlchemy 2.0; render it verbatim.
-    return url.render_as_string(hide_password=False)
+def db_admin_url(request: pytest.FixtureRequest) -> Iterator[str]:
+    """Yield the controller-provided worker database or a focused-run container."""
+    workerinput = getattr(request.config, "workerinput", {})
+    shared_url = workerinput.get(_SHARED_URL_KEY)
+    if shared_url is not None:
+        yield shared_url
+        return
+
+    pg = request.getfixturevalue("pg_container")
+    yield _render_psycopg_url(pg.get_connection_url())
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_schema(db_admin_url: str) -> None:
+def _apply_schema(request: pytest.FixtureRequest) -> None:
     """Run migrations against the throwaway container at session start.
 
     Sets env vars, then explicitly invalidates the settings cache and the
-    global DB engine — both of which may already have been created (and
+    global DB engine â€” both of which may already have been created (and
     baked in the wrong DATABASE_URL/DB_ADMIN_URL) by a test module that
     imports a route module at collection time, which happens before any
     fixture runs. Pumps the login rate limit high so the multi-login test
     suite isn't artificially throttled.
     """
+    if not any(_item_needs_database(item) for item in request.session.items):
+        return
+
+    db_admin_url = request.getfixturevalue("db_admin_url")
     os.environ["DATABASE_URL"] = db_admin_url
     os.environ["DB_ADMIN_URL"] = db_admin_url
     os.environ["JWT_SECRET"] = "test-secret-32-bytes-of-padding-_-x"
@@ -233,13 +384,9 @@ def _apply_schema(db_admin_url: str) -> None:
 
     reset_engine()
 
-    from alembic.config import Config
-
-    from alembic import command
-
-    cfg = Config("alembic.ini")
-    cfg.set_main_option("script_location", "alembic")
-    command.upgrade(cfg, "head")
+    workerinput = getattr(request.config, "workerinput", {})
+    if _SHARED_URL_KEY not in workerinput:
+        _run_migrations(db_admin_url, Path(request.config.rootpath))
 
 
 _SYSTEM_SETTINGS_DEFAULTS = [
@@ -248,6 +395,7 @@ _SYSTEM_SETTINGS_DEFAULTS = [
     ("auth.login_rate_limit_per_5m", "5"),
     ("eligibility.mitvahim_months", "6"),
     ("eligibility.alal_months", "3"),
+    ("mitvachim.excusal_approve_min_commander_level", '"מדור"'),
 ]
 
 _LEVEL_TYPE_DEFAULTS = [
@@ -290,26 +438,30 @@ def _reset_rate_limiter() -> Iterator[None]:
     rate-limited endpoints (e.g. algorithm job creation) don't bleed state
     across tests that share the same synthetic client IP."""
     from app.rate_limit import limiter
+
     limiter._storage.reset()
     yield
 
 
 @pytest.fixture(autouse=True)
-def _truncate_tables(admin_engine) -> Iterator[None]:
+def _truncate_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     """Wipe all data rows before each test so personal_number and other unique constraints
     never collide across test functions, even when they use the same hardcoded values.
     Re-seeds system_settings defaults (set by migrations) after truncation.
 
     Reuses the session-scoped admin_engine (one pooled connection) rather than
     building and disposing a fresh engine on every test."""
+    if not _item_needs_database(request.node):
+        yield
+        return
+
+    admin_engine = request.getfixturevalue("admin_engine")
     table_list = ", ".join(_ALL_DATA_TABLES)
     with admin_engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
         # Re-apply migration-seeded defaults for system_settings.
         # Use string formatting (not bind params) to avoid :param vs ::cast ambiguity.
-        rows = ", ".join(
-            f"('{k}', '{v}'::jsonb)" for k, v in _SYSTEM_SETTINGS_DEFAULTS
-        )
+        rows = ", ".join(f"('{k}', '{v}'::jsonb)" for k, v in _SYSTEM_SETTINGS_DEFAULTS)
         conn.execute(
             text(
                 f"INSERT INTO system_settings (key, value) VALUES {rows}"
@@ -320,7 +472,11 @@ def _truncate_tables(admin_engine) -> Iterator[None]:
             f"(gen_random_uuid(), '{key}', '{label}', {rank})"
             for key, label, rank in _LEVEL_TYPE_DEFAULTS
         )
-        conn.execute(text(f"INSERT INTO hierarchy_level_types (id, key, label, rank) VALUES {level_type_rows}"))
+        conn.execute(
+            text(
+                f"INSERT INTO hierarchy_level_types (id, key, label, rank) VALUES {level_type_rows}"
+            )
+        )
     yield
 
 
@@ -339,7 +495,7 @@ def app_session(app_engine) -> Iterator[Session]:
 
 
 @pytest.fixture()
-def client(db_admin_url: str) -> Iterator["TestClient"]:  # noqa: F821
+def client() -> Iterator["TestClient"]:  # noqa: F821
     from fastapi.testclient import TestClient
 
     from app.main import create_app

@@ -816,6 +816,12 @@ class RangeAttendanceStatus(str, _enum.Enum):
     no_show = "no_show"
 
 
+class RangeExcusalStatus(str, _enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class RangeEvent(Base):
     __tablename__ = "range_events"
 
@@ -849,6 +855,9 @@ class RangeEvent(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
     )
 
 
@@ -887,6 +896,45 @@ class RangeAssignment(Base):
     )
 
 
+class RangeExcusalRequest(Base):
+    __tablename__ = "range_excusal_requests"
+    __table_args__ = (
+        sa.Index(
+            "uq_range_excusal_requests_one_pending_per_assignment",
+            "range_assignment_id",
+            unique=True,
+            postgresql_where=sa.text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    # Approved primary and self-service reserve excusals delete the assignment,
+    # while this record remains as their audit trail.
+    range_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    status: Mapped[RangeExcusalStatus] = mapped_column(
+        Enum(RangeExcusalStatus, name="range_excusal_status"),
+        server_default=text("'pending'"),
+        default=RangeExcusalStatus.pending,
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    promoted_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
 class SoldierRangeQualification(Base):
     __tablename__ = "soldier_range_qualifications"
 
@@ -1124,6 +1172,14 @@ class NotificationType(str, _enum.Enum):
     enrollment_fields_edited = "enrollment_fields_edited"
     no_show_marked = "no_show_marked"
     range_assignment_confirmed = "range_assignment_confirmed"
+    range_reminder = "range_reminder"
+    range_reminder_shortfall = "range_reminder_shortfall"
+    range_excusal_pending = "range_excusal_pending"
+    range_excusal_approved = "range_excusal_approved"
+    range_excusal_rejected = "range_excusal_rejected"
+    range_reserve_promoted = "range_reserve_promoted"
+    range_reserve_excused = "range_reserve_excused"
+    range_excusal_no_backfill = "range_excusal_no_backfill"
 
 
 class Notification(Base):
