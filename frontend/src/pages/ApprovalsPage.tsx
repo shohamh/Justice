@@ -108,6 +108,20 @@ function SwapKindApproval({
 }
 
 /**
+ * Whether a commander can ever decide a field update for `fieldName` — mirrors
+ * backend/app/auth/authz.py: `Action.SOLDIER_UPDATE` (used for every editable
+ * field except military_driving_license) is only in `_DM_ACTIONS`, never
+ * `_COMMANDER_ACTIONS`, so a commander can never approve those regardless of
+ * scope. Only `military_driving_license` goes through the rank-gated
+ * `MILITARY_LICENSE_DECIDE` branch, which commanders can satisfy. Used to
+ * avoid showing a commander as a decider for a field they structurally can't
+ * approve — keep in sync with authz.py if that ever changes.
+ */
+function fieldAllowsCommanderApproval(fieldName: string): boolean {
+  return fieldName === "military_driving_license";
+}
+
+/**
  * Adapts the live-computed `nearest_commander`/`nearest_duty_manager` fields
  * (constraints/exemption-requests/field-updates/enrollment-requests) into the
  * row shape `DirectCommanderApproval`/`groupByKind` expect. Unlike swaps,
@@ -566,6 +580,12 @@ export default function ApprovalsPage() {
             {fuItems.length === 0 && <p className="text-gray-500 text-sm">{t("approvals.none")}</p>}
             {fuItems.map(item => {
               const fuGrouped = groupByKind(nearestApproversToRows(item.nearest_commander, item.nearest_duty_manager, item.status) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
+              // A commander can never decide most field updates (see
+              // fieldAllowsCommanderApproval) — showing their name as if they
+              // were a decider here is what made this confusing, so hide that
+              // row entirely for fields where it's never true.
+              const showCommanderRow = fieldAllowsCommanderApproval(item.field_name) && fuGrouped.commander.length > 0;
+              const showDutyManagerRow = fuGrouped.duty_manager.length > 0;
               return (
               <div key={item.id} className="border dark:border-gray-600 rounded p-3 text-sm space-y-2">
                 <div className="flex items-center gap-2">
@@ -577,8 +597,11 @@ export default function ApprovalsPage() {
                 <div className="text-gray-500 dark:text-gray-400">{t("soldier_profile.previous_value")}: <span className="font-mono">{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.previous_value, t)}</span></div>
                 <div className="text-gray-600 dark:text-gray-300">{t("approvals.field_update_new_value")}<strong>{item.new_value === null ? "מידע פרטי" : formatFieldUpdateValue(item.field_name, item.new_value, t)}</strong></div>
                 <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
-                  {fuGrouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={fuGrouped.commander} /></span>}
-                  {fuGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={fuGrouped.duty_manager} /></span>}
+                  {showCommanderRow && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={fuGrouped.commander} /></span>}
+                  {showDutyManagerRow && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={fuGrouped.duty_manager} /></span>}
+                  {showCommanderRow && showDutyManagerRow && (
+                    <span className="italic">({t("approvals.field_update_either_approver_suffices")})</span>
+                  )}
                 </div>
                 <div className="flex gap-2 items-center">
                   {item.can_approve && (
@@ -606,7 +629,8 @@ export default function ApprovalsPage() {
               const reqGroups = groupByKind(swap.requester_manager_approvals);
               const canActCommander = (commanderApprovals: DirectCommanderApprovalRow[]) =>
                 isAdmin || commanderApprovals.some(a => a.commander_id === user?.id);
-              const canActDutyManager = isAdmin || !!user?.is_duty_manager;
+              const canActDutyManager = (dutyManagerApprovals: DirectCommanderApprovalRow[]) =>
+                isAdmin || dutyManagerApprovals.some(a => a.commander_id === user?.id);
               const liveCandidates = swap.candidates.filter(c => c.status === "pending" || c.status === "accepted");
               const statusColumns = [
                 requesterColumn(
@@ -645,7 +669,7 @@ export default function ApprovalsPage() {
                     <SwapKindApproval
                       approvals={reqGroups.duty_manager}
                       label={`${t("swaps.requester_managers")} (${t("swaps.approver_kind_duty_manager")})`}
-                      canAct={canActDutyManager}
+                      canAct={canActDutyManager(reqGroups.duty_manager)}
                       onApprove={() => onSwapManagerApprove(swap.id, "requester")}
                       t={t}
                     />
@@ -657,7 +681,7 @@ export default function ApprovalsPage() {
                       Gated the same way the approve buttons above are — only shown to an
                       actor actually authorized on the requester side — so it doesn't dangle
                       a clickable-looking action for a viewer with no real authority here. */}
-                  {(canActCommander(reqGroups.commander) || canActDutyManager) && (
+                  {(canActCommander(reqGroups.commander) || canActDutyManager(reqGroups.duty_manager)) && (
                     <div className="flex gap-2 items-center flex-wrap">
                       <input
                         placeholder={t("approvals.decision_note")}
@@ -694,12 +718,12 @@ export default function ApprovalsPage() {
                               <SwapKindApproval
                                 approvals={covGroups.duty_manager}
                                 label={`${t("swaps.covering_managers")} (${t("swaps.approver_kind_duty_manager")})`}
-                                canAct={canActDutyManager}
+                                canAct={canActDutyManager(covGroups.duty_manager)}
                                 onApprove={() => onSwapManagerApprove(swap.id, "covering", candidate.id)}
                                 t={t}
                               />
                             </div>
-                            {(canActCommander(covGroups.commander) || canActDutyManager) && (
+                            {(canActCommander(covGroups.commander) || canActDutyManager(covGroups.duty_manager)) && (
                               <div className="flex gap-2 items-center flex-wrap">
                                 <input
                                   placeholder={t("approvals.decision_note")}

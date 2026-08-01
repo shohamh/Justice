@@ -60,7 +60,7 @@ const RANK_ORDER: Record<string, number> = {
   "רנג": 9,
   // Officers
   "קמא": 10,
-  "סגמ": 11,
+  'סג"ם': 11, "סגמ": 11,
   "סגן": 12,
   "קאב": 13,
   "סרן": 14,
@@ -1044,7 +1044,7 @@ export default function TransparencyPage() {
               columns={soldierCols}
               data={visibleRows}
               filterPlaceholder={t("table.filter_placeholder")}
-              defaultSort={[{ id: "rank", desc: true }]}
+              defaultSort={[{ id: "effort_score", desc: true }]}
               rowClassName={(r) => (r.soldier_id === user?.id ? "bg-indigo-50 dark:bg-indigo-950" : "")}
               rowStyle={(r) => {
                 const g = r._group;

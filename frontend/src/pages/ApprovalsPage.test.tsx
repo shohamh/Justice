@@ -611,3 +611,70 @@ describe("ApprovalsPage - approve button authority", () => {
     expect(screen.queryByText("approvals.approve")).not.toBeInTheDocument();
   });
 });
+
+describe("ApprovalsPage - field update approver clarity", () => {
+  it("hides the commander row for a field only a duty manager can ever decide, even when a nearest commander exists", async () => {
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
+      {
+        id: "fu2", soldier_id: "sol-6", soldier_name: "F", node_name: null, field_name: "discharge_date",
+        previous_value: null, new_value: "2027-01-01", status: "pending", decided_by: null, decided_at: null,
+        decision_note: null, created_at: "2026-01-01",
+        nearest_commander: { id: "cmd-1", name: "מפקד בדיקה" },
+        nearest_duty_manager: { id: "dm-1", name: "אחראי בדיקה" },
+        can_approve: true,
+      } as soldiersApi.FieldUpdateDTO,
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const fuTab = await screen.findByTestId("approvals-tab-field-updates");
+    fireEvent.click(fuTab);
+    await screen.findByText("אחראי בדיקה"); // guard: the item rendered
+
+    // Only a duty manager can ever decide a non-license field update — the
+    // commander row would falsely suggest they're a valid decider too.
+    expect(screen.queryByText("swaps.approver_kind_commander", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("מפקד בדיקה")).not.toBeInTheDocument();
+    expect(screen.getByText("swaps.approver_kind_duty_manager", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("אחראי בדיקה")).toBeInTheDocument();
+    expect(screen.queryByText("approvals.field_update_either_approver_suffices", { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("shows both rows plus an either-suffices note for military_driving_license, where either kind can decide", async () => {
+    vi.mocked(soldiersApi.listPendingFieldUpdates).mockResolvedValue([
+      {
+        id: "fu3", soldier_id: "sol-7", soldier_name: "G", node_name: null, field_name: "military_driving_license",
+        previous_value: null, new_value: JSON.stringify({ has_license: true, expiry_date: null }),
+        status: "pending", decided_by: null, decided_at: null, decision_note: null, created_at: "2026-01-01",
+        nearest_commander: { id: "cmd-2", name: "מפקד רישיון" },
+        nearest_duty_manager: { id: "dm-2", name: "אחראי רישיון" },
+        can_approve: true,
+      } as soldiersApi.FieldUpdateDTO,
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const fuTab = await screen.findByTestId("approvals-tab-field-updates");
+    fireEvent.click(fuTab);
+    await screen.findByText("מפקד רישיון");
+
+    expect(screen.getByText("swaps.approver_kind_commander", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("swaps.approver_kind_duty_manager", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("אחראי רישיון")).toBeInTheDocument();
+    expect(screen.getByText("approvals.field_update_either_approver_suffices", { exact: false })).toBeInTheDocument();
+  });
+});

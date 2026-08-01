@@ -155,6 +155,7 @@
     "tab_transfers": "העברות",
     "exemption_none": "אין בקשות פטור ממתינות",
     "field_update_new_value": "ערך חדש: ",
+    "field_update_either_approver_suffices": "מספיק אישור אחד מהשניים",
     "transfers_none": "אין בקשות העברה ממתינות",
     "transfer_from": "מיחידה",
     "transfer_to": "ליחידה"
