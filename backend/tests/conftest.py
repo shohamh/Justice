@@ -225,16 +225,20 @@ def db_admin_url(pg_container: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_schema(db_admin_url: str) -> None:
+def _apply_schema(request: pytest.FixtureRequest) -> None:
     """Run migrations against the throwaway container at session start.
 
     Sets env vars, then explicitly invalidates the settings cache and the
-    global DB engine — both of which may already have been created (and
+    global DB engine â€” both of which may already have been created (and
     baked in the wrong DATABASE_URL/DB_ADMIN_URL) by a test module that
     imports a route module at collection time, which happens before any
     fixture runs. Pumps the login rate limit high so the multi-login test
     suite isn't artificially throttled.
     """
+    if not any(_item_needs_database(item) for item in request.session.items):
+        return
+
+    db_admin_url = request.getfixturevalue("db_admin_url")
     os.environ["DATABASE_URL"] = db_admin_url
     os.environ["DB_ADMIN_URL"] = db_admin_url
     os.environ["JWT_SECRET"] = "test-secret-32-bytes-of-padding-_-x"
