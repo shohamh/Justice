@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
 from app.services.authority import range_attendance_edit_authorized
-from app.services.settings_loader import apply_settings
+from app.services.settings_loader import apply_settings, get_setting
 from tests.helpers import create_node, create_soldier
 
 
@@ -35,6 +35,28 @@ def test_range_manage_denied_for_dm_out_of_scope(app_session: Session) -> None:
     dm = create_soldier(app_session, personal_number="3000002", role="duty_manager", hierarchy_node_id=node.id)
 
     assert _can(app_session, dm, Action.RANGE_MANAGE, target_node=other_node) is False
+
+def test_range_excusal_decide_allowed_for_dm_in_scope(app_session: Session) -> None:
+    """Removing the action from the DM bucket must deny the decision route."""
+    node = create_node(app_session, level="branch", name="פלוגת פטורים")
+    dm = create_soldier(app_session, personal_number="3000006", role="duty_manager", hierarchy_node_id=node.id)
+
+    assert _can(app_session, dm, Action.RANGE_EXCUSAL_DECIDE, target_node=node) is True
+
+
+def test_range_excusal_decide_allowed_for_commander_in_scope(app_session: Session) -> None:
+    """Removing the action from the commander bucket must deny in-scope review."""
+    node = create_node(app_session, level="group", name="מדור פטורים")
+    commander = create_soldier(app_session, personal_number="3000007", role="commander", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    app_session.flush()
+
+    assert _can(app_session, commander, Action.RANGE_EXCUSAL_DECIDE, target_node=node) is True
+
+
+def test_range_excusal_commander_threshold_defaults_to_mador(app_session: Session) -> None:
+    """Changing the migration seed would lower or raise the server-side approval gate."""
+    assert get_setting(app_session, "mitvachim.excusal_approve_min_commander_level") == "מדור"
 
 
 def test_range_attendance_edit_authorized_for_dm_at_required_level(app_session: Session) -> None:

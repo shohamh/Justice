@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     RangeAssignment,
     RangeAttendanceStatus,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
     RangeEvent,
     RangeEventStatus,
     RangeType,
@@ -103,3 +107,72 @@ def test_range_assignment_is_draft_defaults_false(app_session: Session) -> None:
     app_session.refresh(assignment)
 
     assert assignment.is_draft is False
+
+
+def test_range_excusal_request_allows_only_one_pending_request_per_assignment(app_session: Session) -> None:
+    """Dropping the partial pending index would permit duplicate active requests."""
+    node = create_node(app_session, level="פלוגה", name="פלוגה בקשות פטור")
+    soldier = create_soldier(app_session, personal_number="9000002", hierarchy_node_id=node.id)
+    event = RangeEvent(
+        hierarchy_node_id=node.id,
+        range_type=RangeType.laser,
+        date=date(2026, 8, 26),
+        location="מטווח",
+        required_count=1,
+    )
+    app_session.add(event)
+    app_session.flush()
+    assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier.id, is_reserve=False)
+    app_session.add(assignment)
+    app_session.flush()
+
+    app_session.add(
+        RangeExcusalRequest(
+            range_assignment_id=assignment.id,
+            requested_by=soldier.id,
+            reason="סיבה ראשונה",
+        )
+    )
+    app_session.flush()
+    app_session.add(
+        RangeExcusalRequest(
+            range_assignment_id=assignment.id,
+            requested_by=soldier.id,
+            reason="סיבה כפולה",
+        )
+
+    with pytest.raises(IntegrityError):
+        app_session.flush()
+    app_session.rollback()
+
+
+def test_range_excusal_request_starts_pending_without_a_decision(app_session: Session) -> None:
+    """A newly submitted request must not look decided before a reviewer acts."""
+    node = create_node(app_session, level="פלוגה", name="פלוגה החלטת פטור")
+    soldier = create_soldier(app_session, personal_number="9000003", hierarchy_node_id=node.id)
+    event = RangeEvent(
+        hierarchy_node_id=node.id,
+        range_type=RangeType.live,
+        date=date(2026, 8, 27),
+        location="מטווח",
+        required_count=1,
+    )
+    app_session.add(event)
+    app_session.flush()
+    assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier.id, is_reserve=False)
+    app_session.add(assignment)
+    app_session.flush()
+
+    request = RangeExcusalRequest(
+        range_assignment_id=assignment.id,
+        requested_by=soldier.id,
+        reason="בדיקה רפואית",
+    )
+    app_session.add(request)
+    app_session.commit()
+    app_session.refresh(request)
+
+    assert request.status == RangeExcusalStatus.pending
+    assert request.decided_by is None
+    assert request.decided_at is None
+    assert request.decision_note is None
