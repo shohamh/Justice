@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-01
+
+### Features
+- Added the Mitvachim (ranges) workflow: feature-flagged range planning, scoped event and roster management, reserve assignments, attendance confirmation, no-show handling, qualification updates, score adjustments, and range visibility across the homepage, calendar, and dashboard.
+- Added automatic range assignment with eligibility filtering and three-tier priority ranking, including draft rosters, shortfall reporting, quota checks, and manager confirmation/confirmation-all controls.
+- Added range-specific notifications for confirmed assignments, with links to the ranges page and matching Hebrew UI coverage.
+
+### Fixes
+- Hardened range assignment workflows around draft visibility, planned-event boundaries, exclusive end dates, duplicate same-day assignments, atomic confirm-all operations, and transactional notification creation.
+
+### Chores
+- Added the database migrations and backend/frontend test coverage required for range assignments, attendance, authorization, exemptions, and auto-assignment.
+
 ## 2026-07-31
 
 ### Features
