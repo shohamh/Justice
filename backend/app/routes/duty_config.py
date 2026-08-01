@@ -44,6 +44,7 @@ class DutyTypeOut(BaseModel):
     end_time: time | None = None
     instructions: str | None = None
     is_external: bool = False
+    requires_weapon: bool = False
     eligible_node_ids: list[uuid.UUID] | None = None
 
 
@@ -59,6 +60,7 @@ class CreateDutyTypeRequest(BaseModel):
     end_time: time | None = None
     instructions: str | None = Field(default=None)
     is_external: bool  # required — no default
+    requires_weapon: bool = False
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -83,6 +85,7 @@ class UpdateDutyTypeRequest(BaseModel):
     end_time: time | None = None
     instructions: str | None = Field(default=None)
     is_external: bool | None = None
+    requires_weapon: bool | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
 
     @field_validator("instructions")
@@ -109,6 +112,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         end_time=d.end_time,
         instructions=d.instructions,
         is_external=d.is_external,
+        requires_weapon=d.requires_weapon,
         eligible_node_ids=d.eligible_node_ids,
     )
 
@@ -143,6 +147,7 @@ def create_duty_type(
             end_time=body.end_time,
             instructions=body.instructions,
             is_external=body.is_external,
+            requires_weapon=body.requires_weapon,
             eligible_node_ids=body.eligible_node_ids,
             actor_id=user.id,
         )
@@ -183,6 +188,7 @@ def update_duty_type(
             end_time=body.end_time,
             instructions=body.instructions,
             is_external=body.is_external,
+            requires_weapon=body.requires_weapon,
             **extra,
         )
         if body.active is not None:
@@ -347,6 +353,7 @@ class ExemptionTypeOut(BaseModel):
     is_global: bool = False
     is_medical: bool = False
     is_commander_exemption: bool = False
+    forbids_weapons: bool = False
     active: bool = True
 
 
@@ -356,6 +363,7 @@ class CreateExemptionTypeRequest(BaseModel):
     is_global: bool = False
     is_medical: bool = False
     is_commander_exemption: bool = False
+    forbids_weapons: bool = False
 
 
 class UpdateExemptionTypeRequest(BaseModel):
@@ -364,6 +372,7 @@ class UpdateExemptionTypeRequest(BaseModel):
     is_global: bool | None = None
     is_medical: bool | None = None
     is_commander_exemption: bool | None = None
+    forbids_weapons: bool | None = None
     active: bool | None = None
 
 
@@ -379,6 +388,7 @@ def _et_out(et: ExemptionType) -> ExemptionTypeOut:
         is_global=et.is_global,
         is_medical=et.is_medical,
         is_commander_exemption=et.is_commander_exemption,
+        forbids_weapons=et.forbids_weapons,
         active=et.active,
     )
 
@@ -408,6 +418,7 @@ def create_exemption_type(
             is_global=body.is_global,
             is_medical=body.is_medical,
             is_commander_exemption=body.is_commander_exemption,
+            forbids_weapons=body.forbids_weapons,
             actor_id=user.id,
         )
     except svc.DutyConfigError as exc:
@@ -436,6 +447,7 @@ def update_exemption_type(
             is_global=body.is_global,
             is_medical=body.is_medical,
             is_commander_exemption=body.is_commander_exemption,
+            forbids_weapons=body.forbids_weapons,
             active=body.active,
             actor_id=user.id,
         )

@@ -255,6 +255,43 @@ const SETTING_GROUPS: { label: string; settings: SettingDef[] }[] = [
     ],
   },
   {
+    label: "מטווחים",
+    settings: [
+      {
+        key: "mitvachim.enabled",
+        label: "הפעלת תת-מערכת מטווחים",
+        description: "מפעיל/מכבה את כל תת-המערכת הניסיונית של מטווחים ואל\"ל.",
+        type: "boolean" as const,
+        defaultValue: false,
+      },
+      {
+        key: "mitvachim.laser_validity_days",
+        label: "תוקף מטווח לייזר (ימים)",
+        type: "number" as const,
+        defaultValue: 180,
+      },
+      {
+        key: "mitvachim.live_validity_days",
+        label: "תוקף מטווח חי (ימים)",
+        type: "number" as const,
+        defaultValue: 365,
+      },
+      {
+        key: "mitvachim.alal_validity_days",
+        label: "תוקף אלל (ימים)",
+        type: "number" as const,
+        defaultValue: 365,
+      },
+      {
+        key: "mitvachim.attendance_edit_min_level",
+        label: "רמת היררכיה מינימלית לעריכת נוכחות",
+        description: "אחראי תורנויות ברמה זו ומעלה בלבד יכולים לערוך/לתקן רישומי נוכחות במטווח.",
+        type: "text" as const,
+        defaultValue: "ענף",
+      },
+    ],
+  },
+  {
     label: "שקיפות",
     settings: [
       {

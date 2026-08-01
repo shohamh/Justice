@@ -200,6 +200,7 @@ class DutyType(Base):
     eligible_node_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=True, default=None
     )
+    requires_weapon: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -239,6 +240,7 @@ class ExemptionType(Base):
         Boolean, server_default=text("false"), default=False
     )
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    forbids_weapons: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -789,6 +791,116 @@ class DutyNoShow(Base):
         UUID(as_uuid=True), ForeignKey("score_adjustments.id", ondelete="SET NULL"), nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class RangeType(str, _enum.Enum):
+    laser = "laser"
+    live = "live"
+    alal = "alal"
+
+
+RANGE_TYPE_RANK: dict[str, int] = {"laser": 1, "live": 2, "alal": 3}
+
+
+class RangeEventStatus(str, _enum.Enum):
+    planned = "planned"
+    completed = "completed"
+    cancelled = "cancelled"
+
+
+class RangeAttendanceStatus(str, _enum.Enum):
+    pending = "pending"
+    present = "present"
+    no_show = "no_show"
+
+
+class RangeEvent(Base):
+    __tablename__ = "range_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    hierarchy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("hierarchy_nodes.id", ondelete="RESTRICT")
+    )
+    range_type: Mapped[str] = mapped_column(Enum(RangeType, name="range_type"))
+    date: Mapped[date] = mapped_column(Date)
+    location: Mapped[str] = mapped_column(Text)
+    required_count: Mapped[int] = mapped_column(Integer)
+    start_time: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    end_time: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    arrival_instructions: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    contact_name: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    contact_phone: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    reserve_count: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    status: Mapped[str] = mapped_column(
+        Enum(RangeEventStatus, name="range_event_status"),
+        server_default=text("'planned'"),
+        default=RangeEventStatus.planned,
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class RangeAssignment(Base):
+    __tablename__ = "range_assignments"
+    __table_args__ = (
+        sa.UniqueConstraint("range_event_id", "soldier_id", name="uq_range_assignment_event_soldier"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    range_event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_events.id", ondelete="CASCADE")
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    is_reserve: Mapped[bool] = mapped_column(Boolean, default=False)
+    attendance_status: Mapped[str] = mapped_column(
+        Enum(RangeAttendanceStatus, name="range_attendance_status"),
+        server_default=text("'pending'"),
+        default=RangeAttendanceStatus.pending,
+    )
+    marked_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    marked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    score_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("score_adjustments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
+class SoldierRangeQualification(Base):
+    __tablename__ = "soldier_range_qualifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    soldier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="CASCADE")
+    )
+    range_type: Mapped[str] = mapped_column(Enum(RangeType, name="range_type"))
+    valid_until: Mapped[date] = mapped_column(Date)
+    source_range_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
 

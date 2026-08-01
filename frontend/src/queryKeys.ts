@@ -84,4 +84,6 @@ export const queryKeys = {
   registrationPublicSettings: () => ["registrationPublicSettings"] as const,
   myBugReports: () => ["bugReports", "mine"] as const,
   bugReportComments: (reportId: string) => ["bugReports", "comments", reportId] as const,
+  ranges: () => ["ranges"] as const,
+  rangeEvent: (id: string) => ["ranges", id] as const,
 };

@@ -197,6 +197,46 @@ def test_update_duty_type_operational_fields(client: TestClient, admin_session: 
     assert data["is_external"] is True
 
 
+def test_create_and_update_duty_type_requires_weapon_roundtrip(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200005", role="admin")
+    r = client.post(
+        "/api/duty-config/duty-types",
+        headers=auth_headers(admin),
+        json={"name": "שמירה-נשק-א", "score_per_day": "1.00", "is_external": False, "requires_weapon": True},
+    )
+    assert r.status_code == 201, r.text
+    dt = r.json()
+    assert dt["requires_weapon"] is True
+
+    r2 = client.patch(
+        f"/api/duty-config/duty-types/{dt['id']}",
+        headers=auth_headers(admin),
+        json={"requires_weapon": False},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["requires_weapon"] is False
+
+
+def test_create_and_update_exemption_type_forbids_weapons_roundtrip(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="5200006", role="admin")
+    r = client.post(
+        "/api/duty-config/exemption-types",
+        headers=auth_headers(admin),
+        json={"name": "פטור-נשק-א", "forbids_weapons": True},
+    )
+    assert r.status_code == 201, r.text
+    et = r.json()
+    assert et["forbids_weapons"] is True
+
+    r2 = client.patch(
+        f"/api/duty-config/exemption-types/{et['id']}",
+        headers=auth_headers(admin),
+        json={"forbids_weapons": False},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["forbids_weapons"] is False
+
+
 def test_update_exemption_type_active_toggle(client: TestClient, admin_session: Session):
     from app.db.models import ExemptionType
 

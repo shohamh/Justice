@@ -12,12 +12,14 @@ import AlertBanners from "../components/dashboard/AlertBanners";
 import DutyCalendarWidget from "../components/dashboard/DutyCalendarWidget";
 import DutyDetailModal from "../components/dashboard/DutyDetailModal";
 import UpcomingDutiesWidget from "../components/dashboard/UpcomingDutiesWidget";
+import UpcomingRangesWidget from "../components/dashboard/UpcomingRangesWidget";
 import SwapStatusWidget from "../components/dashboard/SwapStatusWidget";
 import PendingApprovalsWidget from "../components/dashboard/PendingApprovalsWidget";
 import DutyHistoryWidget from "../components/dashboard/DutyHistoryWidget";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
 
 import { useAuth } from "../auth/AuthContext";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { listMySwaps, listPendingSwaps } from "../api/swaps";
@@ -27,6 +29,7 @@ import { getTransparency, getBreakdown } from "../api/scoring";
 import { getPendingCount } from "../api/constraints";
 import { getPendingExemptionCount } from "../api/exemptions";
 import { getPendingFieldUpdateCount } from "../api/soldiers";
+import { getRanges } from "../api/ranges";
 import { lastDutyDay } from "../utils/formatDate";
 
 function offsetDate(days: number): string {
@@ -56,6 +59,7 @@ export default function HomePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const publicSettings = usePublicSettings();
 
   const [selectedDuty, setSelectedDuty] = useState<EffectiveDuty | null>(null);
 
@@ -79,6 +83,13 @@ export default function HomePage() {
 
   const settingsQuery = useQuery({ queryKey: queryKeys.systemSettings(), queryFn: getSystemSettings });
   const settings = settingsQuery.data ?? ({} as SettingsMap);
+
+  const rangesQuery = useQuery({
+    queryKey: queryKeys.ranges(),
+    queryFn: () => getRanges(user!.hierarchy_node_id as string),
+    enabled: !!user?.hierarchy_node_id && publicSettings?.["mitvachim.enabled"] === true,
+  });
+  const ranges = rangesQuery.data ?? [];
 
   const transparencyQuery = useQuery({
     queryKey: queryKeys.transparency(),
@@ -254,7 +265,13 @@ export default function HomePage() {
           settings={settings}
         />
 
-        <DutyCalendarWidget duties={duties} typeNames={typeNames} onOpenDuty={handleOpenDuty} />
+        <DutyCalendarWidget
+          duties={duties}
+          typeNames={typeNames}
+          onOpenDuty={handleOpenDuty}
+          ranges={publicSettings?.["mitvachim.enabled"] === true ? ranges : []}
+          onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}
+        />
 
         <UpcomingDutiesWidget
           duties={duties}
@@ -262,6 +279,13 @@ export default function HomePage() {
           locationNames={locationNames}
           onOpenDuty={handleOpenDuty}
         />
+
+        {publicSettings?.["mitvachim.enabled"] === true && (
+          <UpcomingRangesWidget
+            ranges={ranges}
+            onOpenRange={(range) => navigate(`/ranges?event=${range.id}`)}
+          />
+        )}
 
         <SwapStatusWidget swaps={mySwaps} />
 

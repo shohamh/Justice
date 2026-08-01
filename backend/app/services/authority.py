@@ -6,12 +6,13 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import HierarchyNode
+from app.db.models import DutyManagerScope, HierarchyNode, Soldier
 from app.services.hierarchy import get_level_rank
 from app.services.settings_loader import SettingNotFound, get_setting
 
 COMMANDER_EXEMPTION_MIN_LEVEL_KEY = "מדור"  # fallback default if no setting is configured
 REGULAR_EXEMPTION_DM_MIN_LEVEL_KEY = "מרכז"
+RANGE_ATTENDANCE_EDIT_MIN_LEVEL_KEY = "ענף"  # fallback default if no setting is configured
 
 
 def _commander_exemption_min_level(session: Session) -> str:
@@ -54,6 +55,32 @@ def dm_scope_covers_target(
             ):
                 return True
     return False
+
+
+def _range_attendance_edit_min_level(session: Session) -> str:
+    try:
+        value = get_setting(session, "mitvachim.attendance_edit_min_level")
+        if value:
+            return str(value)
+    except SettingNotFound:
+        pass
+    return RANGE_ATTENDANCE_EDIT_MIN_LEVEL_KEY
+
+
+def range_attendance_edit_authorized(session: Session, *, user: Soldier, target_node: HierarchyNode) -> bool:
+    """True iff `user` is a duty manager (not a commander) whose own DM-scope node
+    is at `mitvachim.attendance_edit_min_level` rank or higher, and that scope
+    covers target_node. Commanders never qualify, regardless of rank."""
+    if user.role == "admin":
+        return True
+    dm_scope_rows = session.execute(
+        select(DutyManagerScope).where(DutyManagerScope.duty_manager_id == user.id)
+    ).scalars().all()
+    dm_root_ids = {row.hierarchy_node_id for row in dm_scope_rows}
+    required_level = _range_attendance_edit_min_level(session)
+    return dm_scope_covers_target(
+        session, scope_root_ids=dm_root_ids, target_node=target_node, required_level_key=required_level,
+    )
 
 
 def commander_can_grant_commander_exemption(

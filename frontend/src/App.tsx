@@ -37,6 +37,7 @@ import ImportSessionsListPage from "./pages/ImportSessionsListPage";
 import ImportUploadPage from "./pages/ImportUploadPage";
 import ImportSessionReviewPage from "./pages/ImportSessionReviewPage";
 import ActionPage from "./pages/ActionPage";
+import RangesPage from "./pages/RangesPage";
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -74,6 +75,7 @@ export default function App() {
   // Like TelegramGate above: if settings fetch fails, this becomes false and the
   // route conditionally renders (fails OPEN), which is safer than blocking it.
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
+  const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
 
   return (
     <ErrorBoundary>
@@ -113,6 +115,9 @@ export default function App() {
                 <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
                 {hakpazaEnabled && (
                   <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+                )}
+                {mitvachimEnabled && (
+                  <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
                 )}
                 <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
                 <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />

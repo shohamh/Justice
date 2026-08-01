@@ -48,6 +48,7 @@ export default function UnifiedNav() {
   const location = useLocation();
   const settings = usePublicSettings();
   const hakpazaEnabled = settings?.["forced_callup.enabled"] === true;
+  const mitvachimEnabled = settings?.["mitvachim.enabled"] === true;
   const canApprove = user?.role === "admin" || user?.is_commander || user?.is_duty_manager;
   const canPlan = user?.role === "admin" || user?.is_duty_manager;
 
@@ -167,6 +168,9 @@ export default function UnifiedNav() {
     { label: "ייבוא מ-Excel", to: "/import", testId: "nav-import" },
     { label: t("nav.planning_export"), to: "/planning/export", testId: "nav-export" },
     { label: "פוטנציאל", to: "/planning/potential", testId: "nav-potential" },
+    ...(mitvachimEnabled
+      ? [{ label: "מטווחים", to: "/ranges", testId: "nav-ranges" }]
+      : []),
   ];
 
   const isActive = (to?: string) => {

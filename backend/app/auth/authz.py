@@ -59,6 +59,13 @@ class Action:
     POTENTIAL_READ = "potential.read"
     POTENTIAL_MODIFIER_MANAGE = "potential.modifier_manage"
     MILITARY_LICENSE_DECIDE = "military_license.decide"
+    RANGE_MANAGE = "range.manage"
+    # Named for documentation/future-proofing only: this action's authorization
+    # is genuinely bespoke via app.services.authority.range_attendance_edit_authorized
+    # (level-scoped DM check, commanders never qualify) rather than the generic
+    # can()/_DM_ACTIONS/_COMMANDER_ACTIONS mechanism, so it deliberately does not
+    # appear in _DM_ACTIONS or _COMMANDER_ACTIONS below.
+    RANGE_ATTENDANCE_EDIT = "range.attendance_edit"
 
 
 _DM_ACTIONS = {
@@ -81,6 +88,7 @@ _DM_ACTIONS = {
     Action.POTENTIAL_MODIFIER_MANAGE,
     Action.MILITARY_LICENSE_DECIDE,
     Action.HIERARCHY_TRANSFER,
+    Action.RANGE_MANAGE,
 }
 _COMMANDER_ACTIONS = {
     Action.SOLDIER_READ,

@@ -22,7 +22,7 @@
 
 **Files:**
 - Modify: `backend/app/db/models.py` (append new enums/classes; add two columns to existing classes)
-- Create: `backend/alembic/versions/a1b2c3d4e5f6_add_ranges_tables.py`
+- Create: `backend/alembic/versions/de2742d45fa3_add_ranges_tables.py`
 - Test: `backend/app/db/tests/test_range_models.py` (new file — verify create + read/write for the migration to prove itself, run against the real test-container DB via existing fixtures)
 
 **Interfaces:**
@@ -160,12 +160,12 @@ And one column to the end of the existing `ExemptionType` class body (after `act
 
 - [ ] **Step 2: Create the Alembic migration**
 
-Create `backend/alembic/versions/a1b2c3d4e5f6_add_ranges_tables.py`:
+Create `backend/alembic/versions/de2742d45fa3_add_ranges_tables.py`:
 
 ```python
 """add_ranges_tables
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: de2742d45fa3
 Revises: d18bea0e6cbb
 Create Date: 2026-07-31 00:00:00.000000
 
@@ -177,7 +177,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = 'a1b2c3d4e5f6'
+revision: str = 'de2742d45fa3'
 down_revision: Union[str, Sequence[str], None] = 'd18bea0e6cbb'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -289,7 +289,7 @@ def downgrade() -> None:
 - [ ] **Step 3: Verify the migration head chain**
 
 Run: `cd backend && .venv/Scripts/python -m alembic heads`
-Expected: `a1b2c3d4e5f6 (head)` — if it prints a different id or shows multiple heads, someone else added a migration since `d18bea0e6cbb`; update `down_revision` to whatever `alembic heads` reports as the prior head before continuing.
+Expected: `de2742d45fa3 (head)` — if it prints a different id or shows multiple heads, someone else added a migration since `d18bea0e6cbb`; update `down_revision` to whatever `alembic heads` reports as the prior head before continuing.
 
 - [ ] **Step 4: Write a model round-trip test**
 
@@ -399,7 +399,7 @@ Expected: `5 passed`
 
 ```bash
 cd backend
-git add app/db/models.py alembic/versions/a1b2c3d4e5f6_add_ranges_tables.py app/db/tests/test_range_models.py
+git add app/db/models.py alembic/versions/de2742d45fa3_add_ranges_tables.py app/db/tests/test_range_models.py
 git commit -m "feat: add ranges data model (RangeEvent, RangeAssignment, SoldierRangeQualification)"
 ```
 
