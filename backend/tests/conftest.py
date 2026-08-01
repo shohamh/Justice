@@ -8,6 +8,21 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 
+_DATABASE_FIXTURES = {
+    "client",
+    "admin_session",
+    "app_session",
+    "admin_engine",
+    "app_engine",
+    "pg_container",
+    "db_admin_url",
+}
+
+
+def _item_needs_database(item: pytest.Item) -> bool:
+    return bool(_DATABASE_FIXTURES.intersection(item.fixturenames))
+
+
 # Test file stem -> system-area marker. Applied automatically in
 # pytest_collection_modifyitems so individual test files don't need decorators.
 # Run a slice with e.g. `pytest -m algorithm` or `pytest -m "duty or scoring"`.
