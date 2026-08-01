@@ -1209,7 +1209,7 @@
     "approve": "אשר",
     "reject": "דחה",
     "decision_note_placeholder": "הערת החלטה (חובה לדחייה)",
-    "click_to_view_profile": "(לחץ על השם לצפייה בפרופיל)",
+    "view_request": "צפייה בנתוני הבקשה",
     "confirm_approve": "לאשר את הצטרפות {{soldier}} ליחידה {{node}}?"
   },
   "invite_codes": {

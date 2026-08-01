@@ -759,17 +759,23 @@ export default function ApprovalsPage() {
                 req.status === "approved" ? "approved" : req.status === "rejected" ? "rejected" : "pending",
               ) as (DirectCommanderApprovalRow & { approver_kind: "commander" | "duty_manager" })[]);
               return (
-                <div key={req.id} className="border rounded p-3 text-sm space-y-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => setSelectedEnrollment(req)}>
+                <div key={req.id} className="border rounded p-3 text-sm space-y-2">
                   <div className="flex items-center gap-2">
                     <strong><SoldierLink id={req.soldier_id} name={req.soldier_name} /></strong>
-                    <span className="text-xs text-gray-400">{t("enrollment.click_to_view_profile")}</span>
                   </div>
                   <p className="text-gray-500">{t("enrollment.requested_node")}: <strong>{nodeName}</strong></p>
-                  <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap" onClick={e => e.stopPropagation()}>
+                  <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
                     {enrollGrouped.commander.length > 0 && <span>{t("swaps.approver_kind_commander")}: <DirectCommanderApproval approvals={enrollGrouped.commander} /></span>}
                     {enrollGrouped.duty_manager.length > 0 && <span>{t("swaps.approver_kind_duty_manager")}: <DirectCommanderApproval approvals={enrollGrouped.duty_manager} /></span>}
                   </div>
-                  <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => setSelectedEnrollment(req)}
+                    className="w-full bg-indigo-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-indigo-700"
+                    data-testid={`enrollment-view-${req.id}`}
+                  >
+                    {t("enrollment.view_request")}
+                  </button>
+                  <div className="flex gap-2 items-center">
                     <input
                       placeholder={t("enrollment.decision_note_placeholder")}
                       value={enrollRejectNotes[req.id] ?? ""}

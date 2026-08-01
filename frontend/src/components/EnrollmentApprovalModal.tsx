@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, MouseEvent, useState } from "react";
 import { EnrollmentRequestDTO, patchEnrollment, approveEnrollment, rejectEnrollment } from "../api/enrollment";
 import Combobox from "./Combobox";
 import DateInput from "../components/DateInput";
@@ -25,6 +25,13 @@ interface Props {
 
 export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, onClose, onDone }: Props) {
   useModalBackClose(onClose);
+
+  function handleBackdropClick(e: MouseEvent<HTMLDivElement>) {
+    // Only a click whose target is the backdrop itself may dismiss the modal.
+    // This also protects against events from portal-rendered controls bubbling
+    // through the React tree to the backdrop.
+    if (e.target === e.currentTarget) onClose();
+  }
 
   const [fullName, setFullName] = useState(req.soldier_name);
   const [personalNumber, setPersonalNumber] = useState(req.soldier_personal_number);
@@ -91,7 +98,7 @@ export default function EnrollmentApprovalModal({ req, nodes, exemptionTypes, on
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      onClick={handleBackdropClick}
     >
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
