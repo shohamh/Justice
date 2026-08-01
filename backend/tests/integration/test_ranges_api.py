@@ -560,3 +560,46 @@ def test_confirm_nonexistent_assignment_404s(client: TestClient, admin_session: 
         headers=auth_headers(dm),
     )
     assert response.status_code == 404
+
+
+def test_confirm_all_400_on_cancelled_event(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו7")
+    dm = create_soldier(
+        admin_session, personal_number="6500000", role="duty_manager", hierarchy_node_id=node.id
+    )
+    weapon_duty = DutyType(
+        name="שמירה עם נשק אוטו7",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    create_soldier(admin_session, personal_number="6500001", hierarchy_node_id=node.id)
+
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-20",
+            "location": "מטווח אוטו",
+            "required_count": 1,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+    auto_resp = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(dm))
+    assert auto_resp.status_code == 200
+
+    cancel_resp = client.patch(
+        f"/api/ranges/{event_id}", json={"cancel": True}, headers=auth_headers(dm)
+    )
+    assert cancel_resp.status_code == 200
+
+    response = client.post(
+        f"/api/ranges/{event_id}/assignments/confirm-all", headers=auth_headers(dm)
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "event_not_planned"

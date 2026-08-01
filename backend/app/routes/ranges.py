@@ -373,5 +373,8 @@ def confirm_all_assignments(
     _require_enabled(session)
     event = _load_event(session, event_id)
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    confirmed = auto_assign_svc.confirm_all_drafts(session, event=event, actor_id=user.id)
+    try:
+        confirmed = auto_assign_svc.confirm_all_drafts(session, event=event, actor_id=user.id)
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return [_assignment_out(a) for a in confirmed]
