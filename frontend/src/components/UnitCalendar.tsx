@@ -10,6 +10,7 @@ import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
+import { loadCalendarData } from "../api/calendarData";
 import { RangeEvent, getRanges } from "../api/ranges";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
@@ -48,15 +49,16 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     setLoading(true);
     setError(null);
     try {
-      const [data, rangeEvents] = await Promise.all([
-        getCalendarShifts(nodeId, { date_from: from, date_to: to }),
-        rangesEnabled ? getRanges(nodeId, from, to) : Promise.resolve([]),
-      ]);
-      setShifts(data.shifts);
+      const { calendar, ranges: rangeEvents } = await loadCalendarData(
+        () => getCalendarShifts(nodeId, { date_from: from, date_to: to }),
+        () => getRanges(nodeId, from, to),
+        rangesEnabled,
+      );
+      setShifts(calendar.shifts);
       setRanges(rangeEvents);
       setSelectedShift(prev => {
         if (!prev) return null;
-        return data.shifts.find(s => s.id === prev.id) ?? prev;
+        return calendar.shifts.find(s => s.id === prev.id) ?? prev;
       });
     } catch {
       setError(t("unit_calendar.error") || "Failed to load calendar");
