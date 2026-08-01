@@ -248,8 +248,10 @@ export default function RangesPage() {
               {canManage && (
                 <div className="flex flex-wrap items-center gap-2">
                   {selectedEvent.status === "planned" &&
-                    selectedEvent.assignments.length <
-                      selectedEvent.required_count + selectedEvent.reserve_count && (
+                    (selectedEvent.assignments.filter((assignment) => !assignment.is_reserve).length <
+                      selectedEvent.required_count ||
+                      selectedEvent.assignments.filter((assignment) => assignment.is_reserve).length <
+                        selectedEvent.reserve_count) && (
                       <button
                         data-testid="auto-assign-button"
                         onClick={handleAutoAssign}

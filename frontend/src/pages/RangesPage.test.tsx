@@ -304,9 +304,27 @@ describe("RangesPage auto-assign", () => {
     expect(screen.getByText("טיוטה")).toBeInTheDocument();
   });
 
+  it("shows the auto-assign button when the reserve quota remains despite a full total roster", async () => {
+    const assignments = Array.from({ length: 3 }, (_, i) => ({
+      id: `a${i}`, soldier_id: `s${i}`, is_reserve: false, is_draft: false,
+      attendance_status: "pending" as const, note: null,
+    }));
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 2, reserve_count: 1, status: "planned" as const, assignments,
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    await waitFor(() => expect(screen.getByText("s0")).toBeInTheDocument());
+    expect(screen.getByTestId("auto-assign-button")).toBeInTheDocument();
+  });
+
   it("hides the auto-assign button when the roster is full", async () => {
     const assignments = Array.from({ length: 5 }, (_, i) => ({
-      id: `a${i}`, soldier_id: `s${i}`, is_reserve: false, is_draft: false,
+      id: `a${i}`, soldier_id: `s${i}`, is_reserve: i === 4, is_draft: false,
       attendance_status: "pending" as const, note: null,
     }));
     const event = {
