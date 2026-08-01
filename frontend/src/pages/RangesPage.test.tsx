@@ -95,6 +95,29 @@ describe("RangesPage roster add", () => {
     await waitFor(() => expect(rangesApi.addRangeAssignment).toHaveBeenCalledWith("event-1", "soldier-1", false));
     await waitFor(() => expect(screen.queryByTestId("soldier-picker")).not.toBeInTheDocument());
   });
+
+  it("adds a soldier as reserve when the reserve toggle is checked", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
+    });
+    vi.mocked(rangesApi.addRangeAssignment).mockResolvedValue({
+      id: "assignment-1", soldier_id: "soldier-1", is_reserve: true, attendance_status: "pending", note: null,
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+    fireEvent.click(await screen.findByTestId("add-soldier-button"));
+
+    fireEvent.click(await screen.findByTestId("reserve-toggle"));
+    fireEvent.click(await screen.findByTestId("select-soldier-1"));
+
+    await waitFor(() => expect(rangesApi.addRangeAssignment).toHaveBeenCalledWith("event-1", "soldier-1", true));
+  });
 });
 
 describe("RangesPage read-only mode for commanders", () => {

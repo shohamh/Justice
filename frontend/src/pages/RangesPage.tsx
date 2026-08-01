@@ -28,6 +28,7 @@ export default function RangesPage() {
   const [searchParams] = useSearchParams();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(searchParams.get("event"));
   const [showPicker, setShowPicker] = useState(false);
+  const [isReserveToggle, setIsReserveToggle] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -52,9 +53,10 @@ export default function RangesPage() {
 
   async function handleAddSoldier(soldier: SoldierDTO | null) {
     if (!soldier || !selectedEventId) return;
-    await addRangeAssignment(selectedEventId, soldier.id, false);
+    await addRangeAssignment(selectedEventId, soldier.id, isReserveToggle);
     queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
     setShowPicker(false);
+    setIsReserveToggle(false);
   }
 
   return (
@@ -88,7 +90,20 @@ export default function RangesPage() {
               הוסף חייל
             </button>
           )}
-          {showPicker && <SoldierSearchAutocomplete onSelect={handleAddSoldier} />}
+          {showPicker && (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  data-testid="reserve-toggle"
+                  checked={isReserveToggle}
+                  onChange={(e) => setIsReserveToggle(e.target.checked)}
+                />
+                שבץ כרזרבה
+              </label>
+              <SoldierSearchAutocomplete onSelect={handleAddSoldier} />
+            </>
+          )}
           <ul>
             {selectedEvent.assignments.map((a) => (
               <li key={a.id}>
