@@ -16,6 +16,7 @@ from app.db.models import (
     RangeEvent,
     RangeEventStatus,
     RangeType,
+    ScoreAdjustment,
     Soldier,
     SoldierRangeQualification,
 )
@@ -82,32 +83,57 @@ def update_range_event(
     required_count: int | None = None,
     reserve_count: int | None = None,
     notes: str | None = None,
+    actor_id: uuid.UUID | None = None,
 ) -> RangeEvent:
+    before: dict = {}
+    after: dict = {}
     if required_count is not None:
         if required_count < 0:
             raise RangeValidationError("counts_must_be_non_negative")
+        before["required_count"] = event.required_count
         event.required_count = required_count
+        after["required_count"] = required_count
     if reserve_count is not None:
         if reserve_count < 0:
             raise RangeValidationError("counts_must_be_non_negative")
+        before["reserve_count"] = event.reserve_count
         event.reserve_count = reserve_count
+        after["reserve_count"] = reserve_count
     if location is not None:
+        before["location"] = event.location
         event.location = location
+        after["location"] = location
     if arrival_instructions is not None:
+        before["arrival_instructions"] = event.arrival_instructions
         event.arrival_instructions = arrival_instructions
+        after["arrival_instructions"] = arrival_instructions
     if contact_name is not None:
+        before["contact_name"] = event.contact_name
         event.contact_name = contact_name
+        after["contact_name"] = contact_name
     if contact_phone is not None:
+        before["contact_phone"] = event.contact_phone
         event.contact_phone = contact_phone
+        after["contact_phone"] = contact_phone
     if notes is not None:
+        before["notes"] = event.notes
         event.notes = notes
+        after["notes"] = notes
+    write_audit(
+        session, actor_id=actor_id, action="range_event.update", entity_type="range_event",
+        entity_id=event.id, before=before, after=after,
+    )
     session.commit()
     session.refresh(event)
     return event
 
 
-def cancel_range_event(session: Session, *, event: RangeEvent) -> RangeEvent:
+def cancel_range_event(session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None) -> RangeEvent:
     event.status = RangeEventStatus.cancelled
+    write_audit(
+        session, actor_id=actor_id, action="range_event.cancel", entity_type="range_event",
+        entity_id=event.id, before={"status": "planned"}, after={"status": "cancelled"},
+    )
     session.commit()
     session.refresh(event)
     return event
@@ -153,13 +179,21 @@ _VALIDITY_SETTING_KEYS: dict[str, str] = {
 }
 _NO_SHOW_PENALTY = Decimal("-1")
 
+# Fallback defaults if the corresponding setting row is missing, matching the
+# defaults seeded by the add_ranges_tables migration.
+_FALLBACK_VALIDITY_DAYS: dict[str, int] = {
+    RangeType.laser: 180,
+    RangeType.live: 365,
+    RangeType.alal: 365,
+}
+
 
 def _validity_days(session: Session, range_type: str) -> int:
     key = _VALIDITY_SETTING_KEYS[range_type]
     try:
         value = get_setting(session, key)
     except SettingNotFound:
-        return 180
+        return _FALLBACK_VALIDITY_DAYS[range_type]
     return int(value)
 
 
@@ -211,8 +245,10 @@ def mark_attendance(
 
     # Reverse the previous side effect, if any.
     if previous_status == RangeAttendanceStatus.no_show and assignment.score_adjustment_id is not None:
+        original = session.get(ScoreAdjustment, assignment.score_adjustment_id)
+        reversal_delta = -original.delta if original is not None else Decimal("1")
         create_adjustment(
-            session, soldier_id=assignment.soldier_id, delta=Decimal("1"),
+            session, soldier_id=assignment.soldier_id, delta=reversal_delta,
             reason="range_no_show_reversed", actor_id=marked_by,
         )
         write_audit(

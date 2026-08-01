@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import RangeEventStatus, RangeType
+from app.db.models import AuditLog, RangeEventStatus, RangeType
 from app.services.ranges import (
     RangeValidationError,
+    _validity_days,
     cancel_range_event,
     create_range_event,
     update_range_event,
@@ -73,6 +75,30 @@ def test_update_range_event_changes_fields(app_session: Session) -> None:
     assert updated.required_count == 5
 
 
+def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה עדכון-ביקורת")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), location="מטווח ישן", required_count=3,
+    )
+    actor_id = uuid.uuid4()
+
+    update_range_event(app_session, event=event, location="מטווח חדש", actor_id=actor_id)
+
+    entry = app_session.execute(
+        select(AuditLog).where(
+            AuditLog.entity_type == "range_event",
+            AuditLog.entity_id == event.id,
+            AuditLog.action == "range_event.update",
+        )
+    ).scalar_one()
+    assert entry.actor_id == actor_id
+    assert entry.before.get("location") == "מטווח ישן"
+    assert entry.after.get("location") == "מטווח חדש"
+
+
 def test_cancel_range_event_sets_status(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ד")
     event = create_range_event(
@@ -83,6 +109,39 @@ def test_cancel_range_event_sets_status(app_session: Session) -> None:
     cancelled = cancel_range_event(app_session, event=event)
 
     assert cancelled.status == RangeEventStatus.cancelled
+
+
+def test_cancel_range_event_writes_audit_entry(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה ביטול-ביקורת")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date(2026, 8, 20), location="מטווח", required_count=2,
+    )
+    actor_id = uuid.uuid4()
+
+    cancel_range_event(app_session, event=event, actor_id=actor_id)
+
+    entry = app_session.execute(
+        select(AuditLog).where(
+            AuditLog.entity_type == "range_event",
+            AuditLog.entity_id == event.id,
+            AuditLog.action == "range_event.cancel",
+        )
+    ).scalar_one()
+    assert entry.actor_id == actor_id
+    assert entry.before == {"status": "planned"}
+    assert entry.after == {"status": "cancelled"}
+
+
+def test_validity_days_falls_back_to_365_for_live_and_alal(app_session: Session) -> None:
+    """No mitvachim.*_validity_days setting is seeded in the test DB (unlike the
+    real migration), so calling _validity_days directly exercises the
+    SettingNotFound fallback path."""
+    assert _validity_days(app_session, RangeType.laser) == 180
+    assert _validity_days(app_session, RangeType.live) == 365
+    assert _validity_days(app_session, RangeType.alal) == 365
 
 
 from app.db.models import RangeAssignment

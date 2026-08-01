@@ -142,12 +142,13 @@ def update_range_event(
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
     try:
         if body.cancel:
-            event = svc.cancel_range_event(session, event=event)
+            event = svc.cancel_range_event(session, event=event, actor_id=user.id)
         else:
             event = svc.update_range_event(
                 session, event=event, location=body.location, required_count=body.required_count,
                 reserve_count=body.reserve_count, arrival_instructions=body.arrival_instructions,
                 contact_name=body.contact_name, contact_phone=body.contact_phone, notes=body.notes,
+                actor_id=user.id,
             )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
