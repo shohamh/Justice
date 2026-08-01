@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
@@ -20,9 +21,13 @@ vi.mock("../auth/AuthContext", () => ({
 
 import { useAuth } from "../auth/AuthContext";
 
-function renderWithQuery(ui: React.ReactElement) {
+function renderWithQuery(ui: React.ReactElement, initialEntries = ["/ranges"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -96,5 +101,62 @@ describe("RangesPage read-only mode for commanders", () => {
 
     expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
     expect(screen.queryByText("הסר")).not.toBeInTheDocument();
+  });
+});
+
+describe("RangesPage attendance panel", () => {
+  it("shows the attendance panel for a past event when the user can manage", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed",
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+
+    expect(await screen.findByTestId("present-a1")).toBeInTheDocument();
+    expect(screen.getByTestId("no-show-a1")).toBeInTheDocument();
+  });
+
+  it("does not show the attendance panel for a future event", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned",
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+
+    await waitFor(() => expect(screen.getByText("s1")).toBeInTheDocument());
+    expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
+  });
+});
+
+describe("RangesPage deep link via ?event=", () => {
+  it("auto-selects the event id from the query param without a click", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
+    });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
+    expect(await screen.findAllByText("מטווח דרום")).not.toHaveLength(0);
   });
 });

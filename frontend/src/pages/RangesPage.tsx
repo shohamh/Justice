@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getRanges,
@@ -9,16 +10,19 @@ import {
 } from "../api/ranges";
 import { queryKeys } from "../queryKeys";
 import { useAuth } from "../auth/AuthContext";
+import { canPlan } from "../auth/permissions";
 import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
+import RangeAttendancePanel from "../components/ranges/RangeAttendancePanel";
 import { SoldierDTO } from "../api/soldiers";
 
 export default function RangesPage() {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(searchParams.get("event"));
   const [showPicker, setShowPicker] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
-  const canManage = user?.role === "admin" || user?.is_duty_manager === true;
+  const canManage = canPlan(user);
 
   const { data: events } = useQuery({
     queryKey: queryKeys.ranges(),
@@ -86,6 +90,15 @@ export default function RangesPage() {
               </li>
             ))}
           </ul>
+          {canManage && selectedEvent.date < new Date().toISOString().split("T")[0] && (
+            <RangeAttendancePanel
+              eventId={selectedEvent.id}
+              assignments={selectedEvent.assignments}
+              onMarked={() =>
+                queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId!) })
+              }
+            />
+          )}
         </div>
       )}
     </div>
