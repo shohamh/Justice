@@ -113,6 +113,33 @@ def test_no_weapon_duty_types_exist_at_all_exempts(app_session: Session) -> None
     assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is True
 
 
+def test_eligible_via_descendant_node_of_duty_types_eligible_node(app_session: Session) -> None:
+    parent = create_node(app_session, level="פלוגה", name="פלוגה הורה")
+    child = create_node(app_session, level="פלוגה", name="פלוגה צאצא", parent=parent)
+    soldier = create_soldier(app_session, personal_number="2000009", hierarchy_node_id=child.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק הורה", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[parent.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+
+
+def test_eligible_when_duty_type_has_unrestricted_eligible_node_ids(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה כלל ארצי")
+    soldier = create_soldier(app_session, personal_number="2000010", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק כלל ארצי", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=None,
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+
+    assert is_range_exempt(app_session, soldier=soldier, event_date=date(2026, 6, 1)) is False
+
+
 def test_plain_exemption_plus_structural_ineligibility_still_exempts(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה תת-בדיקה")
     soldier = create_soldier(app_session, personal_number="2000008", hierarchy_node_id=node.id)

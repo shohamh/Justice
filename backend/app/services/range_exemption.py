@@ -5,6 +5,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.algorithm.types import node_in_scope
 from app.db.models import DutyType, ExemptionType, HierarchyNode, Soldier, SoldierExemption
 
 
@@ -36,7 +37,7 @@ def _has_any_eligible_weapon_duty_type(session: Session, *, soldier: Soldier) ->
         select(DutyType).where(DutyType.requires_weapon.is_(True), DutyType.active.is_(True))
     ).scalars().all()
     for duty_type in weapon_duty_types:
-        if duty_type.eligible_node_ids and node.id in duty_type.eligible_node_ids:
+        if node_in_scope(duty_type.eligible_node_ids, node.path_ids):
             return True
     return False
 
