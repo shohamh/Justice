@@ -119,6 +119,8 @@ from app.services.range_exemption import is_range_exempt
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
 ) -> RangeAssignment:
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise RangeValidationError("soldier_not_found")

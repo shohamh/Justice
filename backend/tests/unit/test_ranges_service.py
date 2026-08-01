@@ -168,6 +168,26 @@ def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
     assert app_session.get(RangeAssignment, assignment_id) is None
 
 
+def test_add_range_assignment_rejects_when_event_not_planned(app_session: Session) -> None:
+    from app.db.models import DutyType
+    from decimal import Decimal
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה תת-הוספה-לא-מתוכנן")
+    soldier = create_soldier(app_session, personal_number="4000006", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(name="שמירה עם נשק תת-הוספה-לא-מתוכנן", score_per_day=Decimal("1.00"),
+                            requires_weapon=True, eligible_node_ids=[node.id])
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+    )
+    cancel_range_event(app_session, event=event)
+
+    with pytest.raises(RangeValidationError):
+        add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+
 def test_remove_range_assignment_rejects_when_event_not_planned(app_session: Session) -> None:
     from app.db.models import DutyType
     from decimal import Decimal
