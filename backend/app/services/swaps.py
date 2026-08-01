@@ -820,8 +820,9 @@ def _override_authorized_kinds(
     if actor is not None and actor.role == "admin":
         return {"commander", "duty_manager"}
     kinds: set[str] = set()
-    if is_duty_manager(session, actor_id):
-        kinds.add("duty_manager")
+    if actor is not None and is_duty_manager(session, actor_id):
+        if _node_in_scope(side_node, scope_root_ids(session, actor)):
+            kinds.add("duty_manager")
     if actor is not None and is_commander(session, actor_id):
         if _node_in_scope(side_node, scope_root_ids(session, actor)):
             kinds.add("commander")

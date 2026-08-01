@@ -62,13 +62,34 @@
 
 ## 2026-07-28
 
+### Features
+- A soldier can now edit an already-open swap request afterward — adding more specific invitees or publishing it to the marketplace — via a new "Manage" button, instead of only being able to set this up when first creating the request.
+- Swap approval status is now shown as separated per-side columns with bulleted approval lines and a color-coded (green/red/amber) summary per side, replacing the old single inline status line; the previously backend-only "require duty-manager approval" setting is now visible and editable in system settings.
+- Admins can now import bug reports from JSON mirror files.
+- Open swap requests are now automatically cancelled once their duty starts, with both the requester and any pending candidates notified — there's no one left to swap with once the duty is underway.
+- System settings are reorganized into a clearer, soldier-facing-first grouping (16 groups → 15), with duty rest-hours moved out of גימלים and the upcoming-duty alert folded into the home-page settings group.
+- The bug report form can now be submitted with Ctrl+Enter.
+
 ### Fixes
 - On the swap approvals screen, the reject button (both whole-request and per-candidate) is now only shown to a commander/duty-manager who actually has authority over that side, matching how the approve button already worked — previously it appeared for anyone, and a commander with no relation to a specific candidate could reject that candidate's already-accepted swap by mistake.
 - An invited candidate responding to a swap request no longer also sees the unrelated "I'll cover" marketplace button alongside their own approve/reject controls.
+- The duty-manager approval line no longer claims "commander approval not required" when a soldier's branch simply has no duty manager scoped to it — it now shows an accurate, distinct message, consistently on both the soldier-facing and admin approval screens.
+- The swap reason field is now labeled instead of rendered as unlabeled text.
+- Approving a constraint could previously race ahead of a pending enrollment approval it should have waited for, and could send a duplicate enrollment notification — both fixed.
+- The swap-request candidate list now shows a loading indicator instead of misleadingly claiming there are no eligible soldiers while the list is still loading.
+- The bug report navigation trail now shows local time instead of raw UTC, and each entry is a clickable link to that page.
+- On a swap request with 3+ participants, candidates beyond what fit the approval-status block could lose their name everywhere on screen (not just in that block) on narrow/mobile viewports; the block now scrolls horizontally instead of clipping, and the candidate list always shows names regardless.
+- Fixed a global double-scrollbar bug: the document itself could scroll independently of the app's own internal scroll region, showing two competing scrollbars on the same page.
+- Commander-exemption approval is now gated purely on commanding a sufficiently senior hierarchy node — a high rank alone (previously רס"ן and above) no longer bypasses that requirement.
+- הקפצה פיקודית (forced callup) and Telegram notifications now correctly default to off everywhere (nav, routes, notification preferences) when unconfigured, matching their displayed default in system settings — previously only the settings page itself reflected "off" while every runtime check still treated the feature as enabled.
+- A soldier's "pending enrollment approval" state no longer stays stuck for the rest of a session after an admin approves it — the app now polls until it clears, instead of only refreshing on login.
+- The homepage's duty-type and score-comparison charts now read correctly for RTL (bars grow right-to-left, categories ordered so "me" reads first) instead of using the charting library's LTR default.
+- Fixed a dark-mode-only bug where the swap approval card's per-side status color was either muddy (translucent tint stacking with the card's own background wash) or silently missing entirely on all but the first column, due to a Tailwind CSS specificity conflict with the column divider.
 
 ### Chores
 - Seed data now includes one duty manager per branch, scoped to that branch, so the duty-manager approval step of the swap workflow can be exercised locally without manually creating one.
-- Added the initial backend service functions (not yet wired to any route or UI) for extending an already-open swap request with more invites or marketplace visibility after the fact.
+- Renamed the Hebrew term for the swap-covering side from מכסה to the more correct מחליף, consistently across the swap and reserve-coverage UI (leaving unrelated "quota" and "covers/encompasses" uses of מכסה untouched).
+- Extended integration/unit test coverage for bug-report import and swap-approval workflows.
 
 ## 2026-07-27
 
