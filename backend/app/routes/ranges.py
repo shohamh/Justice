@@ -243,7 +243,9 @@ def mark_attendance_route(
     if assignment is None or assignment.range_event_id != event_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
     node = _event_node(session, event)
-    if user.role != "admin" and not range_attendance_edit_authorized(session, user=user, target_node=node):
+    # See Action.RANGE_ATTENDANCE_EDIT docstring: authorization here is bespoke via
+    # range_attendance_edit_authorized (which already short-circuits admins), not authorize().
+    if not range_attendance_edit_authorized(session, user=user, target_node=node):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         updated = svc.mark_attendance(
