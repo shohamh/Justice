@@ -26,4 +26,15 @@ describe("UpcomingRangesWidget", () => {
     expect(rows[0]).toHaveTextContent("מטווח ב");
     expect(rows[1]).toHaveTextContent("מטווח א");
   });
+
+  it("renders range_type as a Hebrew label instead of raw English", () => {
+    const ranges: RangeEvent[] = [
+      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: "2099-01-01", location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ];
+
+    render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);
+
+    expect(screen.getByText("לייזר")).toBeInTheDocument();
+    expect(screen.queryByText("laser")).not.toBeInTheDocument();
+  });
 });

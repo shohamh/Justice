@@ -1,4 +1,5 @@
 import { RangeEvent } from "../../api/ranges";
+import { RANGE_TYPE_LABELS } from "../../utils/rangeLabels";
 
 interface Props {
   ranges: RangeEvent[];
@@ -26,7 +27,7 @@ export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
           {upcoming.map((range) => (
             <tr key={range.id} onClick={() => onOpenRange(range)}>
               <td>{range.date}</td>
-              <td>{range.range_type}</td>
+              <td>{RANGE_TYPE_LABELS[range.range_type] ?? range.range_type}</td>
               <td>{range.location}</td>
             </tr>
           ))}

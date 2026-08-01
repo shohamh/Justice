@@ -51,6 +51,23 @@ describe("RangesPage", () => {
 
     await waitFor(() => expect(screen.getByText("מטווח דרום")).toBeInTheDocument());
   });
+
+  it("renders Hebrew labels for range_type and status instead of raw English", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+
+    await waitFor(() => expect(screen.getByText("לייזר")).toBeInTheDocument());
+    expect(screen.getByText("מתוכנן")).toBeInTheDocument();
+    expect(screen.queryByText("laser")).not.toBeInTheDocument();
+    expect(screen.queryByText("planned")).not.toBeInTheDocument();
+  });
 });
 
 describe("RangesPage roster add", () => {

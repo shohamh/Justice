@@ -14,6 +14,7 @@ import { canPlan } from "../auth/permissions";
 import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import RangeAttendancePanel from "../components/ranges/RangeAttendancePanel";
 import { SoldierDTO } from "../api/soldiers";
+import { RANGE_TYPE_LABELS, RANGE_EVENT_STATUS_LABELS } from "../utils/rangeLabels";
 
 function localTodayIsoDate(): string {
   const now = new Date();
@@ -72,9 +73,9 @@ export default function RangesPage() {
           {(events ?? []).map((event: RangeEvent) => (
             <tr key={event.id} onClick={() => setSelectedEventId(event.id)}>
               <td>{event.date}</td>
-              <td>{event.range_type}</td>
+              <td>{RANGE_TYPE_LABELS[event.range_type] ?? event.range_type}</td>
               <td>{event.location}</td>
-              <td>{event.status}</td>
+              <td>{RANGE_EVENT_STATUS_LABELS[event.status] ?? event.status}</td>
             </tr>
           ))}
         </tbody>
