@@ -22,17 +22,17 @@ solution). But improving one batch changes the effort_offset carried into
 later batches, which can occasionally leave a LATER batch in a position
 where ITS tie happens to resolve less favourably than it would have
 otherwise — so the cumulative, end-of-run effect is a statistical
-improvement, not a per-run guarantee. Measured directly (see git history on
-this branch): across 20 randomised (n, m, seed) combinations, "range"
-matched or beat "off" in 13, lost in 7, with mean spread 16.2 vs 17.3 — a
-real but probabilistic effect. The fairness test below asserts that
-AVERAGE, not on every individual seed.
+improvement, not a per-run guarantee. The calibrated scenarios below therefore
+assert the aggregate directional improvement. Each mode receives a deep copy of
+the same scenario so IDs and all solver inputs are identical.
 """
 from __future__ import annotations
 
+import copy
 import random
 import uuid
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -116,42 +116,27 @@ CORRECTNESS_CASES = [
 
 
 @pytest.mark.parametrize("n,m,seed", CORRECTNESS_CASES)
-def test_range_mode_produces_no_duplicate_assignments(n, m, seed):
-    """No duty is ever assigned to more than one soldier, with tiebreak
-    enabled — stage 2 re-solves the same coverage constraints, it can't
-    introduce a double-booking that stage 1's hard constraints forbid."""
+def test_range_mode_preserves_invariants_and_coverage(n, m, seed):
+    """Range mode preserves hard constraints and stage-1 coverage."""
     rng = random.Random(seed)
     duty_types = [uuid.uuid4() for _ in range(3)]
     soldiers = _soldiers(n, rng)
     duties = _duties(m, rng, duty_types)
 
-    result = solve(soldiers, duties, [], _settings("range"))
-    assert result.status in ("OPTIMAL", "FEASIBLE")
+    range_soldiers = copy.deepcopy(soldiers)
+    range_result = solve(range_soldiers, copy.deepcopy(duties), [], _settings("range"))
+    off_result = solve(copy.deepcopy(soldiers), copy.deepcopy(duties), [], _settings("off"))
+    assert range_result.status in ("OPTIMAL", "FEASIBLE")
+    assert off_result.status in ("OPTIMAL", "FEASIBLE")
 
-    duty_ids = [a.duty_id for a in result.assignments]
+    duty_ids = [a.duty_id for a in range_result.assignments]
     assert len(duty_ids) == len(set(duty_ids)), "a duty was assigned to more than one soldier"
-
-
-@pytest.mark.parametrize("n,m,seed", CORRECTNESS_CASES)
-def test_range_mode_respects_density_caps(n, m, seed):
-    """Independently recompute each soldier's max duty-days in any rolling
-    R/Wr-day window from the raw assignments (not trusting solver internals)
-    and confirm it never exceeds R — with tiebreak enabled, stage 2 only
-    ever searches within the constraints build_model already enforced."""
-    rng = random.Random(seed)
-    duty_types = [uuid.uuid4() for _ in range(3)]
-    soldiers = _soldiers(n, rng)
-    duties = _duties(m, rng, duty_types)
-    settings = _settings("range")
-
-    result = solve(soldiers, duties, [], settings)
-    assert result.status in ("OPTIMAL", "FEASIBLE")
 
     duty_by_id = {d.id: d for d in duties}
     days_by_soldier: dict[uuid.UUID, list[date]] = {}
-    for a in result.assignments:
+    for a in range_result.assignments:
         days_by_soldier.setdefault(a.soldier_id, []).extend(_duty_days(duty_by_id[a.duty_id]))
-
+    settings = _settings("range")
     for soldier_id, days in days_by_soldier.items():
         worst = _max_window_count(days, settings.Wr)
         assert worst <= settings.R, (
@@ -159,15 +144,17 @@ def test_range_mode_respects_density_caps(n, m, seed):
             f"window, exceeding R={settings.R}"
         )
 
+    assert len(range_result.assignments) == len(off_result.assignments), (
+        f"'range' assigned {len(range_result.assignments)} duties vs 'off''s "
+        f"{len(off_result.assignments)} — tiebreak should never change coverage"
+    )
+
 
 def test_range_mode_never_assigns_exempted_duty_types():
-    """A soldier exempted from a duty type must never be assigned a duty of
-    that type, with tiebreak enabled — eligibility is a hard constraint in
-    build_model that stage 2 never touches."""
+    """Range mode preserves duty-type eligibility."""
     rng = random.Random(2001)
     duty_types = [uuid.uuid4() for _ in range(3)]
     soldiers = _soldiers(12, rng)
-    # Half the soldiers are exempted from duty_types[0].
     for s in soldiers[:6]:
         s.exempted_duty_type_ids = {duty_types[0]}
     duties = _duties(36, rng, duty_types)
@@ -184,26 +171,6 @@ def test_range_mode_never_assigns_exempted_duty_types():
             f"soldier {a.soldier_id} was assigned duty_type {duty_type}, "
             f"which they're exempted from"
         )
-
-
-@pytest.mark.parametrize("n,m,seed", CORRECTNESS_CASES)
-def test_range_mode_preserves_coverage(n, m, seed):
-    """tiebreak_mode='range' assigns exactly as many duties as 'off' does —
-    stage 2 pins L1's value (a function of the same coverage), it never
-    trades coverage for a better tie-break."""
-    rng = random.Random(seed)
-    duty_types = [uuid.uuid4() for _ in range(3)]
-    soldiers = _soldiers(n, rng)
-    duties = _duties(m, rng, duty_types)
-
-    off_result = solve(soldiers, duties, [], _settings("off"))
-    range_result = solve(soldiers, duties, [], _settings("range"))
-
-    assert len(range_result.assignments) == len(off_result.assignments), (
-        f"'range' assigned {len(range_result.assignments)} duties vs 'off''s "
-        f"{len(off_result.assignments)} — tiebreak should never change coverage"
-    )
-
 
 # ─── Fairness ───────────────────────────────────────────────────────────────
 
@@ -222,26 +189,44 @@ def _spread(result, soldiers) -> int:
     return max(vals) - min(vals)
 
 
+def _scenario_spreads(case: tuple[int, int, int]) -> tuple[int, int]:
+    """Solve one reproducible, identical scenario in both modes."""
+    n, m, seed = case
+
+    def stable_id(kind: str, index: int) -> uuid.UUID:
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"justice:tiebreak:{n}:{m}:{seed}:{kind}:{index}")
+
+    rng = random.Random(seed)
+    duty_types = [stable_id("duty-type", i) for i in range(3)]
+    soldiers = _soldiers(n, rng)
+    duties = _duties(m, rng, duty_types)
+    for i, soldier in enumerate(soldiers):
+        soldier.id = stable_id("soldier", i)
+    for i, duty in enumerate(duties):
+        duty.id = stable_id("duty", i)
+        duty.duty_location_id = stable_id("location", i)
+
+    spreads = []
+    for mode in ("off", "range"):
+        mode_soldiers = copy.deepcopy(soldiers)
+        result = solve(mode_soldiers, copy.deepcopy(duties), [], _settings(mode))
+        assert result.status in ("OPTIMAL", "FEASIBLE")
+        spreads.append(_spread(result, mode_soldiers))
+    return spreads[0], spreads[1]
+
+
 def test_range_mode_improves_average_spread_across_scenarios():
-    """'range' does not improve every individual run (see module docstring),
-    but should improve the AVERAGE duty-count spread across a representative
-    set of randomised scenarios. Calibrated against a measured baseline
-    (mean spread 17.3 'off' vs 16.2 'range' across these exact 20 cases) —
-    asserts the directional claim with a tolerance, not the exact numbers,
-    so it isn't brittle to incidental solver changes."""
-    duty_types_pool = [uuid.uuid4() for _ in range(3)]
-    off_spreads = []
-    range_spreads = []
+    """'range' improves average spread over the same randomised scenarios.
 
-    for n, m, seed in FAIRNESS_CASES:
-        for mode, bucket in (("off", off_spreads), ("range", range_spreads)):
-            rng = random.Random(seed)
-            soldiers = _soldiers(n, rng)
-            duties = _duties(m, rng, duty_types_pool)
-            result = solve(soldiers, duties, [], _settings(mode))
-            assert result.status in ("OPTIMAL", "FEASIBLE")
-            bucket.append(_spread(result, soldiers))
+    Each CP-SAT solve is single-threaded, so independent scenario pairs run in
+    a small thread pool. OR-Tools releases the GIL while solving; this preserves
+    the aggregate assertion while avoiding one long serial pytest tail.
+    """
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        spreads = list(executor.map(_scenario_spreads, FAIRNESS_CASES))
 
+    off_spreads = [off for off, _ in spreads]
+    range_spreads = [range_ for _, range_ in spreads]
     mean_off = sum(off_spreads) / len(off_spreads)
     mean_range = sum(range_spreads) / len(range_spreads)
 
@@ -250,7 +235,6 @@ def test_range_mode_improves_average_spread_across_scenarios():
         f"scenarios; got mean_off={mean_off:.2f}, mean_range={mean_range:.2f} "
         f"(off={off_spreads}, range={range_spreads})"
     )
-
 
 def test_range_mode_recovers_known_achievable_split():
     """The deterministic, exactly-calibrated case from test_fairness_batching
