@@ -7,10 +7,12 @@ from typing import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.db.models import (
     DutyAssignment,
     DutyType,
     HierarchyNode,
+    NotificationType,
     RANGE_TYPE_RANK,
     RangeAssignment,
     RangeEvent,
@@ -19,6 +21,7 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.constraints import get_approved_constraint_dates
+from app.services.notifications import create_notification
 from app.services.range_exemption import is_range_exempt
 from app.services.ranges import RangeValidationError
 
@@ -164,3 +167,34 @@ def propose_range_assignments(
     for assignment in created:
         session.refresh(assignment)
     return created, shortfall
+
+
+def confirm_draft_assignment(
+    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None,
+) -> RangeAssignment:
+    if not assignment.is_draft:
+        raise RangeValidationError("assignment_not_draft")
+
+    assignment.is_draft = False
+    write_audit(
+        session, actor_id=actor_id, action="range_assignment_confirm", entity_type="range_assignment",
+        entity_id=assignment.id, before={"is_draft": True}, after={"is_draft": False},
+    )
+    create_notification(
+        session, soldier_id=assignment.soldier_id, type=NotificationType.range_assignment_confirmed,
+        title="שובצת למטווח", reference_type="range_assignment", reference_id=assignment.id, actor_id=actor_id,
+    )
+    session.commit()
+    session.refresh(assignment)
+    return assignment
+
+
+def confirm_all_drafts(
+    session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None,
+) -> list[RangeAssignment]:
+    drafts = session.execute(
+        select(RangeAssignment).where(
+            RangeAssignment.range_event_id == event.id, RangeAssignment.is_draft.is_(True),
+        )
+    ).scalars().all()
+    return [confirm_draft_assignment(session, assignment=d, actor_id=actor_id) for d in drafts]

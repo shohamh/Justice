@@ -9,13 +9,19 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     DutyAssignment,
     DutyType,
+    Notification,
+    NotificationType,
     PersonalConstraint,
     RangeEventStatus,
     RangeType,
     SoldierRangeQualification,
 )
 from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
-from app.services.range_auto_assign import propose_range_assignments
+from app.services.range_auto_assign import (
+    confirm_all_drafts,
+    confirm_draft_assignment,
+    propose_range_assignments,
+)
 from tests.helpers import create_node, create_soldier
 
 
@@ -323,3 +329,93 @@ def test_propose_rejects_non_planned_event(app_session: Session) -> None:
 
     with pytest.raises(RangeValidationError):
         propose_range_assignments(app_session, event=event)
+
+
+def test_confirm_draft_assignment_flips_is_draft_and_notifies(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אישור")
+    _weapon_duty_type(app_session, node=node, name="weapon-confirm")
+    soldier = create_soldier(app_session, personal_number="6900001", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+    )
+    created, _ = propose_range_assignments(app_session, event=event)
+    draft = created[0]
+
+    confirmed = confirm_draft_assignment(app_session, assignment=draft, actor_id=soldier.id)
+
+    assert confirmed.is_draft is False
+    notification = app_session.query(Notification).filter(
+        Notification.soldier_id == confirmed.soldier_id,
+        Notification.type == NotificationType.range_assignment_confirmed,
+    ).one_or_none()
+    assert notification is not None
+
+
+def test_confirm_draft_assignment_rejects_non_draft(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה לא-טיוטה")
+    _weapon_duty_type(app_session, node=node, name="weapon-not-draft")
+    soldier = create_soldier(app_session, personal_number="6900002", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+    )
+    manual = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    with pytest.raises(RangeValidationError):
+        confirm_draft_assignment(app_session, assignment=manual, actor_id=soldier.id)
+
+
+def test_confirm_all_drafts_confirms_every_draft_for_the_event(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה אישור-הכל")
+    _weapon_duty_type(app_session, node=node, name="weapon-confirm-all")
+    create_soldier(app_session, personal_number="6900003", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="6900004", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=2,
+    )
+    propose_range_assignments(app_session, event=event)
+
+    confirmed = confirm_all_drafts(app_session, event=event, actor_id=None)
+
+    assert len(confirmed) == 2
+    assert all(a.is_draft is False for a in confirmed)
+
+
+def test_confirm_all_drafts_leaves_non_draft_assignments_untouched(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה מעורב")
+    _weapon_duty_type(app_session, node=node, name="weapon-mixed")
+    manual_soldier = create_soldier(app_session, personal_number="6900005", hierarchy_node_id=node.id)
+    create_soldier(app_session, personal_number="6900006", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=2,
+    )
+    manual = add_range_assignment(app_session, event=event, soldier_id=manual_soldier.id, is_reserve=False)
+    propose_range_assignments(app_session, event=event)
+
+    confirm_all_drafts(app_session, event=event, actor_id=None)
+
+    app_session.refresh(manual)
+    assert manual.is_draft is False  # was already False, untouched
+
+
+def test_rejecting_a_draft_deletes_the_row_and_reopens_the_slot(app_session: Session) -> None:
+    from app.services.ranges import remove_range_assignment
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה דחייה")
+    _weapon_duty_type(app_session, node=node, name="weapon-reject")
+    create_soldier(app_session, personal_number="6900007", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+    )
+    created, _ = propose_range_assignments(app_session, event=event)
+    draft = created[0]
+
+    remove_range_assignment(app_session, assignment=draft)
+
+    created_again, shortfall = propose_range_assignments(app_session, event=event)
+    assert len(created_again) == 1
+    assert shortfall == 0
