@@ -314,13 +314,18 @@ def _reset_rate_limiter() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def _truncate_tables(admin_engine) -> Iterator[None]:
+def _truncate_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     """Wipe all data rows before each test so personal_number and other unique constraints
     never collide across test functions, even when they use the same hardcoded values.
     Re-seeds system_settings defaults (set by migrations) after truncation.
 
     Reuses the session-scoped admin_engine (one pooled connection) rather than
     building and disposing a fresh engine on every test."""
+    if not _item_needs_database(request.node):
+        yield
+        return
+
+    admin_engine = request.getfixturevalue("admin_engine")
     table_list = ", ".join(_ALL_DATA_TABLES)
     with admin_engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))

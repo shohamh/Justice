@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.conftest import _apply_schema, _item_needs_database
+from tests.conftest import _apply_schema, _item_needs_database, _truncate_tables
 
 
 @pytest.mark.parametrize(
@@ -55,3 +55,37 @@ def test_apply_schema_requests_database_url_for_database_collected_items() -> No
 
     with pytest.raises(DatabaseUrlRequested):
         _apply_schema.__wrapped__(request)
+
+
+def test_truncate_tables_skips_admin_engine_for_pure_item() -> None:
+    requested_fixtures: list[str] = []
+    request = SimpleNamespace(
+        node=SimpleNamespace(fixturenames=["tmp_path"]),
+        getfixturevalue=requested_fixtures.append,
+    )
+
+    fixture = _truncate_tables.__wrapped__(request)
+
+    next(fixture)
+    with pytest.raises(StopIteration):
+        next(fixture)
+    assert requested_fixtures == []
+
+
+def test_truncate_tables_requests_admin_engine_for_database_item() -> None:
+    class AdminEngineRequested(Exception):
+        pass
+
+    def getfixturevalue(fixture_name: str) -> None:
+        assert fixture_name == "admin_engine"
+        raise AdminEngineRequested
+
+    request = SimpleNamespace(
+        node=SimpleNamespace(fixturenames=["client"]),
+        getfixturevalue=getfixturevalue,
+    )
+
+    fixture = _truncate_tables.__wrapped__(request)
+
+    with pytest.raises(AdminEngineRequested):
+        next(fixture)
