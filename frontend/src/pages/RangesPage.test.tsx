@@ -70,6 +70,42 @@ describe("RangesPage", () => {
   });
 });
 
+describe("RangesPage create event", () => {
+  it("creates a new range event via the create form", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([]);
+    vi.mocked(rangesApi.createRangeEvent).mockResolvedValue({
+      id: "event-2", hierarchy_node_id: "node-1", range_type: "live",
+      date: "2026-10-01", location: "מטווח צפון", required_count: 6,
+      reserve_count: 2, status: "planned", assignments: [],
+    });
+
+    renderWithQuery(<RangesPage />);
+
+    fireEvent.click(await screen.findByTestId("create-event-button"));
+    expect(await screen.findByTestId("create-event-form")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("new-range-type"), { target: { value: "live" } });
+    fireEvent.change(screen.getByTestId("new-date"), { target: { value: "2026-10-01" } });
+    fireEvent.change(screen.getByTestId("new-location"), { target: { value: "מטווח צפון" } });
+    fireEvent.change(screen.getByTestId("new-required-count"), { target: { value: "6" } });
+    fireEvent.change(screen.getByTestId("new-reserve-count"), { target: { value: "2" } });
+
+    fireEvent.click(screen.getByText("שמור"));
+
+    await waitFor(() =>
+      expect(rangesApi.createRangeEvent).toHaveBeenCalledWith({
+        hierarchy_node_id: "node-1",
+        range_type: "live",
+        date: "2026-10-01",
+        location: "מטווח צפון",
+        required_count: 6,
+        reserve_count: 2,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByTestId("create-event-form")).not.toBeInTheDocument());
+  });
+});
+
 describe("RangesPage roster add", () => {
   it("adds a soldier to the roster via the picker", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([

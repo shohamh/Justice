@@ -6,7 +6,9 @@ import {
   getRangeEvent,
   addRangeAssignment,
   removeRangeAssignment,
+  createRangeEvent,
   RangeEvent,
+  RangeType,
 } from "../api/ranges";
 import { queryKeys } from "../queryKeys";
 import { useAuth } from "../auth/AuthContext";
@@ -29,6 +31,12 @@ export default function RangesPage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(searchParams.get("event"));
   const [showPicker, setShowPicker] = useState(false);
   const [isReserveToggle, setIsReserveToggle] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newRangeType, setNewRangeType] = useState<RangeType>("laser");
+  const [newDate, setNewDate] = useState("");
+  const [newLocation, setNewLocation] = useState("");
+  const [newRequiredCount, setNewRequiredCount] = useState(0);
+  const [newReserveCount, setNewReserveCount] = useState(0);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -59,9 +67,79 @@ export default function RangesPage() {
     setIsReserveToggle(false);
   }
 
+  async function handleCreateEvent() {
+    if (!nodeId) return;
+    await createRangeEvent({
+      hierarchy_node_id: nodeId as string,
+      range_type: newRangeType,
+      date: newDate,
+      location: newLocation,
+      required_count: newRequiredCount,
+      reserve_count: newReserveCount,
+    });
+    queryClient.invalidateQueries({ queryKey: queryKeys.ranges() });
+    setShowCreateForm(false);
+    setNewRangeType("laser");
+    setNewDate("");
+    setNewLocation("");
+    setNewRequiredCount(0);
+    setNewReserveCount(0);
+  }
+
   return (
     <div dir="rtl">
       <h1>מטווחים</h1>
+      {canManage && (
+        <button data-testid="create-event-button" onClick={() => setShowCreateForm((v) => !v)}>
+          מטווח חדש
+        </button>
+      )}
+      {showCreateForm && (
+        <form
+          data-testid="create-event-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCreateEvent();
+          }}
+        >
+          <select
+            data-testid="new-range-type"
+            value={newRangeType}
+            onChange={(e) => setNewRangeType(e.target.value as RangeType)}
+          >
+            <option value="laser">{RANGE_TYPE_LABELS.laser}</option>
+            <option value="live">{RANGE_TYPE_LABELS.live}</option>
+            <option value="alal">{RANGE_TYPE_LABELS.alal}</option>
+          </select>
+          <input
+            type="date"
+            data-testid="new-date"
+            value={newDate}
+            onChange={(e) => setNewDate(e.target.value)}
+          />
+          <input
+            type="text"
+            data-testid="new-location"
+            value={newLocation}
+            onChange={(e) => setNewLocation(e.target.value)}
+          />
+          <input
+            type="number"
+            min={0}
+            data-testid="new-required-count"
+            value={newRequiredCount}
+            onChange={(e) => setNewRequiredCount(Number(e.target.value))}
+          />
+          <input
+            type="number"
+            min={0}
+            data-testid="new-reserve-count"
+            value={newReserveCount}
+            onChange={(e) => setNewReserveCount(Number(e.target.value))}
+          />
+          <button type="submit">שמור</button>
+        </form>
+      )}
       <table>
         <thead>
           <tr>
