@@ -78,8 +78,11 @@ _AREA_MARKERS: dict[str, str] = {
     "test_system_settings_density": "duty",
     "test_range_models": "duty",
     "test_range_exemption": "duty",
+    "test_range_authorization": "duty",
     "test_ranges_service": "duty",
+    "test_range_attendance": "duty",
     "test_ranges_api": "duty",
+    "test_public_settings_ranges": "duty",
     # scoring: cumulative score / transparency / effort-score reporting
     "test_scoring_api": "scoring",
     "test_scoring_service": "scoring",
