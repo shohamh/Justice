@@ -451,7 +451,7 @@ def excuse_assignment(
     user: Soldier = Depends(require_password_changed),
 ) -> RangeExcusalOut:
     _require_enabled(session)
-    event = _load_event(session, event_id)
+    _load_event(session, event_id)
     assignment = session.get(RangeAssignment, assignment_id)
     if assignment is None or assignment.range_event_id != event_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")

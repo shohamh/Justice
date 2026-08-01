@@ -540,3 +540,31 @@ describe("RangesPage draft confirm/reject", () => {
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1"));
   });
 });
+
+describe("RangesPage excusal", () => {
+  it("requires a reason before a soldier can excuse an upcoming assignment", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2099-09-01", location: "מטווח דרום", required_count: 1, reserve_count: 1,
+      status: "planned" as const,
+      assignments: [{ id: "a1", soldier_id: "me", is_reserve: false, is_draft: false,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.excuseRangeAssignment).mockResolvedValue({
+      id: "request-1", range_assignment_id: "a1", requested_by: "me", reason: "reason",
+      status: "pending", decided_by: null, decided_at: null, decision_note: null,
+      promoted_assignment_id: null,
+    });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+    fireEvent.click(await screen.findByTestId("excuse-button-a1"));
+    const submit = screen.getByTestId("submit-excuse-button");
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("סיבת היעדרות"), { target: { value: "reason" } });
+    expect(submit).not.toBeDisabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(rangesApi.excuseRangeAssignment).toHaveBeenCalledWith("event-1", "a1", "reason"));
+  });
+});

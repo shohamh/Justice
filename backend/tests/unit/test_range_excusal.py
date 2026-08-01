@@ -4,8 +4,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.db.models import DutyType, RangeAssignment, RangeExcusalStatus, RangeType
-from app.services.ranges import add_range_assignment, create_range_event
 from app.services.range_excusal import request_primary_excusal, request_reserve_excusal
+from app.services.ranges import add_range_assignment, create_range_event
 from tests.helpers import create_node, create_soldier
 
 

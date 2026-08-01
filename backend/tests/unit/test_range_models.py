@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     RangeAssignment,
     RangeAttendanceStatus,
-    RangeExcusalRequest,
-    RangeExcusalStatus,
     RangeEvent,
     RangeEventStatus,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
     RangeType,
     SoldierRangeQualification,
 )
@@ -71,8 +71,9 @@ def test_range_assignment_and_qualification_round_trip(app_session: Session) -> 
 
 
 def test_duty_type_requires_weapon_defaults_false(app_session: Session) -> None:
-    from app.db.models import DutyType
     from decimal import Decimal
+
+    from app.db.models import DutyType
 
     dt = DutyType(name="×©×ž×™×¨×” ×¨×’×™×œ×”", score_per_day=Decimal("1.00"))
     app_session.add(dt)

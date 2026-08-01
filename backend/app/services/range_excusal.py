@@ -1,7 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from datetime import date, datetime, timezone
 import uuid
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,7 +50,7 @@ def _ensure_no_pending(session: Session, assignment_id: uuid.UUID) -> None:
 def request_primary_excusal(
     session: Session, *, assignment: RangeAssignment, reason: str, requested_by: uuid.UUID,
 ) -> RangeExcusalRequest:
-    event = _load_future_event(session, assignment)
+    _load_future_event(session, assignment)
     if assignment.is_reserve:
         raise RangeValidationError("assignment_is_reserve")
     if requested_by != assignment.soldier_id:
@@ -75,7 +75,7 @@ def request_primary_excusal(
 def request_reserve_excusal(
     session: Session, *, assignment: RangeAssignment, reason: str, requested_by: uuid.UUID,
 ) -> RangeExcusalRequest:
-    event = _load_future_event(session, assignment)
+    _load_future_event(session, assignment)
     if not assignment.is_reserve:
         raise RangeValidationError("assignment_is_primary")
     if requested_by != assignment.soldier_id:
@@ -84,7 +84,7 @@ def request_reserve_excusal(
     request = RangeExcusalRequest(
         range_assignment_id=assignment.id, requested_by=requested_by,
         reason=_validate_reason(reason), status=RangeExcusalStatus.approved,
-        decided_by=None, decided_at=datetime.now(timezone.utc),
+        decided_by=None, decided_at=datetime.now(UTC),
     )
     session.add(request)
     session.delete(assignment)
@@ -105,7 +105,7 @@ def request_reserve_excusal(
 
 
 def _eligible_assigned_reserves(session: Session, *, event: RangeEvent) -> list[RangeAssignment]:
-    from app.db.models import DutyAssignment, RangeEvent as RE, Soldier
+    from app.db.models import DutyAssignment, RangeEvent, Soldier
     from app.services.constraints import get_approved_constraint_dates
     from app.services.range_auto_assign import _sort_key
     from app.services.range_exemption import is_range_exempt
@@ -133,10 +133,10 @@ def _eligible_assigned_reserves(session: Session, *, event: RangeEvent) -> list[
         ).scalar_one_or_none() is not None:
             continue
         if session.execute(
-            select(RangeAssignment.id).join(RE, RangeAssignment.range_event_id == RE.id).where(
+            select(RangeAssignment.id).join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id).where(
                 RangeAssignment.soldier_id == soldier.id,
-                RE.date == event.date,
-                RE.id != event.id,
+                RangeEvent.date == event.date,
+                RangeEvent.id != event.id,
             ).limit(1)
         ).scalar_one_or_none() is not None:
             continue
@@ -156,7 +156,7 @@ def decide_primary_excusal(
     event = _load_future_event(session, assignment)
     request.status = RangeExcusalStatus.approved if approve else RangeExcusalStatus.rejected
     request.decided_by = decided_by
-    request.decided_at = datetime.now(timezone.utc)
+    request.decided_at = datetime.now(UTC)
     request.decision_note = note.strip() if note and note.strip() else None
 
     if not approve:
