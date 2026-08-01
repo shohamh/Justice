@@ -27,7 +27,7 @@
 - Modify: `backend/app/db/models.py` (`NotificationType` enum, ~line 1094-1124) — add `range_assignment_confirmed`.
 - Create: `backend/alembic/versions/7a13f6c9b8e2_add_range_assignment_is_draft.py`
 - Modify: `backend/app/routes/ranges.py` (`RangeAssignmentOut`, `_assignment_out`, ~line 75-99) — expose `is_draft`.
-- Test: `backend/app/db/tests/test_range_models.py` (existing file from Phase 1 — append one test).
+- Test: `backend/tests/unit/test_range_models.py` (existing file from Phase 1 — append one test). Note: despite the Phase 1 plan document describing `backend/app/db/tests/`, the actual, later-relocated location is `backend/tests/unit/` (and route tests live in `backend/tests/integration/`) — `pyproject.toml`'s `testpaths = ["tests"]` only collects from there, confirmed by running `pytest --collect-only` in this repo. Use `backend/tests/unit/` and `backend/tests/integration/` for every new/modified test file in this plan, not the `app/*/tests/` paths.
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -113,7 +113,7 @@ def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
 
 - [ ] **Step 5: Write a model round-trip test**
 
-Append to `backend/app/db/tests/test_range_models.py`:
+Append to `backend/tests/unit/test_range_models.py`:
 
 ```python
 def test_range_assignment_is_draft_defaults_false(app_session: Session) -> None:
@@ -140,14 +140,14 @@ def test_range_assignment_is_draft_defaults_false(app_session: Session) -> None:
 
 - [ ] **Step 6: Run test to verify it passes**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/db/tests/test_range_models.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/unit/test_range_models.py -v`
 Expected: all tests pass (the new one plus Phase 1's existing ones).
 
 - [ ] **Step 7: Commit**
 
 ```bash
 cd backend
-git add app/db/models.py app/routes/ranges.py alembic/versions/7a13f6c9b8e2_add_range_assignment_is_draft.py app/db/tests/test_range_models.py
+git add app/db/models.py app/routes/ranges.py alembic/versions/7a13f6c9b8e2_add_range_assignment_is_draft.py tests/unit/test_range_models.py
 git commit -m "feat: add RangeAssignment.is_draft column and range_assignment_confirmed notification type"
 ```
 
@@ -157,7 +157,7 @@ git commit -m "feat: add RangeAssignment.is_draft column and range_assignment_co
 
 **Files:**
 - Create: `backend/app/services/range_auto_assign.py`
-- Test: `backend/app/services/tests/test_range_auto_assign.py`
+- Test: `backend/tests/unit/test_range_auto_assign.py` (NOT `app/services/tests/` — `pyproject.toml`'s `testpaths = ["tests"]` only collects from `backend/tests/`; Phase 1's actual test files live in `backend/tests/unit/` and `backend/tests/integration/`, confirmed by listing the repo directly, despite the Phase 1 plan document describing a different intended path)
 
 **Interfaces:**
 - Consumes: `RangeEvent`, `RangeAssignment`, `RangeEventStatus`, `RangeType`, `RANGE_TYPE_RANK`, `SoldierRangeQualification`, `DutyAssignment`, `DutyType`, `HierarchyNode`, `Soldier` (`app.db.models`); `is_range_exempt` (`app.services.range_exemption`); `get_approved_constraint_dates` (`app.services.constraints`); `RangeValidationError` (`app.services.ranges`).
@@ -165,7 +165,7 @@ git commit -m "feat: add RangeAssignment.is_draft column and range_assignment_co
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `backend/app/services/tests/test_range_auto_assign.py`:
+Create `backend/tests/unit/test_range_auto_assign.py`:
 
 ```python
 from __future__ import annotations
@@ -267,7 +267,7 @@ def test_candidate_pool_excludes_soldier_on_duty_that_day(app_session: Session) 
     node = create_node(app_session, level="פלוגה", name="פלוגה בתורנות")
     location = None
     from tests.helpers import create_duty_location
-    location = create_duty_location(app_session, hierarchy_node_id=node.id)
+    location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-on-duty")
     soldier = create_soldier(app_session, personal_number="6000005", hierarchy_node_id=node.id)
     event_date = date.today() + timedelta(days=5)
@@ -310,7 +310,7 @@ def test_tier_a_sorts_before_tier_b_before_tier_c(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה שכבות")
     location = None
     from tests.helpers import create_duty_location
-    location = create_duty_location(app_session, hierarchy_node_id=node.id)
+    location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-tiers")
     event_date = date.today() + timedelta(days=5)
 
@@ -342,7 +342,7 @@ def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה טייר-א")
     location = None
     from tests.helpers import create_duty_location
-    location = create_duty_location(app_session, hierarchy_node_id=node.id)
+    location = create_duty_location(app_session)
     weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-tier-a-order")
     event_date = date.today() + timedelta(days=5)
 
@@ -495,21 +495,21 @@ def test_propose_rejects_non_planned_event(app_session: Session) -> None:
         propose_range_assignments(app_session, event=event)
 ```
 
-Note: this test file relies on a `create_duty_location` test helper. Check `backend/tests/helpers.py` for it before running — if it doesn't exist yet, add it there first:
+Note: this test file relies on a `create_duty_location` test helper, which does not exist yet — add it to `backend/tests/helpers.py`:
 
 ```python
-def create_duty_location(session: Session, *, hierarchy_node_id: uuid.UUID, name: str = "מיקום בדיקה") -> DutyLocation:
-    location = DutyLocation(name=name, hierarchy_node_id=hierarchy_node_id)
+def create_duty_location(session: Session, *, name: str = "מיקום בדיקה") -> DutyLocation:
+    location = DutyLocation(name=name)
     session.add(location)
     session.flush()
     return location
 ```
 
-(Import `DutyLocation` from `app.db.models` at the top of `helpers.py` alongside its other model imports if not already imported.)
+(`DutyLocation` — table `duty_locations` — only has `name`, `base`, `active` as constructor fields; it has no `hierarchy_node_id` column, unlike `RangeEvent`/`SoldierRangeQualification`. Import `DutyLocation` from `app.db.models` at the top of `helpers.py` alongside its other model imports if not already imported.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/services/tests/test_range_auto_assign.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/unit/test_range_auto_assign.py -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.range_auto_assign'`
 
 - [ ] **Step 3: Implement the service**
@@ -687,7 +687,7 @@ def propose_range_assignments(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/services/tests/test_range_auto_assign.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/unit/test_range_auto_assign.py -v`
 Expected: `15 passed`
 
 - [ ] **Step 5: Add the new test file to `_AREA_MARKERS`**
@@ -707,7 +707,7 @@ Expected: all tests pass.
 
 ```bash
 cd backend
-git add app/services/range_auto_assign.py app/services/tests/test_range_auto_assign.py tests/conftest.py tests/helpers.py
+git add app/services/range_auto_assign.py tests/unit/test_range_auto_assign.py tests/conftest.py tests/helpers.py
 git commit -m "feat: add range auto-assign candidate pool and three-tier priority ranking"
 ```
 
@@ -717,7 +717,7 @@ git commit -m "feat: add range auto-assign candidate pool and three-tier priorit
 
 **Files:**
 - Modify: `backend/app/services/range_auto_assign.py` (append functions)
-- Modify: `backend/app/services/tests/test_range_auto_assign.py` (append tests)
+- Modify: `backend/tests/unit/test_range_auto_assign.py` (append tests)
 
 **Interfaces:**
 - Consumes: `write_audit` (`app.audit.writer`), `create_notification` (`app.services.notifications`), `NotificationType.range_assignment_confirmed` (Task 1), `remove_range_assignment` (`app.services.ranges`, Phase 1, already handles the "reject" case — no new function needed for it).
@@ -725,7 +725,7 @@ git commit -m "feat: add range auto-assign candidate pool and three-tier priorit
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `backend/app/services/tests/test_range_auto_assign.py`:
+Append to `backend/tests/unit/test_range_auto_assign.py`:
 
 ```python
 from app.db.models import NotificationType, Notification
@@ -824,7 +824,7 @@ def test_rejecting_a_draft_deletes_the_row_and_reopens_the_slot(app_session: Ses
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/services/tests/test_range_auto_assign.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/unit/test_range_auto_assign.py -v`
 Expected: FAIL — `ImportError: cannot import name 'confirm_draft_assignment'`
 
 - [ ] **Step 3: Implement confirm/reject**
@@ -870,7 +870,7 @@ def confirm_all_drafts(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/services/tests/test_range_auto_assign.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/unit/test_range_auto_assign.py -v`
 Expected: `19 passed`
 
 - [ ] **Step 5: Run the fast suite**
@@ -882,7 +882,7 @@ Expected: all tests pass.
 
 ```bash
 cd backend
-git add app/services/range_auto_assign.py app/services/tests/test_range_auto_assign.py
+git add app/services/range_auto_assign.py tests/unit/test_range_auto_assign.py
 git commit -m "feat: add confirm/confirm-all for draft range assignments with notification"
 ```
 
@@ -892,7 +892,7 @@ git commit -m "feat: add confirm/confirm-all for draft range assignments with no
 
 **Files:**
 - Modify: `backend/app/routes/ranges.py`
-- Test: `backend/app/routes/tests/test_ranges_api.py` (existing file from Phase 1 — check its exact name/location first with `Glob backend/app/routes/tests/test_range*` or `Glob backend/tests/**/test_ranges*`; append new tests there. If no such file exists yet, create `backend/app/routes/tests/test_ranges_api.py` following the same FastAPI `TestClient` pattern used by sibling route test files, e.g. `backend/app/routes/tests/test_swaps_api.py`.)
+- Test: `backend/tests/integration/test_ranges_api.py` (existing file from Phase 1 — append new tests there. If no such file exists yet, create `backend/tests/integration/test_ranges_api.py` following the same FastAPI `TestClient` pattern used by sibling route test files, e.g. `backend/tests/integration/test_swaps_api.py`.)
 
 **Interfaces:**
 - Consumes: `propose_range_assignments`, `confirm_draft_assignment`, `confirm_all_drafts` (Task 2/3, `app.services.range_auto_assign`); existing `_require_enabled`, `_load_event`, `_event_node`, `_assignment_out`, `Action.RANGE_MANAGE`, `authorize` (already in `backend/app/routes/ranges.py`).
@@ -916,7 +916,7 @@ Write these using the exact request/response shapes from Step 3's implementation
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/routes/tests/test_ranges_api.py -v -k "auto_assign or confirm"`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/integration/test_ranges_api.py -v -k "auto_assign or confirm"`
 Expected: FAIL — 404 (route doesn't exist) on every new test.
 
 - [ ] **Step 4: Implement the routes**
@@ -982,7 +982,7 @@ def confirm_all_assignments(
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd backend && .venv/Scripts/python -m pytest app/routes/tests/test_ranges_api.py -v`
+Run: `cd backend && .venv/Scripts/python -m pytest tests/integration/test_ranges_api.py -v`
 Expected: all pass, including Phase 1's existing route tests (unaffected).
 
 - [ ] **Step 6: Run the fast suite**
@@ -994,7 +994,7 @@ Expected: all tests pass.
 
 ```bash
 cd backend
-git add app/routes/ranges.py app/routes/tests/test_ranges_api.py
+git add app/routes/ranges.py tests/integration/test_ranges_api.py
 git commit -m "feat: add auto-assign, confirm, and confirm-all routes for range assignments"
 ```
 
