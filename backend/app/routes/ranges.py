@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.authz import Action, authorize
+from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import HierarchyNode, RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeType, Soldier
 from app.db.session import get_session
@@ -195,7 +195,14 @@ def get_range_event(
 ) -> RangeEventOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    node = _event_node(session, event)
+    try:
+        authorize(session, user, Action.RANGE_MANAGE, target_node=node)
+    except HTTPException:
+        # Commanders get read-only access to this endpoint (roster view), scoped
+        # to their own command — mutation routes remain RANGE_MANAGE (DM-only).
+        if not (is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user))):
+            raise
     return _event_out(session, event, include_assignments=True)
 
 

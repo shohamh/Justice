@@ -136,6 +136,52 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
     assert get_resp.json()["assignments"] == []
 
 
+def test_get_range_event_allowed_for_commander_in_scope(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מפקד-בתחום")
+    dm = create_soldier(admin_session, personal_number="6300001", role="duty_manager", hierarchy_node_id=node.id)
+    commander = create_soldier(admin_session, personal_number="6300002", role="commander", hierarchy_node_id=node.id)
+    node.commander_id = commander.id
+    admin_session.commit()
+
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-10",
+            "location": "מטווח", "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    get_resp = client.get(f"/api/ranges/{event_id}", headers=auth_headers(commander))
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == event_id
+
+
+def test_get_range_event_forbidden_for_commander_outside_scope(client: TestClient, admin_session: Session) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מחוץ-לתחום")
+    other_node = create_node(admin_session, level="פלוגה", name="פלוגה תת-אחרת")
+    dm = create_soldier(admin_session, personal_number="6300003", role="duty_manager", hierarchy_node_id=node.id)
+    commander = create_soldier(admin_session, personal_number="6300004", role="commander", hierarchy_node_id=other_node.id)
+    other_node.commander_id = commander.id
+    admin_session.commit()
+
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-09-10",
+            "location": "מטווח", "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    get_resp = client.get(f"/api/ranges/{event_id}", headers=auth_headers(commander))
+    assert get_resp.status_code == 403
+
+
 def test_mark_attendance_requires_elevated_dm_scope(client: TestClient, admin_session: Session) -> None:
     _enable_mitvachim(admin_session)
     apply_settings(admin_session, {}, {"mitvachim.attendance_edit_min_level": "branch"}, actor_id=None)
