@@ -15,6 +15,14 @@ import SoldierSearchAutocomplete from "../components/SoldierSearchAutocomplete";
 import RangeAttendancePanel from "../components/ranges/RangeAttendancePanel";
 import { SoldierDTO } from "../api/soldiers";
 
+function localTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function RangesPage() {
   const [searchParams] = useSearchParams();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(searchParams.get("event"));
@@ -90,13 +98,14 @@ export default function RangesPage() {
               </li>
             ))}
           </ul>
-          {canManage && selectedEvent.date < new Date().toISOString().split("T")[0] && (
+          {canManage && selectedEvent.date <= localTodayIsoDate() && (
             <RangeAttendancePanel
               eventId={selectedEvent.id}
               assignments={selectedEvent.assignments}
-              onMarked={() =>
-                queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId!) })
-              }
+              onMarked={() => {
+                queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId!) });
+                queryClient.invalidateQueries({ queryKey: queryKeys.ranges() });
+              }}
             />
           )}
         </div>

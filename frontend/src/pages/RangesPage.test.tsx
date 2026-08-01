@@ -102,6 +102,29 @@ describe("RangesPage read-only mode for commanders", () => {
     expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
     expect(screen.queryByText("הסר")).not.toBeInTheDocument();
   });
+
+  it("hides the attendance panel for a commander even on a past event", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "commander", is_commander: true, is_duty_manager: false } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed",
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+
+    await waitFor(() => expect(screen.getByText("s1")).toBeInTheDocument());
+    expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
+  });
 });
 
 describe("RangesPage attendance panel", () => {
