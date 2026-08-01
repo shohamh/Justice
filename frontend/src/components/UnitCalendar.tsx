@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -9,8 +10,17 @@ import heLocale from "@fullcalendar/core/locales/he";
 import type { EventClickArg, DatesSetArg } from "@fullcalendar/core";
 
 import { CalendarShift, getCalendarShifts } from "../api/calendar";
+import { RangeEvent, getRanges } from "../api/ranges";
+import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
+import { usePublicSettings } from "../hooks/usePublicSettings";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
+
+const RANGE_TYPE_COLORS: Record<string, string> = {
+  laser: "#7c3aed",
+  live: "#db2777",
+  alal: "#0891b2",
+};
 
 
 interface UnitCalendarProps {
@@ -19,11 +29,16 @@ interface UnitCalendarProps {
 
 export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const publicSettings = usePublicSettings();
+  const rangesEnabled = publicSettings?.["mitvachim.enabled"] === true;
   const [shifts, setShifts] = useState<CalendarShift[]>([]);
+  const [ranges, setRanges] = useState<RangeEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
   const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
+  const [rangeTypeFilter, setRangeTypeFilter] = useState<string | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -33,8 +48,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getCalendarShifts(nodeId, { date_from: from, date_to: to });
+      const [data, rangeEvents] = await Promise.all([
+        getCalendarShifts(nodeId, { date_from: from, date_to: to }),
+        rangesEnabled ? getRanges(nodeId, from, to) : Promise.resolve([]),
+      ]);
       setShifts(data.shifts);
+      setRanges(rangeEvents);
       setSelectedShift(prev => {
         if (!prev) return null;
         return data.shifts.find(s => s.id === prev.id) ?? prev;
@@ -44,11 +63,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     } finally {
       setLoading(false);
     }
-  }, [nodeId, t]);
+  }, [nodeId, rangesEnabled, t]);
 
   useEffect(() => {
     dateRangeRef.current = null;
     setShifts([]);
+    setRanges([]);
     setSelectedShift(null);
   }, [nodeId]);
 
@@ -67,7 +87,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return shifts.filter(s => s.duty_type_id === dutyTypeFilter);
   }, [shifts, dutyTypeFilter]);
 
-  const events = useMemo(() => {
+  const filteredRanges = useMemo(() => {
+    if (!rangeTypeFilter) return ranges;
+    return ranges.filter(r => r.range_type === rangeTypeFilter);
+  }, [ranges, rangeTypeFilter]);
+
+  const shiftEvents = useMemo(() => {
     const out: {
       id: string;
       title: string;
@@ -101,11 +126,31 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return out;
   }, [filteredShifts]);
 
+  const rangeCalEvents = useMemo(() =>
+    filteredRanges.map((r) => ({
+      id: `range-${r.id}`,
+      title: `${RANGE_TYPE_LABELS[r.range_type] ?? r.range_type} — ${r.location}`,
+      start: r.date,
+      allDay: true,
+      backgroundColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
+      borderColor: RANGE_TYPE_COLORS[r.range_type] ?? "#7c3aed",
+      classNames: [] as string[],
+      extendedProps: { rangeId: r.id },
+    })),
+  [filteredRanges]);
+
+  const events = useMemo(() => [...shiftEvents, ...rangeCalEvents], [shiftEvents, rangeCalEvents]);
+
   function handleDateClick(_: { dateStr: string }) {
     setSelectedShift(null);
   }
 
   function handleEventClick(arg: EventClickArg) {
+    const rangeId = arg.event.extendedProps.rangeId as string | undefined;
+    if (rangeId) {
+      navigate(`/ranges?event=${rangeId}`);
+      return;
+    }
     const shiftId = arg.event.extendedProps.shiftId;
     const shift = shifts.find(s => s.id === shiftId);
     if (shift) setSelectedShift(shift);
@@ -115,6 +160,10 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     setDutyTypeFilter((prev) => (prev === dtId ? null : dtId));
   }
 
+  function toggleRangeFilter(rtId: string) {
+    setRangeTypeFilter((prev) => (prev === rtId ? null : rtId));
+  }
+
   const dutyTypesInView = useMemo(() => {
     const seen = new Map<string, string>();
     for (const s of shifts) {
@@ -122,6 +171,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     }
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
   }, [shifts]);
+
+  const rangeTypesInView = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of ranges) seen.add(r.range_type);
+    return Array.from(seen).map((id) => ({ id, name: RANGE_TYPE_LABELS[id] ?? id }));
+  }, [ranges]);
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
 
@@ -140,6 +195,24 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
               }`}
             >
               {dt.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {rangeTypesInView.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <span className="text-gray-500">{t("unit_calendar.range_filter_label") || "סינון מטווחים:"}</span>
+          {rangeTypesInView.map((rt) => (
+            <button
+              key={rt.id}
+              onClick={() => toggleRangeFilter(rt.id)}
+              data-testid={`range-filter-chip-${rt.id}`}
+              className={`px-2 py-1 rounded-full border text-xs ${
+                rangeTypeFilter === rt.id ? "bg-violet-100 dark:bg-violet-900 border-violet-400 text-violet-700 dark:text-violet-300" : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+              }`}
+            >
+              {rt.name}
             </button>
           ))}
         </div>
@@ -182,6 +255,18 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
             timeGridThreeDay: { type: "timeGrid", duration: { days: 3 }, displayEventTime: true },
           }}
           eventContent={(arg) => {
+            const rangeId = arg.event.extendedProps.rangeId as string | undefined;
+            if (rangeId) {
+              const range = ranges.find(r => r.id === rangeId);
+              if (!range) return <div />;
+              return (
+                <div className="text-xs leading-tight px-1 overflow-hidden w-full">
+                  <span className="font-semibold truncate">
+                    {RANGE_TYPE_LABELS[range.range_type] ?? range.range_type} — {range.location}
+                  </span>
+                </div>
+              );
+            }
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
             const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
