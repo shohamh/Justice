@@ -135,6 +135,32 @@ def test_cancel_range_event_writes_audit_entry(app_session: Session) -> None:
     assert entry.after == {"status": "cancelled"}
 
 
+def test_cancel_range_event_audit_reflects_actual_prior_status_when_already_cancelled(app_session: Session) -> None:
+    """Cancelling an already-cancelled event must record the real prior status in
+    the audit trail, not a hardcoded "planned" - otherwise the audit falsely
+    claims the event transitioned from planned when it was already cancelled."""
+    node = create_node(app_session, level="פלוגה", name="פלוגה ביטול-כפול")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date(2026, 8, 20), location="מטווח", required_count=2,
+    )
+
+    cancel_range_event(app_session, event=event)
+    cancel_range_event(app_session, event=event)
+
+    entries = app_session.execute(
+        select(AuditLog).where(
+            AuditLog.entity_type == "range_event",
+            AuditLog.entity_id == event.id,
+            AuditLog.action == "range_event.cancel",
+        ).order_by(AuditLog.created_at)
+    ).scalars().all()
+    assert len(entries) == 2
+    assert entries[0].before == {"status": "planned"}
+    assert entries[1].before == {"status": "cancelled"}
+    assert entries[1].after == {"status": "cancelled"}
+
+
 def test_validity_days_falls_back_to_365_for_live_and_alal(app_session: Session) -> None:
     """No mitvachim.*_validity_days setting is seeded in the test DB (unlike the
     real migration), so calling _validity_days directly exercises the

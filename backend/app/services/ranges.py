@@ -129,10 +129,11 @@ def update_range_event(
 
 
 def cancel_range_event(session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None) -> RangeEvent:
+    previous_status = event.status
     event.status = RangeEventStatus.cancelled
     write_audit(
         session, actor_id=actor_id, action="range_event.cancel", entity_type="range_event",
-        entity_id=event.id, before={"status": "planned"}, after={"status": "cancelled"},
+        entity_id=event.id, before={"status": previous_status}, after={"status": event.status},
     )
     session.commit()
     session.refresh(event)
@@ -246,7 +247,7 @@ def mark_attendance(
     # Reverse the previous side effect, if any.
     if previous_status == RangeAttendanceStatus.no_show and assignment.score_adjustment_id is not None:
         original = session.get(ScoreAdjustment, assignment.score_adjustment_id)
-        reversal_delta = -original.delta if original is not None else Decimal("1")
+        reversal_delta = -original.delta if original is not None else -_NO_SHOW_PENALTY
         create_adjustment(
             session, soldier_id=assignment.soldier_id, delta=reversal_delta,
             reason="range_no_show_reversed", actor_id=marked_by,

@@ -16,7 +16,6 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.ranges import (
-    _NO_SHOW_PENALTY,
     RangeValidationError,
     add_range_assignment,
     cancel_range_event,
@@ -185,14 +184,22 @@ def test_correcting_no_show_to_present_actually_reverses_the_score_penalty(app_s
     assert total == 0
 
 
-def test_reversal_delta_negates_original_penalty_delta(app_session: Session) -> None:
-    """The compensating reversal must equal -original.delta, not a hardcoded 1 -
-    verified against the actual _NO_SHOW_PENALTY constant (rather than a magic
-    number) so this stays correct if the penalty amount ever changes."""
+def test_reversal_delta_negates_actual_original_delta_not_a_constant(app_session: Session) -> None:
+    """The compensating reversal must negate whatever delta was ACTUALLY stored on
+    the original ScoreAdjustment row, not a hardcoded/constant-derived value. To
+    prove this, we mutate the original adjustment's delta to a non-default value
+    (simulating e.g. a manual admin correction after the fact) before triggering
+    the reversal - a hardcoded -_NO_SHOW_PENALTY-style implementation would still
+    produce the constant's negation here and fail this assertion."""
     past_date = date.today() - timedelta(days=1)
     event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
     mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
                      marked_by=soldier.id, note="סימון ראשוני")
+
+    original_adjustment = app_session.get(ScoreAdjustment, assignment.score_adjustment_id)
+    assert original_adjustment is not None
+    original_adjustment.delta = Decimal("-3")
+    app_session.flush()
 
     mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
 
@@ -202,4 +209,4 @@ def test_reversal_delta_negates_original_penalty_delta(app_session: Session) -> 
             ScoreAdjustment.reason == "range_no_show_reversed",
         )
     ).scalar_one()
-    assert reversal.delta == -_NO_SHOW_PENALTY
+    assert reversal.delta == Decimal("3")
