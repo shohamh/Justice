@@ -87,7 +87,7 @@ export default function HomePage() {
   const rangesQuery = useQuery({
     queryKey: queryKeys.ranges(),
     queryFn: () => getRanges(user!.hierarchy_node_id as string),
-    enabled: !!user?.hierarchy_node_id,
+    enabled: !!user?.hierarchy_node_id && publicSettings?.["mitvachim.enabled"] === true,
   });
   const ranges = rangesQuery.data ?? [];
 
