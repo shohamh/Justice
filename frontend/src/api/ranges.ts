@@ -8,6 +8,7 @@ export interface RangeAssignment {
   id: string;
   soldier_id: string;
   is_reserve: boolean;
+  is_draft: boolean;
   attendance_status: RangeAttendanceStatus;
   note: string | null;
 }
@@ -83,4 +84,21 @@ export function markRangeAttendance(
   eventId: string, assignmentId: string, status: RangeAttendanceStatus, note?: string,
 ): Promise<RangeAssignment> {
   return api.patch(`/ranges/${eventId}/assignments/${assignmentId}/attendance`, { status, note }).then((r) => r.data);
+}
+
+export interface AutoAssignResult {
+  created: RangeAssignment[];
+  shortfall: number;
+}
+
+export function autoAssignRange(eventId: string): Promise<AutoAssignResult> {
+  return api.post(`/ranges/${eventId}/auto-assign`).then((r) => r.data);
+}
+
+export function confirmDraftAssignment(eventId: string, assignmentId: string): Promise<RangeAssignment> {
+  return api.post(`/ranges/${eventId}/assignments/${assignmentId}/confirm`).then((r) => r.data);
+}
+
+export function confirmAllDrafts(eventId: string): Promise<RangeAssignment[]> {
+  return api.post(`/ranges/${eventId}/assignments/confirm-all`).then((r) => r.data);
 }
