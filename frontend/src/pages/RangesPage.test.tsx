@@ -338,6 +338,32 @@ describe("RangesPage auto-assign", () => {
     await waitFor(() => expect(screen.getByTestId("shortfall-banner")).toBeInTheDocument());
     expect(screen.getByTestId("shortfall-banner")).toHaveTextContent("2");
   });
+
+  it("clears the shortfall banner when switching to another event", async () => {
+    const eventA = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const, assignments: [],
+    };
+    const eventB = {
+      id: "event-2", hierarchy_node_id: "node-1", range_type: "live", date: "2026-10-01",
+      location: "מטווח צפון", required_count: 6, reserve_count: 2, status: "planned" as const,
+      assignments: [{ id: "b1", soldier_id: "s-b", is_reserve: false, is_draft: false,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([eventA, eventB]);
+    vi.mocked(rangesApi.getRangeEvent).mockImplementation(async (id) => (id === eventB.id ? eventB : eventA));
+    vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [], shortfall: 2 });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    fireEvent.click(await screen.findByTestId("auto-assign-button"));
+    await waitFor(() => expect(screen.getByTestId("shortfall-banner")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("מטווח צפון"));
+
+    await waitFor(() => expect(screen.getByText("s-b")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("shortfall-banner")).not.toBeInTheDocument());
+  });
 });
 
 describe("RangesPage draft confirm/reject", () => {

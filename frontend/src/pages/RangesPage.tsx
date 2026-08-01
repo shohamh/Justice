@@ -218,7 +218,10 @@ export default function RangesPage() {
               {(events ?? []).map((event: RangeEvent) => (
                 <tr
                   key={event.id}
-                  onClick={() => setSelectedEventId(event.id)}
+                  onClick={() => {
+                    setSelectedEventId(event.id);
+                    setAutoAssignShortfall(null);
+                  }}
                   className="border-t dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <td className="p-2" dir="ltr">{event.date}</td>
