@@ -85,3 +85,21 @@ def test_exemption_type_forbids_weapons_defaults_false(app_session: Session) -> 
     app_session.commit()
     app_session.refresh(et)
     assert et.forbids_weapons is False
+
+
+def test_range_assignment_is_draft_defaults_false(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה is_draft")
+    soldier = create_soldier(app_session, personal_number="9000001", hierarchy_node_id=node.id)
+    event = RangeEvent(
+        hierarchy_node_id=node.id, range_type=RangeType.laser,
+        date=date(2026, 8, 25), location="מטווח", required_count=1,
+    )
+    app_session.add(event)
+    app_session.flush()
+
+    assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier.id, is_reserve=False)
+    app_session.add(assignment)
+    app_session.commit()
+    app_session.refresh(assignment)
+
+    assert assignment.is_draft is False

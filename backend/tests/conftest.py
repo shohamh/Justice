@@ -78,6 +78,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_system_settings_density": "duty",
     "test_range_models": "duty",
     "test_range_exemption": "duty",
+    "test_range_auto_assign": "duty",
     "test_range_authorization": "duty",
     "test_ranges_service": "duty",
     "test_range_attendance": "duty",

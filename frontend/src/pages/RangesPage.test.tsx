@@ -127,7 +127,8 @@ describe("RangesPage roster add", () => {
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
     });
     vi.mocked(rangesApi.addRangeAssignment).mockResolvedValue({
-      id: "assignment-1", soldier_id: "soldier-1", is_reserve: false, attendance_status: "pending", note: null,
+      id: "assignment-1", soldier_id: "soldier-1", is_reserve: false, is_draft: false,
+      attendance_status: "pending", note: null,
     });
 
     renderWithQuery(<RangesPage />);
@@ -152,7 +153,8 @@ describe("RangesPage roster add", () => {
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
     });
     vi.mocked(rangesApi.addRangeAssignment).mockResolvedValue({
-      id: "assignment-1", soldier_id: "soldier-1", is_reserve: true, attendance_status: "pending", note: null,
+      id: "assignment-1", soldier_id: "soldier-1", is_reserve: true, is_draft: false,
+      attendance_status: "pending", note: null,
     });
 
     renderWithQuery(<RangesPage />);
@@ -179,7 +181,8 @@ describe("RangesPage read-only mode for commanders", () => {
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned",
-      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
+        attendance_status: "pending", note: null }],
     });
 
     renderWithQuery(<RangesPage />);
@@ -201,7 +204,8 @@ describe("RangesPage read-only mode for commanders", () => {
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed",
-      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
+        attendance_status: "pending", note: null }],
     });
 
     renderWithQuery(<RangesPage />);
@@ -222,7 +226,8 @@ describe("RangesPage attendance panel", () => {
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed",
-      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
+        attendance_status: "pending", note: null }],
     });
 
     renderWithQuery(<RangesPage />);
@@ -240,7 +245,8 @@ describe("RangesPage attendance panel", () => {
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
       location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned",
-      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, attendance_status: "pending", note: null }],
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
+        attendance_status: "pending", note: null }],
     });
 
     renderWithQuery(<RangesPage />);
@@ -249,6 +255,27 @@ describe("RangesPage attendance panel", () => {
     await waitFor(() => expect(screen.getByText("s1")).toBeInTheDocument());
     expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
+  });
+
+  it("excludes draft assignments from attendance controls", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const, date: "2020-01-01",
+      location: "מטווח דרום", required_count: 2, reserve_count: 0, status: "completed" as const,
+      assignments: [
+        { id: "confirmed", soldier_id: "s1", is_reserve: false, is_draft: false,
+          attendance_status: "pending" as const, note: null },
+        { id: "draft", soldier_id: "s2", is_reserve: false, is_draft: true,
+          attendance_status: "pending" as const, note: null },
+      ],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    expect(await screen.findByTestId("present-confirmed")).toBeInTheDocument();
+    expect(screen.queryByTestId("present-draft")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("no-show-draft")).not.toBeInTheDocument();
   });
 });
 
@@ -267,5 +294,249 @@ describe("RangesPage deep link via ?event=", () => {
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
     expect(await screen.findAllByText("מטווח דרום")).not.toHaveLength(0);
+  });
+});
+
+describe("RangesPage auto-assign", () => {
+  it("shows the auto-assign button when slots remain and renders draft assignments", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const, assignments: [],
+    };
+    const draft = {
+      id: "assignment-1", soldier_id: "soldier-1", is_reserve: false, is_draft: true,
+      attendance_status: "pending" as const, note: null,
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent)
+      .mockResolvedValueOnce({ ...event, assignments: [] })
+      .mockResolvedValue({ ...event, assignments: [draft] });
+    vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [draft], shortfall: 0 });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const autoAssignButton = await screen.findByTestId("auto-assign-button");
+    expect(autoAssignButton).toBeInTheDocument();
+
+    fireEvent.click(autoAssignButton);
+
+    await waitFor(() => expect(rangesApi.autoAssignRange).toHaveBeenCalledWith("event-1"));
+    expect(await screen.findByTestId("draft-badge")).toBeInTheDocument();
+    expect(screen.getByText("טיוטה")).toBeInTheDocument();
+  });
+
+  it("shows the auto-assign button when the reserve quota remains despite a full total roster", async () => {
+    const assignments = Array.from({ length: 3 }, (_, i) => ({
+      id: `a${i}`, soldier_id: `s${i}`, is_reserve: false, is_draft: false,
+      attendance_status: "pending" as const, note: null,
+    }));
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 2, reserve_count: 1, status: "planned" as const, assignments,
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    await waitFor(() => expect(screen.getByText("s0")).toBeInTheDocument());
+    expect(screen.getByTestId("auto-assign-button")).toBeInTheDocument();
+  });
+
+  it("disables auto-assign while the request is pending", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "planned" as const,
+      assignments: [],
+    };
+    let resolveAutoAssign!: (result: rangesApi.AutoAssignResult) => void;
+    const pendingAutoAssign = new Promise<rangesApi.AutoAssignResult>((resolve) => {
+      resolveAutoAssign = resolve;
+    });
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.autoAssignRange).mockReturnValue(pendingAutoAssign);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const button = await screen.findByTestId("auto-assign-button");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    resolveAutoAssign({ created: [], shortfall: 1 });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it("hides the auto-assign button when the roster is full", async () => {
+    const assignments = Array.from({ length: 5 }, (_, i) => ({
+      id: `a${i}`, soldier_id: `s${i}`, is_reserve: i === 4, is_draft: false,
+      attendance_status: "pending" as const, note: null,
+    }));
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const, assignments,
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    await waitFor(() => expect(screen.getByText("s0")).toBeInTheDocument());
+    expect(screen.queryByTestId("auto-assign-button")).not.toBeInTheDocument();
+  });
+
+  it("shows a shortfall banner when auto-assign cannot fill all slots", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const, assignments: [],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({ ...event, assignments: [] });
+    vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [], shortfall: 2 });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    fireEvent.click(await screen.findByTestId("auto-assign-button"));
+
+    await waitFor(() => expect(screen.getByTestId("shortfall-banner")).toBeInTheDocument());
+    expect(screen.getByTestId("shortfall-banner")).toHaveTextContent("2");
+  });
+
+  it("clears the shortfall banner when switching to another event", async () => {
+    const eventA = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const, assignments: [],
+    };
+    const eventB = {
+      id: "event-2", hierarchy_node_id: "node-1", range_type: "live", date: "2026-10-01",
+      location: "מטווח צפון", required_count: 6, reserve_count: 2, status: "planned" as const,
+      assignments: [{ id: "b1", soldier_id: "s-b", is_reserve: false, is_draft: false,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([eventA, eventB]);
+    vi.mocked(rangesApi.getRangeEvent).mockImplementation(async (id) => (id === eventB.id ? eventB : eventA));
+    vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [], shortfall: 2 });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    fireEvent.click(await screen.findByTestId("auto-assign-button"));
+    await waitFor(() => expect(screen.getByTestId("shortfall-banner")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("מטווח צפון"));
+
+    await waitFor(() => expect(screen.getByText("s-b")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId("shortfall-banner")).not.toBeInTheDocument());
+  });
+});
+
+describe("RangesPage draft confirm/reject", () => {
+  it("confirms a draft assignment from the roster", async () => {
+    const draft = {
+      id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+      attendance_status: "pending" as const, note: null,
+    };
+    const confirmed = { ...draft, is_draft: false };
+    let assignments: rangesApi.RangeAssignment[] = [draft];
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const,
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([{ ...event, assignments }]);
+    vi.mocked(rangesApi.getRangeEvent).mockImplementation(async () => ({ ...event, assignments }));
+    vi.mocked(rangesApi.confirmDraftAssignment).mockImplementation(async (_eventId, assignmentId) => {
+      assignments = assignments.map((a) => (a.id === assignmentId ? confirmed : a));
+      return confirmed;
+    });
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const confirmButton = await screen.findByTestId("confirm-draft-button");
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(rangesApi.confirmDraftAssignment).toHaveBeenCalledWith("event-1", "a1"));
+    await waitFor(() => expect(screen.queryByTestId("draft-badge")).not.toBeInTheDocument());
+  });
+
+  it("confirms all drafts via the confirm-all button", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const,
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.confirmAllDrafts).mockResolvedValue([]);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    fireEvent.click(await screen.findByTestId("confirm-all-button"));
+
+    await waitFor(() => expect(rangesApi.confirmAllDrafts).toHaveBeenCalledWith("event-1"));
+  });
+
+  it("disables all confirm controls while a confirm request is pending", async () => {
+    const draft = {
+      id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+      attendance_status: "pending" as const, note: null,
+    };
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "planned" as const,
+      assignments: [draft],
+    };
+    let resolveConfirm!: (assignment: rangesApi.RangeAssignment) => void;
+    const pendingConfirm = new Promise<rangesApi.RangeAssignment>((resolve) => {
+      resolveConfirm = resolve;
+    });
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.confirmDraftAssignment).mockReturnValue(pendingConfirm);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    const rowConfirm = await screen.findByTestId("confirm-draft-button");
+    const confirmAll = screen.getByTestId("confirm-all-button");
+    fireEvent.click(rowConfirm);
+
+    await waitFor(() => expect(rowConfirm).toBeDisabled());
+    expect(confirmAll).toBeDisabled();
+    resolveConfirm({ ...draft, is_draft: false });
+    await waitFor(() => expect(rowConfirm).not.toBeDisabled());
+  });
+
+  it("hides confirm controls when the event is not planned", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
+      location: "מטווח דרום", required_count: 1, reserve_count: 0, status: "completed" as const,
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    expect(await screen.findByTestId("draft-badge")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-draft-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-all-button")).not.toBeInTheDocument();
+  });
+
+  it("removes a draft via the existing remove button", async () => {
+    const event = {
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned" as const,
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+
+    renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
+
+    fireEvent.click(await screen.findByText("הסר"));
+
+    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1"));
   });
 });

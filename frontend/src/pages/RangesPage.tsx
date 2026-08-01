@@ -6,6 +6,9 @@ import {
   getRangeEvent,
   addRangeAssignment,
   removeRangeAssignment,
+  autoAssignRange,
+  confirmDraftAssignment,
+  confirmAllDrafts,
   createRangeEvent,
   RangeEvent,
   RangeType,
@@ -39,6 +42,9 @@ export default function RangesPage() {
   const [newLocation, setNewLocation] = useState("");
   const [newRequiredCount, setNewRequiredCount] = useState(0);
   const [newReserveCount, setNewReserveCount] = useState(0);
+  const [autoAssignShortfall, setAutoAssignShortfall] = useState<number | null>(null);
+  const [isAutoAssignPending, setIsAutoAssignPending] = useState(false);
+  const [isConfirmPending, setIsConfirmPending] = useState(false);
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const nodeId = user?.hierarchy_node_id ?? null;
@@ -61,6 +67,40 @@ export default function RangesPage() {
     if (!selectedEventId) return;
     await removeRangeAssignment(selectedEventId, assignmentId);
     queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+  }
+
+  async function handleAutoAssign() {
+    if (!selectedEventId || isAutoAssignPending) return;
+    setIsAutoAssignPending(true);
+    try {
+      const result = await autoAssignRange(selectedEventId);
+      setAutoAssignShortfall(result.shortfall > 0 ? result.shortfall : null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsAutoAssignPending(false);
+    }
+  }
+
+  async function handleConfirmDraft(assignmentId: string) {
+    if (!selectedEventId || isConfirmPending) return;
+    setIsConfirmPending(true);
+    try {
+      await confirmDraftAssignment(selectedEventId, assignmentId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsConfirmPending(false);
+    }
+  }
+
+  async function handleConfirmAll() {
+    if (!selectedEventId || isConfirmPending) return;
+    setIsConfirmPending(true);
+    try {
+      await confirmAllDrafts(selectedEventId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId) });
+    } finally {
+      setIsConfirmPending(false);
+    }
   }
 
   async function handleAddSoldier(soldier: SoldierDTO | null) {
@@ -195,7 +235,10 @@ export default function RangesPage() {
               {(events ?? []).map((event: RangeEvent) => (
                 <tr
                   key={event.id}
-                  onClick={() => setSelectedEventId(event.id)}
+                  onClick={() => {
+                    setSelectedEventId(event.id);
+                    setAutoAssignShortfall(null);
+                  }}
                   className="border-t dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <td className="p-2" dir="ltr">{event.date}</td>
@@ -220,13 +263,39 @@ export default function RangesPage() {
             <div className="flex flex-wrap justify-between items-center gap-2">
               <h2 className="text-lg font-semibold">{selectedEvent.location}</h2>
               {canManage && (
-                <button
-                  data-testid="add-soldier-button"
-                  onClick={() => setShowPicker(true)}
-                  className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
-                >
-                  הוסף חייל
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedEvent.status === "planned" &&
+                    (selectedEvent.assignments.filter((assignment) => !assignment.is_reserve).length <
+                      selectedEvent.required_count ||
+                      selectedEvent.assignments.filter((assignment) => assignment.is_reserve).length <
+                        selectedEvent.reserve_count) && (
+                      <button
+                        data-testid="auto-assign-button"
+                        disabled={isAutoAssignPending}
+                        onClick={handleAutoAssign}
+                        className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
+                      >
+                        שבץ אוטומטית
+                      </button>
+                    )}
+                  {selectedEvent.status === "planned" && selectedEvent.assignments.some((a) => a.is_draft) && (
+                    <button
+                      data-testid="confirm-all-button"
+                      disabled={isConfirmPending}
+                      onClick={handleConfirmAll}
+                      className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-40"
+                    >
+                      אשר הכל
+                    </button>
+                  )}
+                  <button
+                    data-testid="add-soldier-button"
+                    onClick={() => setShowPicker(true)}
+                    className="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-indigo-700"
+                  >
+                    הוסף חייל
+                  </button>
+                </div>
               )}
             </div>
 
@@ -245,22 +314,48 @@ export default function RangesPage() {
               </div>
             )}
 
+            {autoAssignShortfall !== null && (
+              <div
+                data-testid="shortfall-banner"
+                className="bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-100 px-3 py-2 rounded text-sm"
+              >
+                לא נמצאו מספיק מועמדים — חסרים {autoAssignShortfall} משבצים
+              </div>
+            )}
+
             <ul className="divide-y dark:divide-gray-700">
               {selectedEvent.assignments.map((a) => (
                 <li key={a.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <span>
                     <SoldierLink id={a.soldier_id} name={soldierName(a.soldier_id)} />
+                    {a.is_draft && (
+                      <span data-testid="draft-badge" className="text-xs text-amber-600 dark:text-amber-400 mr-1">
+                        טיוטה
+                      </span>
+                    )}
                     {a.is_reserve && (
                       <span className="text-xs text-amber-600 dark:text-amber-400 mr-1">(רזרבה)</span>
                     )}
                   </span>
                   {canManage && (
-                    <button
-                      onClick={() => handleRemoveAssignment(a.id)}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline"
-                    >
-                      הסר
-                    </button>
+                    <span className="flex items-center gap-2">
+                      {selectedEvent.status === "planned" && a.is_draft && (
+                        <button
+                          data-testid="confirm-draft-button"
+                          disabled={isConfirmPending}
+                          onClick={() => handleConfirmDraft(a.id)}
+                          className="text-xs text-green-600 dark:text-green-400 hover:underline disabled:opacity-40"
+                        >
+                          אשר
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveAssignment(a.id)}
+                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                      >
+                        הסר
+                      </button>
+                    </span>
                   )}
                 </li>
               ))}
@@ -272,7 +367,7 @@ export default function RangesPage() {
             {canManage && selectedEvent.date <= localTodayIsoDate() && (
               <RangeAttendancePanel
                 eventId={selectedEvent.id}
-                assignments={selectedEvent.assignments}
+                assignments={selectedEvent.assignments.filter((assignment) => !assignment.is_draft)}
                 soldierName={soldierName}
                 onMarked={() => {
                   queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(selectedEventId!) });

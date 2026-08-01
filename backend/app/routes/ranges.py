@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -9,8 +9,16 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import HierarchyNode, RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeType, Soldier
+from app.db.models import (
+    HierarchyNode,
+    RangeAssignment,
+    RangeAttendanceStatus,
+    RangeEvent,
+    RangeType,
+    Soldier,
+)
 from app.db.session import get_session
+from app.services import range_auto_assign as auto_assign_svc
 from app.services import ranges as svc
 from app.services.authority import range_attendance_edit_authorized
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -76,6 +84,7 @@ class RangeAssignmentOut(BaseModel):
     id: uuid.UUID
     soldier_id: uuid.UUID
     is_reserve: bool
+    is_draft: bool
     attendance_status: str
     note: str | None
 
@@ -94,26 +103,46 @@ class RangeEventOut(BaseModel):
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
     return RangeAssignmentOut(
-        id=a.id, soldier_id=a.soldier_id, is_reserve=a.is_reserve,
-        attendance_status=a.attendance_status, note=a.note,
+        id=a.id,
+        soldier_id=a.soldier_id,
+        is_reserve=a.is_reserve,
+        is_draft=a.is_draft,
+        attendance_status=a.attendance_status,
+        note=a.note,
     )
 
 
-def _event_out(session: Session, event: RangeEvent, *, include_assignments: bool = False) -> RangeEventOut:
+def _event_out(
+    session: Session,
+    event: RangeEvent,
+    *,
+    include_assignments: bool = False,
+    include_drafts: bool = True,
+) -> RangeEventOut:
     assignments: list[RangeAssignmentOut] = []
     if include_assignments:
-        rows = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id).all()
+        query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
+        if not include_drafts:
+            query = query.filter(RangeAssignment.is_draft.is_(False))
+        rows = query.all()
         assignments = [_assignment_out(a) for a in rows]
     return RangeEventOut(
-        id=event.id, hierarchy_node_id=event.hierarchy_node_id, range_type=event.range_type,
-        date=event.date, location=event.location, required_count=event.required_count,
-        reserve_count=event.reserve_count, status=event.status, assignments=assignments,
+        id=event.id,
+        hierarchy_node_id=event.hierarchy_node_id,
+        range_type=event.range_type,
+        date=event.date,
+        location=event.location,
+        required_count=event.required_count,
+        reserve_count=event.reserve_count,
+        status=event.status,
+        assignments=assignments,
     )
 
 
 @router.post("", response_model=RangeEventOut, status_code=status.HTTP_201_CREATED)
 def create_range_event(
-    body: CreateRangeEventBody, session: Session = Depends(get_session),
+    body: CreateRangeEventBody,
+    session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> RangeEventOut:
     _require_enabled(session)
@@ -121,11 +150,20 @@ def create_range_event(
     authorize(session, user, Action.RANGE_MANAGE, target_node=target_node)
     try:
         event = svc.create_range_event(
-            session, hierarchy_node_id=body.hierarchy_node_id, range_type=body.range_type,
-            event_date=body.date, location=body.location, required_count=body.required_count,
-            reserve_count=body.reserve_count, start_time=body.start_time, end_time=body.end_time,
-            arrival_instructions=body.arrival_instructions, contact_name=body.contact_name,
-            contact_phone=body.contact_phone, notes=body.notes, created_by=user.id,
+            session,
+            hierarchy_node_id=body.hierarchy_node_id,
+            range_type=body.range_type,
+            event_date=body.date,
+            location=body.location,
+            required_count=body.required_count,
+            reserve_count=body.reserve_count,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            arrival_instructions=body.arrival_instructions,
+            contact_name=body.contact_name,
+            contact_phone=body.contact_phone,
+            notes=body.notes,
+            created_by=user.id,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -134,7 +172,9 @@ def create_range_event(
 
 @router.patch("/{event_id}", response_model=RangeEventOut)
 def update_range_event(
-    event_id: uuid.UUID, body: UpdateRangeEventBody, session: Session = Depends(get_session),
+    event_id: uuid.UUID,
+    body: UpdateRangeEventBody,
+    session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> RangeEventOut:
     _require_enabled(session)
@@ -145,9 +185,15 @@ def update_range_event(
             event = svc.cancel_range_event(session, event=event, actor_id=user.id)
         else:
             event = svc.update_range_event(
-                session, event=event, location=body.location, required_count=body.required_count,
-                reserve_count=body.reserve_count, arrival_instructions=body.arrival_instructions,
-                contact_name=body.contact_name, contact_phone=body.contact_phone, notes=body.notes,
+                session,
+                event=event,
+                location=body.location,
+                required_count=body.required_count,
+                reserve_count=body.reserve_count,
+                arrival_instructions=body.arrival_instructions,
+                contact_name=body.contact_name,
+                contact_phone=body.contact_phone,
+                notes=body.notes,
                 actor_id=user.id,
             )
     except svc.RangeValidationError as exc:
@@ -155,9 +201,15 @@ def update_range_event(
     return _event_out(session, event)
 
 
-@router.post("/{event_id}/assignments", response_model=RangeAssignmentOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{event_id}/assignments",
+    response_model=RangeAssignmentOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_assignment(
-    event_id: uuid.UUID, body: AddAssignmentBody, session: Session = Depends(get_session),
+    event_id: uuid.UUID,
+    body: AddAssignmentBody,
+    session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> RangeAssignmentOut:
     _require_enabled(session)
@@ -165,7 +217,10 @@ def add_assignment(
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
     try:
         assignment = svc.add_range_assignment(
-            session, event=event, soldier_id=body.soldier_id, is_reserve=body.is_reserve,
+            session,
+            event=event,
+            soldier_id=body.soldier_id,
+            is_reserve=body.is_reserve,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -174,7 +229,9 @@ def add_assignment(
 
 @router.delete("/{event_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_assignment(
-    event_id: uuid.UUID, assignment_id: uuid.UUID, session: Session = Depends(get_session),
+    event_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     _require_enabled(session)
@@ -191,20 +248,30 @@ def remove_assignment(
 
 @router.get("/{event_id}", response_model=RangeEventOut)
 def get_range_event(
-    event_id: uuid.UUID, session: Session = Depends(get_session),
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> RangeEventOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
     node = _event_node(session, event)
+    can_manage = True
     try:
         authorize(session, user, Action.RANGE_MANAGE, target_node=node)
     except HTTPException:
+        can_manage = False
         # Commanders get read-only access to this endpoint (roster view), scoped
         # to their own command — mutation routes remain RANGE_MANAGE (DM-only).
-        if not (is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user))):
+        if not (
+            is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user))
+        ):
             raise
-    return _event_out(session, event, include_assignments=True)
+    return _event_out(
+        session,
+        event,
+        include_assignments=True,
+        include_drafts=can_manage,
+    )
 
 
 @router.get("", response_model=list[RangeEventOut])
@@ -233,10 +300,15 @@ class MarkAttendanceBody(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
-@router.patch("/{event_id}/assignments/{assignment_id}/attendance", response_model=RangeAssignmentOut)
+@router.patch(
+    "/{event_id}/assignments/{assignment_id}/attendance", response_model=RangeAssignmentOut
+)
 def mark_attendance_route(
-    event_id: uuid.UUID, assignment_id: uuid.UUID, body: MarkAttendanceBody,
-    session: Session = Depends(get_session), user: Soldier = Depends(require_password_changed),
+    event_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    body: MarkAttendanceBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
 ) -> RangeAssignmentOut:
     _require_enabled(session)
     event = _load_event(session, event_id)
@@ -250,8 +322,71 @@ def mark_attendance_route(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     try:
         updated = svc.mark_attendance(
-            session, assignment=assignment, status=body.status, marked_by=user.id, note=body.note,
+            session,
+            assignment=assignment,
+            status=body.status,
+            marked_by=user.id,
+            note=body.note,
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _assignment_out(updated)
+
+
+class AutoAssignResponse(BaseModel):
+    created: list[RangeAssignmentOut]
+    shortfall: int
+
+
+@router.post("/{event_id}/auto-assign", response_model=AutoAssignResponse)
+def auto_assign(
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> AutoAssignResponse:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    try:
+        created, shortfall = auto_assign_svc.propose_range_assignments(session, event=event)
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return AutoAssignResponse(created=[_assignment_out(a) for a in created], shortfall=shortfall)
+
+
+@router.post("/{event_id}/assignments/{assignment_id}/confirm", response_model=RangeAssignmentOut)
+def confirm_assignment(
+    event_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    assignment = session.get(RangeAssignment, assignment_id)
+    if assignment is None or assignment.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    try:
+        confirmed = auto_assign_svc.confirm_draft_assignment(
+            session, assignment=assignment, actor_id=user.id
+        )
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _assignment_out(confirmed)
+
+
+@router.post("/{event_id}/assignments/confirm-all", response_model=list[RangeAssignmentOut])
+def confirm_all_assignments(
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[RangeAssignmentOut]:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    try:
+        confirmed = auto_assign_svc.confirm_all_drafts(session, event=event, actor_id=user.id)
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return [_assignment_out(a) for a in confirmed]

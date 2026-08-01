@@ -1,20 +1,31 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AuditLog, RangeEventStatus, RangeType
+from app.db.models import (
+    AuditLog,
+    DutyType,
+    Notification,
+    NotificationType,
+    RangeAssignment,
+    RangeEventStatus,
+    RangeType,
+)
 from app.services.ranges import (
     RangeValidationError,
     _validity_days,
+    add_range_assignment,
     cancel_range_event,
     create_range_event,
+    remove_range_assignment,
     update_range_event,
 )
-from tests.helpers import create_node
+from tests.helpers import create_node, create_soldier
 
 
 def test_create_range_event_success(app_session: Session) -> None:
@@ -170,15 +181,7 @@ def test_validity_days_falls_back_to_365_for_live_and_alal(app_session: Session)
     assert _validity_days(app_session, RangeType.alal) == 365
 
 
-from app.db.models import RangeAssignment
-from app.services.ranges import add_range_assignment, remove_range_assignment
-from tests.helpers import create_soldier
-
-
 def test_add_range_assignment_success(app_session: Session) -> None:
-    from app.db.models import DutyType
-    from decimal import Decimal
-
     node = create_node(app_session, level="פלוגה", name="פלוגה ה")
     soldier = create_soldier(app_session, personal_number="4000001", hierarchy_node_id=node.id)
     event = create_range_event(
@@ -194,12 +197,18 @@ def test_add_range_assignment_success(app_session: Session) -> None:
 
     assert assignment.range_event_id == event.id
     assert assignment.is_reserve is False
+    notification = app_session.execute(
+        select(Notification).where(
+            Notification.soldier_id == soldier.id,
+            Notification.type == NotificationType.assignment_created,
+            Notification.reference_type == "range_assignment",
+            Notification.reference_id == assignment.id,
+        )
+    ).scalar_one_or_none()
+    assert notification is not None
 
 
 def test_add_range_assignment_rejects_soldier_outside_subunit(app_session: Session) -> None:
-    from app.db.models import DutyType
-    from decimal import Decimal
-
     node = create_node(app_session, level="פלוגה", name="פלוגה ו")
     other_node = create_node(app_session, level="פלוגה", name="פלוגה ז")
     soldier = create_soldier(app_session, personal_number="4000002", hierarchy_node_id=other_node.id)
@@ -217,8 +226,6 @@ def test_add_range_assignment_rejects_soldier_outside_subunit(app_session: Sessi
 
 
 def test_add_range_assignment_rejects_exempt_soldier(app_session: Session) -> None:
-    from app.db.models import DutyType
-
     node = create_node(app_session, level="פלוגה", name="פלוגה ח")
     soldier = create_soldier(app_session, personal_number="4000003", hierarchy_node_id=node.id)
     event = create_range_event(
@@ -231,10 +238,39 @@ def test_add_range_assignment_rejects_exempt_soldier(app_session: Session) -> No
         add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
 
 
-def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
-    from app.db.models import DutyType
-    from decimal import Decimal
+def test_add_range_assignment_rejects_soldier_booked_at_another_range_same_day(
+    app_session: Session,
+) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה שיבוץ-כפול-מטווח")
+    soldier = create_soldier(app_session, personal_number="4000007", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="שמירה עם נשק שיבוץ-כפול-מטווח",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event_date = date(2026, 8, 20)
+    first_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, location="מטווח א", required_count=1,
+    )
+    second_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=event_date, location="מטווח ב", required_count=1,
+    )
+    add_range_assignment(
+        app_session, event=first_event, soldier_id=soldier.id, is_reserve=False
+    )
 
+    with pytest.raises(RangeValidationError, match="soldier_already_assigned_on_date"):
+        add_range_assignment(
+            app_session, event=second_event, soldier_id=soldier.id, is_reserve=False
+        )
+
+
+def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ט")
     soldier = create_soldier(app_session, personal_number="4000004", hierarchy_node_id=node.id)
     event = create_range_event(
@@ -254,9 +290,6 @@ def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
 
 
 def test_add_range_assignment_rejects_when_event_not_planned(app_session: Session) -> None:
-    from app.db.models import DutyType
-    from decimal import Decimal
-
     node = create_node(app_session, level="פלוגה", name="פלוגה תת-הוספה-לא-מתוכנן")
     soldier = create_soldier(app_session, personal_number="4000006", hierarchy_node_id=node.id)
     weapon_duty = DutyType(name="שמירה עם נשק תת-הוספה-לא-מתוכנן", score_per_day=Decimal("1.00"),
@@ -274,9 +307,6 @@ def test_add_range_assignment_rejects_when_event_not_planned(app_session: Sessio
 
 
 def test_remove_range_assignment_rejects_when_event_not_planned(app_session: Session) -> None:
-    from app.db.models import DutyType
-    from decimal import Decimal
-
     node = create_node(app_session, level="פלוגה", name="פלוגה תת-לא-מתוכנן")
     soldier = create_soldier(app_session, personal_number="4000005", hierarchy_node_id=node.id)
     weapon_duty = DutyType(name="שמירה עם נשק תת-לא-מתוכנן", score_per_day=Decimal("1.00"),

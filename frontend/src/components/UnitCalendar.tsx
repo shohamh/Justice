@@ -22,6 +22,7 @@ const RANGE_TYPE_COLORS: Record<string, string> = {
   alal: "#0891b2",
 };
 
+
 interface UnitCalendarProps {
   nodeId: string;
 }

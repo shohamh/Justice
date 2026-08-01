@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt_tokens import issue_access_token
 from app.auth.password import hash_password
-from app.db.models import DutyManagerScope, HierarchyNode, Soldier
+from app.db.models import DutyLocation, DutyManagerScope, HierarchyNode, Soldier
 
 
 def create_node(
@@ -59,6 +59,13 @@ def create_soldier(
     session.commit()
     session.refresh(s)
     return s
+
+
+def create_duty_location(session: Session, *, name: str = "מיקום בדיקה") -> DutyLocation:
+    location = DutyLocation(name=name)
+    session.add(location)
+    session.flush()
+    return location
 
 
 def auth_headers(soldier: Soldier) -> dict[str, str]:

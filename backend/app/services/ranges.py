@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -22,11 +22,26 @@ from app.db.models import (
 )
 from app.services.adjustments import create_adjustment
 from app.services.notifications import create_notification
+from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
 
 
 class RangeValidationError(Exception):
     pass
+
+
+_RANGE_ASSIGNMENT_LOCK_NAMESPACE = 0x52414E47
+
+
+def _acquire_range_assignment_date_lock(session: Session, *, event_date: date) -> None:
+    session.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                _RANGE_ASSIGNMENT_LOCK_NAMESPACE,
+                event_date.toordinal(),
+            )
+        )
+    )
 
 
 def create_range_event(
@@ -140,12 +155,11 @@ def cancel_range_event(session: Session, *, event: RangeEvent, actor_id: uuid.UU
     return event
 
 
-from app.services.range_exemption import is_range_exempt
-
-
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
 ) -> RangeAssignment:
+    _acquire_range_assignment_date_lock(session, event_date=event.date)
+    session.refresh(event)
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
     soldier = session.get(Soldier, soldier_id)
@@ -157,9 +171,29 @@ def add_range_assignment(
         raise RangeValidationError("soldier_outside_event_subunit")
     if is_range_exempt(session, soldier=soldier, event_date=event.date):
         raise RangeValidationError("soldier_range_exempt")
+    existing_same_date = session.execute(
+        select(RangeAssignment.id)
+        .join(RangeEvent, RangeAssignment.range_event_id == RangeEvent.id)
+        .where(
+            RangeAssignment.soldier_id == soldier_id,
+            RangeEvent.date == event.date,
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if existing_same_date is not None:
+        raise RangeValidationError("soldier_already_assigned_on_date")
 
     assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
     session.add(assignment)
+    session.flush()
+    create_notification(
+        session,
+        soldier_id=soldier_id,
+        type=NotificationType.assignment_created,
+        title="שובצת למטווח",
+        reference_type="range_assignment",
+        reference_id=assignment.id,
+    )
     session.commit()
     session.refresh(assignment)
     return assignment
@@ -232,6 +266,8 @@ def mark_attendance(
     session: Session, *, assignment: RangeAssignment, status: RangeAttendanceStatus,
     marked_by: uuid.UUID, note: str | None = None,
 ) -> RangeAssignment:
+    if assignment.is_draft:
+        raise RangeValidationError("assignment_not_confirmed")
     event = session.get(RangeEvent, assignment.range_event_id)
     if event is None:
         raise RangeValidationError("event_not_found")
@@ -282,7 +318,7 @@ def mark_attendance(
 
     assignment.attendance_status = status
     assignment.marked_by = marked_by
-    assignment.marked_at = datetime.now(timezone.utc)
+    assignment.marked_at = datetime.now(UTC)
     assignment.note = note
 
     write_audit(
