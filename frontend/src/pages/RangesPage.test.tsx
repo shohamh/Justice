@@ -4,8 +4,16 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
+import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("../api/ranges");
+vi.mock("../api/soldiers", async () => {
+  const actual = await vi.importActual<typeof import("../api/soldiers")>("../api/soldiers");
+  return { ...actual, listSoldiers: vi.fn().mockResolvedValue([]) };
+});
+vi.mock("../components/Layout", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 vi.mock("../components/SoldierSearchAutocomplete", () => ({
   default: (props: { onSelect: (soldier: { id: string } | null) => void }) => (
     <div data-testid="soldier-picker">
@@ -25,7 +33,9 @@ function renderWithQuery(ui: React.ReactElement, initialEntries = ["/ranges"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
+        <SoldierModalProvider>{ui}</SoldierModalProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
