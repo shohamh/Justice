@@ -189,7 +189,7 @@ def add_range_assignment(
     create_notification(
         session,
         soldier_id=soldier_id,
-        type=NotificationType.assignment_created,
+        type=NotificationType.range_assignment_confirmed,
         title="שובצת למטווח",
         reference_type="range_assignment",
         reference_id=assignment.id,

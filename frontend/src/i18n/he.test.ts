@@ -21,7 +21,7 @@ const NOTIFICATION_TYPES = [
   "exemption_revoked",
   "transfer_request_pending", "transfer_request_rejected",
   "system_announcement", "enrollment_fields_edited",
-  "swap_pending_approval",
+  "swap_pending_approval", "no_show_marked", "range_assignment_confirmed",
 ];
 
 describe("he.json notification type coverage", () => {

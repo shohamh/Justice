@@ -49,6 +49,7 @@ _FRONTEND_PATHS: dict[str, str] = {
     "swap_rejected": "/swaps",
     "assignment_created": "/schedule",
     "assignment_removed": "/schedule",
+    "range_assignment_confirmed": "/ranges",
     "score_adjusted": "/profile",
     "announcement": "/notifications",
     "algorithm_job_done": "/algorithm",
