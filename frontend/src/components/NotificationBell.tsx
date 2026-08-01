@@ -78,6 +78,7 @@ export default function NotificationBell() {
     exemption_approved: "✔️", exemption_rejected: "✖️",
     constraint_approved: "✔️", constraint_rejected: "✖️",
     assignment_created: "📋", assignment_removed: "🗑️",
+    range_assignment_confirmed: "🎯",
     score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
     algorithm_job_done: "🤖", algorithm_job_failed: "⚠️",
   };

@@ -200,7 +200,7 @@ def test_add_range_assignment_success(app_session: Session) -> None:
     notification = app_session.execute(
         select(Notification).where(
             Notification.soldier_id == soldier.id,
-            Notification.type == NotificationType.assignment_created,
+            Notification.type == NotificationType.range_assignment_confirmed,
             Notification.reference_type == "range_assignment",
             Notification.reference_id == assignment.id,
         )
