@@ -275,7 +275,7 @@ def remove_assignment(
     if assignment is None or assignment.range_event_id != event_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
     try:
-        svc.remove_range_assignment(session, assignment=assignment)
+        svc.remove_range_assignment(session, assignment=assignment, actor_id=user.id)
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

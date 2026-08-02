@@ -288,6 +288,65 @@ def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
     assert app_session.get(RangeAssignment, assignment_id) is None
 
 
+def test_roster_change_notifies_existing_and_removed_assignees(app_session: Session) -> None:
+    node = create_node(app_session, level="×¤×œ×•×’×”", name="×¤×œ×•×’×” ×¨×•×¡×˜×¨")
+    first = create_soldier(app_session, personal_number="4900001", hierarchy_node_id=node.id)
+    second = create_soldier(app_session, personal_number="4900002", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date(2026, 8, 20), location="×ž×˜×•×•×—", required_count=2,
+    )
+    weapon_duty = DutyType(
+        name="×©×ž×™×¨×” ×¢× × ×©×§ ×¨×•×¡×˜×¨", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+
+    add_range_assignment(app_session, event=event, soldier_id=first.id, is_reserve=False)
+    second_assignment = add_range_assignment(
+        app_session, event=event, soldier_id=second.id, is_reserve=False,
+    )
+    assert app_session.execute(select(Notification).where(
+        Notification.soldier_id == first.id,
+        Notification.type == NotificationType.range_roster_changed,
+        Notification.reference_id == event.id,
+    )).scalar_one_or_none() is not None
+
+    remove_range_assignment(app_session, assignment=second_assignment)
+    assert app_session.execute(select(Notification).where(
+        Notification.soldier_id == second.id,
+        Notification.type == NotificationType.range_roster_changed,
+        Notification.reference_id == event.id,
+    )).scalar_one_or_none() is not None
+
+
+def test_cancellation_notifies_assignees_with_reason_and_event_reference(app_session: Session) -> None:
+    node = create_node(app_session, level="×¤×œ×•×’×”", name="×¤×œ×•×’×” ×‘×™×˜×•×œ")
+    soldier = create_soldier(app_session, personal_number="4900003", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), location="×ž×˜×•×•×— ×¦×¤×•× ×™", required_count=1,
+    )
+    weapon_duty = DutyType(
+        name="×©×ž×™×¨×” ×¢× × ×©×§ ×‘×™×˜×•×œ", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    cancel_range_event(app_session, event=event, reason="weather")
+
+    notification = app_session.execute(select(Notification).where(
+        Notification.soldier_id == soldier.id,
+        Notification.type == NotificationType.range_cancelled,
+        Notification.reference_type == "range_event",
+        Notification.reference_id == event.id,
+    )).scalar_one()
+    assert "weather" in (notification.body or "")
+
+
 def test_add_range_assignment_rejects_when_event_not_planned(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה תת-הוספה-לא-מתוכנן")
     soldier = create_soldier(app_session, personal_number="4000006", hierarchy_node_id=node.id)

@@ -42,4 +42,15 @@ describe("NotificationBell icon differentiation", () => {
     expect(scopedRow.closest("div")?.parentElement?.textContent).toContain("📢");
     expect(orgWideRow.closest("div")?.parentElement?.textContent).toContain("📣");
   });
+  it("shows the range lifecycle icon and label", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, title: "Range cancelled", type: "range_cancelled" }],
+      total: 1,
+    });
+    render(<MemoryRouter><NotificationBell /></MemoryRouter>);
+    (await screen.findByTestId("notification-bell")).click();
+    const row = await screen.findByText("Range cancelled");
+    expect(row.closest("div")?.parentElement?.textContent).toContain(String.fromCodePoint(0x1f6ab));
+    expect(document.querySelector("[aria-label=\"range_cancelled\"]")).toBeTruthy();
+  });
 });

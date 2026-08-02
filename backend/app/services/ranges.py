@@ -21,7 +21,7 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.adjustments import create_adjustment
-from app.services.notifications import create_notification
+from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
 
@@ -30,6 +30,17 @@ class RangeValidationError(Exception):
     pass
 
 _UNSET = object()
+
+
+def _mitvachim_enabled(session: Session) -> bool:
+    setting = session.get(__import__("app.db.models", fromlist=["SystemSetting"]).SystemSetting, "mitvachim.enabled")
+    return setting is None or setting.value is True
+
+
+def _range_notification(session: Session, **kwargs):
+    if _mitvachim_enabled(session):
+        return create_notification(session, **kwargs)
+    return None
 
 
 _RANGE_ASSIGNMENT_LOCK_NAMESPACE = 0x52414E47
@@ -45,6 +56,31 @@ def _acquire_range_assignment_date_lock(session: Session, *, event_date: date) -
         )
     )
 
+
+
+def _range_context(event: RangeEvent, *, reason: str | None = None) -> str:
+    context = f"date={event.date.isoformat()} | type={event.range_type.value} | location={event.location}"
+    return f"{context} | reason={reason}" if reason else context
+
+
+def _notify_roster_change(
+    session: Session, *, event: RangeEvent, soldier_ids: set[uuid.UUID], actor_id: uuid.UUID | None = None,
+) -> None:
+    assignments = session.execute(
+        select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
+    ).scalars().all()
+    fill = (
+        f"primary={sum(1 for a in assignments if not a.is_reserve and not a.is_draft)}/{event.required_count}"
+        f" | reserve={sum(1 for a in assignments if a.is_reserve and not a.is_draft)}/{event.reserve_count}"
+    )
+    for soldier_id in soldier_ids:
+        _range_notification(
+            session, soldier_id=soldier_id, type=NotificationType.range_roster_changed,
+            title="Range roster changed", body=f"{_range_context(event)} | {fill}",
+            reference_type="range_event", reference_id=event.id, actor_id=actor_id,
+        )
+    if soldier_ids and _mitvachim_enabled(session):
+        notify_duty_managers_in_scope(session, soldier_id=next(iter(soldier_ids)), type=NotificationType.range_roster_changed, title="Range roster changed", body=f"{_range_context(event)} | {fill}", reference_type="range_event", reference_id=event.id, actor_id=actor_id)
 
 def create_range_event(
     session: Session,
@@ -185,6 +221,18 @@ def cancel_range_event(
     previous_status = event.status
     event.cancellation_reason = reason
     event.status = RangeEventStatus.cancelled
+    context = _range_context(event, reason=reason)
+    assignments = session.execute(select(RangeAssignment).where(
+        RangeAssignment.range_event_id == event.id
+    )).scalars().all()
+    for assignment in assignments:
+        _range_notification(
+            session, soldier_id=assignment.soldier_id, type=NotificationType.range_cancelled,
+            title="Range cancelled", body=context, reference_type="range_event",
+            reference_id=event.id, actor_id=actor_id,
+        )
+    if assignments and _mitvachim_enabled(session):
+        notify_duty_managers_in_scope(session, soldier_id=assignments[0].soldier_id, type=NotificationType.range_cancelled, title="Range cancelled", body=context, reference_type="range_event", reference_id=event.id, actor_id=actor_id)
     write_audit(
         session, actor_id=actor_id, action="range_event.cancel", entity_type="range_event",
         entity_id=event.id, before={"status": previous_status}, after={"status": event.status},
@@ -237,7 +285,8 @@ def add_range_assignment(
     assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
     session.add(assignment)
     session.flush()
-    create_notification(
+    _notify_roster_change(session, event=event, soldier_ids={soldier_id})
+    _range_notification(
         session,
         soldier_id=soldier_id,
         type=NotificationType.range_assignment_confirmed,
@@ -250,11 +299,20 @@ def add_range_assignment(
     return assignment
 
 
-def remove_range_assignment(session: Session, *, assignment: RangeAssignment) -> None:
+def remove_range_assignment(session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None) -> None:
     event = session.get(RangeEvent, assignment.range_event_id)
     if event is not None and event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
+    remaining_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
+        RangeAssignment.range_event_id == assignment.range_event_id,
+        RangeAssignment.id != assignment.id,
+    )).scalars())
+    soldier_id = assignment.soldier_id
     session.delete(assignment)
+    session.flush()
+    _notify_roster_change(
+        session, event=event, soldier_ids=remaining_ids | {soldier_id}, actor_id=actor_id,
+    )
     session.commit()
 
 
@@ -330,6 +388,11 @@ def mark_attendance(
         raise RangeValidationError("note_required_for_no_show")
 
     previous_status = assignment.attendance_status
+    if previous_status == status:
+        session.commit()
+        session.refresh(assignment)
+        return assignment
+    no_show_transition = previous_status != RangeAttendanceStatus.no_show and status == RangeAttendanceStatus.no_show
 
     # Reverse the previous side effect, if any.
     if previous_status == RangeAttendanceStatus.no_show and assignment.score_adjustment_id is not None:
@@ -361,11 +424,19 @@ def mark_attendance(
             reason="range_no_show", actor_id=marked_by,
         )
         assignment.score_adjustment_id = adjustment.id
-        create_notification(
+        _range_notification(
             session, soldier_id=assignment.soldier_id, type=NotificationType.no_show_marked,
             title="נרשם היעדרות ממטווח", body=note, reference_type="range_assignment",
             reference_id=assignment.id, actor_id=marked_by,
         )
+        if no_show_transition and _mitvachim_enabled(session):
+            _range_notification(session, soldier_id=assignment.soldier_id, type=NotificationType.range_no_show, title="Range no-show recorded", body=f"{_range_context(event, reason=note)} | assignment={assignment.id}", reference_type="range_event", reference_id=event.id, actor_id=marked_by)
+            notify_duty_managers_in_scope(
+                session, soldier_id=assignment.soldier_id, type=NotificationType.range_no_show,
+                title="Range no-show recorded",
+                body=f"{_range_context(event, reason=note)} | assignment={assignment.id}",
+                reference_type="range_event", reference_id=event.id, actor_id=marked_by,
+            )
 
     assignment.attendance_status = status
     assignment.marked_by = marked_by
