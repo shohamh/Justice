@@ -210,8 +210,14 @@ describe("RangesPage create event", () => {
     fireEvent.change(screen.getByTestId("new-range-type"), { target: { value: "live" } });
     fireEvent.change(screen.getByTestId("new-date"), { target: { value: "2026-10-01" } });
     fireEvent.change(screen.getByTestId("new-location"), { target: { value: "מטווח צפון" } });
+    fireEvent.change(screen.getByTestId("new-start-time"), { target: { value: "08:00" } });
+    fireEvent.change(screen.getByTestId("new-end-time"), { target: { value: "12:00" } });
     fireEvent.change(screen.getByTestId("new-required-count"), { target: { value: "6" } });
     fireEvent.change(screen.getByTestId("new-reserve-count"), { target: { value: "2" } });
+    fireEvent.change(screen.getByTestId("new-contact-name"), { target: { value: "אחראי מטווח" } });
+    fireEvent.change(screen.getByTestId("new-contact-phone"), { target: { value: "050-0000000" } });
+    fireEvent.change(screen.getByLabelText("הוראות הגעה"), { target: { value: "להגיע בשמונה" } });
+    fireEvent.change(screen.getByLabelText("הערות"), { target: { value: "ציוד אישי" } });
 
     fireEvent.click(screen.getByText("שמור"));
 
@@ -221,6 +227,12 @@ describe("RangesPage create event", () => {
         range_type: "live",
         date: "2026-10-01",
         location: "מטווח צפון",
+        start_time: "08:00",
+        end_time: "12:00",
+        arrival_instructions: "להגיע בשמונה",
+        contact_name: "אחראי מטווח",
+        contact_phone: "050-0000000",
+        notes: "ציוד אישי",
         required_count: 6,
         reserve_count: 2,
       }),

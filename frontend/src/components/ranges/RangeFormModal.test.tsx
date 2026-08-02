@@ -16,5 +16,23 @@ describe("RangeFormModal",()=>{
   });
 
   it("requires explicit confirmation when changing date with assignments", async()=>{ const submit=vi.fn().mockResolvedValue(undefined); render(<RangeFormModal open event={event} hierarchyNodeId="n1" onClose={vi.fn()} onSubmit={submit}/>); fireEvent.change(screen.getByTestId("edit-date"),{target:{value:"2026-09-02"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(await screen.findByRole("alert")).toBeInTheDocument(); expect(submit).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("checkbox")); fireEvent.click(screen.getByRole("button",{name:"שמור"})); await waitFor(()=>expect(submit).toHaveBeenCalledWith(expect.objectContaining({date:"2026-09-02",force_schedule_change:true}))); });
+  it("resets the force confirmation when a different event is opened", async()=>{
+    const secondEvent = { ...event, id: "r2", date: "2026-10-01" };
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const { rerender } = render(<RangeFormModal open event={event} hierarchyNodeId="n1" onClose={onClose} onSubmit={submit}/>);
+
+    fireEvent.change(screen.getByTestId("edit-date"), { target: { value: "2026-09-02" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "שמור" }));
+    await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ force_schedule_change: true })));
+
+    rerender(<RangeFormModal open event={secondEvent} hierarchyNodeId="n1" onClose={onClose} onSubmit={submit}/>);
+    fireEvent.change(screen.getByTestId("edit-date"), { target: { value: "2026-10-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "שמור" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
   it("rejects an end time before the start time",()=>{ const submit=vi.fn(); render(<RangeFormModal open event={null} hierarchyNodeId="n1" onClose={vi.fn()} onSubmit={submit}/>); fireEvent.change(screen.getByTestId("new-date"),{target:{value:"2026-09-02"}}); fireEvent.change(screen.getByTestId("new-start-time"),{target:{value:"12:00"}}); fireEvent.change(screen.getByTestId("new-end-time"),{target:{value:"11:00"}}); fireEvent.click(screen.getByRole("button",{name:"שמור"})); expect(screen.getByRole("alert")).toBeInTheDocument(); expect(submit).not.toHaveBeenCalled(); });
 });
