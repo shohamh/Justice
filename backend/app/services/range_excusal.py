@@ -18,6 +18,14 @@ from app.services.notifications import create_notification, notify_duty_managers
 from app.services.ranges import RangeValidationError
 
 
+def _range_notification(session: Session, **kwargs):
+    from app.db.models import SystemSetting
+    setting = session.get(SystemSetting, "mitvachim.enabled")
+    if setting is None or setting.value is True:
+        return create_notification(session, **kwargs)
+    return None
+
+
 def _load_future_event(session: Session, assignment: RangeAssignment) -> RangeEvent:
     event = session.get(RangeEvent, assignment.range_event_id)
     if event is None:
@@ -62,7 +70,7 @@ def request_primary_excusal(
     )
     session.add(request)
     session.flush()
-    create_notification(
+    _range_notification(
         session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_pending,
         title="בקשת ההיעדרות נשלחה", reference_type="range_excusal_request",
         reference_id=request.id, actor_id=requested_by,
@@ -89,7 +97,7 @@ def request_reserve_excusal(
     session.add(request)
     session.delete(assignment)
     session.flush()
-    create_notification(
+    _range_notification(
         session, soldier_id=requested_by, type=NotificationType.range_reserve_excused,
         title="הוסרת ממטווח המילואים", reference_type="range_excusal_request",
         reference_id=request.id, actor_id=requested_by,
@@ -160,7 +168,7 @@ def decide_primary_excusal(
     request.decision_note = note.strip() if note and note.strip() else None
 
     if not approve:
-        create_notification(
+        _range_notification(
             session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_rejected,
             title="בקשת ההיעדרות נדחתה", body=request.decision_note,
             reference_type="range_excusal_request", reference_id=request.id, actor_id=decided_by,
@@ -172,12 +180,12 @@ def decide_primary_excusal(
         if promoted is not None:
             promoted.is_reserve = False
             request.promoted_assignment_id = promoted.id
-            create_notification(
+            _range_notification(
                 session, soldier_id=promoted.soldier_id, type=NotificationType.range_reserve_promoted,
                 title="קודמת משיבוץ מילואים למטווח", reference_type="range_excusal_request",
                 reference_id=request.id, actor_id=decided_by,
             )
-        create_notification(
+        _range_notification(
             session, soldier_id=request.requested_by or assignment.soldier_id,
             type=NotificationType.range_excusal_approved, title="בקשת ההיעדרות אושרה",
             reference_type="range_excusal_request", reference_id=request.id, actor_id=decided_by,

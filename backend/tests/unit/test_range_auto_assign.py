@@ -169,6 +169,84 @@ def test_candidate_pool_excludes_soldier_at_another_range_same_day(app_session: 
     assert soldier.id not in {a.soldier_id for a in created}
 
 
+
+def test_candidate_pool_applies_all_assignment_eligibility_filters_before_ranking(
+    app_session: Session,
+) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה eligibility matrix")
+    other_node = create_node(app_session, level="פלוגה", name="פלוגה outside matrix")
+    weapon_dt = _weapon_duty_type(app_session, node=node, name="weapon-eligibility-matrix")
+    from tests.helpers import create_duty_location
+
+    duty_location = create_duty_location(app_session)
+    event_date = date.today() + timedelta(days=5)
+    eligible = create_soldier(app_session, personal_number="6000010", hierarchy_node_id=node.id)
+    outside_subtree = create_soldier(app_session, personal_number="6000011", hierarchy_node_id=other_node.id)
+    constrained = create_soldier(app_session, personal_number="6000012", hierarchy_node_id=node.id)
+    on_duty = create_soldier(app_session, personal_number="6000013", hierarchy_node_id=node.id)
+    at_another_range = create_soldier(app_session, personal_number="6000014", hierarchy_node_id=node.id)
+    app_session.add(PersonalConstraint(
+        soldier_id=constrained.id, start_date=event_date, end_date=event_date,
+        reason="approved leave", status="approved",
+    ))
+    app_session.add(DutyAssignment(
+        soldier_id=on_duty.id, duty_type_id=weapon_dt.id, duty_location_id=duty_location.id,
+        start_date=event_date, end_date=event_date + timedelta(days=1), status="published",
+    ))
+    other_event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=event_date, location="another range", required_count=1,
+    )
+    add_range_assignment(app_session, event=other_event, soldier_id=at_another_range.id, is_reserve=False)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, location="מטווח", required_count=1,
+    )
+
+    created, shortfall = propose_range_assignments(app_session, event=event)
+
+    assert [assignment.soldier_id for assignment in created] == [eligible.id]
+    assert shortfall == 0
+    assert outside_subtree.id not in {assignment.soldier_id for assignment in created}
+
+
+def test_auto_assign_counts_existing_primary_and_reserve_assignments_separately(
+    app_session: Session,
+) -> None:
+    node = create_node(app_session, level="פלוגה", name="פלוגה existing quotas")
+    _weapon_duty_type(app_session, node=node, name="weapon-existing-quotas")
+    event_date = date.today() + timedelta(days=5)
+    existing_primary = create_soldier(app_session, personal_number="6000020", hierarchy_node_id=node.id)
+    existing_reserve = create_soldier(app_session, personal_number="6000021", hierarchy_node_id=node.id)
+    next_primary = create_soldier(app_session, personal_number="6000022", hierarchy_node_id=node.id)
+    next_reserve = create_soldier(app_session, personal_number="6000023", hierarchy_node_id=node.id)
+    app_session.add_all([
+        SoldierRangeQualification(
+            soldier_id=next_primary.id, range_type=RangeType.laser,
+            valid_until=event_date + timedelta(days=5),
+        ),
+        SoldierRangeQualification(
+            soldier_id=next_reserve.id, range_type=RangeType.laser,
+            valid_until=event_date + timedelta(days=10),
+        ),
+    ])
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=event_date, location="מטווח", required_count=2, reserve_count=2,
+    )
+    add_range_assignment(app_session, event=event, soldier_id=existing_primary.id, is_reserve=False)
+    add_range_assignment(app_session, event=event, soldier_id=existing_reserve.id, is_reserve=True)
+
+    created, shortfall = propose_range_assignments(app_session, event=event)
+
+    assert [(assignment.soldier_id, assignment.is_reserve, assignment.is_draft) for assignment in created] == [
+        (next_primary.id, False, True),
+        (next_reserve.id, True, True),
+    ]
+    assert shortfall == 0
+
 def test_tier_a_sorts_before_tier_b_before_tier_c(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה שכבות")
     location = None

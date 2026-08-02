@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,11 +15,12 @@ import { clearAllAssignments } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
-import { DataTable, type ColDef } from "../components/DataTable";
+import { type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 import DateInput from "../components/DateInput";
+import { PlanningTable } from "../components/planning";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -821,10 +822,23 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           return (
             <>
               {algorithmPanel}
-              <DataTable
-                columns={shiftCols}
-                data={shifts}
-                rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
+              <PlanningTable<DutyShift>
+                columns={shiftCols.map(column => ({
+                  key: column.id,
+                  label: column.header,
+                  render: column.cell,
+                  sortValue: column.sortValue,
+                  filterValue: column.filterValue,
+                  columnFilter: column.columnFilter,
+                  customColumnFilter: column.customColumnFilter,
+                  minWidth: column.minWidth,
+                  sortDescFirst: column.sortDescFirst,
+                }))}
+                rows={shifts}
+                getRowId={shift => shift.id}
+                getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
+                onRowClick={setEditShift}
+                rowClassName={shift => shift.status === "cancelled" ? "opacity-50" : ""}
                 filterPlaceholder={t("table.filter_placeholder")}
                 emptyMessage="אין משמרות"
               />

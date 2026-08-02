@@ -6,7 +6,7 @@ import { ShiftCandidate, getShiftCandidates } from "../api/assignments";
 import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
-import { useModalBackClose } from "../hooks/useModalBackClose";
+import { EventDetailModal } from "./planning";
 
 interface Props {
   shift: DutyShift;
@@ -29,7 +29,6 @@ function hierarchyDistance(pathA: string[], pathB: string[]): number {
 type ReserveCandidate = ShiftCandidate & { dist: number; coveringNames: string[]; coveringPrimarySoldierId: string | null };
 
 export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, onClose }: Props) {
-  useModalBackClose(onClose);
   const { t } = useTranslation();
   const [shiftDetail, setShiftDetail] = useState<CalendarShift | null>(null);
   const [candidates, setCandidates] = useState<ShiftCandidate[]>([]);
@@ -273,22 +272,12 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   const canSave = totalSelected > 0 || hasRemovals;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 flex flex-col max-h-[90vh]"
-        dir="rtl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h3 className="text-lg font-semibold">ערוך שיבוצים</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {dutyTypeName} · {shift.start_date} עד {lastDutyDay(shift.end_date)}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-lg">✕</button>
-        </div>
-
+    <EventDetailModal
+      open
+      title="ערוך שיבוצים"
+      subtitle={`${dutyTypeName} · ${shift.start_date} עד ${lastDutyDay(shift.end_date)}`}
+      onClose={onClose}
+    >
         {loading && <p className="text-sm text-gray-500 py-6 text-center">טוען...</p>}
 
         {!loading && (
@@ -501,8 +490,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
             {saving ? "שומר..." : `שמור${totalSelected > 0 ? ` (${totalSelected})` : ""}`}
           </button>
         </div>
-      </div>
-    </div>
+    </EventDetailModal>
   );
 }
 

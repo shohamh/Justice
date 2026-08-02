@@ -850,6 +850,9 @@ class RangeEvent(Base):
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True, default=None
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    cancellation_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -949,6 +952,7 @@ class SoldierRangeQualification(Base):
     source_range_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    source_range_event_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("range_events.id", ondelete="SET NULL"), nullable=True, default=None)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), init=False
     )
@@ -1172,6 +1176,9 @@ class NotificationType(str, _enum.Enum):
     enrollment_fields_edited = "enrollment_fields_edited"
     no_show_marked = "no_show_marked"
     range_assignment_confirmed = "range_assignment_confirmed"
+    range_roster_changed = "range_roster_changed"
+    range_cancelled = "range_cancelled"
+    range_no_show = "range_no_show"
     range_reminder = "range_reminder"
     range_reminder_shortfall = "range_reminder_shortfall"
     range_excusal_pending = "range_excusal_pending"

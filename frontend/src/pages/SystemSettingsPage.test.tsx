@@ -42,6 +42,16 @@ describe("SystemSettingsContent export/import", () => {
     expect(screen.getByText("ייבוא הגדרות")).toBeInTheDocument();
   });
 
+  it("renders the mitvachim toggle and reminder setting with fetched values", async () => {
+    vi.mocked(systemSettingsApi.getSystemSettings).mockResolvedValue({
+      "mitvachim.enabled": true,
+      "mitvachim.reminder_days_before": 5,
+    });
+    renderWithProviders(<SystemSettingsContent />);
+    expect(await screen.findByDisplayValue("5")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { pressed: true }).length).toBeGreaterThan(0);
+  });
+
   it("calls exportSystemSettings when the export button is clicked", async () => {
     vi.mocked(systemSettingsApi.exportSystemSettings).mockResolvedValue({
       "eligibility.mitvahim_months": 6,
