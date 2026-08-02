@@ -45,6 +45,8 @@ from app.db.models import (
     RangeAssignment,
     RangeAttendanceStatus,
     RangeEvent,
+    RangeExcusalRequest,
+    SoldierRangeQualification,
     RangeEventStatus,
     RangeType,
     RegistrationInviteCode,
@@ -75,6 +77,10 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             session.query(ScoreAdjustment).delete()
             session.query(SoldierExemption).delete()
             session.query(SwapRequest).delete()
+            session.query(RangeExcusalRequest).delete()
+            session.query(SoldierRangeQualification).delete()
+            session.query(RangeAssignment).delete()
+            session.query(RangeEvent).delete()
             session.query(ExemptionDutyTypeMap).delete()
             session.query(DutyReserveLink).delete()
             session.query(DutyAssignment).delete()
@@ -98,6 +104,13 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         # and they never get recreated on any later run.
         from app.scripts.bootstrap import main as bootstrap_main
         bootstrap_main()
+
+        # Keep feature settings present even when the idempotent seed exits
+        # early because the regular demo data already exists.
+        for key, value in (("mitvachim.enabled", False), ("mitvachim.reminder_days_before", 3)):
+            if session.get(SystemSetting, key) is None:
+                session.add(SystemSetting(key=key, value=value, updated_by=None))
+        session.flush()
 
         admin = session.query(Soldier).filter(Soldier.personal_number == "1000001").first()
         if admin:

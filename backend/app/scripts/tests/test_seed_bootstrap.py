@@ -57,3 +57,28 @@ def test_reseeding_twice_keeps_root_and_holding_nodes_alive(db_admin_url: str):
 
         psips = s.query(HierarchyNode).filter(HierarchyNode.name == "פסיפס").one()
         assert psips.parent_id == root.id
+
+
+def test_seed_creates_stable_range_scenarios_without_duplicates(db_admin_url: str):
+    from datetime import date
+
+    from app.db.models import RangeAssignment, RangeAttendanceStatus, RangeEvent, SystemSetting
+    from app.db.session import SessionLocal
+    from app.scripts import seed as seed_module
+
+    seed_module.seed(force=True)
+    seed_module.seed()
+
+    with SessionLocal() as s:
+        assert s.get(SystemSetting, "mitvachim.enabled").value is True
+        events = s.query(RangeEvent).all()
+        assert len(events) == 3
+        past_no_show = [e for e in events if e.date < date.today() and any(
+            a.attendance_status == RangeAttendanceStatus.no_show
+            for a in s.query(RangeAssignment).filter_by(range_event_id=e.id).all()
+        )]
+        upcoming_staffed = [e for e in events if e.date > date.today() and s.query(RangeAssignment).filter_by(range_event_id=e.id).count() > 0]
+        upcoming_empty = [e for e in events if e.date > date.today() and s.query(RangeAssignment).filter_by(range_event_id=e.id).count() == 0]
+        assert len(past_no_show) == 1
+        assert len(upcoming_staffed) == 1
+        assert len(upcoming_empty) == 1
