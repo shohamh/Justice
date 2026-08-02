@@ -78,6 +78,25 @@ describe("RangeEditAssignmentsModal", () => {
     await waitFor(() => expect(rangesApi.confirmAllDrafts).toHaveBeenCalledWith("event-1"));
   });
 
+  it.each([
+    ["add", "add-soldier-s1", "הוספת השיבוץ נכשלה", () => vi.mocked(rangesApi.addRangeAssignment).mockRejectedValue(new Error("add"))],
+    ["remove", "remove-assignment-a1", "הסרת השיבוץ נכשלה", () => vi.mocked(rangesApi.removeRangeAssignment).mockRejectedValue(new Error("remove"))],
+    ["auto", "range-auto-assign", "השיבוץ האוטומטי נכשל", () => vi.mocked(rangesApi.autoAssignRange).mockRejectedValue(new Error("auto"))],
+    ["confirm", "confirm-draft-a1", "אישור השיבוץ נכשל", () => vi.mocked(rangesApi.confirmDraftAssignment).mockRejectedValue(new Error("confirm"))],
+  ])("shows a user-facing error when %s fails", async (_name, button, message, configure) => {
+    configure();
+    renderModal({ event: button === "add-soldier-s1" ? event() : event([assignment("a1", "s1", false, button === "confirm-draft-a1")]) });
+    fireEvent.click(screen.getByTestId(button));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
+  it("shows an error when confirming all drafts fails", async () => {
+    vi.mocked(rangesApi.confirmAllDrafts).mockRejectedValue(new Error("confirm all"));
+    renderModal({ event: event([assignment("a1", "s1", false, true)]) });
+    fireEvent.click(screen.getByTestId("range-confirm-all"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("אישור השיבוצים נכשל");
+  });
+
   it("reports full primary and reserve capacity and closes explicitly", () => {
     const { props } = renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2"), assignment("a3", "s3", true)]) });
     expect(screen.getAllByTestId("range-capacity-full").length).toBe(2);

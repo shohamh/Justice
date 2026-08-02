@@ -22,10 +22,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [shortfall, setShortfall] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setAssignments(event.assignments);
     setShortfall(null);
+    setError("");
   }, [event]);
 
   const primary = useMemo(() => assignments.filter(a => !a.is_reserve), [assignments]);
@@ -40,10 +42,13 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   async function add(soldier: SoldierDTO) {
     if (!editable || adding || (reserve ? reserveFull : primaryFull)) return;
     setAdding(soldier.id);
+    setError("");
     try {
       const created = await addRangeAssignment(event.id, soldier.id, reserve);
       setAssignments(current => [...current, created]);
       await onChanged();
+    } catch {
+      setError("הוספת השיבוץ נכשלה");
     } finally {
       setAdding(null);
     }
@@ -52,10 +57,13 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   async function remove(assignmentId: string) {
     if (!editable || removing) return;
     setRemoving(assignmentId);
+    setError("");
     try {
       await removeRangeAssignment(event.id, assignmentId);
       setAssignments(current => current.filter(a => a.id !== assignmentId));
       await onChanged();
+    } catch {
+      setError("הסרת השיבוץ נכשלה");
     } finally {
       setRemoving(null);
     }
@@ -64,11 +72,14 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   async function autoAssign() {
     if (!editable || autoAssigning) return;
     setAutoAssigning(true);
+    setError("");
     try {
       const result = await autoAssignRange(event.id);
       setAssignments(current => [...current, ...result.created.filter(a => !current.some(existing => existing.id === a.id))]);
       setShortfall(result.shortfall || null);
       await onChanged();
+    } catch {
+      setError("השיבוץ האוטומטי נכשל");
     } finally {
       setAutoAssigning(false);
     }
@@ -77,10 +88,13 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   async function confirmDraft(assignmentId: string) {
     if (!editable || confirming || confirmingAll) return;
     setConfirming(assignmentId);
+    setError("");
     try {
       const confirmed = await confirmDraftAssignment(event.id, assignmentId);
       setAssignments(current => current.map(a => a.id === assignmentId ? confirmed : a));
       await onChanged();
+    } catch {
+      setError("אישור השיבוץ נכשל");
     } finally {
       setConfirming(null);
     }
@@ -89,10 +103,13 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
   async function confirmAll() {
     if (!editable || confirming || confirmingAll) return;
     setConfirmingAll(true);
+    setError("");
     try {
       const confirmed = await confirmAllDrafts(event.id);
       setAssignments(current => confirmed.length > 0 ? current.map(a => confirmed.find(c => c.id === a.id) ?? a) : current.map(a => ({ ...a, is_draft: false })));
       await onChanged();
+    } catch {
+      setError("אישור השיבוצים נכשל");
     } finally {
       setConfirmingAll(false);
     }
@@ -111,6 +128,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   return <EventDetailModal open={open} title="עריכת שיבוצים" subtitle={`${event.location} · ${event.date}`} onClose={onClose}>
     <div className="space-y-4">
+      {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {shortfall !== null && <div className="rounded bg-amber-100 px-3 py-2 text-sm">לא נמצאו מספיק מועמדים — חסרים {shortfall} שיבוצים</div>}
       <section data-testid="range-primary-assignments" className="rounded border dark:border-gray-600"><h4 className="border-b px-3 py-2 text-sm font-semibold dark:border-gray-600">שיבוצים ראשיים <span className="font-normal text-gray-500">{primary.length}/{event.required_count} {primaryFull && <span data-testid="range-capacity-full">· מלאה</span>}</span></h4><ul>{primary.length ? primary.map(renderAssignment) : <li className="px-3 py-2 text-sm text-gray-500">אין שיבוצים</li>}</ul></section>
       <section data-testid="range-reserve-assignments" className="rounded border dark:border-gray-600"><h4 className="border-b px-3 py-2 text-sm font-semibold dark:border-gray-600">שיבוצי רזרבה <span className="font-normal text-gray-500">{reserves.length}/{event.reserve_count} {reserveFull && <span data-testid="range-capacity-full">· מלאה</span>}</span></h4><ul>{reserves.length ? reserves.map(renderAssignment) : <li className="px-3 py-2 text-sm text-gray-500">אין שיבוצי רזרבה</li>}</ul></section>
