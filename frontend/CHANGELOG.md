@@ -3,18 +3,17 @@
 ## 2026-08-02
 
 ### Features
-- מטווחים: נוספה זרימת excusal מלאה — בקשות היעדרות לחיילים ראשיים עם אישור מנהל/מפקד, ביטול עצמי לרזרבות, וקידום אוטומטי של רזרבה מתאימה.
-- מטווחים: נוספו תזכורות חד־פעמיות לפני האירוע לחיילים ולמנהלים, כולל התראת מחסור כאשר הסבב אינו מלא, והגדרה למספר הימים מראש.
-- לוח השנה ממשיך להציג את נתוני התורנויות גם כאשר טעינת נתוני המטווחים נכשלת.
+- Added a shift-like Mitvachim planning board and shared UI for arranging range events and rosters.
+- Added full range lifecycle controls, including roster management, editing, and cancellation.
+- Added range notifications for relevant planning and assignment events.
 
 ### Fixes
-- תוקנה אינטראקציה במודאל אישור הרשמה כך שהמודאל נשאר פתוח במהלך הפעולה.
+- Added scoped and history guards to range workflows so actions and historical data respect authorization and lifecycle state.
+- Made range seed scenarios deterministic for repeatable development and test data.
 
 ### Chores
 - Improved backend solver-test throughput by parallelizing independent fairness scenarios and making their generated inputs deterministic.
-- שופרה תשתית בדיקות ה־backend בהרצה מקבילית באמצעות מסד נתונים משותף ותבנית migrations.
-- נוספו בדיקות לזרימות excusal, לתזכורות מטווחים ול־fallback של נתוני לוח השנה.
-
+- Added automatic-assignment regression tests and documented the range planning design and implementation.
 
 ## 2026-08-01
 
