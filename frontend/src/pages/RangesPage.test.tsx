@@ -45,6 +45,7 @@ beforeEach(() => {
   const mockUser = { id: "me", hierarchy_node_id: "node-1", role: "admin", is_duty_manager: true } as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
+  vi.mocked(rangesApi.getRangeExcusalRequests).mockResolvedValue([]);
 });
 
 describe("RangesPage", () => {
@@ -140,6 +141,33 @@ describe("RangesPage", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByTestId("event-1").querySelector("button")!);
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
+  });
+
+  it("uses standard detail metadata, action buttons, and grouped range information", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([{
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
+      arrival_instructions: "להגיע בשבע", contact_name: "אחראי מטווח", contact_phone: "050-0000000", notes: "ציוד אישי",
+    }]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "planned", assignments: [],
+      arrival_instructions: "להגיע בשבע", contact_name: "אחראי מטווח", contact_phone: "050-0000000", notes: "ציוד אישי",
+    });
+
+    renderWithQuery(<RangesPage />);
+    fireEvent.click(await screen.findByText("מטווח דרום"));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.querySelector("dl")).toHaveClass("grid", "rounded", "p-3");
+    expect(screen.getByTestId("range-detail-actions")).toHaveClass("flex", "flex-wrap", "gap-2");
+    expect(screen.getByTestId("range-detail-information")).toBeInTheDocument();
+    expect(screen.getByTestId("range-detail-roster")).toBeInTheDocument();
+    expect(screen.getByText("הוראות הגעה:")).toBeInTheDocument();
+    expect(screen.getByText("איש קשר:")).toBeInTheDocument();
+    expect(screen.getByText("הערות:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ערוך" })).toHaveClass("bg-blue-600", "text-white");
+    expect(screen.getByRole("button", { name: "בטל" })).toHaveClass("border", "text-amber-700");
   });
 
   it("does not offer deletion when assignments exist despite stale filled counts", async () => {
