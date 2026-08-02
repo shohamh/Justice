@@ -29,6 +29,8 @@ from app.services.settings_loader import SettingNotFound, get_setting
 class RangeValidationError(Exception):
     pass
 
+_UNSET = object()
+
 
 _RANGE_ASSIGNMENT_LOCK_NAMESPACE = 0x52414E47
 
@@ -91,46 +93,75 @@ def update_range_event(
     session: Session,
     *,
     event: RangeEvent,
-    location: str | None = None,
-    arrival_instructions: str | None = None,
-    contact_name: str | None = None,
-    contact_phone: str | None = None,
-    required_count: int | None = None,
-    reserve_count: int | None = None,
-    notes: str | None = None,
+    hierarchy_node_id: uuid.UUID | object = _UNSET,
+    range_type: RangeType | object = _UNSET,
+    event_date: date | object = _UNSET,
+    start_time: str | None | object = _UNSET,
+    end_time: str | None | object = _UNSET,
+    location: str | object = _UNSET,
+    arrival_instructions: str | None | object = _UNSET,
+    contact_name: str | None | object = _UNSET,
+    contact_phone: str | None | object = _UNSET,
+    required_count: int | object = _UNSET,
+    reserve_count: int | object = _UNSET,
+    notes: str | None | object = _UNSET,
     actor_id: uuid.UUID | None = None,
 ) -> RangeEvent:
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
     before: dict = {}
     after: dict = {}
-    if required_count is not None:
+    if hierarchy_node_id is not _UNSET:
+        if session.get(HierarchyNode, hierarchy_node_id) is None:
+            raise RangeValidationError("hierarchy_node_not_found")
+        before["hierarchy_node_id"] = str(event.hierarchy_node_id)
+        event.hierarchy_node_id = hierarchy_node_id
+        after["hierarchy_node_id"] = str(hierarchy_node_id)
+    if range_type is not _UNSET:
+        before["range_type"] = event.range_type
+        event.range_type = range_type
+        after["range_type"] = range_type
+    if event_date is not _UNSET:
+        before["date"] = event.date.isoformat()
+        event.date = event_date
+        after["date"] = event_date.isoformat()
+    if start_time is not _UNSET:
+        before["start_time"] = event.start_time
+        event.start_time = start_time
+        after["start_time"] = start_time
+    if end_time is not _UNSET:
+        before["end_time"] = event.end_time
+        event.end_time = end_time
+        after["end_time"] = end_time
+    if required_count is not _UNSET:
         if required_count < 0:
             raise RangeValidationError("counts_must_be_non_negative")
         before["required_count"] = event.required_count
         event.required_count = required_count
         after["required_count"] = required_count
-    if reserve_count is not None:
+    if reserve_count is not _UNSET:
         if reserve_count < 0:
             raise RangeValidationError("counts_must_be_non_negative")
         before["reserve_count"] = event.reserve_count
         event.reserve_count = reserve_count
         after["reserve_count"] = reserve_count
-    if location is not None:
+    if location is not _UNSET:
         before["location"] = event.location
         event.location = location
         after["location"] = location
-    if arrival_instructions is not None:
+    if arrival_instructions is not _UNSET:
         before["arrival_instructions"] = event.arrival_instructions
         event.arrival_instructions = arrival_instructions
         after["arrival_instructions"] = arrival_instructions
-    if contact_name is not None:
+    if contact_name is not _UNSET:
         before["contact_name"] = event.contact_name
         event.contact_name = contact_name
         after["contact_name"] = contact_name
-    if contact_phone is not None:
+    if contact_phone is not _UNSET:
         before["contact_phone"] = event.contact_phone
         event.contact_phone = contact_phone
         after["contact_phone"] = contact_phone
-    if notes is not None:
+    if notes is not _UNSET:
         before["notes"] = event.notes
         event.notes = notes
         after["notes"] = notes
@@ -143,8 +174,16 @@ def update_range_event(
     return event
 
 
-def cancel_range_event(session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None) -> RangeEvent:
+def cancel_range_event(
+    session: Session, *, event: RangeEvent, reason: str, actor_id: uuid.UUID | None = None
+) -> RangeEvent:
+    reason = reason.strip()
+    if not reason:
+        raise RangeValidationError("reason_required")
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
     previous_status = event.status
+    event.cancellation_reason = reason
     event.status = RangeEventStatus.cancelled
     write_audit(
         session, actor_id=actor_id, action="range_event.cancel", entity_type="range_event",
@@ -153,6 +192,18 @@ def cancel_range_event(session: Session, *, event: RangeEvent, actor_id: uuid.UU
     session.commit()
     session.refresh(event)
     return event
+
+
+def delete_range_event(session: Session, *, event: RangeEvent) -> None:
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+    has_assignments = session.query(RangeAssignment.id).filter(
+        RangeAssignment.range_event_id == event.id
+    ).first()
+    if has_assignments is not None:
+        raise RangeValidationError("event_has_assignments")
+    session.delete(event)
+    session.commit()
 
 
 def add_range_assignment(
