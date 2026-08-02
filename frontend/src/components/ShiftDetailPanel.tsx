@@ -12,7 +12,7 @@ import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
-import { useModalBackClose } from "../hooks/useModalBackClose";
+import { EventDetailModal } from "./planning";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -41,7 +41,6 @@ interface Props {
 }
 
 export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Props) {
-  useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);
@@ -140,20 +139,12 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 max-w-lg w-full max-h-[80vh] overflow-y-auto mx-4"
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h3 className="font-bold text-lg">{shift.duty_type_name} — {shift.duty_location_name}</h3>
-            <p className="text-sm text-gray-500">{formatDutyRange(shift.start_date, shift.end_date)}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
-        </div>
-
+    <EventDetailModal
+      open
+      title={`${shift.duty_type_name} — ${shift.duty_location_name}`}
+      subtitle={formatDutyRange(shift.start_date, shift.end_date)}
+      onClose={onClose}
+    >
         {(() => {
           const dt = shiftDutyTypes[shift.duty_type_id];
           if (!dt) return null;
@@ -426,7 +417,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             onDone={() => { setOfferSwapTarget(null); onRefreshNeeded(); }}
           />
         )}
-      </div>
-    </div>
+    </EventDetailModal>
   );
 }
