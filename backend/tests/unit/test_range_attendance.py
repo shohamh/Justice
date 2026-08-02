@@ -111,7 +111,7 @@ def test_mark_no_show_notifies_manager_once_with_range_context(app_session: Sess
         Notification.reference_id == event.id,
     )).scalars().all()
     assert len(notifications) == 1
-    assert "×œ× ×”×•×¤×™¢" in (notifications[0].body or "")
+    assert "reason=" in (notifications[0].body or "")
 
 def test_mark_present_rejects_draft_before_creating_qualification(app_session: Session) -> None:
     past_date = date.today() - timedelta(days=1)
@@ -181,7 +181,7 @@ def test_mark_attendance_rejects_future_event(app_session: Session) -> None:
 def test_mark_attendance_rejects_cancelled_event(app_session: Session) -> None:
     past_date = date.today() - timedelta(days=1)
     event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
-    cancel_range_event(app_session, event=event)
+    cancel_range_event(app_session, event=event, reason="test cancellation")
 
     with pytest.raises(RangeValidationError):
         mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
@@ -205,7 +205,12 @@ def test_correcting_present_to_no_show_reverses_qualification_and_applies_penalt
             SoldierRangeQualification.range_type == RangeType.laser,
         )
     ).scalar_one_or_none()
-    assert remaining_qualification is None
+    assert remaining_qualification is not None
+    from app.services.ranges import get_effective_range_qualification
+
+    assert get_effective_range_qualification(
+        app_session, soldier_id=soldier.id, range_type=RangeType.laser
+    ) is None
 
 
 def test_correcting_no_show_to_present_reverses_penalty_and_sets_qualification(app_session: Session) -> None:

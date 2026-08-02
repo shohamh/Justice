@@ -437,7 +437,7 @@ def test_propose_rejects_non_planned_event(app_session: Session) -> None:
         event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
     )
     from app.services.ranges import cancel_range_event
-    cancel_range_event(app_session, event=event)
+    cancel_range_event(app_session, event=event, reason="test cancellation")
 
     with pytest.raises(RangeValidationError):
         propose_range_assignments(app_session, event=event)
@@ -662,7 +662,7 @@ def test_confirm_draft_rejects_event_not_planned(app_session: Session) -> None:
     created, _ = propose_range_assignments(app_session, event=event)
     draft = created[0]
     from app.services.ranges import cancel_range_event
-    cancel_range_event(app_session, event=event)
+    cancel_range_event(app_session, event=event, reason="test cancellation")
 
     with pytest.raises(RangeValidationError):
         confirm_draft_assignment(app_session, assignment=draft)
