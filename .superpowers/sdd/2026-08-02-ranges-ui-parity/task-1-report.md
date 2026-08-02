@@ -29,3 +29,8 @@ Implemented the ranges planning screen/table parity requested by the brief.
 - The focused test run emits existing React Router future-flag warnings and React Query warnings caused by existing test mocks returning `undefined` for excusal requests. They do not fail the suite.
 - No separate `RangePlanningTable.test.tsx` was needed; the page parity tests exercise the shared table through the real component.
 
+## Round 1 reviewer fix
+
+- Fixed delete eligibility in `RangesPage` to derive primary/reserve filled counts exclusively from non-draft event assignments, ignoring potentially stale `primary_filled` and `reserve_filled` summary fields.
+- Added a regression assertion proving that an event with a confirmed assignment and stale zero summary fields cannot reach confirmation or call the delete API.
+- Regression validation: focused test passed (`1 passed`, `25 skipped`).

@@ -141,6 +141,28 @@ describe("RangesPage", () => {
     fireEvent.click(screen.getByTestId("event-1").querySelector("button")!);
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
   });
+
+  it("does not offer deletion when assignments exist despite stale filled counts", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-with-assignment", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח עם שיבוץ", required_count: 4,
+        reserve_count: 1, primary_filled: 0, reserve_filled: 0, status: "planned",
+        assignments: [{
+          id: "assignment-1", soldier_id: "soldier-1", is_reserve: false,
+          is_draft: false, attendance_status: "pending", note: null,
+        }],
+      },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+
+    fireEvent.click(await screen.findByTestId("delete-range-event-with-assignment"));
+
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(rangesApi.deleteRangeEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe("RangesPage create event", () => {
