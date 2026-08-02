@@ -26,3 +26,15 @@ Implemented and committed on `feature/ranges-ui-parity`.
 
 - The pre-existing inline range assignment controls remain in `RangeDetailContent` for backward-compatible current coverage; the new modal is the explicit shift-style editor entry point. Attendance and excusal behavior remains unchanged in that detail view.
 - Focused test output includes existing React Router future-flag warnings; they do not fail the suite.
+
+## Round 1 review fixes
+
+- Removed the duplicate inline assignment mutation surface from `RangeDetailContent`; only attendance/no-show and excusal behavior remain there. Assignment editing, adding, removing, auto-assignment, and draft confirmation are modal-only.
+- Made the detail modal and assignment editor mutually exclusive in `RangesPage`. The editor now owns Escape while open, and closing it restores the selected event detail without clearing `selected`.
+- Added regressions for the absence of inline assignment controls and Escape-close preservation.
+- Retired obsolete page-level tests for assignment mutations; those behaviors remain covered by `RangeEditAssignmentsModal.test.tsx`.
+
+Round 1 verification:
+
+- `npm.cmd test -- --run src/components/ranges/RangeEditAssignmentsModal.test.tsx src/pages/RangesPage.test.tsx`: 21 active tests passed, 13 obsolete tests skipped.
+- `npm.cmd run lint`: passed with zero lint errors/warnings.
