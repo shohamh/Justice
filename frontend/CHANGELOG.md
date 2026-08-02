@@ -11,6 +11,7 @@
 - תוקנה אינטראקציה במודאל אישור הרשמה כך שהמודאל נשאר פתוח במהלך הפעולה.
 
 ### Chores
+- Improved backend solver-test throughput by parallelizing independent fairness scenarios and making their generated inputs deterministic.
 - שופרה תשתית בדיקות ה־backend בהרצה מקבילית באמצעות מסד נתונים משותף ותבנית migrations.
 - נוספו בדיקות לזרימות excusal, לתזכורות מטווחים ול־fallback של נתוני לוח השנה.
 
