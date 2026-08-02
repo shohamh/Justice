@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import SystemSetting
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import auth_headers, create_node, create_soldier
 
 
 def test_mitvachim_enabled_appears_in_public_settings(client: TestClient, admin_session: Session) -> None:
@@ -20,7 +20,10 @@ def test_mitvachim_enabled_appears_in_public_settings(client: TestClient, admin_
 
 
 def test_mitvachim_public_value_and_range_route_follow_toggle(client: TestClient, admin_session: Session) -> None:
-    soldier = create_soldier(admin_session, personal_number="mitvachim_gate_001")
+    node = create_node(admin_session, level="department", name="mitvachim-gate")
+    soldier = create_soldier(
+        admin_session, personal_number="mitvachim_gate_001", hierarchy_node_id=node.id
+    )
     setting = admin_session.get(SystemSetting, "mitvachim.enabled")
     if setting is None:
         setting = SystemSetting(key="mitvachim.enabled", value=False, updated_by=None)

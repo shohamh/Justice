@@ -53,7 +53,8 @@ def test_single_shift_required_count_1(admin_session):
 def test_shift_expands_to_N_blocks(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date.today() + timedelta(days=1), date.today() + timedelta(days=2), count=4)
+    start = date.today() + timedelta(days=1)
+    shift = _shift(admin_session, dt, loc, start, start + timedelta(days=1), count=4)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
