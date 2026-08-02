@@ -148,8 +148,11 @@ def _event_out(
     include_assignments: bool = False,
     include_drafts: bool = True,
 ) -> RangeEventOut:
-    query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id, RangeAssignment.is_draft.is_(False))
+    query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
+    if not include_drafts:
+        query = query.filter(RangeAssignment.is_draft.is_(False))
     rows = query.all()
+    confirmed_rows = [a for a in rows if not a.is_draft]
     assignments = [_assignment_out(a) for a in rows] if include_assignments else []
     return RangeEventOut(
         id=event.id,
@@ -168,8 +171,8 @@ def _event_out(
         status=event.status,
         cancellation_reason=event.cancellation_reason,
         assignments=assignments,
-        primary_filled=sum(not a.is_reserve for a in rows),
-        reserve_filled=sum(a.is_reserve for a in rows),
+        primary_filled=sum(not a.is_reserve for a in confirmed_rows),
+        reserve_filled=sum(a.is_reserve for a in confirmed_rows),
     )
 
 
@@ -477,7 +480,7 @@ def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEve
     try:
         required_level = str(get_setting(session, "mitvachim.excusal_approve_min_commander_level"))
     except SettingNotFound:
-        required_level = "????"
+        required_level = "מדור"
     if not dm_scope_covers_target(
         session, scope_root_ids=scope_root_ids(session, user), target_node=node,
         required_level_key=required_level,

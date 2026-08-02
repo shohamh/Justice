@@ -838,8 +838,8 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                 getRowId={shift => shift.id}
                 getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
                 onRowClick={setEditShift}
-                rowClassName={shift => shift.status === ""cancelled"" ? ""opacity-50"" : """"}
-                filterPlaceholder={t(""table.filter_placeholder"")}
+                rowClassName={shift => shift.status === "cancelled" ? "opacity-50" : ""}
+                filterPlaceholder={t("table.filter_placeholder")}
                 emptyMessage="אין משמרות"
               />
             </>
