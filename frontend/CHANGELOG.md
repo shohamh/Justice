@@ -10,10 +10,12 @@
 ### Fixes
 - Added scoped and history guards to range workflows so actions and historical data respect authorization and lifecycle state.
 - Made range seed scenarios deterministic for repeatable development and test data.
+- Hardened range API startup and validation, including date-field annotation resolution, explicit node-id handling, and correct delete responses.
 
 ### Chores
 - Improved backend solver-test throughput by parallelizing independent fairness scenarios and making their generated inputs deterministic.
 - Added automatic-assignment regression tests and documented the range planning design and implementation.
+- Stabilized date-sensitive range, attendance, roster, and constraint tests; the full backend and frontend suites now pass on the release branch.
 
 ## 2026-08-01
 
