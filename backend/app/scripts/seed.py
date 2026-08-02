@@ -1575,8 +1575,16 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
         if mitvachim_setting is not None:
             mitvachim_setting.value = True
 
+        if session.query(RangeEvent.id).first() is not None:
+            session.commit()
+            return
         range_node = all_teams[0]
-        range_soldiers = [s for s in all_soldiers if s.hierarchy_node_id == range_node.id]
+        node_by_id = {n.id: n for n in all_nodes}
+        range_soldiers = [
+            s for s in all_soldiers
+            if s.hierarchy_node_id in node_by_id
+            and range_node.id in node_by_id[s.hierarchy_node_id].path_ids
+        ]
         if len(range_soldiers) >= 4:
             # Past laser range: attended (present ×2), one no-show — exercises
             # qualification-expiry and score-penalty side effects end to end.

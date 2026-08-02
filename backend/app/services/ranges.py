@@ -141,10 +141,25 @@ def update_range_event(
     required_count: int | object = _UNSET,
     reserve_count: int | object = _UNSET,
     notes: str | None | object = _UNSET,
+    force_schedule_change: bool = False,
     actor_id: uuid.UUID | None = None,
 ) -> RangeEvent:
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
+    assignments_exist = session.query(RangeAssignment.id).filter(
+        RangeAssignment.range_event_id == event.id,
+        RangeAssignment.is_draft.is_(False),
+    ).first() is not None
+    schedule_changed = (
+        (range_type is not _UNSET and range_type != event.range_type)
+        or (event_date is not _UNSET and event_date != event.date)
+    )
+    if schedule_changed and assignments_exist and not force_schedule_change:
+        raise RangeValidationError("schedule_change_confirmation_required")
+    proposed_start = event.start_time if start_time is _UNSET else start_time
+    proposed_end = event.end_time if end_time is _UNSET else end_time
+    if proposed_start and proposed_end and proposed_start > proposed_end:
+        raise RangeValidationError("start_time_after_end_time")
     before: dict = {}
     after: dict = {}
     if hierarchy_node_id is not _UNSET:
@@ -250,6 +265,11 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     ).first()
     if has_assignments is not None:
         raise RangeValidationError("event_has_assignments")
+    has_history = session.query(SoldierRangeQualification.id).filter(
+        SoldierRangeQualification.source_range_event_id == event.id
+    ).first()
+    if has_history is not None:
+        raise RangeValidationError("event_has_history")
     session.delete(event)
     session.commit()
 
@@ -346,6 +366,7 @@ def _record_qualification(session: Session, *, soldier_id: uuid.UUID, range_type
     session.add(SoldierRangeQualification(
         soldier_id=soldier_id, range_type=range_type, valid_until=valid_until,
         source_range_assignment_id=source_range_assignment_id,
+        source_range_event_id=session.get(RangeAssignment, source_range_assignment_id).range_event_id,
     ))
 
 

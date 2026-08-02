@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { DataTable, type ColDef } from "../DataTable";
+import { DataTable, type ColDef } from "../DataTable"; import type { SortingState } from "@tanstack/react-table";
 
 export interface PlanningColumn<T> {
   key: string;
@@ -30,6 +30,9 @@ export interface PlanningTableProps<T> {
   loadingMessage?: ReactNode;
   actionsLabel?: ReactNode;
   children?: ReactNode;
+  filterPlaceholder?: string;
+  rowClassName?: (row: T) => string;
+  defaultSort?: SortingState;
 }
 
 export function PlanningTable<T>({
@@ -47,6 +50,9 @@ export function PlanningTable<T>({
   emptyMessage = "אין נתונים",
   loadingMessage = "טוען...",
   actionsLabel = "פעולות",
+  filterPlaceholder,
+  rowClassName,
+  defaultSort,
 }: PlanningTableProps<T>) {
   const dataColumns: ColDef<T>[] = columns.map(column => ({
     id: column.key,
@@ -75,6 +81,9 @@ export function PlanningTable<T>({
         onRowClick={onRowClick}
         getRowLabel={getRowLabel}
         rowTestId={getRowId}
+        filterPlaceholder={filterPlaceholder}
+        rowClassName={rowClassName}
+        defaultSort={defaultSort}
       />
       {pagination}
     </div>
