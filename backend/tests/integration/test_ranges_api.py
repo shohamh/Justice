@@ -629,7 +629,7 @@ def test_confirm_all_400_on_cancelled_event(client: TestClient, admin_session: S
     assert auto_resp.status_code == 200
 
     cancel_resp = client.patch(
-        f"/api/ranges/{event_id}", json={"cancel": True}, headers=auth_headers(dm)
+        f"/api/ranges/{event_id}", json={"cancel": True, "cancellation_reason": "????? ????"}, headers=auth_headers(dm)
     )
     assert cancel_resp.status_code == 200
 

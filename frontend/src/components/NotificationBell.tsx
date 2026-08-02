@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO } from "../api/notifications";
+import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
 
 export default function NotificationBell() {
   const { t } = useTranslation();
@@ -25,6 +25,9 @@ export default function NotificationBell() {
     }
     if (n.reference_type === "duty_assignment") {
       return "/";
+    }
+    if ((n.reference_type === "range_event" || n.reference_type === "range_assignment") && n.reference_id) {
+      return `/ranges?event=${n.reference_id}`;
     }
     return null;
   }
@@ -73,15 +76,7 @@ export default function NotificationBell() {
     setNotifications([]);
   }
 
-  const typeLabels: Record<string, string> = {
-    swap_offer: "🔄", swap_accepted: "✅", swap_rejected: "❌",
-    exemption_approved: "✔️", exemption_rejected: "✖️",
-    constraint_approved: "✔️", constraint_rejected: "✖️",
-    assignment_created: "📋", assignment_removed: "🗑️",
-    range_reminder: "🔔", range_reminder_shortfall: "⚠️", range_assignment_confirmed: "🎯",
-    score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
-    algorithm_job_done: "🤖", algorithm_job_failed: "⚠️",
-  };
+
 
   return (
     <div ref={ref}>
@@ -125,7 +120,7 @@ export default function NotificationBell() {
             ) : (
               notifications.map((n) => (
                 <div key={n.id} className="flex items-start gap-2 p-3 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <span className="text-lg">{typeLabels[n.type] || "🔔"}</span>
+                  <span className="text-lg" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
                     {notifLink(n) ? (
                       <button

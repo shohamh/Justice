@@ -52,6 +52,16 @@ def _load_event(session: Session, event_id: uuid.UUID) -> RangeEvent:
     return event
 
 
+def _authorize_range_read(session: Session, user: Soldier, node: HierarchyNode | None) -> bool:
+    try:
+        authorize(session, user, Action.RANGE_MANAGE, target_node=node)
+        return True
+    except HTTPException:
+        if is_commander(session, user.id) and _node_in_scope(node, scope_root_ids(session, user)):
+            return False
+        raise
+
+
 class CreateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: RangeType
@@ -68,6 +78,11 @@ class CreateRangeEventBody(BaseModel):
 
 
 class UpdateRangeEventBody(BaseModel):
+    hierarchy_node_id: uuid.UUID | None = None
+    range_type: RangeType | None = None
+    date: date | None = None
+    start_time: str | None = None
+    end_time: str | None = None
     location: str | None = None
     required_count: int | None = Field(default=None, ge=0)
     reserve_count: int | None = Field(default=None, ge=0)
@@ -76,6 +91,8 @@ class UpdateRangeEventBody(BaseModel):
     contact_phone: str | None = None
     notes: str | None = None
     cancel: bool = False
+    cancellation_reason: str | None = None
+    force_schedule_change: bool = False
 
 
 class AddAssignmentBody(BaseModel):
@@ -93,6 +110,12 @@ class RangeAssignmentOut(BaseModel):
 
 
 class RangeEventOut(BaseModel):
+    start_time: str | None
+    end_time: str | None
+    arrival_instructions: str | None
+    contact_name: str | None
+    contact_phone: str | None
+    notes: str | None
     id: uuid.UUID
     hierarchy_node_id: uuid.UUID
     range_type: str
@@ -101,7 +124,10 @@ class RangeEventOut(BaseModel):
     required_count: int
     reserve_count: int
     status: str
+    cancellation_reason: str | None
     assignments: list[RangeAssignmentOut] = []
+    primary_filled: int = 0
+    reserve_filled: int = 0
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -122,13 +148,12 @@ def _event_out(
     include_assignments: bool = False,
     include_drafts: bool = True,
 ) -> RangeEventOut:
-    assignments: list[RangeAssignmentOut] = []
-    if include_assignments:
-        query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
-        if not include_drafts:
-            query = query.filter(RangeAssignment.is_draft.is_(False))
-        rows = query.all()
-        assignments = [_assignment_out(a) for a in rows]
+    query = session.query(RangeAssignment).filter(RangeAssignment.range_event_id == event.id)
+    if not include_drafts:
+        query = query.filter(RangeAssignment.is_draft.is_(False))
+    rows = query.all()
+    confirmed_rows = [a for a in rows if not a.is_draft]
+    assignments = [_assignment_out(a) for a in rows] if include_assignments else []
     return RangeEventOut(
         id=event.id,
         hierarchy_node_id=event.hierarchy_node_id,
@@ -136,9 +161,18 @@ def _event_out(
         date=event.date,
         location=event.location,
         required_count=event.required_count,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        arrival_instructions=event.arrival_instructions,
+        contact_name=event.contact_name,
+        contact_phone=event.contact_phone,
+        notes=event.notes,
         reserve_count=event.reserve_count,
         status=event.status,
+        cancellation_reason=event.cancellation_reason,
         assignments=assignments,
+        primary_filled=sum(not a.is_reserve for a in confirmed_rows),
+        reserve_filled=sum(a.is_reserve for a in confirmed_rows),
     )
 
 
@@ -183,31 +217,42 @@ def update_range_event(
     _require_enabled(session)
     event = _load_event(session, event_id)
     authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    if "hierarchy_node_id" in body.model_fields_set:
+        new_node = session.get(HierarchyNode, body.hierarchy_node_id)
+        authorize(session, user, Action.RANGE_MANAGE, target_node=new_node)
     try:
         if body.cancel:
-            event = svc.cancel_range_event(session, event=event, actor_id=user.id)
+            event = svc.cancel_range_event(session, event=event, reason=body.cancellation_reason or "", actor_id=user.id)
         else:
-            event = svc.update_range_event(
-                session,
-                event=event,
-                location=body.location,
-                required_count=body.required_count,
-                reserve_count=body.reserve_count,
-                arrival_instructions=body.arrival_instructions,
-                contact_name=body.contact_name,
-                contact_phone=body.contact_phone,
-                notes=body.notes,
-                actor_id=user.id,
-            )
+            updates = body.model_dump(exclude_unset=True, exclude={"cancel", "cancellation_reason", "force_schedule_change"})
+            if "date" in updates:
+                updates["event_date"] = updates.pop("date")
+            event = svc.update_range_event(session, event=event, actor_id=user.id, force_schedule_change=body.force_schedule_change, **updates)
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return _event_out(session, event)
+
+
+@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_range_event(
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    try:
+        svc.delete_range_event(session, event=event)
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.post(
     "/{event_id}/assignments",
     response_model=RangeAssignmentOut,
     status_code=status.HTTP_201_CREATED,
+
 )
 def add_assignment(
     event_id: uuid.UUID,
@@ -244,7 +289,7 @@ def remove_assignment(
     if assignment is None or assignment.range_event_id != event_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
     try:
-        svc.remove_range_assignment(session, assignment=assignment)
+        svc.remove_range_assignment(session, assignment=assignment, actor_id=user.id)
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -289,6 +334,7 @@ def list_range_events(
     node = session.get(HierarchyNode, node_id)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    _authorize_range_read(session, user, node)
     query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_id)
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
@@ -434,7 +480,7 @@ def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEve
     try:
         required_level = str(get_setting(session, "mitvachim.excusal_approve_min_commander_level"))
     except SettingNotFound:
-        required_level = "????"
+        required_level = "מדור"
     if not dm_scope_covers_target(
         session, scope_root_ids=scope_root_ids(session, user), target_node=node,
         required_level_key=required_level,

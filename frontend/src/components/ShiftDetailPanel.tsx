@@ -12,7 +12,7 @@ import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
-import { useModalBackClose } from "../hooks/useModalBackClose";
+import { EventDetailModal, RosterSection } from "./planning";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -41,7 +41,6 @@ interface Props {
 }
 
 export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Props) {
-  useModalBackClose(onClose);
   const { t } = useTranslation();
   const { user } = useAuth();
   const [dismissTarget, setDismissTarget] = useState<CalendarShiftAssignee | null>(null);
@@ -140,20 +139,12 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 max-w-lg w-full max-h-[80vh] overflow-y-auto mx-4"
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h3 className="font-bold text-lg">{shift.duty_type_name} — {shift.duty_location_name}</h3>
-            <p className="text-sm text-gray-500">{formatDutyRange(shift.start_date, shift.end_date)}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
-        </div>
-
+    <EventDetailModal
+      open
+      title={`${shift.duty_type_name} — ${shift.duty_location_name}`}
+      subtitle={formatDutyRange(shift.start_date, shift.end_date)}
+      onClose={onClose}
+    >
         {(() => {
           const dt = shiftDutyTypes[shift.duty_type_id];
           if (!dt) return null;
@@ -286,39 +277,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
         </section>
 
         {dismissed.length > 0 && (
-          <section className="mb-5">
-            <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300 mb-2">
-              {t("dismissed_soldiers")} ({dismissed.length})
-            </h4>
-            <div className="space-y-2">
-              {dismissed.map((a) => (
-                <div
-                  key={a.assignment_id}
-                  className="border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 rounded p-2 text-sm flex flex-col gap-1"
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
-                      <div>
-                        <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                        {a.hierarchy_label && (
-                          <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {a.dismissals.map((d) => (
-                    <div key={d.id} className="text-xs text-amber-700">
-                      {t("dismissed_from_to", { from: d.dismissed_from, to: d.dismissed_to })}
-                      {d.reason && <span> ({d.reason})</span>}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </section>
+          <RosterSection
+            kind="primary"
+            title={`${t("dismissed_soldiers")} (${dismissed.length})`}
+            assignments={dismissed.map(a => ({
+              id: a.assignment_id,
+              soldierId: a.soldier_id,
+              soldierName: a.soldier_name,
+              profilePictureUrl: a.profile_picture_url,
+              status: a.dismissals.map(d => t("dismissed_from_to", { from: d.dismissed_from, to: d.dismissed_to }) + (d.reason ? ` (${d.reason})` : "")).join(" · "),
+            }))}
+          />
         )}
-
         <section>
           <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300 mb-2">
             {t("reserve_soldiers")} ({reserves.length})
@@ -426,7 +396,6 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
             onDone={() => { setOfferSwapTarget(null); onRefreshNeeded(); }}
           />
         )}
-      </div>
-    </div>
+    </EventDetailModal>
   );
 }

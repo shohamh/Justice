@@ -81,6 +81,37 @@ def test_mark_no_show_creates_score_adjustment_and_audit(app_session: Session) -
     assert updated.score_adjustment_id is not None
 
 
+def test_mark_no_show_notifies_manager_once_with_range_context(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    node = create_node(app_session, level="×¤×œ×•×’×”", name="×¤×œ×•×’×” ××™×¨×•×¢")
+    manager = create_soldier(app_session, personal_number="5900002", role="duty_manager", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name="×©×ž×™×¨×” ×¢× × ×©×§ ××™×¨×•×¢", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="5900003", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=past_date, location="×ž×˜×•×•×— ××™×¨×•×¢", required_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+                    marked_by=manager.id, note="×œ× ×”×•×¤×™×¢")
+    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+                    marked_by=manager.id, note="×œ× ×”×•×¤×™¢ ×©×•×‘")
+
+    notifications = app_session.execute(select(Notification).where(
+        Notification.soldier_id == manager.id,
+        Notification.type == NotificationType.range_no_show,
+        Notification.reference_type == "range_event",
+        Notification.reference_id == event.id,
+    )).scalars().all()
+    assert len(notifications) == 1
+    assert "×œ× ×”×•×¤×™¢" in (notifications[0].body or "")
+
 def test_mark_present_rejects_draft_before_creating_qualification(app_session: Session) -> None:
     past_date = date.today() - timedelta(days=1)
     _event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)

@@ -12,6 +12,28 @@ export interface NotificationDTO {
   created_at: string;
 }
 
+
+export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
+  swap_offer: "🔄", swap_accepted: "✅", swap_rejected: "❌",
+  exemption_approved: "✔️", exemption_rejected: "✖️",
+  constraint_approved: "✔️", constraint_rejected: "✖️",
+  assignment_created: "📋", assignment_removed: "🗑️",
+  range_assignment_confirmed: "🎯", range_roster_changed: "👥",
+  range_cancelled: "🚫", range_no_show: "⚠️",
+  range_excusal_pending: "📩", range_excusal_approved: "✅", range_excusal_rejected: "❌",
+  range_reserve_promoted: "⬆️", range_reserve_excused: "🛡️", range_excusal_no_backfill: "⚠️",
+  range_reminder: "🔔", range_reminder_shortfall: "⚠️",
+  score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
+  algorithm_job_done: "🤖", algorithm_job_failed: "⚠️",
+};
+
+export const RANGE_NOTIFICATION_TYPES = [
+  "range_assignment_confirmed", "range_roster_changed", "range_cancelled", "range_no_show",
+  "range_excusal_pending", "range_excusal_approved", "range_excusal_rejected",
+  "range_reserve_promoted", "range_reserve_excused", "range_excusal_no_backfill",
+  "range_reminder", "range_reminder_shortfall",
+] as const;
+
 export interface PaginatedNotifications {
   items: NotificationDTO[];
   total: number;

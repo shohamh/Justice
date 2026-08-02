@@ -1124,7 +1124,16 @@
     "type_no_show_marked": "נרשמה אי-הופעה לתורנות",
     "type_range_assignment_confirmed": "שיבוץ למטווח אושר",
     "type_range_reminder": "תזכורת למטווח קרוב",
-    "type_range_reminder_shortfall": "אזהרת מחסור בשיבוץ למטווח"
+    "type_range_reminder_shortfall": "אזהרת מחסור בשיבוץ למטווח",
+    "type_range_roster_changed": "שינוי בסגל המטווח",
+    "type_range_cancelled": "מטווח בוטל",
+    "type_range_no_show": "אי-הופעה למטווח",
+    "type_range_excusal_pending": "בקשת פטור ממטווח ממתינה",
+    "type_range_excusal_approved": "פטור ממטווח אושר",
+    "type_range_excusal_rejected": "בקשת פטור ממטווח נדחתה",
+    "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
+    "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
+    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי"
   },
   "announcements": {
     "title": "הכרזות",
