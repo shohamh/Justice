@@ -78,6 +78,69 @@ describe("RangesPage", () => {
     expect(screen.queryByText("laser")).not.toBeInTheDocument();
     expect(screen.queryByText("planned")).not.toBeInTheDocument();
   });
+
+  it("uses the shifts planning header and filter control treatment", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטלול דרום", required_count: 4,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+      date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+      reserve_count: 1, status: "planned", assignments: [],
+    });
+
+    renderWithQuery(<RangesPage />);
+
+    expect(await screen.findByTestId("ranges-page")).toHaveClass("bg-white", "rounded-lg", "shadow", "p-6");
+    expect(screen.getByRole("heading", { name: "מטווחים" })).toHaveClass("text-xl", "font-semibold");
+    expect(screen.getByTestId("create-event-button")).toHaveClass("bg-blue-600", "text-white", "px-3", "py-1", "rounded", "text-sm");
+    expect(await screen.findByLabelText("מתאריך")).toHaveClass("border", "rounded", "p-1", "dark:bg-gray-700");
+    expect(screen.getByLabelText("עד תאריך")).toHaveClass("border", "rounded", "p-1", "dark:bg-gray-700");
+    expect(screen.getByLabelText("סוג")).toHaveClass("border", "rounded", "p-1", "dark:bg-gray-700");
+    expect(screen.getByPlaceholderText("סנן..."))
+      .toHaveClass("border", "rounded", "p-1", "text-sm", "w-full", "sm:w-64");
+  });
+
+  it("filters visible ranges and keeps row actions separate from location selection", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+      {
+        id: "event-2", hierarchy_node_id: "node-1", range_type: "live",
+        date: "2026-09-02", location: "מטווח צפון", required_count: 4,
+        reserve_count: 1, status: "cancelled", assignments: [],
+      },
+    ]);
+
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+      date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+      reserve_count: 1, status: "planned", assignments: [],
+    });
+
+    renderWithQuery(<RangesPage />);
+
+    expect(await screen.findByText("מטווח דרום")).toBeInTheDocument();
+    expect(screen.getByText("מטווח צפון")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("סטטוס"), { target: { value: "planned" } });
+    expect(screen.getByText("מטווח דרום")).toBeInTheDocument();
+    expect(screen.queryByText("מטווח צפון")).not.toBeInTheDocument();
+
+    const edit = screen.getByTestId("edit-range-event-1");
+    expect(edit).toHaveClass("bg-blue-100", "text-blue-800", "text-[10px]");
+    fireEvent.click(edit);
+    expect(screen.queryByRole("heading", { name: "מטווח דרום" })).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByTestId("event-1").querySelector("button")!);
+    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
+  });
 });
 
 describe("RangesPage create event", () => {
