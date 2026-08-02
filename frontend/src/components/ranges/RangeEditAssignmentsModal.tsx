@@ -1,0 +1,126 @@
+import { useEffect, useMemo, useState } from "react";
+import { RangeAssignment, RangeEvent, addRangeAssignment, autoAssignRange, confirmAllDrafts, confirmDraftAssignment, removeRangeAssignment } from "../../api/ranges";
+import { SoldierDTO } from "../../api/soldiers";
+import { EventDetailModal } from "../planning";
+
+export interface RangeEditAssignmentsModalProps {
+  open: boolean;
+  event: RangeEvent;
+  soldiers: SoldierDTO[];
+  canManage: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}
+
+export default function RangeEditAssignmentsModal({ open, event, soldiers, canManage, onClose, onChanged }: RangeEditAssignmentsModalProps) {
+  const [assignments, setAssignments] = useState(event.assignments);
+  const [query, setQuery] = useState("");
+  const [reserve, setReserve] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [autoAssigning, setAutoAssigning] = useState(false);
+  const [shortfall, setShortfall] = useState<number | null>(null);
+
+  useEffect(() => {
+    setAssignments(event.assignments);
+    setShortfall(null);
+  }, [event]);
+
+  const primary = useMemo(() => assignments.filter(a => !a.is_reserve), [assignments]);
+  const reserves = useMemo(() => assignments.filter(a => a.is_reserve), [assignments]);
+  const assignedIds = useMemo(() => new Set(assignments.map(a => a.soldier_id)), [assignments]);
+  const candidates = useMemo(() => soldiers.filter(s => !assignedIds.has(s.id) && (!query.trim() || `${s.full_name} ${s.personal_number}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))), [assignedIds, query, soldiers]);
+  const primaryFull = primary.length >= event.required_count;
+  const reserveFull = reserves.length >= event.reserve_count;
+  const editable = open && canManage && event.status === "planned";
+  const actionClass = "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50";
+
+  async function add(soldier: SoldierDTO) {
+    if (!editable || adding || (reserve ? reserveFull : primaryFull)) return;
+    setAdding(soldier.id);
+    try {
+      const created = await addRangeAssignment(event.id, soldier.id, reserve);
+      setAssignments(current => [...current, created]);
+      await onChanged();
+    } finally {
+      setAdding(null);
+    }
+  }
+
+  async function remove(assignmentId: string) {
+    if (!editable || removing) return;
+    setRemoving(assignmentId);
+    try {
+      await removeRangeAssignment(event.id, assignmentId);
+      setAssignments(current => current.filter(a => a.id !== assignmentId));
+      await onChanged();
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  async function autoAssign() {
+    if (!editable || autoAssigning) return;
+    setAutoAssigning(true);
+    try {
+      const result = await autoAssignRange(event.id);
+      setAssignments(current => [...current, ...result.created.filter(a => !current.some(existing => existing.id === a.id))]);
+      setShortfall(result.shortfall || null);
+      await onChanged();
+    } finally {
+      setAutoAssigning(false);
+    }
+  }
+
+  async function confirmDraft(assignmentId: string) {
+    if (!editable || confirming || confirmingAll) return;
+    setConfirming(assignmentId);
+    try {
+      const confirmed = await confirmDraftAssignment(event.id, assignmentId);
+      setAssignments(current => current.map(a => a.id === assignmentId ? confirmed : a));
+      await onChanged();
+    } finally {
+      setConfirming(null);
+    }
+  }
+
+  async function confirmAll() {
+    if (!editable || confirming || confirmingAll) return;
+    setConfirmingAll(true);
+    try {
+      const confirmed = await confirmAllDrafts(event.id);
+      setAssignments(current => confirmed.length > 0 ? current.map(a => confirmed.find(c => c.id === a.id) ?? a) : current.map(a => ({ ...a, is_draft: false })));
+      await onChanged();
+    } finally {
+      setConfirmingAll(false);
+    }
+  }
+
+  const name = (id: string) => soldiers.find(s => s.id === id)?.full_name ?? id;
+  const renderAssignment = (a: RangeAssignment) => (
+    <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-sm first:border-t-0 dark:border-gray-600">
+      <span>{name(a.soldier_id)} {a.is_draft && <span data-testid={`draft-badge-${a.id}`} className="mr-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">טרם נשמר</span>}</span>
+      {editable && <span className="flex gap-1">
+        {a.is_draft && <button type="button" data-testid={`confirm-draft-${a.id}`} disabled={confirming !== null || confirmingAll} onClick={() => void confirmDraft(a.id)} className={`${actionClass} border-green-600 bg-green-600 text-white`}>אשר</button>}
+        <button type="button" data-testid={`remove-assignment-${a.id}`} disabled={removing !== null} onClick={() => void remove(a.id)} className={`${actionClass} border-red-200 text-red-700`}>{removing === a.id ? "..." : "הסר"}</button>
+      </span>}
+    </li>
+  );
+
+  return <EventDetailModal open={open} title="עריכת שיבוצים" subtitle={`${event.location} · ${event.date}`} onClose={onClose}>
+    <div className="space-y-4">
+      {shortfall !== null && <div className="rounded bg-amber-100 px-3 py-2 text-sm">לא נמצאו מספיק מועמדים — חסרים {shortfall} שיבוצים</div>}
+      <section data-testid="range-primary-assignments" className="rounded border dark:border-gray-600"><h4 className="border-b px-3 py-2 text-sm font-semibold dark:border-gray-600">שיבוצים ראשיים <span className="font-normal text-gray-500">{primary.length}/{event.required_count} {primaryFull && <span data-testid="range-capacity-full">· מלאה</span>}</span></h4><ul>{primary.length ? primary.map(renderAssignment) : <li className="px-3 py-2 text-sm text-gray-500">אין שיבוצים</li>}</ul></section>
+      <section data-testid="range-reserve-assignments" className="rounded border dark:border-gray-600"><h4 className="border-b px-3 py-2 text-sm font-semibold dark:border-gray-600">שיבוצי רזרבה <span className="font-normal text-gray-500">{reserves.length}/{event.reserve_count} {reserveFull && <span data-testid="range-capacity-full">· מלאה</span>}</span></h4><ul>{reserves.length ? reserves.map(renderAssignment) : <li className="px-3 py-2 text-sm text-gray-500">אין שיבוצי רזרבה</li>}</ul></section>
+      {editable && <section className="space-y-2 rounded border p-3 dark:border-gray-600">
+        <div className="flex flex-wrap gap-2"><button type="button" data-testid="range-auto-assign" disabled={autoAssigning || (primaryFull && reserveFull)} onClick={() => void autoAssign()} className={`${actionClass} border-blue-600 bg-blue-600 text-white`}>שיבוץ אוטומטי</button>{assignments.some(a => a.is_draft) && <button type="button" data-testid="range-confirm-all" disabled={confirming !== null || confirmingAll} onClick={() => void confirmAll()} className={`${actionClass} border-green-600 bg-green-600 text-white`}>אשר הכל</button>}</div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" data-testid="range-reserve-toggle" checked={reserve} onChange={e => setReserve(e.target.checked)} /> שיבוץ כרזרבה</label>
+        <input data-testid="range-soldier-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="חיפוש חייל" className="w-full rounded border p-2 text-sm dark:bg-gray-700" />
+        <div className="max-h-40 overflow-y-auto">{candidates.map(s => <button key={s.id} type="button" data-testid={`add-soldier-${s.id}`} disabled={adding !== null || (reserve ? reserveFull : primaryFull)} onClick={() => void add(s)} className="block w-full border-t p-2 text-right text-sm hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-700">{adding === s.id ? "מוסיף..." : `${s.full_name} (${s.personal_number})`}</button>)}{candidates.length === 0 && <p className="p-2 text-sm text-gray-500">אין חיילים זמינים</p>}</div>
+      </section>}
+      <div className="flex justify-end border-t pt-3 dark:border-gray-600"><button type="button" onClick={onClose} className="rounded border px-3 py-1.5 text-sm dark:border-gray-600">סגור</button></div>
+    </div>
+  </EventDetailModal>;
+}
