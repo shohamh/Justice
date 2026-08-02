@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -838,6 +838,8 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                 getRowId={shift => shift.id}
                 getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
                 onRowClick={setEditShift}
+                rowClassName={shift => shift.status === ""cancelled"" ? ""opacity-50"" : """"}
+                filterPlaceholder={t(""table.filter_placeholder"")}
                 emptyMessage="אין משמרות"
               />
             </>

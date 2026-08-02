@@ -4,8 +4,8 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
 from app.db.models import (
@@ -103,6 +103,8 @@ def create_range_event(
         raise RangeValidationError("hierarchy_node_not_found")
     if required_count < 0 or reserve_count < 0:
         raise RangeValidationError("counts_must_be_non_negative")
+    if start_time and end_time and start_time > end_time:
+        raise RangeValidationError("start_time_after_end_time")
 
     event = RangeEvent(
         hierarchy_node_id=hierarchy_node_id,
@@ -266,7 +268,10 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     if has_assignments is not None:
         raise RangeValidationError("event_has_assignments")
     has_history = session.query(SoldierRangeQualification.id).filter(
-        SoldierRangeQualification.source_range_event_id == event.id
+        (SoldierRangeQualification.source_range_event_id == event.id)
+        | SoldierRangeQualification.source_range_assignment_id.in_(
+            select(RangeAssignment.id).where(RangeAssignment.range_event_id == event.id)
+        )
     ).first()
     if has_history is not None:
         raise RangeValidationError("event_has_history")
@@ -374,22 +379,24 @@ def get_effective_range_qualification(session: Session, *, soldier_id: uuid.UUID
     """Returns the soldier's current valid_until for range_type (the furthest-out
     valid_until among all non-deleted qualification rows for that soldier/type), or
     None if they have no qualification record at that type."""
+    qualification = aliased(SoldierRangeQualification)
+    assignment = aliased(RangeAssignment)
     return session.execute(
-        select(func.max(SoldierRangeQualification.valid_until)).where(
-            SoldierRangeQualification.soldier_id == soldier_id,
-            SoldierRangeQualification.range_type == range_type,
+        select(func.max(qualification.valid_until))
+        .outerjoin(assignment, qualification.source_range_assignment_id == assignment.id)
+        .where(
+            qualification.soldier_id == soldier_id,
+            qualification.range_type == range_type,
+            or_(qualification.source_range_assignment_id.is_(None), assignment.attendance_status == RangeAttendanceStatus.present),
         )
     ).scalar_one_or_none()
 
 
 def _delete_qualification_from_this_assignment(session: Session, *, assignment: RangeAssignment) -> None:
-    existing = session.execute(
-        select(SoldierRangeQualification).where(
-            SoldierRangeQualification.source_range_assignment_id == assignment.id,
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        session.delete(existing)
+    # Qualification rows are historical evidence.  Attendance correction changes
+    # effective qualification through the assignment status query instead of
+    # deleting the evidence row.
+    return
 
 
 def mark_attendance(
