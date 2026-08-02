@@ -53,7 +53,7 @@ def test_single_shift_required_count_1(admin_session):
 def test_shift_expands_to_N_blocks(admin_session):
     dt = _dt(admin_session)
     loc = _loc(admin_session)
-    shift = _shift(admin_session, dt, loc, date(2026, 8, 1), date(2026, 8, 2), count=4)
+    shift = _shift(admin_session, dt, loc, date.today() + timedelta(days=1), date.today() + timedelta(days=2), count=4)
     admin_session.commit()
 
     blocks, b2s = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
@@ -67,7 +67,7 @@ def test_block_copies_shift_times_when_not_truncated(admin_session):
     loc = _loc(admin_session)
     shift = DutyShift(
         duty_type_id=dt.id, duty_location_id=loc.id,
-        start_date=date(2026, 8, 1), end_date=date(2026, 8, 2),
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
         start_time="08:00", end_time="17:00", required_count=1,
     )
     admin_session.add(shift)

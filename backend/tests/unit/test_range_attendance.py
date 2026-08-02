@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     DutyType,
     Notification,
+    NotificationType,
     RangeAttendanceStatus,
     RangeType,
     ScoreAdjustment,

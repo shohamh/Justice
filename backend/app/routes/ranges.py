@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date as date_type, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -65,7 +65,7 @@ def _authorize_range_read(session: Session, user: Soldier, node: HierarchyNode |
 class CreateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: RangeType
-    date: date
+    date: date_type
     location: str = Field(min_length=1)
     required_count: int = Field(ge=0)
     reserve_count: int = Field(default=0, ge=0)
@@ -80,7 +80,7 @@ class CreateRangeEventBody(BaseModel):
 class UpdateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID | None = None
     range_type: RangeType | None = None
-    date: date | None = None
+    date: date_type | None = None
     start_time: str | None = None
     end_time: str | None = None
     location: str | None = None
@@ -119,7 +119,7 @@ class RangeEventOut(BaseModel):
     id: uuid.UUID
     hierarchy_node_id: uuid.UUID
     range_type: str
-    date: date
+    date: date_type
     location: str
     required_count: int
     reserve_count: int
@@ -233,7 +233,7 @@ def update_range_event(
     return _event_out(session, event)
 
 
-@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{event_id}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
 def delete_range_event(
     event_id: uuid.UUID,
     session: Session = Depends(get_session),
@@ -275,7 +275,11 @@ def add_assignment(
     return _assignment_out(assignment)
 
 
-@router.delete("/{event_id}/assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{event_id}/assignments/{assignment_id}",
+    response_model=None,
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def remove_assignment(
     event_id: uuid.UUID,
     assignment_id: uuid.UUID,
@@ -324,18 +328,26 @@ def get_range_event(
 
 @router.get("", response_model=list[RangeEventOut])
 def list_range_events(
-    node_id: uuid.UUID,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    node_id: str | None = None,
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> list[RangeEventOut]:
     _require_enabled(session)
-    node = session.get(HierarchyNode, node_id)
+    if node_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="node_id_required")
+    if node_id == "None":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    try:
+        node_uuid = uuid.UUID(node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_node_id") from exc
+    node = session.get(HierarchyNode, node_uuid)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     _authorize_range_read(session, user, node)
-    query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_id)
+    query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_uuid)
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
     if date_to is not None:
