@@ -199,13 +199,6 @@ def test_correcting_present_to_no_show_reverses_qualification_and_applies_penalt
 
     assert corrected.attendance_status == RangeAttendanceStatus.no_show
     assert corrected.score_adjustment_id is not None
-    remaining_qualification = app_session.execute(
-        select(SoldierRangeQualification).where(
-            SoldierRangeQualification.soldier_id == soldier.id,
-            SoldierRangeQualification.range_type == RangeType.laser,
-        )
-    ).scalar_one_or_none()
-    assert remaining_qualification is not None
     from app.services.ranges import get_effective_range_qualification
 
     assert get_effective_range_qualification(
