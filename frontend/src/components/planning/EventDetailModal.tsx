@@ -1,7 +1,9 @@
+import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { useModalBackClose } from "../../hooks/useModalBackClose";
 
 export interface EventMetadataItem {
+  id?: string;
   label: ReactNode;
   value: ReactNode;
 }
@@ -17,7 +19,30 @@ export interface EventDetailModalProps {
 }
 
 export function EventDetailModal({ open, title, subtitle, metadata = [], actions, onClose, children }: EventDetailModalProps) {
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
   useModalBackClose(onClose, open);
+
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
@@ -25,21 +50,21 @@ export function EventDetailModal({ open, title, subtitle, metadata = [], actions
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="event-detail-title"
+        aria-labelledby={titleId}
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-gray-800"
         dir="rtl"
         onClick={event => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h3 id="event-detail-title" className="text-lg font-bold">{title}</h3>
+            <h3 id={titleId} className="text-lg font-bold">{title}</h3>
             {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
           </div>
-          <button type="button" aria-label="Close" onClick={onClose} className="text-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
+          <button ref={closeButtonRef} type="button" aria-label="סגור" onClick={onClose} className="text-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">✕</button>
         </div>
         {metadata.length > 0 && (
           <dl className="mb-4 grid grid-cols-1 gap-2 rounded bg-gray-50 p-3 text-sm dark:bg-gray-700 sm:grid-cols-2">
-            {metadata.map((item, index) => <div key={index}><dt className="text-xs text-gray-500 dark:text-gray-400">{item.label}</dt><dd>{item.value}</dd></div>)}
+            {metadata.map((item, index) => <div key={item.id ?? String(item.label) + "-" + index}><dt className="text-xs text-gray-500 dark:text-gray-400">{item.label}</dt><dd>{item.value}</dd></div>)}
           </dl>
         )}
         {actions && <div className="mb-4 flex flex-wrap gap-2">{actions}</div>}

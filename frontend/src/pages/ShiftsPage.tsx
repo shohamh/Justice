@@ -20,6 +20,7 @@ import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 import DateInput from "../components/DateInput";
+import { PlanningTable } from "../components/planning";
 
 const FILL_COLORS: Record<string, string> = {
   empty: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300",
@@ -821,13 +822,20 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
           return (
             <>
               {algorithmPanel}
-              <DataTable
-                columns={shiftCols}
-                data={shifts}
-                rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
-                filterPlaceholder={t("table.filter_placeholder")}
-                emptyMessage="אין משמרות"
-              />
+              <PlanningTable<DutyShift>
+                columns={[]}
+                rows={shifts}
+                getRowId={shift => shift.id}
+                emptyMessage={t("table.empty", "אין נתונים")}
+              >
+                <DataTable
+                  columns={shiftCols}
+                  data={shifts}
+                  rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
+                  filterPlaceholder={t("table.filter_placeholder")}
+                  emptyMessage="אין משמרות"
+                />
+              </PlanningTable>
             </>
           );
         })()}

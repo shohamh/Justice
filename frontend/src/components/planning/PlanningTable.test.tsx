@@ -10,7 +10,7 @@ const columns = [
 describe("PlanningTable", () => {
   it("renders loading, error, and empty states", () => {
     const { rerender } = render(<PlanningTable<Row> columns={columns} rows={[]} getRowId={row => row.id} loading />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading");
+    expect(screen.getByRole("status")).toHaveTextContent("טוען...");
 
     rerender(<PlanningTable<Row> columns={columns} rows={[]} getRowId={row => row.id} error="Could not load" />);
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load");
@@ -46,5 +46,15 @@ describe("PlanningTable", () => {
     fireEvent.click(screen.getByText("Alpha"));
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a focused row with Enter and Space", () => {
+    const onRowClick = vi.fn();
+    render(<PlanningTable<Row> columns={columns} rows={[{ id: "r1", name: "Alpha" }]} getRowId={row => row.id} onRowClick={onRowClick} getRowLabel={row => row.name} />);
+    const row = screen.getByRole("button", { name: "Alpha" });
+    expect(row).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.keyDown(row, { key: " " });
+    expect(onRowClick).toHaveBeenCalledTimes(2);
   });
 });

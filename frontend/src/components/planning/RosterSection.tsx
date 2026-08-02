@@ -10,18 +10,21 @@ export interface RosterSectionProps {
   count?: number;
   title?: ReactNode;
   emptyMessage?: ReactNode;
-  renderAssignment?: (assignment: AssignmentRowData) => ReactNode;
-  children?: ReactNode;
+  assignmentActionRenderer?: (assignment: AssignmentRowData) => ReactNode;
 }
 
-export function RosterSection({ kind, assignments, count, title, emptyMessage = "None", renderAssignment, children }: RosterSectionProps) {
-  const defaultTitle = kind === "primary" ? "Primary" : "Reserve";
+export function RosterSection({ kind, assignments, count, title, emptyMessage = "אין שיבוצים", assignmentActionRenderer }: RosterSectionProps) {
+  const defaultTitle = kind === "primary" ? "ראשיים" : "רזרבה";
   return (
     <section className="mb-5">
       <h4 className="mb-2 text-sm font-semibold text-gray-600 dark:text-gray-300">{title ?? defaultTitle}{count == null ? "" : ` (${assignments.length}/${count})`}</h4>
-      {children ?? <div className="space-y-2">
+      <div className="space-y-2">
         {assignments.length === 0 ? <p className="text-xs text-gray-400">{emptyMessage}</p> : assignments.map(assignment => (
-          <div key={assignment.id}>{renderAssignment ? renderAssignment(assignment) : <AssignmentRow assignment={assignment} />}</div>
+          <AssignmentRow
+            key={assignment.id}
+            assignment={assignment}
+            actionSlot={assignmentActionRenderer?.(assignment)}
+          />
         ))}
       </div>
     </section>

@@ -12,7 +12,7 @@ import OfferSwapModal from "./OfferSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { getPublicSettings } from "../api/publicSettings";
 import { formatDutyRange } from "../utils/formatDate";
-import { EventDetailModal } from "./planning";
+import { EventDetailModal, RosterSection } from "./planning";
 
 function SoldierAvatar({ url, name }: { url: string | null | undefined; name: string }) {
   const [imgError, setImgError] = useState(false);
@@ -277,39 +277,18 @@ export default function ShiftDetailPanel({ shift, onClose, onRefreshNeeded }: Pr
         </section>
 
         {dismissed.length > 0 && (
-          <section className="mb-5">
-            <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300 mb-2">
-              {t("dismissed_soldiers")} ({dismissed.length})
-            </h4>
-            <div className="space-y-2">
-              {dismissed.map((a) => (
-                <div
-                  key={a.assignment_id}
-                  className="border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 rounded p-2 text-sm flex flex-col gap-1"
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <SoldierAvatar url={a.profile_picture_url} name={a.soldier_name} />
-                      <div>
-                        <SoldierLink id={a.soldier_id} name={a.soldier_name} className="font-medium" />
-                        {a.hierarchy_label && (
-                          <span className="text-xs text-gray-400 mr-2">({a.hierarchy_label})</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {a.dismissals.map((d) => (
-                    <div key={d.id} className="text-xs text-amber-700">
-                      {t("dismissed_from_to", { from: d.dismissed_from, to: d.dismissed_to })}
-                      {d.reason && <span> ({d.reason})</span>}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </section>
+          <RosterSection
+            kind="primary"
+            title={`${t("dismissed_soldiers")} (${dismissed.length})`}
+            assignments={dismissed.map(a => ({
+              id: a.assignment_id,
+              soldierId: a.soldier_id,
+              soldierName: a.soldier_name,
+              profilePictureUrl: a.profile_picture_url,
+              status: a.dismissals.map(d => t("dismissed_from_to", { from: d.dismissed_from, to: d.dismissed_to }) + (d.reason ? ` (${d.reason})` : "")).join(" · "),
+            }))}
+          />
         )}
-
         <section>
           <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300 mb-2">
             {t("reserve_soldiers")} ({reserves.length})
