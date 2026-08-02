@@ -57,4 +57,34 @@ describe("PlanningTable", () => {
     fireEvent.keyDown(row, { key: " " });
     expect(onRowClick).toHaveBeenCalledTimes(2);
   });
+
+  it("does not activate a row from interactive descendants", () => {
+    const onRowClick = vi.fn();
+    render(
+      <PlanningTable<Row>
+        columns={[{ key: "name", label: "Name", render: row => <button type="button">{row.name}</button> }]}
+        rows={[{ id: "r1", name: "Alpha" }]}
+        getRowId={row => row.id}
+        onRowClick={onRowClick}
+      />,
+    );
+    const descendant = screen.getByRole("button", { name: "Alpha" });
+    fireEvent.click(descendant);
+    fireEvent.keyDown(descendant, { key: "Enter" });
+    fireEvent.keyDown(descendant, { key: " " });
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("renders the supplied columns through the shared table path", () => {
+    render(
+      <PlanningTable<Row>
+        columns={columns}
+        rows={[{ id: "r1", name: "Alpha" }]}
+        getRowId={row => row.id}
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Name" })).toBeInTheDocument();
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+  });
 });

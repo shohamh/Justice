@@ -60,6 +60,8 @@ interface DataTableProps<T> {
   };
   /** Initial sort applied before any header click — without this, the table shows rows in their incoming order. */
   defaultSort?: SortingState;
+  onRowClick?: (row: T) => void;
+  getRowLabel?: (row: T) => string;
 }
 
 // ─── Column filter dropdown ───────────────────────────────────────────────────
@@ -172,6 +174,8 @@ export function DataTable<T>({
   onVisibleRowsChange,
   expandable,
   defaultSort,
+  onRowClick,
+  getRowLabel = () => "פתח שורה",
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSort ?? []);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -265,6 +269,12 @@ export function DataTable<T>({
     onVisibleRowsChange?.(visibleRows);
   }, [visibleRows, onVisibleRowsChange]);
 
+  function isInteractiveDescendant(event: React.SyntheticEvent<HTMLTableRowElement>) {
+    if (!(event.target instanceof HTMLElement) || event.target === event.currentTarget) return false;
+    const interactive = event.target.closest('button, a, input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])');
+    return interactive !== null && interactive !== event.currentTarget;
+  }
+
   return (
     <div className={className} data-testid={testId}>
       <input
@@ -336,14 +346,25 @@ export function DataTable<T>({
               return (
                 <Fragment key={row.id}>
                   <tr
+                    tabIndex={onRowClick ? 0 : undefined}
+                    role={onRowClick ? "button" : undefined}
+                    aria-label={onRowClick ? getRowLabel(row.original) : undefined}
                     className={rowClassName ? rowClassName(row.original) : undefined}
                     style={rowStyle ? rowStyle(row.original) : undefined}
                     data-testid={rowTestId ? rowTestId(row.original) : undefined}
-                    onClick={
-                      expandable?.expandOnRowClick
-                        ? () => expandable.onToggle(row.original)
-                        : undefined
-                    }
+                    onClick={event => {
+                      if (expandable?.expandOnRowClick) {
+                        if (!isInteractiveDescendant(event)) expandable.onToggle(row.original);
+                      } else if (onRowClick && !isInteractiveDescendant(event)) {
+                        onRowClick(row.original);
+                      }
+                    }}
+                    onKeyDown={event => {
+                      if (onRowClick && (event.key === "Enter" || event.key === " ") && !isInteractiveDescendant(event)) {
+                        event.preventDefault();
+                        onRowClick(row.original);
+                      }
+                    }}
                   >
                     {expandable && (
                       <td className="border dark:border-gray-600 px-2 py-1 text-center">

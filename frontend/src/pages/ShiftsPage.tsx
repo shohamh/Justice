@@ -15,7 +15,7 @@ import { clearAllAssignments } from "../api/assignments";
 import { listDutyTypes, listLocations } from "../api/dutyConfig";
 import { fetchFullTree, NodeDTO } from "../api/hierarchy";
 import HierarchyNodeFilter from "../components/HierarchyNodeFilter";
-import { DataTable, type ColDef } from "../components/DataTable";
+import { type ColDef } from "../components/DataTable";
 import AlgorithmInlinePanel from "../components/AlgorithmInlinePanel";
 import { listJobs } from "../api/algorithm";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
@@ -823,19 +823,23 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             <>
               {algorithmPanel}
               <PlanningTable<DutyShift>
-                columns={[]}
+                columns={shiftCols.map(column => ({
+                  key: column.id,
+                  label: column.header,
+                  render: column.cell,
+                  sortValue: column.sortValue,
+                  filterValue: column.filterValue,
+                  columnFilter: column.columnFilter,
+                  customColumnFilter: column.customColumnFilter,
+                  minWidth: column.minWidth,
+                  sortDescFirst: column.sortDescFirst,
+                }))}
                 rows={shifts}
                 getRowId={shift => shift.id}
-                emptyMessage={t("table.empty", "אין נתונים")}
-              >
-                <DataTable
-                  columns={shiftCols}
-                  data={shifts}
-                  rowClassName={(s) => s.status === "cancelled" ? "opacity-50" : ""}
-                  filterPlaceholder={t("table.filter_placeholder")}
-                  emptyMessage="אין משמרות"
-                />
-              </PlanningTable>
+                getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
+                onRowClick={setEditShift}
+                emptyMessage="אין משמרות"
+              />
             </>
           );
         })()}

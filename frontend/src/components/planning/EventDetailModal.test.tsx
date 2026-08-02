@@ -44,4 +44,28 @@ describe("EventDetailModal", () => {
     rerender(<><button type="button">Open</button><EventDetailModal open={false} title="Shift" onClose={vi.fn()}>Content</EventDetailModal></>);
     expect(trigger).toHaveFocus();
   });
+
+  it("does not steal focus when onClose changes while open", () => {
+    const firstClose = vi.fn();
+    const secondClose = vi.fn();
+    const { rerender } = render(
+      <>
+        <button type="button">Open</button>
+        <EventDetailModal open title="Shift" onClose={firstClose}>Content</EventDetailModal>
+      </>,
+    );
+    const content = screen.getByText("Content");
+    content.setAttribute("tabindex", "-1");
+    content.focus();
+    rerender(
+      <>
+        <button type="button">Open</button>
+        <EventDetailModal open title="Shift" onClose={secondClose}>Content</EventDetailModal>
+      </>,
+    );
+    expect(content).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(firstClose).not.toHaveBeenCalled();
+    expect(secondClose).toHaveBeenCalledOnce();
+  });
 });
