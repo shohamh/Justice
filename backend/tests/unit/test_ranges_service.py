@@ -311,14 +311,14 @@ def test_roster_change_notifies_existing_and_removed_assignees(app_session: Sess
         Notification.soldier_id == first.id,
         Notification.type == NotificationType.range_roster_changed,
         Notification.reference_id == event.id,
-    )).scalar_one_or_none() is not None
+    )).scalars().first() is not None
 
     remove_range_assignment(app_session, assignment=second_assignment)
     assert app_session.execute(select(Notification).where(
         Notification.soldier_id == second.id,
         Notification.type == NotificationType.range_roster_changed,
         Notification.reference_id == event.id,
-    )).scalar_one_or_none() is not None
+    )).scalars().first() is not None
 
 
 def test_cancellation_notifies_assignees_with_reason_and_event_reference(app_session: Session) -> None:

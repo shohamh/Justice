@@ -171,7 +171,7 @@ def test_admin_cannot_see_constraint_reason_in_pending_list(client: TestClient, 
     client.post(
         "/api/me/constraints",
         headers=auth_headers(target),
-        json={"start_date": "2026-08-01", "end_date": "2026-08-05", "reason": "סיבה פרטית"},
+        json={"start_date": (date.today() + timedelta(days=1)).isoformat(), "end_date": (date.today() + timedelta(days=5)).isoformat(), "reason": "סיבה פרטית"},
     )
     r = client.get("/api/constraints/pending", headers=auth_headers(admin))
     assert r.status_code == 200
@@ -188,7 +188,7 @@ def test_dm_can_see_constraint_reason_in_pending_list(client: TestClient, admin_
     client.post(
         "/api/me/constraints",
         headers=auth_headers(target),
-        json={"start_date": "2026-08-01", "end_date": "2026-08-05", "reason": "חופשה"},
+        json={"start_date": (date.today() + timedelta(days=1)).isoformat(), "end_date": (date.today() + timedelta(days=5)).isoformat(), "reason": "חופשה"},
     )
     r = client.get("/api/constraints/pending", headers=auth_headers(dm))
     assert r.status_code == 200
@@ -203,7 +203,7 @@ def test_self_can_see_own_constraint_reason(client: TestClient, admin_session: S
     client.post(
         "/api/me/constraints",
         headers=auth_headers(target),
-        json={"start_date": "2026-08-01", "end_date": "2026-08-05", "reason": "פרטי"},
+        json={"start_date": (date.today() + timedelta(days=1)).isoformat(), "end_date": (date.today() + timedelta(days=5)).isoformat(), "reason": "פרטי"},
     )
     r = client.get("/api/me/constraints", headers=auth_headers(target))
     assert r.status_code == 200

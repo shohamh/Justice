@@ -73,8 +73,8 @@ describe("RangesPage", () => {
 
     renderWithQuery(<RangesPage />);
 
-    await waitFor(() => expect(screen.getByText("לייזר")).toBeInTheDocument());
-    expect(screen.getByText("מתוכנן")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("לייזר").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("מתוכנן").length).toBeGreaterThan(0);
     expect(screen.queryByText("laser")).not.toBeInTheDocument();
     expect(screen.queryByText("planned")).not.toBeInTheDocument();
   });

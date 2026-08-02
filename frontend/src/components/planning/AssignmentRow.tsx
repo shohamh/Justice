@@ -31,7 +31,7 @@ export function AssignmentRow({ assignment, actionSlot, detailSlot }: Assignment
         )}
         {assignment.soldierId ? <SoldierLink id={assignment.soldierId} name={assignment.soldierName} className="font-medium" /> : <span className="font-medium">{assignment.soldierName}</span>}
         {assignment.status && <span className="text-xs text-gray-500 dark:text-gray-400">{assignment.status}</span>}
-        {assignment.isDraft && <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200">טיוטה</span>}
+        {assignment.isDraft && <span data-testid="draft-badge" className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200">טיוטה</span>}
         {detailSlot}
       </div>
       {actionSlot && <div className="flex shrink-0 items-center gap-1">{actionSlot}</div>}

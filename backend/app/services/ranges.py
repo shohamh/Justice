@@ -4,12 +4,13 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.audit.writer import write_audit
 from app.db.models import (
     HierarchyNode,
+    Notification,
     NotificationType,
     RangeAssignment,
     RangeAttendanceStatus,
@@ -228,7 +229,7 @@ def update_range_event(
 
 
 def cancel_range_event(
-    session: Session, *, event: RangeEvent, reason: str, actor_id: uuid.UUID | None = None
+    session: Session, *, event: RangeEvent, reason: str = "Cancelled", actor_id: uuid.UUID | None = None
 ) -> RangeEvent:
     reason = reason.strip()
     if not reason:
@@ -307,10 +308,13 @@ def add_range_assignment(
     if existing_same_date is not None:
         raise RangeValidationError("soldier_already_assigned_on_date")
 
+    existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
+        RangeAssignment.range_event_id == event.id,
+    )).scalars())
     assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
     session.add(assignment)
     session.flush()
-    _notify_roster_change(session, event=event, soldier_ids={soldier_id})
+    _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)
     _range_notification(
         session,
         soldier_id=soldier_id,
@@ -393,10 +397,9 @@ def get_effective_range_qualification(session: Session, *, soldier_id: uuid.UUID
 
 
 def _delete_qualification_from_this_assignment(session: Session, *, assignment: RangeAssignment) -> None:
-    # Qualification rows are historical evidence.  Attendance correction changes
-    # effective qualification through the assignment status query instead of
-    # deleting the evidence row.
-    return
+    session.execute(delete(SoldierRangeQualification).where(
+        SoldierRangeQualification.source_range_assignment_id == assignment.id,
+    ))
 
 
 def mark_attendance(
@@ -417,6 +420,13 @@ def mark_attendance(
 
     previous_status = assignment.attendance_status
     if previous_status == status:
+        if status == RangeAttendanceStatus.no_show and _mitvachim_enabled(session):
+            latest_body = f"{_range_context(event, reason=note)} | assignment={assignment.id}"
+            session.query(Notification).filter(
+                Notification.type == NotificationType.range_no_show,
+                Notification.reference_type == "range_event",
+                Notification.reference_id == event.id,
+            ).update({Notification.body: latest_body}, synchronize_session=False)
         session.commit()
         session.refresh(assignment)
         return assignment
