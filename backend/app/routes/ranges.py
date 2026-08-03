@@ -164,10 +164,7 @@ def _event_out(
     confirmed_rows = [a for a in rows if not a.is_draft]
     assignments = [_assignment_out(a) for a in rows] if include_assignments else []
     node = _event_node(session, event)
-    assigned_to_me = session.query(RangeAssignment.id).filter(
-        RangeAssignment.range_event_id == event.id,
-        RangeAssignment.soldier_id == user.id,
-    ).first() is not None
+    assigned_to_me = any(assignment.soldier_id == user.id for assignment in rows)
     can_edit_attendance = node is not None and range_attendance_edit_authorized(
         session, user=user, target_node=node,
     )

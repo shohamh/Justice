@@ -21,9 +21,7 @@ def test_auto_assignment_reason_fields_are_persisted_as_nullable_contract(
         requires_weapon=True,
         eligible_node_ids=[node.id],
     ))
-    soldier = create_soldier(
-        app_session, personal_number="7010001", hierarchy_node_id=node.id
-    )
+    soldier = create_soldier(app_session, personal_number="7010001", hierarchy_node_id=node.id)
     app_session.flush()
     event = create_range_event(
         app_session,
