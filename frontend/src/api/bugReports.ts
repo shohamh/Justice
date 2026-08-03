@@ -29,6 +29,8 @@ export interface BugReportSummary {
   has_screenshot: boolean;
   created_at: string;
   updated_at: string;
+  comment_count: number;
+  last_comment_at: string | null;
 }
 
 export interface PaginatedBugReports {

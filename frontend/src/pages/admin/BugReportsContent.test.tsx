@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { BugReportsContent } from "./BugReportsContent";
 import * as bugReportsApi from "../../api/bugReports";
+import type { BugReportSummary } from "../../api/bugReports";
 
 vi.mock("../../api/bugReports", async () => {
   const actual = await vi.importActual<typeof import("../../api/bugReports")>("../../api/bugReports");
@@ -26,7 +27,7 @@ function renderWithProviders(ui: React.ReactElement) {
   );
 }
 
-const SAMPLE_REPORT = {
+const SAMPLE_REPORT: BugReportSummary = {
   id: "r1",
   reporter_id: "s1",
   description: "the calendar is blank",
@@ -39,6 +40,8 @@ const SAMPLE_REPORT = {
   has_screenshot: false,
   created_at: "2026-07-25T10:05:00Z",
   updated_at: "2026-07-25T10:05:00Z",
+  comment_count: 2,
+  last_comment_at: "2026-07-25T10:07:00Z",
 };
 
 describe("BugReportsContent", () => {
