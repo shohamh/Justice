@@ -8,6 +8,12 @@ function ModalUnderTest({ onClose }: { onClose: () => void }) {
   return null;
 }
 
+function HandoffHarness({ active, onReplacementClose }: { active: "first" | "replacement"; onReplacementClose: () => void }) {
+  return active === "first"
+    ? <ModalUnderTest onClose={() => undefined} />
+    : <div data-testid="replacement-modal"><ModalUnderTest onClose={onReplacementClose} /></div>;
+}
+
 // jsdom's history.back() applies the navigation and fires popstate
 // asynchronously, same as a real browser — tests that trigger it must wait
 // for the resulting state change rather than asserting immediately after.
@@ -112,6 +118,22 @@ describe("useModalBackClose", () => {
     // instead, then assert the navigation is still intact.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(location.pathname).toBe("/somewhere-else");
+  });
+
+  test("keeps a replacement modal open when the previous modal unmounts before deferred cleanup", async () => {
+    const onReplacementClose = vi.fn();
+    const { rerender } = render(
+      <HandoffHarness active="first" onReplacementClose={onReplacementClose} />,
+    );
+    expect(isOnModalEntry()).toBe(true);
+
+    rerender(<HandoffHarness active="replacement" onReplacementClose={onReplacementClose} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(document.querySelector("[data-testid='replacement-modal']")).not.toBeNull();
+    expect(onReplacementClose).not.toHaveBeenCalled();
+    expect(isOnModalEntry()).toBe(true);
   });
 
   test("does not close the modal immediately due to React StrictMode's dev-only double-invoke of effects", async () => {

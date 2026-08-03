@@ -67,9 +67,9 @@ export function PlanningTable<T>({
   }));
   if (rowActions) dataColumns.push({ id: "__actions", header: String(actionsLabel), cell: rowActions });
 
-  if (!loading && !error && rows.length === 0) return <div className="space-y-3" dir="rtl"><div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{emptyMessage}</div></div>;
   if (loading) return <div className="space-y-3" dir="rtl"><div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{loadingMessage}</div></div>;
   if (error) return <div className="space-y-3" dir="rtl"><div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">{error}</div></div>;
+  if (rows.length === 0) return <div className="space-y-3" dir="rtl"><div role="status" className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-500">{emptyMessage}</div></div>;
 
   return (
     <div className="space-y-3" dir="rtl">
