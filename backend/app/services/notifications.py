@@ -76,10 +76,14 @@ class AnnouncementRateLimitError(Exception):
     """Raised when the same sender re-sends an identically-titled announcement too soon."""
 
 
-def _frontend_url(notification_type: NotificationType) -> str:
+def _frontend_url(
+    notification_type: NotificationType, reference_id: uuid.UUID | None = None
+) -> str:
     from app.settings import get_settings
     base = get_settings().frontend_url.rstrip("/")
     path = _FRONTEND_PATHS.get(notification_type.value, "/notifications")
+    if notification_type == NotificationType.bug_report_comment and reference_id is not None:
+        path = f"{path}?report={reference_id}"
     return f"{base}{path}"
 
 
@@ -153,7 +157,7 @@ def _build_reply_markup(
     keyboard.append([{"text": "🔕 השתק", "callback_data": silence_tok}])
 
     open_label = "פתחי במערכת" if soldier_gender == "female" else "פתח במערכת"
-    keyboard.append([{"text": f"🔗 {open_label}", "url": _frontend_url(notification_type)}])
+    keyboard.append([{"text": f"🔗 {open_label}", "url": _frontend_url(notification_type, reference_id)}])
 
     return json.dumps({"inline_keyboard": keyboard}, ensure_ascii=False)
 
@@ -253,7 +257,7 @@ def _enqueue_email(
             approve_url = f"{base}/action?token={approve_tok}"
             reject_url = f"{base}/action?token={reject_tok}"
 
-    app_url = _frontend_url(notification_type) if notification_type else ""
+    app_url = _frontend_url(notification_type, reference_id) if notification_type else ""
     html_body = render_notification_email(
         title=title,
         body=body,
