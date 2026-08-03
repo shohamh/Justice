@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date as date_type, datetime
+from datetime import date as date_type
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import (
@@ -98,6 +100,8 @@ class UpdateRangeEventBody(BaseModel):
 class AddAssignmentBody(BaseModel):
     soldier_id: uuid.UUID
     is_reserve: bool = False
+    assignment_reason_code: str = Field(default="manual", min_length=1, max_length=100)
+    assignment_reason_text: str | None = Field(default="שיבוץ ידני", max_length=1000)
 
 
 class RangeAssignmentOut(BaseModel):
@@ -107,6 +111,8 @@ class RangeAssignmentOut(BaseModel):
     is_draft: bool
     attendance_status: str
     note: str | None
+    assignment_reason_code: str | None
+    assignment_reason_text: str | None
 
 
 class RangeEventOut(BaseModel):
@@ -128,6 +134,8 @@ class RangeEventOut(BaseModel):
     assignments: list[RangeAssignmentOut] = []
     primary_filled: int = 0
     reserve_filled: int = 0
+    assigned_to_me: bool = False
+    can_edit_attendance: bool = False
 
 
 def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
@@ -138,6 +146,8 @@ def _assignment_out(a: RangeAssignment) -> RangeAssignmentOut:
         is_draft=a.is_draft,
         attendance_status=a.attendance_status,
         note=a.note,
+        assignment_reason_code=a.assignment_reason_code,
+        assignment_reason_text=a.assignment_reason_text,
     )
 
 
@@ -145,6 +155,7 @@ def _event_out(
     session: Session,
     event: RangeEvent,
     *,
+    user: Soldier,
     include_assignments: bool = False,
     include_drafts: bool = True,
 ) -> RangeEventOut:
@@ -154,6 +165,11 @@ def _event_out(
     rows = query.all()
     confirmed_rows = [a for a in rows if not a.is_draft]
     assignments = [_assignment_out(a) for a in rows] if include_assignments else []
+    node = _event_node(session, event)
+    assigned_to_me = any(assignment.soldier_id == user.id for assignment in rows)
+    can_edit_attendance = node is not None and range_attendance_edit_authorized(
+        session, user=user, target_node=node,
+    )
     return RangeEventOut(
         id=event.id,
         hierarchy_node_id=event.hierarchy_node_id,
@@ -173,6 +189,8 @@ def _event_out(
         assignments=assignments,
         primary_filled=sum(not a.is_reserve for a in confirmed_rows),
         reserve_filled=sum(a.is_reserve for a in confirmed_rows),
+        assigned_to_me=assigned_to_me,
+        can_edit_attendance=can_edit_attendance,
     )
 
 
@@ -204,7 +222,7 @@ def create_range_event(
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return _event_out(session, event)
+    return _event_out(session, event, user=user)
 
 
 @router.patch("/{event_id}", response_model=RangeEventOut)
@@ -230,7 +248,7 @@ def update_range_event(
             event = svc.update_range_event(session, event=event, actor_id=user.id, force_schedule_change=body.force_schedule_change, **updates)
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return _event_out(session, event)
+    return _event_out(session, event, user=user)
 
 
 @router.delete("/{event_id}", response_model=None, status_code=status.HTTP_204_NO_CONTENT)
@@ -269,9 +287,63 @@ def add_assignment(
             event=event,
             soldier_id=body.soldier_id,
             is_reserve=body.is_reserve,
+            assignment_reason_code=body.assignment_reason_code.strip(),
+            assignment_reason_text=(
+                body.assignment_reason_text.strip() if body.assignment_reason_text is not None else None
+            ),
         )
     except svc.RangeValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return _assignment_out(assignment)
+
+
+class UpdateAssignmentReasonBody(BaseModel):
+    assignment_reason_code: str = Field(min_length=1, max_length=100)
+    assignment_reason_text: str | None = Field(default=None, max_length=1000)
+
+
+@router.patch(
+    "/{event_id}/assignments/{assignment_id}/reason", response_model=RangeAssignmentOut
+)
+def update_assignment_reason(
+    event_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    body: UpdateAssignmentReasonBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> RangeAssignmentOut:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    assignment = session.get(RangeAssignment, assignment_id)
+    if assignment is None or assignment.range_event_id != event_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
+    reason_code = body.assignment_reason_code.strip()
+    reason_text = body.assignment_reason_text.strip() if body.assignment_reason_text is not None else None
+    if not reason_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assignment_reason_code_required")
+    if reason_code == "custom" and not reason_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="custom_reason_text_required")
+    before = {
+        "assignment_reason_code": assignment.assignment_reason_code,
+        "assignment_reason_text": assignment.assignment_reason_text,
+    }
+    assignment.assignment_reason_code = reason_code
+    assignment.assignment_reason_text = reason_text
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="range_assignment_reason_update",
+        entity_type="range_assignment",
+        entity_id=assignment.id,
+        before=before,
+        after={
+            "assignment_reason_code": reason_code,
+            "assignment_reason_text": reason_text,
+        },
+    )
+    session.commit()
+    session.refresh(assignment)
     return _assignment_out(assignment)
 
 
@@ -321,6 +393,7 @@ def get_range_event(
     return _event_out(
         session,
         event,
+        user=user,
         include_assignments=True,
         include_drafts=can_manage,
     )
@@ -346,14 +419,14 @@ def list_range_events(
     node = session.get(HierarchyNode, node_uuid)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    _authorize_range_read(session, user, node)
+    can_manage = _authorize_range_read(session, user, node)
     query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_uuid)
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
     if date_to is not None:
         query = query.filter(RangeEvent.date <= date_to)
     events = query.order_by(RangeEvent.date).all()
-    return [_event_out(session, e) for e in events]
+    return [_event_out(session, e, user=user, include_drafts=can_manage) for e in events]
 
 
 class RangeExcusalOut(BaseModel):
