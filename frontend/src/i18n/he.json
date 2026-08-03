@@ -515,7 +515,9 @@
     "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
     "not_found": "הפריט לא נמצא",
     "file_too_large": "הקובץ חורג מהגודל המותר (5MB)",
-    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF"
+    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF",
+    "custom_reason_text_required": "יש למלא את סיבת השיבוץ",
+    "assignment_reason_code_required": "יש למלא את סיבת השיבוץ"
   },
   "exemption_requests": {
     "title": "בקשות פטור",
@@ -1294,10 +1296,6 @@
       "confirm_assignment": "אישור השיבוץ נכשל",
       "confirm_assignments": "אישור השיבוצים נכשל"
     }
-  },
-  "errors": {
-    "custom_reason_text_required": "יש למלא את סיבת השיבוץ",
-    "assignment_reason_code_required": "יש למלא את סיבת השיבוץ"
   },
   "action": {
     "processing": "מעבד פעולה...",
