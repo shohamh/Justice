@@ -1132,9 +1132,9 @@
     "type_range_excusal_approved": "פטור ממטווח אושר",
     "type_range_excusal_rejected": "בקשת פטור ממטווח נדחתה",
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
-      "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
-      "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
-      "type_bug_report_comment": "תגובה חדשה לדיווח באג"
+    "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
+    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_bug_report_comment": "תגובה חדשה לדיווח באג"
   },
   "announcements": {
     "title": "הכרזות",

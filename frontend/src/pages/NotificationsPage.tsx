@@ -24,6 +24,9 @@ export default function NotificationsPage() {
   });
   const notifications = notificationsQuery.data?.items ?? [];
   function notificationLink(referenceType: string | null, referenceId: string | null): string | null {
+    if (referenceType === "bug_report" && referenceId) {
+      return `/my-bug-reports?report=${referenceId}`;
+    }
     if ((referenceType === "range_event" || referenceType === "range_assignment") && referenceId) {
       return `/ranges?event=${referenceId}`;
     }
