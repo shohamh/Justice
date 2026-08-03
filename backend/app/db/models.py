@@ -1187,6 +1187,7 @@ class NotificationType(str, _enum.Enum):
     range_reserve_promoted = "range_reserve_promoted"
     range_reserve_excused = "range_reserve_excused"
     range_excusal_no_backfill = "range_excusal_no_backfill"
+    bug_report_comment = "bug_report_comment"
 
 
 class Notification(Base):

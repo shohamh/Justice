@@ -54,3 +54,13 @@ def test_notify_duty_managers_in_scope_skips_dm_without_scope(admin_session):
         select(Notification).where(Notification.soldier_id == dm.id)
     ).scalar_one_or_none()
     assert notif is None
+
+
+def test_bug_report_comment_notifications_open_the_owners_report():
+    from app.db.models import NotificationType
+    from app.services.notifications import _frontend_url
+
+    report_id = uuid.UUID("00000000-0000-0000-0000-000000000123")
+    assert _frontend_url(NotificationType.bug_report_comment, report_id).endswith(
+        "/my-bug-reports?report=00000000-0000-0000-0000-000000000123"
+    )

@@ -25,6 +25,7 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   range_reminder: "🔔", range_reminder_shortfall: "⚠️",
   score_adjusted: "⭐", announcement: "📢", system_announcement: "📣",
   algorithm_job_done: "🤖", algorithm_job_failed: "⚠️",
+  bug_report_comment: "💬",
 };
 
 export const RANGE_NOTIFICATION_TYPES = [

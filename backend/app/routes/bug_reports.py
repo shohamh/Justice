@@ -14,9 +14,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import BugReport, BugReportComment, BugReportCommentAttachment, Soldier
+from app.db.models import (
+    BugReport,
+    BugReportComment,
+    BugReportCommentAttachment,
+    NotificationType,
+    Soldier,
+)
 from app.db.session import get_session
 from app.services import bug_reports as svc
+from app.services.notifications import create_notification
 
 router = APIRouter(tags=["bug_reports"])
 
@@ -388,7 +395,7 @@ def create_bug_report_comment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> BugReportCommentOut:
-    _require_reporter_or_admin(session, user, report_id)
+    report = _require_reporter_or_admin(session, user, report_id)
     existing_count = session.execute(
         select(func.count()).select_from(BugReportComment).where(BugReportComment.bug_report_id == report_id)
     ).scalar_one()
@@ -398,6 +405,17 @@ def create_bug_report_comment(
     session.add(comment)
     session.commit()
     session.refresh(comment)
+    if comment.author_id != report.reporter_id:
+        create_notification(
+            session,
+            soldier_id=report.reporter_id,
+            type=NotificationType.bug_report_comment,
+            title="תגובה חדשה לדיווח באג",
+            reference_type="bug_report",
+            reference_id=report.id,
+            actor_id=user.id,
+        )
+        session.commit()
     return BugReportCommentOut(
         id=comment.id,
         bug_report_id=comment.bug_report_id,

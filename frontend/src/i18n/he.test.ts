@@ -22,6 +22,7 @@ const NOTIFICATION_TYPES = [
   "transfer_request_pending", "transfer_request_rejected",
   "system_announcement", "enrollment_fields_edited",
   "swap_pending_approval", "no_show_marked", "range_assignment_confirmed", "range_roster_changed", "range_cancelled", "range_no_show", "range_excusal_pending", "range_excusal_approved", "range_excusal_rejected", "range_reserve_promoted", "range_reserve_excused", "range_excusal_no_backfill", "range_reminder", "range_reminder_shortfall",
+  "bug_report_comment",
 ];
 
 describe("he.json notification type coverage", () => {
