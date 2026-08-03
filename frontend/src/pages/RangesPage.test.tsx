@@ -161,7 +161,7 @@ describe("RangesPage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog.querySelector("dl")).toHaveClass("grid", "rounded", "p-3");
     expect(screen.getByTestId("range-detail-actions")).toHaveClass("flex", "flex-wrap", "gap-2");
-    expect(screen.getByTestId("range-detail-information")).toBeInTheDocument();
+    expect(screen.getByTestId("range-detail-information")).toHaveClass("text-gray-800", "dark:text-gray-100");
     expect(screen.getByTestId("range-detail-roster")).toBeInTheDocument();
     expect(screen.getByText("הוראות הגעה:")).toBeInTheDocument();
     expect(screen.getByText("איש קשר:")).toBeInTheDocument();
