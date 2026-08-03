@@ -126,6 +126,8 @@
   "bug_reports": {
     "comments_title": "תגובות על הדיווח",
     "comment_button": "תגובות",
+    "comment_count": "תגובות",
+    "last_comment_at": "תגובה אחרונה",
     "no_comments": "אין תגובות עדיין",
     "comment_placeholder": "הוסף תגובה...",
     "send": "שלח",

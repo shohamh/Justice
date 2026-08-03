@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import "../../i18n";
 import { BugReportsContent } from "./BugReportsContent";
 import * as bugReportsApi from "../../api/bugReports";
 import type { BugReportSummary } from "../../api/bugReports";
@@ -15,6 +16,7 @@ vi.mock("../../api/bugReports", async () => {
     getBugReportJson: vi.fn(),
     fetchBugReportScreenshot: vi.fn(),
     importBugReports: vi.fn(),
+    listComments: vi.fn(),
   };
 });
 
@@ -48,6 +50,7 @@ describe("BugReportsContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [SAMPLE_REPORT], total: 1 });
+    vi.mocked(bugReportsApi.listComments).mockResolvedValue([]);
   });
 
   it("renders the report list", async () => {
@@ -66,7 +69,7 @@ describe("BugReportsContent", () => {
     await waitFor(() => expect(bugReportsApi.updateBugReportStatus).toHaveBeenCalledWith("r1", "resolved"));
   });
 
-  it("renders one status icon button per status, highlighting the current status", async () => {
+  it("renders a labelled status control for each status, highlighting the current status", async () => {
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-status-open-r1")).toBeInTheDocument());
 
@@ -80,23 +83,33 @@ describe("BugReportsContent", () => {
     expect(screen.getByTestId("bug-report-status-in_progress-r1")).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("bug-report-status-resolved-r1")).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("bug-report-status-wont_fix-r1")).toHaveAttribute("aria-pressed", "false");
+
+    expect(screen.getByTestId("bug-report-status-open-r1").parentElement).toHaveTextContent("פתוח");
+    expect(screen.getByTestId("bug-report-status-in_progress-r1").parentElement).toHaveTextContent("בטיפול");
+    expect(screen.getByTestId("bug-report-status-resolved-r1").parentElement).toHaveTextContent("טופל");
+    expect(screen.getByTestId("bug-report-status-wont_fix-r1").parentElement).toHaveTextContent("לא יטופל");
   });
 
   it("colors the row background according to the report's status", async () => {
-    const resolvedReport = { ...SAMPLE_REPORT, id: "r2", status: "resolved" as const };
+    const inProgressReport = { ...SAMPLE_REPORT, id: "r2", status: "in_progress" as const };
+    const resolvedReport = { ...SAMPLE_REPORT, id: "r3", status: "resolved" as const };
+    const wontFixReport = { ...SAMPLE_REPORT, id: "r4", status: "wont_fix" as const };
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
-      items: [SAMPLE_REPORT, resolvedReport],
-      total: 2,
+      items: [SAMPLE_REPORT, inProgressReport, resolvedReport, wontFixReport],
+      total: 4,
     });
     renderWithProviders(<BugReportsContent />);
     await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
 
     const openRow = screen.getByTestId("bug-report-row-r1");
-    const resolvedRow = screen.getByTestId("bug-report-row-r2");
+    const inProgressRow = screen.getByTestId("bug-report-row-r2");
+    const resolvedRow = screen.getByTestId("bug-report-row-r3");
+    const wontFixRow = screen.getByTestId("bug-report-row-r4");
 
-    expect(openRow.className).toMatch(/bg-red/);
-    expect(resolvedRow.className).toMatch(/bg-green/);
-    expect(openRow.className).not.toBe(resolvedRow.className);
+    expect(openRow).toHaveClass("bg-red-100");
+    expect(inProgressRow).toHaveClass("bg-amber-100");
+    expect(resolvedRow).toHaveClass("bg-emerald-100");
+    expect(wontFixRow).toHaveClass("bg-slate-200");
   });
 
   it("filters by severity", async () => {
@@ -216,6 +229,78 @@ describe("BugReportsContent", () => {
     fireEvent.click(screen.getByTestId("bug-report-status-resolved-r1"));
 
     expect(screen.queryByText("/calendar")).not.toBeInTheDocument();
+  });
+
+  it("renders the comments panel inline at the bottom of expanded content without a modal trigger", async () => {
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
+
+    expect(await screen.findByText("אין תגובות עדיין")).toBeInTheDocument();
+    expect(screen.queryByTestId("bug-report-comments-r1")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renders comment activity columns and an em dash when there is no last response", async () => {
+    const noResponseReport = {
+      ...SAMPLE_REPORT,
+      id: "r-no-response",
+      description: "no response report",
+      comment_count: 0,
+      last_comment_at: null,
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [SAMPLE_REPORT, noResponseReport],
+      total: 2,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByText("no response report")).toBeInTheDocument());
+
+    expect(screen.getByRole("columnheader", { name: "תגובות" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "תגובה אחרונה" })).toBeInTheDocument();
+    expect(screen.getByText("2", { selector: "td" })).toBeInTheDocument();
+    expect(screen.getByTestId("bug-report-row-r-no-response")).toHaveTextContent("—");
+    expect(screen.getByText(new Date(SAMPLE_REPORT.last_comment_at!).toLocaleString("he-IL"))).toBeInTheDocument();
+  });
+
+  it("sorts latest responses chronologically from their raw ISO timestamps and keeps null values explicit", async () => {
+    const olderResponse = {
+      ...SAMPLE_REPORT,
+      id: "r-older-response",
+      description: "older response",
+      last_comment_at: "2026-07-20T10:07:00Z",
+    };
+    const noResponse = {
+      ...SAMPLE_REPORT,
+      id: "r-no-response",
+      description: "no response",
+      last_comment_at: null,
+    };
+    const latestResponse = {
+      ...SAMPLE_REPORT,
+      id: "r-latest-response",
+      description: "latest response",
+      last_comment_at: "2026-07-28T10:07:00Z",
+    };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [latestResponse, noResponse, olderResponse],
+      total: 3,
+    });
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByText("latest response")).toBeInTheDocument());
+
+    const descriptionsInOrder = () =>
+      screen.getAllByTestId(/^bug-report-row-/).map((row) => row.textContent ?? "");
+
+    fireEvent.click(screen.getByRole("columnheader", { name: "תגובה אחרונה" }));
+
+    await waitFor(() => {
+      const rows = descriptionsInOrder();
+      expect(rows[0]).toContain("older response");
+      expect(rows[1]).toContain("latest response");
+      expect(rows[2]).toContain("no response");
+    });
   });
 
   it("sorts rows by date when the date column header is clicked", async () => {
