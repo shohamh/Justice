@@ -81,6 +81,38 @@ describe("BugReportModal", () => {
     expect(submitBugReport).not.toHaveBeenCalled();
   });
 
+  test("keeps the dialog scrollable and actions reachable on small viewports, and still submits a long description", async () => {
+    render(
+      <MemoryRouter initialEntries={["/duty"]}>
+        <BugReportModal screenshot="data:image/png;base64,AAA" onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const overlay = screen.getByTestId("bug-report-modal-overlay");
+    expect(overlay.className).toMatch(/overflow-y-auto/);
+
+    const dialog = screen.getByTestId("bug-report-modal-dialog");
+    expect(dialog.className).toMatch(/flex/);
+    expect(dialog.className).toMatch(/flex-col/);
+    expect(dialog.className).toMatch(/max-h-\[calc\(100dvh-2rem\)\]/);
+
+    const content = screen.getByTestId("bug-report-modal-content");
+    expect(content.className).toMatch(/min-h-0/);
+    expect(content.className).toMatch(/overflow-y-auto/);
+
+    const actions = screen.getByTestId("bug-report-modal-actions");
+    expect(actions).toBeInTheDocument();
+    expect(actions.className).toMatch(/shrink-0/);
+
+    const longDescription = "תיאור ארוך מאוד ".repeat(50);
+    fireEvent.change(screen.getByTestId("bug-report-description"), { target: { value: longDescription } });
+    fireEvent.click(screen.getByTestId("bug-report-submit"));
+
+    await waitFor(() => expect(submitBugReport).toHaveBeenCalledWith(
+      expect.objectContaining({ description: longDescription.trim() }),
+    ));
+  });
+
   test("shows a fallback message and still allows submission when screenshot capture failed", async () => {
     render(
       <MemoryRouter initialEntries={["/duty"]}>

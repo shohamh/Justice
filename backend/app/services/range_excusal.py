@@ -115,7 +115,7 @@ def request_reserve_excusal(
 def _eligible_assigned_reserves(session: Session, *, event: RangeEvent) -> list[RangeAssignment]:
     from app.db.models import DutyAssignment, RangeEvent, Soldier
     from app.services.constraints import get_approved_constraint_dates
-    from app.services.range_auto_assign import _sort_key
+    from app.services.range_auto_assign import _rank_candidate
     from app.services.range_exemption import is_range_exempt
 
     rows = session.execute(
@@ -149,7 +149,12 @@ def _eligible_assigned_reserves(session: Session, *, event: RangeEvent) -> list[
         ).scalar_one_or_none() is not None:
             continue
         eligible.append(assignment)
-    return sorted(eligible, key=lambda a: _sort_key(session, soldier=session.get(Soldier, a.soldier_id), event=event))
+    return sorted(
+        eligible,
+        key=lambda assignment: _rank_candidate(
+            session, soldier=session.get(Soldier, assignment.soldier_id), event=event,
+        )[0],
+    )
 
 
 def decide_primary_excusal(

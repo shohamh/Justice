@@ -4,7 +4,7 @@ import base64
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -14,9 +14,16 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.deps import require_password_changed, require_roles
-from app.db.models import BugReport, BugReportComment, BugReportCommentAttachment, Soldier
+from app.db.models import (
+    BugReport,
+    BugReportComment,
+    BugReportCommentAttachment,
+    NotificationType,
+    Soldier,
+)
 from app.db.session import get_session
 from app.services import bug_reports as svc
+from app.services.notifications import create_notification
 
 router = APIRouter(tags=["bug_reports"])
 
@@ -114,6 +121,8 @@ class BugReportSummaryOut(BaseModel):
     has_screenshot: bool
     created_at: datetime
     updated_at: datetime
+    comment_count: int
+    last_comment_at: datetime | None
 
 
 class PaginatedBugReports(BaseModel):
@@ -125,7 +134,12 @@ class UpdateBugReportStatusBody(BaseModel):
     status: Literal["open", "in_progress", "resolved", "wont_fix"]
 
 
-def _summary_out(report: BugReport) -> BugReportSummaryOut:
+def _summary_out(
+    report: BugReport,
+    *,
+    comment_count: int,
+    last_comment_at: datetime | None,
+) -> BugReportSummaryOut:
     return BugReportSummaryOut(
         id=report.id,
         reporter_id=report.reporter_id,
@@ -139,6 +153,34 @@ def _summary_out(report: BugReport) -> BugReportSummaryOut:
         has_screenshot=report.screenshot is not None,
         created_at=report.created_at,
         updated_at=report.updated_at,
+        comment_count=comment_count,
+        last_comment_at=last_comment_at,
+    )
+
+
+def _comment_aggregates_subquery():
+    return (
+        select(
+            BugReportComment.bug_report_id.label("bug_report_id"),
+            func.count(BugReportComment.id).label("comment_count"),
+            func.max(BugReportComment.created_at).label("last_comment_at"),
+        )
+        .group_by(BugReportComment.bug_report_id)
+        .subquery()
+    )
+
+
+def _summary_with_comment_aggregates(session: Session, report: BugReport) -> BugReportSummaryOut:
+    comment_count, last_comment_at = session.execute(
+        select(
+            func.count(BugReportComment.id),
+            func.max(BugReportComment.created_at),
+        ).where(BugReportComment.bug_report_id == report.id)
+    ).one()
+    return _summary_out(
+        report,
+        comment_count=comment_count,
+        last_comment_at=last_comment_at,
     )
 
 
@@ -151,7 +193,15 @@ def list_bug_reports(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> PaginatedBugReports:
-    query = select(BugReport)
+    comment_aggregates = _comment_aggregates_subquery()
+    query = (
+        select(
+            BugReport,
+            func.coalesce(comment_aggregates.c.comment_count, 0).label("comment_count"),
+            comment_aggregates.c.last_comment_at,
+        )
+        .outerjoin(comment_aggregates, comment_aggregates.c.bug_report_id == BugReport.id)
+    )
     count_query = select(func.count()).select_from(BugReport)
     if severity is not None:
         query = query.where(BugReport.severity == severity)
@@ -161,10 +211,20 @@ def list_bug_reports(
         count_query = count_query.where(BugReport.status == status_filter)
 
     total = session.execute(count_query).scalar_one()
-    items = session.execute(
+    rows = session.execute(
         query.order_by(BugReport.created_at.desc()).offset(offset).limit(limit)
-    ).scalars().all()
-    return PaginatedBugReports(items=[_summary_out(r) for r in items], total=total)
+    ).all()
+    return PaginatedBugReports(
+        items=[
+            _summary_out(
+                report,
+                comment_count=comment_count,
+                last_comment_at=last_comment_at,
+            )
+            for report, comment_count, last_comment_at in rows
+        ],
+        total=total,
+    )
 
 
 class BugReportImportFileResult(BaseModel):
@@ -250,10 +310,10 @@ def update_bug_report_status(
     if report is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_not_found")
     report.status = body.status
-    report.updated_at = datetime.now(timezone.utc)
+    report.updated_at = datetime.now(UTC)
     session.commit()
     session.refresh(report)
-    return _summary_out(report)
+    return _summary_with_comment_aggregates(session, report)
 
 
 @router.get("/my/bug-reports", response_model=PaginatedBugReports)
@@ -264,10 +324,28 @@ def list_my_bug_reports(
     """Reporters' own bug reports, reusing the same `_summary_out` serializer
     (and `BugReportSummaryOut`/`PaginatedBugReports` response shape) as
     `GET /admin/bug-reports` so the frontend can share one client-side type."""
-    reports = session.execute(
-        select(BugReport).where(BugReport.reporter_id == user.id).order_by(BugReport.created_at.desc())
-    ).scalars().all()
-    return PaginatedBugReports(items=[_summary_out(r) for r in reports], total=len(reports))
+    comment_aggregates = _comment_aggregates_subquery()
+    rows = session.execute(
+        select(
+            BugReport,
+            func.coalesce(comment_aggregates.c.comment_count, 0).label("comment_count"),
+            comment_aggregates.c.last_comment_at,
+        )
+        .outerjoin(comment_aggregates, comment_aggregates.c.bug_report_id == BugReport.id)
+        .where(BugReport.reporter_id == user.id)
+        .order_by(BugReport.created_at.desc())
+    ).all()
+    return PaginatedBugReports(
+        items=[
+            _summary_out(
+                report,
+                comment_count=comment_count,
+                last_comment_at=last_comment_at,
+            )
+            for report, comment_count, last_comment_at in rows
+        ],
+        total=len(rows),
+    )
 
 
 class BugReportCommentBody(BaseModel):
@@ -317,7 +395,7 @@ def create_bug_report_comment(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> BugReportCommentOut:
-    _require_reporter_or_admin(session, user, report_id)
+    report = _require_reporter_or_admin(session, user, report_id)
     existing_count = session.execute(
         select(func.count()).select_from(BugReportComment).where(BugReportComment.bug_report_id == report_id)
     ).scalar_one()
@@ -327,6 +405,17 @@ def create_bug_report_comment(
     session.add(comment)
     session.commit()
     session.refresh(comment)
+    if comment.author_id != report.reporter_id:
+        create_notification(
+            session,
+            soldier_id=report.reporter_id,
+            type=NotificationType.bug_report_comment,
+            title="תגובה חדשה לדיווח באג",
+            reference_type="bug_report",
+            reference_id=report.id,
+            actor_id=user.id,
+        )
+        session.commit()
     return BugReportCommentOut(
         id=comment.id,
         bug_report_id=comment.bug_report_id,

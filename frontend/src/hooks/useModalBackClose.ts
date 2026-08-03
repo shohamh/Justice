@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
 
+type ModalHistoryState = { __modal?: boolean; __modalId?: number };
+type PendingBack = { cancelled: boolean; entryId: number };
+
+let nextModalEntryId = 0;
+let pendingBack: PendingBack | null = null;
+
 /**
  * Makes the mobile/browser back button (or gesture) close an open modal
  * instead of navigating the app away.
@@ -42,21 +48,30 @@ import { useEffect, useRef } from "react";
 export function useModalBackClose(onClose: () => void, enabled = true): void {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const pendingBack = useRef<{ cancelled: boolean } | null>(null);
+  const entryIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     let ownEntryOnTop = true;
+    const currentState = window.history.state as ModalHistoryState | null;
 
-    if (pendingBack.current !== null) {
-      // A StrictMode double-invoke: the immediately-preceding cleanup's
-      // deferred back() is still pending. Cancel it and keep using its
-      // entry instead of pushing a second one.
-      pendingBack.current.cancelled = true;
-      pendingBack.current = null;
+    if (pendingBack !== null && currentState?.__modalId === pendingBack.entryId) {
+      // A StrictMode double-invoke or modal handoff: the immediately-
+      // preceding cleanup's deferred back() is still pending. Cancel it and
+      // keep using its entry instead of pushing a second one.
+      entryIdRef.current = pendingBack.entryId;
+      pendingBack.cancelled = true;
+      pendingBack = null;
     } else {
-      window.history.pushState({ __modal: true }, "");
+      // A pending cleanup can become stale if another history entry was
+      // pushed before its microtask ran. It must never consume that newer
+      // entry.
+      if (pendingBack !== null) pendingBack.cancelled = true;
+      pendingBack = null;
+      const entryId = ++nextModalEntryId;
+      entryIdRef.current = entryId;
+      window.history.pushState({ __modal: true, __modalId: entryId }, "");
     }
 
     function handlePopState() {
@@ -73,13 +88,14 @@ export function useModalBackClose(onClose: () => void, enabled = true): void {
       // result's navigate() call, closing the panel in the same handler),
       // our entry is no longer on top — calling back() here would undo that
       // navigation instead of popping our own state.
-      const stillOnOwnEntry = (window.history.state as { __modal?: boolean } | null)?.__modal === true;
+      const stillOnOwnEntry = (window.history.state as ModalHistoryState | null)?.__modalId === entryIdRef.current;
       if (ownEntryOnTop && stillOnOwnEntry) {
-        const token = { cancelled: false };
-        pendingBack.current = token;
+        const token: PendingBack = { cancelled: false, entryId: entryIdRef.current! };
+        pendingBack = token;
         queueMicrotask(() => {
-          if (token.cancelled) return;
-          pendingBack.current = null;
+          if (token.cancelled || pendingBack !== token) return;
+          pendingBack = null;
+          if ((window.history.state as ModalHistoryState | null)?.__modalId !== entryIdRef.current) return;
           window.history.back();
         });
       }

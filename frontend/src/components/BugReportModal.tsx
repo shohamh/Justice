@@ -53,16 +53,17 @@ export default function BugReportModal({ screenshot, onClose }: BugReportModalPr
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[110]"
+      className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[110] overflow-y-auto p-4"
       onClick={onClose}
       data-testid="bug-report-modal-overlay"
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full flex flex-col max-h-[calc(100dvh-2rem)]"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
+        data-testid="bug-report-modal-dialog"
       >
-        <div className="flex justify-between items-center mb-3">
+        <div className="flex justify-between items-center mb-3 shrink-0">
           <h3 className="text-lg font-semibold">מצאתי באג</h3>
           <button
             onClick={onClose}
@@ -78,47 +79,49 @@ export default function BugReportModal({ screenshot, onClose }: BugReportModalPr
           <p className="text-sm text-green-600" data-testid="bug-report-success">הדיווח נשלח בהצלחה, תודה!</p>
         ) : (
           <>
-            <div className="mb-3">
-              {screenshot ? (
-                <img src={screenshot} alt="" className="w-full rounded border dark:border-gray-600" />
-              ) : (
-                <p className="text-xs text-gray-500">לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו</p>
-              )}
+            <div className="min-h-0 overflow-y-auto" data-testid="bug-report-modal-content">
+              <div className="mb-3">
+                {screenshot ? (
+                  <img src={screenshot} alt="" className="w-full rounded border dark:border-gray-600" />
+                ) : (
+                  <p className="text-xs text-gray-500">לא ניתן היה לצלם את המסך, אפשר להמשיך בלעדיו</p>
+                )}
+              </div>
+              <textarea
+                className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    if (!submitting && description.trim()) void handleSubmit();
+                  }
+                }}
+                maxLength={2000}
+                placeholder="מה קרה?"
+                data-testid="bug-report-description"
+              />
+              <div className="flex gap-2 mt-3" data-testid="bug-report-severity-picker">
+                {SEVERITIES.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => setSeverity(s.value)}
+                    className={`flex-1 px-2 py-1 text-xs rounded border ${
+                      severity === s.value
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+                    }`}
+                    data-testid={`bug-report-severity-${s.value}`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
             </div>
-            <textarea
-              className="w-full border rounded p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  if (!submitting && description.trim()) void handleSubmit();
-                }
-              }}
-              maxLength={2000}
-              placeholder="מה קרה?"
-              data-testid="bug-report-description"
-            />
-            <div className="flex gap-2 mt-3" data-testid="bug-report-severity-picker">
-              {SEVERITIES.map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => setSeverity(s.value)}
-                  className={`flex-1 px-2 py-1 text-xs rounded border ${
-                    severity === s.value
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-                  }`}
-                  data-testid={`bug-report-severity-${s.value}`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
-            <div className="flex justify-end gap-2 mt-4">
+            <div className="flex justify-end gap-2 mt-4 shrink-0" data-testid="bug-report-modal-actions">
               <button type="button" onClick={onClose} disabled={submitting} className="px-3 py-1 text-sm border dark:border-gray-600 dark:text-gray-300 rounded disabled:opacity-50">
                 ביטול
               </button>

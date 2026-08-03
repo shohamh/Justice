@@ -9,7 +9,7 @@ interface Props {
 export default function UpcomingRangesWidget({ ranges, onOpenRange }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = ranges
-    .filter((r) => r.date > today && r.status === "planned")
+    .filter((r) => r.assigned_to_me === true && r.date > today && r.status === "planned")
     .sort((a, b) => a.date.localeCompare(b.date));
 
   return (

@@ -15,7 +15,7 @@ import {
   BugReportImportSummary,
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
-import BugReportDetailModal from "../../components/BugReportDetailModal";
+import BugReportCommentsPanel from "../../components/BugReportCommentsPanel";
 import { usePagePagination } from "../../hooks/usePagePagination";
 import { DataTable, ColDef } from "../../components/DataTable";
 
@@ -33,10 +33,10 @@ const STATUS_ICONS: Record<BugReportStatus, LucideIcon> = {
 };
 
 const STATUS_ROW_BG: Record<BugReportStatus, string> = {
-  open: "bg-red-50 dark:bg-red-950/30",
-  in_progress: "bg-yellow-50 dark:bg-yellow-950/30",
-  resolved: "bg-green-50 dark:bg-green-950/30",
-  wont_fix: "bg-gray-50 dark:bg-gray-800/50",
+  open: "bg-red-100 dark:bg-red-950/60 hover:bg-red-200 dark:hover:bg-red-950/80",
+  in_progress: "bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-950/80",
+  resolved: "bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-950/80",
+  wont_fix: "bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700",
 };
 
 const STATUS_ORDER: BugReportStatus[] = ["open", "in_progress", "resolved", "wont_fix"];
@@ -49,7 +49,6 @@ export function BugReportsContent() {
   const [statusFilter, setStatusFilter] = useState<BugReportStatus | "">("");
   const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
   const [jsonById, setJsonById] = useState<Record<string, string>>({});
   const [screenshotUrlById, setScreenshotUrlById] = useState<Record<string, string>>({});
   const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
@@ -186,23 +185,30 @@ export function BugReportsContent() {
       header: "סטטוס",
       cell: (report) => (
         <>
-          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1">
             {STATUS_ORDER.map((s) => {
               const StatusIcon = STATUS_ICONS[s];
               return (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={report.status === s}
-                  title={bugReportStatusLabel(s)}
-                  onClick={() => handleStatusChange(report.id, s)}
-                  className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
-                    report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
-                  }`}
-                  data-testid={`bug-report-status-${s}-${report.id}`}
-                >
-                  <StatusIcon className="w-3.5 h-3.5" />
-                </button>
+                <div key={s} className="min-w-12 flex flex-col items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-pressed={report.status === s}
+                    title={bugReportStatusLabel(s)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleStatusChange(report.id, s);
+                    }}
+                    className={`w-7 h-7 flex items-center justify-center rounded text-sm ${
+                      report.status === s ? "ring-2 ring-indigo-500" : "opacity-40 hover:opacity-70"
+                    }`}
+                    data-testid={`bug-report-status-${s}-${report.id}`}
+                  >
+                    <StatusIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] leading-none text-center whitespace-nowrap">
+                    {bugReportStatusLabel(s)}
+                  </span>
+                </div>
               );
             })}
           </div>
@@ -214,6 +220,18 @@ export function BugReportsContent() {
         </>
       ),
       sortValue: (report) => report.status,
+    },
+    {
+      id: "comment_count",
+      header: t("bug_reports.comment_count"),
+      cell: (report) => report.comment_count,
+      sortValue: (report) => report.comment_count,
+    },
+    {
+      id: "last_comment_at",
+      header: t("bug_reports.last_comment_at"),
+      cell: (report) => report.last_comment_at ? new Date(report.last_comment_at).toLocaleString("he-IL") : "—",
+      sortValue: (report) => report.last_comment_at ?? null,
     },
     {
       id: "description",
@@ -298,7 +316,7 @@ export function BugReportsContent() {
           columns={bugReportColumns}
           data={items}
           rowTestId={(report) => `bug-report-row-${report.id}`}
-          rowClassName={(report) => `border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${STATUS_ROW_BG[report.status]}`}
+          rowClassName={(report) => `border-b dark:border-gray-700 ${STATUS_ROW_BG[report.status]}`}
           expandable={{
             isExpanded: (report) => expandedId === report.id,
             onToggle: (report) => toggleExpand(report),
@@ -349,13 +367,6 @@ export function BugReportsContent() {
                 >
                   הצג JSON
                 </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setOpenCommentsFor(report.id); }}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 mr-3"
-                  data-testid={`bug-report-comments-${report.id}`}
-                >
-                  {t("bug_reports.comment_button")}
-                </button>
                 {jsonErrorById[report.id] && (
                   <p className="text-xs text-red-500 mt-1" data-testid={`bug-report-json-error-${report.id}`}>
                     {jsonErrorById[report.id]}
@@ -366,6 +377,10 @@ export function BugReportsContent() {
                     {jsonById[report.id]}
                   </pre>
                 )}
+                <section className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                  <h3 className="text-sm font-semibold mb-2">{t("bug_reports.comments_title")}</h3>
+                  <BugReportCommentsPanel reportId={report.id} />
+                </section>
               </div>
             ),
           }}
@@ -384,10 +399,6 @@ export function BugReportsContent() {
             </button>
           ))}
         </div>
-      )}
-
-      {openCommentsFor && (
-        <BugReportDetailModal reportId={openCommentsFor} onClose={() => setOpenCommentsFor(null)} />
       )}
     </div>
   );

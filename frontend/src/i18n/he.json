@@ -123,9 +123,15 @@
     "decision_note": "הערת מפקד",
     "section_bug_reports": "הדיווחים שלי"
   },
+  "my_bug_reports": {
+    "title": "הדיווחים שלי על באגים",
+    "load_error": "שגיאה בטעינת הדיווחים"
+  },
   "bug_reports": {
     "comments_title": "תגובות על הדיווח",
     "comment_button": "תגובות",
+    "comment_count": "תגובות",
+    "last_comment_at": "תגובה אחרונה",
     "no_comments": "אין תגובות עדיין",
     "comment_placeholder": "הוסף תגובה...",
     "send": "שלח",
@@ -290,6 +296,7 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
+    "my_bug_reports": "הדיווחים שלי על באגים",
     "phone": "טלפון",
     "email": "כתובת אימייל",
     "email_verified": "מאומת",
@@ -515,7 +522,9 @@
     "already_on_marketplace": "הבקשה כבר פורסמה בשוק ההחלפות",
     "not_found": "הפריט לא נמצא",
     "file_too_large": "הקובץ חורג מהגודל המותר (5MB)",
-    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF"
+    "invalid_file_type": "סוג קובץ לא נתמך — יש להעלות תמונת JPG, PNG או GIF",
+    "custom_reason_text_required": "יש למלא את סיבת השיבוץ",
+    "assignment_reason_code_required": "יש למלא את סיבת השיבוץ"
   },
   "exemption_requests": {
     "title": "בקשות פטור",
@@ -1133,7 +1142,8 @@
     "type_range_excusal_rejected": "בקשת פטור ממטווח נדחתה",
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
-    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי"
+    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_bug_report_comment": "תגובה חדשה לדיווח באג"
   },
   "announcements": {
     "title": "הכרזות",
@@ -1253,6 +1263,46 @@
       "token_expired": "פג תוקף הקישור — בקש קישור חדש",
       "password_too_short": "הסיסמה חייבת להכיל לפחות 10 תווים",
       "passwords_mismatch": "הסיסמאות אינן תואמות"
+    }
+  },
+  "ranges": {
+    "assignment_reason_label": "סיבת השיבוץ",
+    "edit_reason": "עריכת סיבה",
+    "save": "שמור",
+    "draft": "טרם נשמר",
+    "confirm": "אשר",
+    "remove": "הסר",
+    "edit_assignments": "עריכת שיבוצים",
+    "auto_assign_shortfall": "לא נמצאו מספיק מועמדים — חסרים {{count}} שיבוצים",
+    "primary_assignments": "שיבוצים ראשיים",
+    "reserve_assignments": "שיבוצי רזרבה",
+    "full": "מלאה",
+    "no_assignments": "אין שיבוצים",
+    "no_reserve_assignments": "אין שיבוצי רזרבה",
+    "auto_assign": "שיבוץ אוטומטי",
+    "confirm_all": "אשר הכל",
+    "assign_as_reserve": "שיבוץ כרזרבה",
+    "search_soldier": "חיפוש חייל",
+    "adding": "מוסיף...",
+    "no_available_soldiers": "אין חיילים זמינים",
+    "close": "סגור",
+    "self_excuse": "אני לא אוכל להגיע",
+    "self_excuse_reason": "סיבת היעדרות",
+    "send": "שלח",
+    "assignment_reasons": {
+      "manual": "שיבוץ ידני",
+      "qualified": "כשירות תקפה למטווח",
+      "weapon_duty_priority": "עדיפות לפי מטווח הנשק הקרוב",
+      "available_and_balanced": "זמינות ואיזון הסגל",
+      "legacy": "שיבוץ קיים"
+    },
+    "errors": {
+      "update_reason": "עדכון סיבת השיבוץ נכשל",
+      "add_assignment": "הוספת השיבוץ נכשלה",
+      "remove_assignment": "הסרת השיבוץ נכשלה",
+      "auto_assign": "השיבוץ האוטומטי נכשל",
+      "confirm_assignment": "אישור השיבוץ נכשל",
+      "confirm_assignments": "אישור השיבוצים נכשל"
     }
   },
   "action": {

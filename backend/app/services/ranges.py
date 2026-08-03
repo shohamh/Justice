@@ -282,6 +282,7 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
 
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
+    assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
 ) -> RangeAssignment:
     _acquire_range_assignment_date_lock(session, event_date=event.date)
     session.refresh(event)
@@ -311,7 +312,13 @@ def add_range_assignment(
     existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == event.id,
     )).scalars())
-    assignment = RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
+    assignment = RangeAssignment(
+        range_event_id=event.id,
+        soldier_id=soldier_id,
+        is_reserve=is_reserve,
+        assignment_reason_code=assignment_reason_code,
+        assignment_reason_text=assignment_reason_text,
+    )
     session.add(assignment)
     session.flush()
     _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { usePagePagination } from "../hooks/usePagePagination";
-import { listNotifications, markRead, markAllRead, deleteNotification, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
@@ -23,12 +23,6 @@ export default function NotificationsPage() {
     },
   });
   const notifications = notificationsQuery.data?.items ?? [];
-  function notificationLink(referenceType: string | null, referenceId: string | null): string | null {
-    if ((referenceType === "range_event" || referenceType === "range_assignment") && referenceId) {
-      return `/ranges?event=${referenceId}`;
-    }
-    return null;
-  }
 
   const total = notificationsQuery.data?.total ?? 0;
 
@@ -82,8 +76,8 @@ export default function NotificationsPage() {
               <div key={n.id} className={`flex items-start gap-3 p-3 rounded border dark:border-gray-600 ${n.is_read ? "bg-gray-50 dark:bg-gray-700" : "bg-white dark:bg-gray-800"}`}>
                 <span className="text-xl" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                 <div className="flex-1">
-                  {notificationLink(n.reference_type, n.reference_id) ? (
-                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => navigate(notificationLink(n.reference_type, n.reference_id)!)}>{n.title}</button>
+                  {getNotificationLink(n) ? (
+                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => navigate(getNotificationLink(n)!)}>{n.title}</button>
                   ) : (
                     <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{n.title}</p>
                   )}
