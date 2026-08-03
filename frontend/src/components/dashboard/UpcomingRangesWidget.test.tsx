@@ -14,9 +14,9 @@ describe("UpcomingRangesWidget", () => {
     past.setDate(past.getDate() - 1);
 
     const ranges: RangeEvent[] = [
-      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: future1.toISOString().slice(0, 10), location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
-      { id: "2", hierarchy_node_id: "n1", range_type: "live", date: future2.toISOString().slice(0, 10), location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
-      { id: "3", hierarchy_node_id: "n1", range_type: "alal", date: past.toISOString().slice(0, 10), location: "מטווח ג", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: future1.toISOString().slice(0, 10), location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "2", hierarchy_node_id: "n1", range_type: "live", date: future2.toISOString().slice(0, 10), location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "3", hierarchy_node_id: "n1", range_type: "alal", date: past.toISOString().slice(0, 10), location: "מטווח ג", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
     ];
 
     render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);
@@ -27,9 +27,21 @@ describe("UpcomingRangesWidget", () => {
     expect(rows[1]).toHaveTextContent("מטווח א");
   });
 
+  it("renders only events assigned to the current soldier", () => {
+    const ranges: RangeEvent[] = [
+      { id: "assigned", hierarchy_node_id: "n1", range_type: "laser", date: "2099-01-01", location: "מוקצה לי", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "unassigned", hierarchy_node_id: "n1", range_type: "live", date: "2099-01-02", location: "לא מוקצה לי", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: false },
+    ];
+
+    render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);
+
+    expect(screen.getByText("מוקצה לי")).toBeInTheDocument();
+    expect(screen.queryByText("לא מוקצה לי")).not.toBeInTheDocument();
+  });
+
   it("renders range_type as a Hebrew label instead of raw English", () => {
     const ranges: RangeEvent[] = [
-      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: "2099-01-01", location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: "2099-01-01", location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
     ];
 
     render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);

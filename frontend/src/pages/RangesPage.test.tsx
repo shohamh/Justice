@@ -31,13 +31,13 @@ import { useAuth } from "../auth/AuthContext";
 
 function renderWithQuery(ui: React.ReactElement, initialEntries = ["/ranges"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  return { client, ...render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={initialEntries}>
         <SoldierModalProvider>{ui}</SoldierModalProvider>
       </MemoryRouter>
     </QueryClientProvider>,
-  );
+  ) };
 }
 
 beforeEach(() => {
@@ -344,8 +344,11 @@ describe("RangesPage read-only mode for commanders", () => {
     renderWithQuery(<RangesPage />);
     fireEvent.click(await screen.findByText("מטווח דרום"));
 
+    expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
     expect(screen.queryByText("הסר")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-detail-actions")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
   });
 
   it("hides the attendance panel for a commander even on a past event", async () => {
@@ -374,14 +377,14 @@ describe("RangesPage read-only mode for commanders", () => {
 });
 
 describe("RangesPage attendance panel", () => {
-  it("shows the attendance panel for a past event when the user can manage", async () => {
+  it("shows the attendance panel for a past event when the API allows attendance editing", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
-        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed", assignments: [] },
+        location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed", assignments: [], can_edit_attendance: true },
     ]);
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2020-01-01",
-      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed",
+      location: "מטווח דרום", required_count: 4, reserve_count: 1, status: "completed", can_edit_attendance: true,
       assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
         attendance_status: "pending", note: null }],
     });
@@ -416,7 +419,7 @@ describe("RangesPage attendance panel", () => {
   it("excludes draft assignments from attendance controls", async () => {
     const event = {
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const, date: "2020-01-01",
-      location: "מטווח דרום", required_count: 2, reserve_count: 0, status: "completed" as const,
+      location: "מטווח דרום", required_count: 2, reserve_count: 0, status: "completed" as const, can_edit_attendance: true,
       assignments: [
         { id: "confirmed", soldier_id: "s1", is_reserve: false, is_draft: false,
           attendance_status: "pending" as const, note: null },
@@ -732,6 +735,29 @@ describe("RangesPage excusal", () => {
 });
 
 describe("RangesPage assignment editor integration", () => {
+  it("refreshes both the ranges list and selected detail after removing an assignment", async () => {
+    const event = {
+      id: "event-refresh", hierarchy_node_id: "node-1", range_type: "laser" as const,
+      date: "2026-09-01", location: "מטווח לרענון", required_count: 1, reserve_count: 0,
+      status: "planned" as const,
+      assignments: [{ id: "assignment-refresh", soldier_id: "s1", is_reserve: false, is_draft: false,
+        attendance_status: "pending" as const, note: null }],
+    };
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
+    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+
+    const { client } = renderWithQuery(<RangesPage />);
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    fireEvent.click(await screen.findByText("מטווח לרענון"));
+    fireEvent.click(await screen.findByTestId("edit-range-assignments"));
+    fireEvent.click(await screen.findByTestId("remove-assignment-assignment-refresh"));
+
+    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh"));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges"] }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["ranges", "event-refresh"] });
+  });
+
   it("keeps assignment mutations out of the range detail content", async () => {
     const event = {
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const,

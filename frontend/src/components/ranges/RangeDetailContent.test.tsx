@@ -43,3 +43,21 @@ describe("RangeDetailContent self-excusal", () => {
     expect(screen.queryByRole("button", { name: "אני לא אוכל להגיע" })).not.toBeInTheDocument();
   });
 });
+
+describe("RangeDetailContent attendance permissions", () => {
+  it("hides attendance mutations when the API denies attendance editing", () => {
+    renderDetail({ canManage: true, canEditAttendance: false, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    expect(screen.queryByTestId("present-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("no-show-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("submit-a1")).not.toBeInTheDocument();
+  });
+
+  it("allows attendance mutations when the API grants attendance editing", () => {
+    renderDetail({ canManage: false, canEditAttendance: true, event: event({ date: "2000-01-01", status: "completed" }) });
+
+    expect(screen.getByTestId("present-a1")).toBeInTheDocument();
+    expect(screen.getByTestId("no-show-a1")).toBeInTheDocument();
+    expect(screen.getByTestId("submit-a1")).toBeInTheDocument();
+  });
+});
