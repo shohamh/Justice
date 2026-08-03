@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-04
+
+### Features
+- Bug reports now support inline threaded comments with image attachments (and upload retry) for both admins and reporters; the admin table gained comment-count and latest-response columns, status icons with labels, and stronger status row colors.
+- Soldiers can now see and reply to their own bug reports from a new profile-linked "הדיווחים שלי" page, with notifications for replies deep-linking straight to the relevant report from the bell and the notifications page.
+- Range assignments now show and persist the reasons/capabilities behind automatic assignment choices, with matching Hebrew explanations in the UI.
+- Range planning modals and the range assignment editor were reworked to match the shift-planning UI, including a shift-style assignment editor and consistent Hebrew i18n coverage.
+
+### Fixes
+- Fixed the feedback (bug report) submission modal so it scrolls correctly and stays usable on mobile viewports.
+- Fixed range assignment/visibility issues: draft assignments no longer leak into general lists, gating now correctly reflects range actions, and range visibility refreshes properly after changes.
+- Fixed dark-mode contrast in the cancel dialog and in range modal text, added a shortcut for direct assignments, and removed a duplicate top-level key in the Hebrew translations.
+- Fixed reserve promotion ranking to be preserved correctly, and resolved a diverged Alembic migration history after concurrent range work merged.
+- Made the shift-style range assignment editor modal-only and fixed modal history handoff to be stack-safe across nested modals.
+
+### Chores
+- Added regression tests for range advance reminders, read-only range assignment controls, and cross-user bug-report comment access, and expanded frontend coverage across the bug-report and ranges UI changes.
+- Documented the ranges UI parity and range-assignment-reasons designs and implementation plans.
+
 ## 2026-08-02
 
 ### Features
