@@ -42,4 +42,25 @@ describe("NotificationBell icon differentiation", () => {
     expect(scopedRow.closest("div")?.parentElement?.textContent).toContain("📢");
     expect(orgWideRow.closest("div")?.parentElement?.textContent).toContain("📣");
   });
+
+  it("shows a different icon for range_reminder_shortfall than for range_reminder", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [
+        { ...baseNotification, id: "n1", title: "Normal reminder", type: "range_reminder" },
+        { ...baseNotification, id: "n2", title: "Shortfall reminder", type: "range_reminder_shortfall" },
+      ],
+      total: 2,
+    });
+    render(
+      <MemoryRouter>
+        <NotificationBell />
+      </MemoryRouter>
+    );
+    const bellButton = await screen.findByTestId("notification-bell");
+    bellButton.click();
+    const normalRow = await screen.findByText("Normal reminder");
+    const shortfallRow = await screen.findByText("Shortfall reminder");
+    expect(normalRow.closest("div")?.parentElement?.textContent).toContain("🔔");
+    expect(shortfallRow.closest("div")?.parentElement?.textContent).toContain("⚠️");
+  });
 });
