@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
 
 export default function NotificationBell() {
   const { t } = useTranslation();
@@ -12,25 +12,6 @@ export default function NotificationBell() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const navigate = useNavigate();
-
-  function notifLink(n: NotificationDTO): string | null {
-    if (n.reference_type === "algorithm_job" && n.reference_id) {
-      return `/algorithm?jobId=${n.reference_id}`;
-    }
-    if (n.reference_type === "swap_request") {
-      return n.type === "swap_offer" ? "/swaps?tab=incoming" : "/swaps?tab=mine";
-    }
-    if (n.reference_type === "personal_constraint" || n.reference_type === "exemption_request") {
-      return "/my-requests";
-    }
-    if (n.reference_type === "duty_assignment") {
-      return "/";
-    }
-    if ((n.reference_type === "range_event" || n.reference_type === "range_assignment") && n.reference_id) {
-      return `/ranges?event=${n.reference_id}`;
-    }
-    return null;
-  }
 
   useEffect(() => {
     const fetch = async () => {
@@ -122,10 +103,10 @@ export default function NotificationBell() {
                 <div key={n.id} className="flex items-start gap-2 p-3 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <span className="text-lg" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
-                    {notifLink(n) ? (
+                    {getNotificationLink(n) ? (
                       <button
                         className="text-sm font-medium truncate text-right w-full hover:text-indigo-600"
-                        onClick={() => { void handleMarkRead(n.id); navigate(notifLink(n)!); setOpen(false); }}
+                        onClick={() => { void handleMarkRead(n.id); navigate(getNotificationLink(n)!); setOpen(false); }}
                       >
                         {n.title}
                       </button>

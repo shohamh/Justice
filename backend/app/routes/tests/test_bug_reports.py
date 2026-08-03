@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import BugReport
+from app.db.models import BugReport, BugReportComment, Notification
 from app.routes.bug_reports import MAX_ATTACHMENTS_PER_COMMENT, MAX_COMMENTS_PER_REPORT
 from tests.helpers import auth_headers, create_soldier
 
@@ -32,6 +34,48 @@ def test_update_bug_report_status_to_wont_fix(client: TestClient, admin_session:
 
     admin_session.expire_all()
     assert admin_session.get(BugReport, report_id).status == "wont_fix"
+
+
+def test_list_bug_report_summaries_include_comment_aggregates(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugsummary001", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugsummary002")
+    _submit(client, reporter, description="without comments")
+    _submit(client, reporter, description="with comments")
+    reports = {
+        report.description: report
+        for report in admin_session.query(BugReport).filter_by(reporter_id=reporter.id).all()
+    }
+    older_comment = BugReportComment(
+        bug_report_id=reports["with comments"].id,
+        author_id=reporter.id,
+        body="older comment",
+    )
+    older_comment.created_at = datetime(2026, 8, 3, 10, 0, tzinfo=UTC)
+    newer_comment = BugReportComment(
+        bug_report_id=reports["with comments"].id,
+        author_id=reporter.id,
+        body="newer comment",
+    )
+    newer_comment.created_at = datetime(2026, 8, 3, 11, 0, tzinfo=UTC)
+    admin_comment = BugReportComment(
+        bug_report_id=reports["with comments"].id,
+        author_id=admin.id,
+        body="admin comment",
+    )
+    admin_comment.created_at = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
+    admin_session.add_all([older_comment, newer_comment, admin_comment])
+    admin_session.commit()
+
+    response = client.get("/api/admin/bug-reports", headers=auth_headers(admin))
+
+    assert response.status_code == 200
+    summaries = {item["description"]: item for item in response.json()["items"]}
+    assert summaries["without comments"]["comment_count"] == 0
+    assert summaries["without comments"]["last_comment_at"] is None
+    assert summaries["with comments"]["comment_count"] == 3
+    assert datetime.fromisoformat(summaries["with comments"]["last_comment_at"].replace("Z", "+00:00")) == (
+        admin_comment.created_at
+    )
 
 
 def test_reporter_can_post_comment_on_own_bug_report(client: TestClient, admin_session: Session):
@@ -74,6 +118,83 @@ def test_admin_can_comment_on_any_bug_report(client: TestClient, admin_session: 
         headers=auth_headers(admin),
     )
     assert resp.status_code == 201
+
+
+def test_other_soldier_cannot_list_comments_on_someone_elses_bug_report(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugcomment006")
+    other = create_soldier(admin_session, personal_number="bugcomment007")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(other),
+    )
+    assert resp.status_code == 403
+
+
+def test_reporter_and_admin_can_list_comments_on_bug_report(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugcomment008", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugcomment009")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments",
+        json={"body": "steps to reproduce: ..."},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 201
+
+    reporter_resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(reporter),
+    )
+    assert reporter_resp.status_code == 200
+    assert [c["body"] for c in reporter_resp.json()] == ["steps to reproduce: ..."]
+
+    admin_resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(admin),
+    )
+    assert admin_resp.status_code == 200
+    assert [c["body"] for c in admin_resp.json()] == ["steps to reproduce: ..."]
+
+
+def test_admin_comment_notifies_bug_report_owner(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugnotify001", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugnotify002")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments",
+        json={"body": "we are investigating this"},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 201
+
+    notifications = admin_session.query(Notification).filter_by(soldier_id=reporter.id).all()
+    assert len(notifications) == 1
+    notification = notifications[0]
+    assert notification.title == "תגובה חדשה לדיווח באג"
+    assert notification.type.value == "bug_report_comment"
+    assert notification.reference_type == "bug_report"
+    assert notification.reference_id == report_id
+
+
+def test_owner_comment_does_not_notify_bug_report_owner(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugnotify003")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments",
+        json={"body": "additional details"},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 201
+    assert admin_session.query(Notification).filter_by(soldier_id=reporter.id).count() == 0
 
 
 def _post_comment(client: TestClient, report_id, author, body="a comment"):

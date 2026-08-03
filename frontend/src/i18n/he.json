@@ -123,9 +123,15 @@
     "decision_note": "הערת מפקד",
     "section_bug_reports": "הדיווחים שלי"
   },
+  "my_bug_reports": {
+    "title": "הדיווחים שלי על באגים",
+    "load_error": "שגיאה בטעינת הדיווחים"
+  },
   "bug_reports": {
     "comments_title": "תגובות על הדיווח",
     "comment_button": "תגובות",
+    "comment_count": "תגובות",
+    "last_comment_at": "תגובה אחרונה",
     "no_comments": "אין תגובות עדיין",
     "comment_placeholder": "הוסף תגובה...",
     "send": "שלח",
@@ -290,6 +296,7 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
+    "my_bug_reports": "הדיווחים שלי על באגים",
     "phone": "טלפון",
     "email": "כתובת אימייל",
     "email_verified": "מאומת",
@@ -1133,7 +1140,8 @@
     "type_range_excusal_rejected": "בקשת פטור ממטווח נדחתה",
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
-    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי"
+    "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_bug_report_comment": "תגובה חדשה לדיווח באג"
   },
   "announcements": {
     "title": "הכרזות",

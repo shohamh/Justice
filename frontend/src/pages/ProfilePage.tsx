@@ -230,6 +230,9 @@ export default function ProfilePage() {
         <Link to="/change-password" className="text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200" data-testid="profile-change-password">
           {t("profile.change_password")}
         </Link>
+        <Link to="/my-bug-reports" className="text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200" data-testid="profile-my-bug-reports">
+          {t("profile.my_bug_reports")}
+        </Link>
         {user?.id && (
           <div className="pt-4 border-t">
             <ExemptionsPanel soldierId={user.id} canManage={false} canApproveDutyManagerStep={false} />
