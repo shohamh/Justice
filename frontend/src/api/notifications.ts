@@ -28,6 +28,33 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, string> = {
   bug_report_comment: "💬",
 };
 
+// Shared reference_type -> route mapping used by both NotificationBell (the
+// dropdown) and NotificationsPage (the full list), so the two surfaces can't
+// drift out of sync on which notification types are clickable.
+export function getNotificationLink(
+  n: Pick<NotificationDTO, "type" | "reference_type" | "reference_id">,
+): string | null {
+  if (n.reference_type === "algorithm_job" && n.reference_id) {
+    return `/algorithm?jobId=${n.reference_id}`;
+  }
+  if (n.reference_type === "swap_request") {
+    return n.type === "swap_offer" ? "/swaps?tab=incoming" : "/swaps?tab=mine";
+  }
+  if (n.reference_type === "personal_constraint" || n.reference_type === "exemption_request") {
+    return "/my-requests";
+  }
+  if (n.reference_type === "duty_assignment") {
+    return "/";
+  }
+  if (n.reference_type === "bug_report" && n.reference_id) {
+    return `/my-bug-reports?report=${n.reference_id}`;
+  }
+  if ((n.reference_type === "range_event" || n.reference_type === "range_assignment") && n.reference_id) {
+    return `/ranges?event=${n.reference_id}`;
+  }
+  return null;
+}
+
 export const RANGE_NOTIFICATION_TYPES = [
   "range_assignment_confirmed", "range_roster_changed", "range_cancelled", "range_no_show",
   "range_excusal_pending", "range_excusal_approved", "range_excusal_rejected",

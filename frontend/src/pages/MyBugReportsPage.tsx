@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -24,6 +24,13 @@ export default function MyBugReportsPage() {
   // row, so nothing auto-expands.
   const requestedReportId = searchParams.get("report");
   const [expandedId, setExpandedId] = useState<string | null>(requestedReportId);
+
+  // Re-sync whenever the search param changes so navigating here again from a
+  // second notification (without a remount, since we're already on this route)
+  // still expands the newly-referenced report.
+  useEffect(() => {
+    if (requestedReportId) setExpandedId(requestedReportId);
+  }, [requestedReportId]);
 
   const query = useQuery({ queryKey: queryKeys.myBugReports(), queryFn: getMyBugReports });
   const reports = query.data?.items ?? [];

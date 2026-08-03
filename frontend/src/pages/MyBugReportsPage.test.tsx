@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 
 import "../i18n";
 import MyBugReportsPage from "./MyBugReportsPage";
@@ -113,5 +113,36 @@ describe("MyBugReportsPage", () => {
     await screen.findByText("the calendar is blank");
 
     expect(screen.queryByText("אין תגובות עדיין")).not.toBeInTheDocument();
+  });
+
+  it("re-syncs the expanded report when the report search param changes without a remount", async () => {
+    const REPORT2: BugReportSummary = { ...REPORT, id: "r2", description: "second report" };
+    vi.mocked(bugReportsApi.getMyBugReports).mockResolvedValue({ items: [REPORT, REPORT2], total: 2 });
+
+    function Harness() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button data-testid="go-r2" onClick={() => navigate("/my-bug-reports?report=r2")}>go</button>
+          <MyBugReportsPage />
+        </>
+      );
+    }
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter initialEntries={["/my-bug-reports?report=r1"]}>
+        <QueryClientProvider client={queryClient}>
+          <Harness />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("the calendar is blank");
+    await waitFor(() => expect(bugReportsApi.listComments).toHaveBeenCalledWith("r1"));
+
+    fireEvent.click(screen.getByTestId("go-r2"));
+
+    await waitFor(() => expect(bugReportsApi.listComments).toHaveBeenCalledWith("r2"));
   });
 });
