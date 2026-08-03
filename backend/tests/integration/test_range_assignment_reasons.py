@@ -5,7 +5,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, RangeAssignment
+from app.db.models import AuditLog, DutyType, RangeAssignment
 from app.services.settings_loader import apply_settings
 from tests.helpers import auth_headers, create_node, create_soldier
 
@@ -61,6 +61,19 @@ def test_manual_assignment_defaults_reason_fields_and_event_capabilities(
     )
     assert updated_reason.status_code == 200, updated_reason.text
     assert updated_reason.json()["assignment_reason_text"] == "צורך מבצעי"
+    persisted_assignment = admin_session.get(RangeAssignment, assignment["id"])
+    assert persisted_assignment is not None
+    admin_session.refresh(persisted_assignment)
+    assert persisted_assignment.is_reserve is False
+    assert persisted_assignment.is_draft is False
+    assert persisted_assignment.soldier_id == planner.id
+    audit = admin_session.query(AuditLog).filter(
+        AuditLog.entity_id == persisted_assignment.id,
+        AuditLog.action == "range_assignment_reason_update",
+    ).one()
+    assert audit.actor_id == planner.id
+    assert audit.before == {"assignment_reason_code": "manual", "assignment_reason_text": "שיבוץ ידני"}
+    assert audit.after == {"assignment_reason_code": "custom", "assignment_reason_text": "צורך מבצעי"}
 
     blank_custom_reason = client.patch(
         f"/api/ranges/{event_id}/assignments/{assignment['id']}/reason",

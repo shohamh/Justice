@@ -89,16 +89,16 @@ def _has_range_assignment_on_date(session: Session, *, soldier_id: uuid.UUID, ev
     ).scalar_one_or_none() is not None
 
 
-def _sort_key(session: Session, *, soldier: Soldier, event: RangeEvent) -> tuple:
+def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) -> tuple[tuple, str]:
     qualified_until = _best_qualification_valid_until(
         session, soldier_id=soldier.id, range_type=event.range_type, as_of=event.date,
     )
     if qualified_until is not None:
-        return (2, qualified_until, str(soldier.id))
+        return (2, qualified_until, str(soldier.id)), "qualified"
     duty_start = _earliest_future_weapon_duty_start(session, soldier_id=soldier.id)
     if duty_start is not None:
-        return (0, duty_start, str(soldier.id))
-    return (1, str(soldier.id))
+        return (0, duty_start, str(soldier.id)), "weapon_duty_priority"
+    return (1, str(soldier.id)), "available_and_balanced"
 
 
 def _candidate_pool(session: Session, *, event: RangeEvent, exclude_soldier_ids: set[uuid.UUID]) -> list[Soldier]:
@@ -150,17 +150,20 @@ def propose_range_assignments(
         return [], 0
 
     pool = _candidate_pool(session, event=event, exclude_soldier_ids=existing_soldier_ids)
-    ranked = sorted(pool, key=lambda s: _sort_key(session, soldier=s, event=event))
+    ranked = sorted(
+        ((soldier, _rank_candidate(session, soldier=soldier, event=event)) for soldier in pool),
+        key=lambda candidate: candidate[1][0],
+    )
 
     chosen = ranked[:total_needed]
     shortfall = total_needed - len(chosen)
 
     created: list[RangeAssignment] = []
-    for index, soldier in enumerate(chosen):
+    for index, (soldier, (_, reason_code)) in enumerate(chosen):
         assignment = RangeAssignment(
             range_event_id=event.id, soldier_id=soldier.id,
             is_reserve=index >= remaining_primary, is_draft=True,
-            assignment_reason_code=None, assignment_reason_text=None,
+            assignment_reason_code=reason_code, assignment_reason_text=None,
         )
         session.add(assignment)
         created.append(assignment)

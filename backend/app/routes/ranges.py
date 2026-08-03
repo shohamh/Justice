@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date as date_type, datetime
+from datetime import date as date_type
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.audit.writer import write_audit
 from app.auth.authz import Action, _node_in_scope, authorize, is_commander, scope_root_ids
 from app.auth.deps import require_password_changed
 from app.db.models import (
@@ -322,8 +324,24 @@ def update_assignment_reason(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assignment_reason_code_required")
     if reason_code == "custom" and not reason_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="custom_reason_text_required")
+    before = {
+        "assignment_reason_code": assignment.assignment_reason_code,
+        "assignment_reason_text": assignment.assignment_reason_text,
+    }
     assignment.assignment_reason_code = reason_code
     assignment.assignment_reason_text = reason_text
+    write_audit(
+        session,
+        actor_id=user.id,
+        action="range_assignment_reason_update",
+        entity_type="range_assignment",
+        entity_id=assignment.id,
+        before=before,
+        after={
+            "assignment_reason_code": reason_code,
+            "assignment_reason_text": reason_text,
+        },
+    )
     session.commit()
     session.refresh(assignment)
     return _assignment_out(assignment)
