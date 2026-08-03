@@ -22,8 +22,8 @@ const event = (assignments: RangeEvent["assignments"] = []): RangeEvent => ({
   location: "מטווח דרום", required_count: 2, reserve_count: 1, status: "planned", assignments,
 });
 
-const assignment = (id: string, soldier_id: string, is_reserve = false, is_draft = false) => ({
-  id, soldier_id, is_reserve, is_draft, attendance_status: "pending" as const, note: null,
+const assignment = (id: string, soldier_id: string, is_reserve = false, is_draft = false, assignment_reason_code = "manual", assignment_reason_text: string | null = "שיבוץ ידני") => ({
+  id, soldier_id, is_reserve, is_draft, attendance_status: "pending" as const, note: null, assignment_reason_code, assignment_reason_text,
 });
 
 function renderModal(overrides: Partial<React.ComponentProps<typeof RangeEditAssignmentsModal>> = {}) {
@@ -42,6 +42,39 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.getByTestId("range-primary-assignments")).toBeInTheDocument();
     expect(screen.getByTestId("range-reserve-assignments")).toBeInTheDocument();
     expect(screen.getByTestId("draft-badge-a2")).toBeInTheDocument();
+  });
+
+  it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
+    renderModal({ event: event([
+      assignment("a1", "s1", false, false, "qualified", null),
+      assignment("a2", "s2", true, false, "manual", "שיבוץ לפי צורך מבצעי"),
+    ]) });
+    const reasons = screen.getAllByText(/סיבת השיבוץ:/);
+    expect(reasons).toHaveLength(2);
+    expect(reasons[0]).toHaveTextContent("כשירות תקפה למטווח");
+    expect(reasons[1]).toHaveTextContent("שיבוץ לפי צורך מבצעי");
+  });
+
+  it("lets a planner edit and save an assignment explanation", async () => {
+    vi.mocked(rangesApi.updateRangeAssignmentReason).mockResolvedValue(
+      assignment("a1", "s1", false, false, "manual", "צורך מבצעי")
+    );
+    const { props } = renderModal({ event: event([assignment("a1", "s1")]) });
+    fireEvent.click(screen.getByTestId("edit-assignment-reason-a1"));
+    fireEvent.change(screen.getByLabelText("סיבת השיבוץ"), { target: { value: "צורך מבצעי" } });
+    fireEvent.click(screen.getByTestId("save-assignment-reason-a1"));
+    await waitFor(() => expect(rangesApi.updateRangeAssignmentReason).toHaveBeenCalledWith("event-1", "a1", "manual", "צורך מבצעי"));
+    expect(props.onChanged).toHaveBeenCalled();
+  });
+
+  it("uses a Hebrew fallback instead of exposing raw reason API errors", async () => {
+    vi.mocked(rangesApi.updateRangeAssignmentReason).mockRejectedValue({ response: { data: { detail: "custom_reason_text_required" } } });
+    renderModal({ event: event([assignment("a1", "s1")]) });
+    fireEvent.click(screen.getByTestId("edit-assignment-reason-a1"));
+    fireEvent.change(screen.getByLabelText("סיבת השיבוץ"), { target: { value: "סיבה" } });
+    fireEvent.click(screen.getByTestId("save-assignment-reason-a1"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("יש למלא את סיבת השיבוץ");
+    expect(screen.queryByText("custom_reason_text_required")).not.toBeInTheDocument();
   });
 
   it("adds a soldier with the reserve toggle and refreshes the event", async () => {

@@ -720,7 +720,8 @@ describe("RangesPage excusal", () => {
     });
 
     renderWithQuery(<RangesPage />, ["/ranges?event=event-1"]);
-    fireEvent.click(await screen.findByTestId("excuse-button-a1"));
+    fireEvent.click(await screen.findByRole("button", { name: "אני לא אוכל להגיע" }));
+    expect(screen.queryByTestId("excuse-button-a1")).not.toBeInTheDocument();
     const submit = screen.getByTestId("submit-excuse-button");
     expect(submit).toBeDisabled();
     fireEvent.change(screen.getByLabelText("סיבת היעדרות"), { target: { value: "reason" } });

@@ -1255,6 +1255,25 @@
       "passwords_mismatch": "הסיסמאות אינן תואמות"
     }
   },
+  "ranges": {
+    "assignment_reason_label": "סיבת השיבוץ",
+    "edit_reason": "עריכת סיבה",
+    "save": "שמור",
+    "assignment_reasons": {
+      "manual": "שיבוץ ידני",
+      "qualified": "כשירות תקפה למטווח",
+      "weapon_duty_priority": "עדיפות לפי מטווח הנשק הקרוב",
+      "available_and_balanced": "זמינות ואיזון הסגל",
+      "legacy": "שיבוץ קיים"
+    },
+    "errors": {
+      "update_reason": "עדכון סיבת השיבוץ נכשל"
+    }
+  },
+  "errors": {
+    "custom_reason_text_required": "יש למלא את סיבת השיבוץ",
+    "assignment_reason_code_required": "יש למלא את סיבת השיבוץ"
+  },
   "action": {
     "processing": "מעבד פעולה...",
     "success": "הפעולה בוצעה בהצלחה",
