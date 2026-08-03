@@ -74,6 +74,19 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.queryByTestId("save-assignment-reason-a1")).not.toBeInTheDocument();
   });
 
+  it("keeps the roster visible but hides every assignment mutation control from a non-manager", () => {
+    renderModal({ canManage: false, event: event([assignment("a1", "s1", false, true)]) });
+
+    expect(screen.getByText("אורי")).toBeInTheDocument();
+    expect(screen.queryByTestId("range-auto-assign")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-confirm-all")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-draft-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("remove-assignment-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-reserve-toggle")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-soldier-search")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("add-soldier-s2")).not.toBeInTheDocument();
+  });
+
   it("uses a Hebrew fallback instead of exposing raw reason API errors", async () => {
     vi.mocked(rangesApi.updateRangeAssignmentReason).mockRejectedValue({ response: { data: { detail: "custom_reason_text_required" } } });
     renderModal({ event: event([assignment("a1", "s1")]) });
@@ -118,7 +131,7 @@ describe("RangeEditAssignmentsModal", () => {
     vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [assignment("a1", "s1", false, true), assignment("a2", "s2", false, true)], shortfall: 0 });
     vi.mocked(rangesApi.confirmDraftAssignment).mockResolvedValue(assignment("a1", "s1"));
     vi.mocked(rangesApi.confirmAllDrafts).mockResolvedValue([]);
-    renderModal();
+    const { props } = renderModal();
     fireEvent.click(screen.getByTestId("range-auto-assign"));
     await waitFor(() => expect(rangesApi.autoAssignRange).toHaveBeenCalledWith("event-1"));
     expect(await screen.findByTestId("draft-badge-a1")).toBeInTheDocument();
@@ -126,6 +139,7 @@ describe("RangeEditAssignmentsModal", () => {
     await waitFor(() => expect(rangesApi.confirmDraftAssignment).toHaveBeenCalledWith("event-1", "a1"));
     fireEvent.click(screen.getByTestId("range-confirm-all"));
     await waitFor(() => expect(rangesApi.confirmAllDrafts).toHaveBeenCalledWith("event-1"));
+    await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(3));
   });
 
   it.each([
