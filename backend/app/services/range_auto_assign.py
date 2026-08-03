@@ -160,6 +160,7 @@ def propose_range_assignments(
         assignment = RangeAssignment(
             range_event_id=event.id, soldier_id=soldier.id,
             is_reserve=index >= remaining_primary, is_draft=True,
+            assignment_reason_code=None, assignment_reason_text=None,
         )
         session.add(assignment)
         created.append(assignment)

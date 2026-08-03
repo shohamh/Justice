@@ -891,6 +891,8 @@ class RangeAssignment(Base):
     )
     marked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    assignment_reason_code: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    assignment_reason_text: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     score_adjustment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("score_adjustments.id", ondelete="SET NULL"), nullable=True, default=None
     )
