@@ -143,6 +143,30 @@ describe("RangesPage", () => {
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
   });
 
+  it("opens the range detail directly from the שיבוצים row action without clicking the location link", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
+      id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
+      date: "2026-09-01", location: "מטווח דרום", required_count: 4,
+      reserve_count: 1, status: "planned", assignments: [],
+    });
+
+    renderWithQuery(<RangesPage />);
+
+    await screen.findByText("מטווח דרום");
+    fireEvent.click(screen.getByTestId("view-assignments-event-1"));
+
+    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("range-detail-content")).toBeInTheDocument();
+  });
+
   it("uses standard detail metadata, action buttons, and grouped range information", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([{
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
