@@ -1259,6 +1259,26 @@
     "assignment_reason_label": "סיבת השיבוץ",
     "edit_reason": "עריכת סיבה",
     "save": "שמור",
+    "draft": "טרם נשמר",
+    "confirm": "אשר",
+    "remove": "הסר",
+    "edit_assignments": "עריכת שיבוצים",
+    "auto_assign_shortfall": "לא נמצאו מספיק מועמדים — חסרים {{count}} שיבוצים",
+    "primary_assignments": "שיבוצים ראשיים",
+    "reserve_assignments": "שיבוצי רזרבה",
+    "full": "מלאה",
+    "no_assignments": "אין שיבוצים",
+    "no_reserve_assignments": "אין שיבוצי רזרבה",
+    "auto_assign": "שיבוץ אוטומטי",
+    "confirm_all": "אשר הכל",
+    "assign_as_reserve": "שיבוץ כרזרבה",
+    "search_soldier": "חיפוש חייל",
+    "adding": "מוסיף...",
+    "no_available_soldiers": "אין חיילים זמינים",
+    "close": "סגור",
+    "self_excuse": "אני לא אוכל להגיע",
+    "self_excuse_reason": "סיבת היעדרות",
+    "send": "שלח",
     "assignment_reasons": {
       "manual": "שיבוץ ידני",
       "qualified": "כשירות תקפה למטווח",
@@ -1267,7 +1287,12 @@
       "legacy": "שיבוץ קיים"
     },
     "errors": {
-      "update_reason": "עדכון סיבת השיבוץ נכשל"
+      "update_reason": "עדכון סיבת השיבוץ נכשל",
+      "add_assignment": "הוספת השיבוץ נכשלה",
+      "remove_assignment": "הסרת השיבוץ נכשלה",
+      "auto_assign": "השיבוץ האוטומטי נכשל",
+      "confirm_assignment": "אישור השיבוץ נכשל",
+      "confirm_assignments": "אישור השיבוצים נכשל"
     }
   },
   "errors": {

@@ -67,6 +67,13 @@ describe("RangeEditAssignmentsModal", () => {
     expect(props.onChanged).toHaveBeenCalled();
   });
 
+  it("keeps assignment reasons visible but hides editing controls from a non-manager", () => {
+    renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false, "manual", "שיבוץ לפי צורך מבצעי")]) });
+    expect(screen.getByText(/סיבת השיבוץ: שיבוץ לפי צורך מבצעי/)).toBeInTheDocument();
+    expect(screen.queryByTestId("edit-assignment-reason-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("save-assignment-reason-a1")).not.toBeInTheDocument();
+  });
+
   it("uses a Hebrew fallback instead of exposing raw reason API errors", async () => {
     vi.mocked(rangesApi.updateRangeAssignmentReason).mockRejectedValue({ response: { data: { detail: "custom_reason_text_required" } } });
     renderModal({ event: event([assignment("a1", "s1")]) });
@@ -75,6 +82,16 @@ describe("RangeEditAssignmentsModal", () => {
     fireEvent.click(screen.getByTestId("save-assignment-reason-a1"));
     expect(await screen.findByRole("alert")).toHaveTextContent("יש למלא את סיבת השיבוץ");
     expect(screen.queryByText("custom_reason_text_required")).not.toBeInTheDocument();
+  });
+
+  it("uses the Hebrew generic fallback for an unknown reason API error", async () => {
+    vi.mocked(rangesApi.updateRangeAssignmentReason).mockRejectedValue({ response: { data: { detail: "unrecognized_reason_policy" } } });
+    renderModal({ event: event([assignment("a1", "s1")]) });
+    fireEvent.click(screen.getByTestId("edit-assignment-reason-a1"));
+    fireEvent.change(screen.getByLabelText("סיבת השיבוץ"), { target: { value: "סיבה" } });
+    fireEvent.click(screen.getByTestId("save-assignment-reason-a1"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("עדכון סיבת השיבוץ נכשל");
+    expect(screen.queryByText("unrecognized_reason_policy")).not.toBeInTheDocument();
   });
 
   it("adds a soldier with the reserve toggle and refreshes the event", async () => {

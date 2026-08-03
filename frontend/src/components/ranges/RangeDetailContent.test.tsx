@@ -39,5 +39,7 @@ describe("RangeDetailContent self-excusal", () => {
     expect(screen.queryByRole("button", { name: "אני לא אוכל להגיע" })).not.toBeInTheDocument();
     rerender(<RangeDetailContent {...{ event: event({ assignments: [{ ...event().assignments[0], is_draft: true }] }), canManage: false, userId: "me", soldierName: () => "אורי", onExcuse: vi.fn(), onDecide: vi.fn(), onAttendance: vi.fn() }} />);
     expect(screen.queryByRole("button", { name: "אני לא אוכל להגיע" })).not.toBeInTheDocument();
+    rerender(<RangeDetailContent {...{ event: event({ date: "2000-01-01" }), canManage: false, userId: "me", soldierName: () => "אורי", onExcuse: vi.fn(), onDecide: vi.fn(), onAttendance: vi.fn() }} />);
+    expect(screen.queryByRole("button", { name: "אני לא אוכל להגיע" })).not.toBeInTheDocument();
   });
 });

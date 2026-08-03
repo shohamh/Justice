@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RangeAssignment, RangeEvent, RangeExcusalRequest } from "../../api/ranges";
 import { RosterSection } from "../planning";
 import RangeAttendancePanel from "./RangeAttendancePanel";
@@ -18,6 +19,11 @@ interface Props {
 }
 
 export default function RangeDetailContent(p: Props) {
+  const { t } = useTranslation();
+  const text = (key: string, fallback: string) => {
+    const translated = t(key);
+    return translated === key ? fallback : translated;
+  };
   const { event } = p;
   const primary = event.assignments.filter(a => !a.is_reserve);
   const reserve = event.assignments.filter(a => a.is_reserve);
@@ -32,7 +38,7 @@ export default function RangeDetailContent(p: Props) {
 
   return <div className="space-y-4" data-testid="range-detail-content">
     {p.actions}
-    {selfAssignment && <section className="flex flex-wrap items-center gap-2" data-testid="range-self-excusal-action"><button type="button" onClick={() => { setExcuseId(selfAssignment.id); setReason(""); }} className={`${actionClass} border-amber-300 text-amber-700`}>אני לא אוכל להגיע</button>{excuseId === selfAssignment.id && <span className="flex items-center gap-1"><input aria-label="סיבת היעדרות" value={reason} onChange={e => setReason(e.target.value)} className="rounded border p-1 text-sm" /><button type="button" data-testid="submit-excuse-button" disabled={!reason.trim()} onClick={async () => { await p.onExcuse(selfAssignment.id, reason.trim()); setExcuseId(null); setReason(""); }} className={`${actionClass} border-blue-600 bg-blue-600 text-white`}>שלח</button></span>}</section>}
+    {selfAssignment && <section className="flex flex-wrap items-center gap-2" data-testid="range-self-excusal-action"><button type="button" onClick={() => { setExcuseId(selfAssignment.id); setReason(""); }} className={`${actionClass} border-amber-300 text-amber-700`}>{text("ranges.self_excuse", "אני לא אוכל להגיע")}</button>{excuseId === selfAssignment.id && <span className="flex items-center gap-1"><input aria-label={text("ranges.self_excuse_reason", "סיבת היעדרות")} value={reason} onChange={e => setReason(e.target.value)} className="rounded border p-1 text-sm" /><button type="button" data-testid="submit-excuse-button" disabled={!reason.trim()} onClick={async () => { await p.onExcuse(selfAssignment.id, reason.trim()); setExcuseId(null); setReason(""); }} className={`${actionClass} border-blue-600 bg-blue-600 text-white`}>{text("ranges.send", "שלח")}</button></span>}</section>}
     <section data-testid="range-detail-information" className="rounded border bg-gray-50 p-4 text-sm text-gray-800 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"><h3 className="mb-2 text-sm font-semibold">מידע והנחיות</h3><div><b>הוראות הגעה:</b> {event.arrival_instructions || "—"}</div><div><b>איש קשר:</b> {event.contact_name || "—"} {event.contact_phone || ""}</div><div><b>הערות:</b> {event.notes || "—"}</div></section>
     {p.canManage && planned && <section className="space-y-2 rounded border p-4 dark:border-gray-600"><h3 className="text-sm font-semibold">פעולות שיבוץ</h3><div className="flex flex-wrap gap-2">{p.onEditAssignments && <button type="button" data-testid="edit-range-assignments" onClick={p.onEditAssignments} className={`${actionClass} border-indigo-600 bg-indigo-600 text-white`}>ערוך שיבוצים</button>}</div></section>}
     <section data-testid="range-detail-roster" className="space-y-3"><h3 className="text-sm font-semibold">רשימת שיבוצים</h3><RosterSection kind="primary" assignments={primary.map(row)} count={event.required_count} assignmentActionRenderer={() => null} /><RosterSection kind="reserve" assignments={reserve.map(row)} count={event.reserve_count} assignmentActionRenderer={() => null} /></section>
