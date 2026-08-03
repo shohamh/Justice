@@ -120,6 +120,47 @@ def test_admin_can_comment_on_any_bug_report(client: TestClient, admin_session: 
     assert resp.status_code == 201
 
 
+def test_other_soldier_cannot_list_comments_on_someone_elses_bug_report(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugcomment006")
+    other = create_soldier(admin_session, personal_number="bugcomment007")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(other),
+    )
+    assert resp.status_code == 403
+
+
+def test_reporter_and_admin_can_list_comments_on_bug_report(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugcomment008", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugcomment009")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.post(
+        f"/api/bug-reports/{report_id}/comments",
+        json={"body": "steps to reproduce: ..."},
+        headers=auth_headers(reporter),
+    )
+    assert resp.status_code == 201
+
+    reporter_resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(reporter),
+    )
+    assert reporter_resp.status_code == 200
+    assert [c["body"] for c in reporter_resp.json()] == ["steps to reproduce: ..."]
+
+    admin_resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(admin),
+    )
+    assert admin_resp.status_code == 200
+    assert [c["body"] for c in admin_resp.json()] == ["steps to reproduce: ..."]
+
+
 def test_admin_comment_notifies_bug_report_owner(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="bugnotify001", role="admin")
     reporter = create_soldier(admin_session, personal_number="bugnotify002")
