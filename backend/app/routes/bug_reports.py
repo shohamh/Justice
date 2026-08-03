@@ -4,7 +4,7 @@ import base64
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -303,7 +303,7 @@ def update_bug_report_status(
     if report is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bug_report_not_found")
     report.status = body.status
-    report.updated_at = datetime.now(timezone.utc)
+    report.updated_at = datetime.now(UTC)
     session.commit()
     session.refresh(report)
     return _summary_with_comment_aggregates(session, report)

@@ -57,7 +57,13 @@ def test_list_bug_report_summaries_include_comment_aggregates(client: TestClient
         body="newer comment",
     )
     newer_comment.created_at = datetime(2026, 8, 3, 11, 0, tzinfo=UTC)
-    admin_session.add_all([older_comment, newer_comment])
+    admin_comment = BugReportComment(
+        bug_report_id=reports["with comments"].id,
+        author_id=admin.id,
+        body="admin comment",
+    )
+    admin_comment.created_at = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
+    admin_session.add_all([older_comment, newer_comment, admin_comment])
     admin_session.commit()
 
     response = client.get("/api/admin/bug-reports", headers=auth_headers(admin))
@@ -66,9 +72,9 @@ def test_list_bug_report_summaries_include_comment_aggregates(client: TestClient
     summaries = {item["description"]: item for item in response.json()["items"]}
     assert summaries["without comments"]["comment_count"] == 0
     assert summaries["without comments"]["last_comment_at"] is None
-    assert summaries["with comments"]["comment_count"] == 2
+    assert summaries["with comments"]["comment_count"] == 3
     assert datetime.fromisoformat(summaries["with comments"]["last_comment_at"].replace("Z", "+00:00")) == (
-        newer_comment.created_at
+        admin_comment.created_at
     )
 
 
