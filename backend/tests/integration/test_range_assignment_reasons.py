@@ -135,6 +135,13 @@ def test_read_only_commander_cannot_see_own_draft_assignment_or_mutate_its_reaso
     assert response.json()["assigned_to_me"] is False
     assert response.json()["can_edit_attendance"] is False
 
+    list_response = client.get(
+        f"/api/ranges?node_id={node.id}", headers=auth_headers(commander)
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert list_response.json()[0]["assigned_to_me"] is False
+    assert list_response.json()[0]["can_edit_attendance"] is False
+
     mutation = client.patch(
         f"/api/ranges/{event_id}/assignments/{draft.id}/reason",
         json={"assignment_reason_code": "custom", "assignment_reason_text": "צורך מבצעי"},

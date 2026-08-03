@@ -401,14 +401,14 @@ def list_range_events(
     node = session.get(HierarchyNode, node_uuid)
     if node is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    _authorize_range_read(session, user, node)
+    can_manage = _authorize_range_read(session, user, node)
     query = session.query(RangeEvent).filter(RangeEvent.hierarchy_node_id == node_uuid)
     if date_from is not None:
         query = query.filter(RangeEvent.date >= date_from)
     if date_to is not None:
         query = query.filter(RangeEvent.date <= date_to)
     events = query.order_by(RangeEvent.date).all()
-    return [_event_out(session, e, user=user) for e in events]
+    return [_event_out(session, e, user=user, include_drafts=can_manage) for e in events]
 
 
 class RangeExcusalOut(BaseModel):
