@@ -1,19 +1,34 @@
 import { describe, expect, test, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import BugReportTrigger from "./BugReportTrigger";
+import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import { toPng } from "html-to-image";
 
 vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+vi.mock("../api/bugReports", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/bugReports")>()),
+  getMyBugReportsUnseenCount: vi.fn().mockResolvedValue({ count: 0 }),
+}));
+
+function renderTrigger() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <BugReportModalProvider>
+          <BugReportTrigger />
+        </BugReportModalProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
 
 describe("BugReportTrigger", () => {
   test("captures a screenshot of the page BEFORE opening the modal, then opens it", async () => {
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     expect(document.body.querySelector('[data-testid="bug-report-modal-overlay"]')).toBeNull();
 
@@ -30,11 +45,7 @@ describe("BugReportTrigger", () => {
   });
 
   test("passes the captured screenshot down to the modal", async () => {
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
@@ -44,11 +55,7 @@ describe("BugReportTrigger", () => {
   test("still opens the modal with a null screenshot when capture fails (non-fatal)", async () => {
     vi.mocked(toPng).mockRejectedValueOnce(new Error("capture failed"));
 
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
@@ -64,11 +71,7 @@ describe("BugReportTrigger", () => {
       new Promise((resolve) => { releaseCapture = resolve; }),
     );
 
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     const trigger = screen.getByTestId("bug-report-trigger");
     fireEvent.click(trigger);
@@ -89,11 +92,7 @@ describe("BugReportTrigger", () => {
     // rejecting, which a plain try/catch around toPng() would never recover from.
     vi.mocked(toPng).mockReturnValueOnce(new Promise(() => {}));
 
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
     expect(screen.getByTestId("bug-report-trigger")).toBeDisabled();
@@ -113,11 +112,7 @@ describe("BugReportTrigger", () => {
     const outsideClickHandler = vi.fn();
     document.addEventListener("mousedown", outsideClickHandler);
 
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     await act(async () => { fireEvent.mouseDown(screen.getByTestId("bug-report-trigger")); });
 
@@ -133,11 +128,7 @@ describe("BugReportTrigger", () => {
     Object.defineProperty(window, "scrollX", { value: 40, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 300, configurable: true });
 
-    render(
-      <MemoryRouter>
-        <BugReportTrigger />
-      </MemoryRouter>,
-    );
+    renderTrigger();
 
     fireEvent.click(screen.getByTestId("bug-report-trigger"));
 
@@ -151,5 +142,21 @@ describe("BugReportTrigger", () => {
 
     Object.defineProperty(window, "scrollX", { value: 0, configurable: true });
     Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+  });
+
+  test("shows a badge with the unseen-activity count", async () => {
+    const { getMyBugReportsUnseenCount } = await import("../api/bugReports");
+    vi.mocked(getMyBugReportsUnseenCount).mockResolvedValue({ count: 3 });
+
+    renderTrigger();
+
+    expect(await screen.findByTestId("bug-report-trigger-badge")).toHaveTextContent("3");
+  });
+
+  test("shows no badge when there is no unseen activity", async () => {
+    renderTrigger();
+
+    await waitFor(() => expect(screen.queryByTestId("bug-report-trigger")).toBeInTheDocument());
+    expect(screen.queryByTestId("bug-report-trigger-badge")).not.toBeInTheDocument();
   });
 });

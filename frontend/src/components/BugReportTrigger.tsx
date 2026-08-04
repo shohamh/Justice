@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Bug, Loader2 } from "lucide-react";
 import { toPng } from "html-to-image";
-import BugReportModal from "./BugReportModal";
+import { useBugReportModal } from "../contexts/BugReportModalContext";
+import { getMyBugReportsUnseenCount } from "../api/bugReports";
+import { queryKeys } from "../queryKeys";
 
 // html-to-image inlines every font/image on the page as a base64 data URL before
 // rasterizing, which can take a long time (or never settle at all) on content-heavy
@@ -22,9 +25,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export default function BugReportTrigger() {
-  const [open, setOpen] = useState(false);
+  const { openBugReportModal } = useBugReportModal();
   const [capturing, setCapturing] = useState(false);
-  const [screenshot, setScreenshot] = useState<string | null>(null);
   // Other panels (e.g. the notifications dropdown) close themselves via a
   // document-level "mousedown outside" listener. That listener always runs
   // before this button's "click" event (mousedown precedes click in the
@@ -38,12 +40,19 @@ export default function BugReportTrigger() {
   // click with no preceding mousedown).
   const triggeredRef = useRef(false);
 
+  const unseenQuery = useQuery({
+    queryKey: queryKeys.myBugReportsUnseenCount(),
+    queryFn: getMyBugReportsUnseenCount,
+    refetchInterval: 30000,
+  });
+  const unseenCount = unseenQuery.data?.count ?? 0;
+
   async function handleClick() {
     // Freeze the current scroll position before any async work.
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     setCapturing(true);
-    setScreenshot(null);
+    let screenshot: string | null = null;
     try {
       // pixelRatio: 1 avoids multiplying the capture by devicePixelRatio, which is
       // often the single biggest driver of an oversized PNG on retina/high-DPI
@@ -57,7 +66,7 @@ export default function BugReportTrigger() {
       // dimming overlay and empty form are never present in document.body while
       // toPng reads it — otherwise the screenshot would show the modal itself
       // instead of the page the user is reporting a bug about.
-      const dataUrl = await withTimeout(
+      screenshot = await withTimeout(
         toPng(document.body, {
           pixelRatio: 1,
           width: window.innerWidth,
@@ -66,13 +75,12 @@ export default function BugReportTrigger() {
         }),
         CAPTURE_TIMEOUT_MS,
       );
-      setScreenshot(dataUrl);
     } catch {
       // non-fatal (rejection or timeout): submission proceeds without a screenshot
-      setScreenshot(null);
+      screenshot = null;
     } finally {
       setCapturing(false);
-      setOpen(true);
+      openBugReportModal({ tab: "new", screenshot });
       // Safety net for mousedown without a following click (e.g. the mouse
       // is released outside the button) — don't leave the trigger stuck.
       triggeredRef.current = false;
@@ -86,28 +94,33 @@ export default function BugReportTrigger() {
   }
 
   return createPortal(
-    <>
-      <button
-        onMouseDown={trigger}
-        onClick={() => {
-          if (triggeredRef.current) {
-            triggeredRef.current = false;
-            return;
-          }
-          trigger();
-        }}
-        aria-label={capturing ? "מצלם צילום מסך..." : "מצאתי באג"}
-        className="fixed bottom-20 left-2 md:bottom-4 md:left-4 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60"
-        data-testid="bug-report-trigger"
-        disabled={capturing}
-      >
-        {capturing
-          ? <Loader2 size={22} className="animate-spin" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
-          : <Bug size={22} />}
-        <span className="text-[10px] leading-none">פידבק</span>
-      </button>
-      {open && <BugReportModal screenshot={screenshot} onClose={() => setOpen(false)} />}
-    </>,
+    <button
+      onMouseDown={trigger}
+      onClick={() => {
+        if (triggeredRef.current) {
+          triggeredRef.current = false;
+          return;
+        }
+        trigger();
+      }}
+      aria-label={capturing ? "מצלם צילום מסך..." : "מצאתי באג"}
+      className="fixed bottom-20 left-2 md:bottom-4 md:left-4 flex flex-col items-center gap-0.5 text-gray-500 hover:text-indigo-600 z-[100] disabled:opacity-60"
+      data-testid="bug-report-trigger"
+      disabled={capturing}
+    >
+      {capturing
+        ? <Loader2 size={22} className="animate-spin" data-testid="bug-report-trigger-spinner" aria-hidden="true" />
+        : <Bug size={22} />}
+      <span className="text-[10px] leading-none">פידבק</span>
+      {unseenCount > 0 && (
+        <span
+          className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
+          data-testid="bug-report-trigger-badge"
+        >
+          {unseenCount > 99 ? "99+" : unseenCount}
+        </span>
+      )}
+    </button>,
     document.body,
   );
 }
