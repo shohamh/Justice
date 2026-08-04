@@ -16,6 +16,7 @@ import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
+import CheckboxListDropdown from "./CheckboxListDropdown";
 
 const RANGE_TYPE_COLORS: Record<string, string> = {
   laser: "#7c3aed",
@@ -38,8 +39,8 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
-  const [dutyTypeFilter, setDutyTypeFilter] = useState<string | null>(null);
-  const [rangeTypeFilter, setRangeTypeFilter] = useState<string | null>(null);
+  const [dutyTypeFilter, setDutyTypeFilter] = useState<string[]>([]);
+  const [rangeTypeFilter, setRangeTypeFilter] = useState<string[]>([]);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -85,13 +86,13 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   }
 
   const filteredShifts = useMemo(() => {
-    if (!dutyTypeFilter) return shifts;
-    return shifts.filter(s => s.duty_type_id === dutyTypeFilter);
+    if (dutyTypeFilter.length === 0) return shifts;
+    return shifts.filter(s => dutyTypeFilter.includes(s.duty_type_id));
   }, [shifts, dutyTypeFilter]);
 
   const filteredRanges = useMemo(() => {
-    if (!rangeTypeFilter) return ranges;
-    return ranges.filter(r => r.range_type === rangeTypeFilter);
+    if (rangeTypeFilter.length === 0) return ranges;
+    return ranges.filter(r => rangeTypeFilter.includes(r.range_type));
   }, [ranges, rangeTypeFilter]);
 
   const shiftEvents = useMemo(() => {
@@ -158,14 +159,6 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     if (shift) setSelectedShift(shift);
   }
 
-  function toggleFilter(dtId: string) {
-    setDutyTypeFilter((prev) => (prev === dtId ? null : dtId));
-  }
-
-  function toggleRangeFilter(rtId: string) {
-    setRangeTypeFilter((prev) => (prev === rtId ? null : rtId));
-  }
-
   const dutyTypesInView = useMemo(() => {
     const seen = new Map<string, string>();
     for (const s of shifts) {
@@ -184,39 +177,26 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
 
   return (
     <div className="space-y-4">
-      {dutyTypesInView.length > 1 && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          <span className="text-gray-500">{t("unit_calendar.filter_label") || "סינון:"}</span>
-          {dutyTypesInView.map((dt) => (
-            <button
-              key={dt.id}
-              onClick={() => toggleFilter(dt.id)}
-              data-testid={`filter-chip-${dt.id}`}
-              className={`px-2 py-1 rounded-full border text-xs ${
-                dutyTypeFilter === dt.id ? "bg-indigo-100 dark:bg-indigo-900 border-indigo-400 text-indigo-700 dark:text-indigo-300" : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-              }`}
-            >
-              {dt.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {rangeTypesInView.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          <span className="text-gray-500">{t("unit_calendar.range_filter_label") || "סינון מטווחים:"}</span>
-          {rangeTypesInView.map((rt) => (
-            <button
-              key={rt.id}
-              onClick={() => toggleRangeFilter(rt.id)}
-              data-testid={`range-filter-chip-${rt.id}`}
-              className={`px-2 py-1 rounded-full border text-xs ${
-                rangeTypeFilter === rt.id ? "bg-violet-100 dark:bg-violet-900 border-violet-400 text-violet-700 dark:text-violet-300" : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-              }`}
-            >
-              {rt.name}
-            </button>
-          ))}
+      {(dutyTypesInView.length > 1 || rangeTypesInView.length > 0) && (
+        <div className="flex flex-wrap gap-3 text-sm items-center">
+          {dutyTypesInView.length > 1 && (
+            <CheckboxListDropdown
+              items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
+              selected={dutyTypeFilter}
+              onChange={setDutyTypeFilter}
+              triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
+              panelDir="rtl"
+            />
+          )}
+          {rangeTypesInView.length > 0 && (
+            <CheckboxListDropdown
+              items={rangeTypesInView.map((rt) => ({ id: rt.id, label: rt.name }))}
+              selected={rangeTypeFilter}
+              onChange={setRangeTypeFilter}
+              triggerLabel={t("unit_calendar.range_filter_label") || "מטווחים"}
+              panelDir="rtl"
+            />
+          )}
         </div>
       )}
 
