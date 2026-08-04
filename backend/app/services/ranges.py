@@ -280,14 +280,13 @@ def delete_range_event(session: Session, *, event: RangeEvent) -> None:
     session.commit()
 
 
-def add_range_assignment(
+def _validate_and_build_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
-    assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
 ) -> RangeAssignment:
-    _acquire_range_assignment_date_lock(session, event_date=event.date)
-    session.refresh(event)
-    if event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
+    """Same validation as add_range_assignment (subtree membership, exemption,
+    same-date conflict) but only constructs the row — does not add/commit/notify.
+    Shared by add_range_assignment (single, notifies) and assign_batch (many, one
+    commit + one notification pass at the end)."""
     soldier = session.get(Soldier, soldier_id)
     if soldier is None:
         raise RangeValidationError("soldier_not_found")
@@ -308,17 +307,24 @@ def add_range_assignment(
     ).scalar_one_or_none()
     if existing_same_date is not None:
         raise RangeValidationError("soldier_already_assigned_on_date")
+    return RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
+
+
+def add_range_assignment(
+    session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
+    assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
+) -> RangeAssignment:
+    _acquire_range_assignment_date_lock(session, event_date=event.date)
+    session.refresh(event)
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+    assignment = _validate_and_build_assignment(session, event=event, soldier_id=soldier_id, is_reserve=is_reserve)
 
     existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
         RangeAssignment.range_event_id == event.id,
     )).scalars())
-    assignment = RangeAssignment(
-        range_event_id=event.id,
-        soldier_id=soldier_id,
-        is_reserve=is_reserve,
-        assignment_reason_code=assignment_reason_code,
-        assignment_reason_text=assignment_reason_text,
-    )
+    assignment.assignment_reason_code = assignment_reason_code
+    assignment.assignment_reason_text = assignment_reason_text
     session.add(assignment)
     session.flush()
     _notify_roster_change(session, event=event, soldier_ids=existing_soldier_ids)
@@ -333,6 +339,42 @@ def add_range_assignment(
     session.commit()
     session.refresh(assignment)
     return assignment
+
+
+def assign_batch(
+    session: Session, *, event: RangeEvent,
+    primary_soldier_ids: list[uuid.UUID], reserve_soldier_ids: list[uuid.UUID],
+    actor_id: uuid.UUID | None = None,
+) -> list[RangeAssignment]:
+    """All-or-nothing: validates every soldier before adding any row, so a single
+    invalid soldier in the batch fails the whole call with no partial writes.
+    Deliberately simpler than shifts' assignBatch (which is partial-success/lenient) —
+    the range candidate panel already is the review step, so failing fast on the
+    first invalid soldier keeps this endpoint's contract simple."""
+    _acquire_range_assignment_date_lock(session, event_date=event.date)
+    session.refresh(event)
+    if event.status != RangeEventStatus.planned:
+        raise RangeValidationError("event_not_planned")
+
+    rows = [
+        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=False)
+        for sid in primary_soldier_ids
+    ] + [
+        _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=True)
+        for sid in reserve_soldier_ids
+    ]
+    for row in rows:
+        session.add(row)
+    session.flush()
+    for row in rows:
+        _range_notification(
+            session, soldier_id=row.soldier_id, type=NotificationType.range_assignment_confirmed,
+            title="שובצת למטווח", reference_type="range_assignment", reference_id=row.id,
+        )
+    session.commit()
+    for row in rows:
+        session.refresh(row)
+    return rows
 
 
 def remove_range_assignment(session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None) -> None:

@@ -297,6 +297,32 @@ def add_assignment(
     return _assignment_out(assignment)
 
 
+class BatchAssignBody(BaseModel):
+    primaries: list[uuid.UUID] = []
+    reserves: list[uuid.UUID] = []
+
+
+@router.post("/{event_id}/assignments/batch", response_model=list[RangeAssignmentOut])
+def batch_assign(
+    event_id: uuid.UUID,
+    body: BatchAssignBody,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[RangeAssignmentOut]:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    try:
+        created = svc.assign_batch(
+            session, event=event,
+            primary_soldier_ids=body.primaries, reserve_soldier_ids=body.reserves,
+            actor_id=user.id,
+        )
+    except svc.RangeValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return [_assignment_out(a) for a in created]
+
+
 class UpdateAssignmentReasonBody(BaseModel):
     assignment_reason_code: str = Field(min_length=1, max_length=100)
     assignment_reason_text: str | None = Field(default=None, max_length=1000)
