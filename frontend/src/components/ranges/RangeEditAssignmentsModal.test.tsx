@@ -34,14 +34,16 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof RangeEditAss
   return { ...render(<RangeEditAssignmentsModal {...props} />), props };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
+});
 
 describe("RangeEditAssignmentsModal", () => {
   it("renders primary and reserve sections and marks existing drafts", () => {
     renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2", true, true)]) });
     expect(screen.getByTestId("range-primary-assignments")).toBeInTheDocument();
     expect(screen.getByTestId("range-reserve-assignments")).toBeInTheDocument();
-    expect(screen.getByTestId("draft-badge-a2")).toBeInTheDocument();
   });
 
   it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
@@ -74,17 +76,14 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.queryByTestId("save-assignment-reason-a1")).not.toBeInTheDocument();
   });
 
-  it("keeps the roster visible but hides every assignment mutation control from a non-manager", () => {
-    renderModal({ canManage: false, event: event([assignment("a1", "s1", false, true)]) });
+  it("keeps the roster visible but hides every assignment mutation control from a non-manager", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
+    renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false)]) });
 
     expect(screen.getByText("אורי")).toBeInTheDocument();
-    expect(screen.queryByTestId("range-auto-assign")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("range-confirm-all")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("confirm-draft-a1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-auto-select-primary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("save-assignments")).not.toBeInTheDocument();
     expect(screen.queryByTestId("remove-assignment-a1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("range-reserve-toggle")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("range-soldier-search")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("add-soldier-s2")).not.toBeInTheDocument();
   });
 
   it("uses a Hebrew fallback instead of exposing raw reason API errors", async () => {
@@ -107,16 +106,6 @@ describe("RangeEditAssignmentsModal", () => {
     expect(screen.queryByText("unrecognized_reason_policy")).not.toBeInTheDocument();
   });
 
-  it("adds a soldier with the reserve toggle and refreshes the event", async () => {
-    vi.mocked(rangesApi.addRangeAssignment).mockResolvedValue(assignment("a1", "s1", true));
-    const { props } = renderModal();
-    fireEvent.change(screen.getByTestId("range-soldier-search"), { target: { value: "אורי" } });
-    fireEvent.click(screen.getByTestId("range-reserve-toggle"));
-    fireEvent.click(screen.getByTestId("add-soldier-s1"));
-    await waitFor(() => expect(rangesApi.addRangeAssignment).toHaveBeenCalledWith("event-1", "s1", true));
-    expect(props.onChanged).toHaveBeenCalled();
-  });
-
   it("shows pending state while removing an assignment", async () => {
     let resolve!: () => void;
     vi.mocked(rangesApi.removeRangeAssignment).mockReturnValue(new Promise<void>(r => { resolve = r; }));
@@ -127,38 +116,86 @@ describe("RangeEditAssignmentsModal", () => {
     await waitFor(() => expect(screen.queryByText("אורי")).not.toBeInTheDocument());
   });
 
-  it("supports auto-assignment and confirming one or all drafts", async () => {
-    vi.mocked(rangesApi.autoAssignRange).mockResolvedValue({ created: [assignment("a1", "s1", false, true), assignment("a2", "s2", false, true)], shortfall: 0 });
-    vi.mocked(rangesApi.confirmDraftAssignment).mockResolvedValue(assignment("a1", "s1"));
-    vi.mocked(rangesApi.confirmAllDrafts).mockResolvedValue([]);
-    const { props } = renderModal();
-    fireEvent.click(screen.getByTestId("range-auto-assign"));
-    await waitFor(() => expect(rangesApi.autoAssignRange).toHaveBeenCalledWith("event-1"));
-    expect(await screen.findByTestId("draft-badge-a1")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("confirm-draft-a1"));
-    await waitFor(() => expect(rangesApi.confirmDraftAssignment).toHaveBeenCalledWith("event-1", "a1"));
-    fireEvent.click(screen.getByTestId("range-confirm-all"));
-    await waitFor(() => expect(rangesApi.confirmAllDrafts).toHaveBeenCalledWith("event-1"));
-    await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(3));
+  it("shows a user-facing error when removing an assignment fails", async () => {
+    vi.mocked(rangesApi.removeRangeAssignment).mockRejectedValue(new Error("remove"));
+    renderModal({ event: event([assignment("a1", "s1", false, false)]) });
+    fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("הסרת השיבוץ נכשלה");
   });
 
-  it.each([
-    ["add", "add-soldier-s1", "הוספת השיבוץ נכשלה", () => vi.mocked(rangesApi.addRangeAssignment).mockRejectedValue(new Error("add"))],
-    ["remove", "remove-assignment-a1", "הסרת השיבוץ נכשלה", () => vi.mocked(rangesApi.removeRangeAssignment).mockRejectedValue(new Error("remove"))],
-    ["auto", "range-auto-assign", "השיבוץ האוטומטי נכשל", () => vi.mocked(rangesApi.autoAssignRange).mockRejectedValue(new Error("auto"))],
-    ["confirm", "confirm-draft-a1", "אישור השיבוץ נכשל", () => vi.mocked(rangesApi.confirmDraftAssignment).mockRejectedValue(new Error("confirm"))],
-  ])("shows a user-facing error when %s fails", async (_name, button, message, configure) => {
-    configure();
-    renderModal({ event: button === "add-soldier-s1" ? event() : event([assignment("a1", "s1", false, button === "confirm-draft-a1")]) });
-    fireEvent.click(screen.getByTestId(button));
-    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  it("renders the ranked candidate panel with auto-select and lets a manager save a batch", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+      { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", blocked: true, blocked_reason: "exempt" },
+    ]);
+    vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
+      { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
+    ]);
+    const { props } = renderModal({ event: { ...event([]), required_count: 1 } });
+
+    await screen.findAllByText("אורי");
+    fireEvent.click(screen.getByTestId("range-auto-select-primary"));
+    expect(screen.getByTestId("candidate-checkbox-s1")).toBeChecked();
+
+    fireEvent.click(screen.getByTestId("save-assignments"));
+    await waitFor(() => expect(rangesApi.batchAssignRange).toHaveBeenCalledWith("event-1", { primaries: ["s1"], reserves: [] }));
+    expect(props.onChanged).toHaveBeenCalled();
   });
 
-  it("shows an error when confirming all drafts fails", async () => {
-    vi.mocked(rangesApi.confirmAllDrafts).mockRejectedValue(new Error("confirm all"));
-    renderModal({ event: event([assignment("a1", "s1", false, true)]) });
-    fireEvent.click(screen.getByTestId("range-confirm-all"));
-    expect(await screen.findByRole("alert")).toHaveTextContent("אישור השיבוצים נכשל");
+  it("shows blocked candidates but keeps their checkbox disabled", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", blocked: true, blocked_reason: "exempt" },
+    ]);
+    renderModal({ event: event([]) });
+
+    const checkbox = await screen.findByTestId("candidate-checkbox-s3");
+    expect(checkbox).toBeDisabled();
+  });
+
+  it("shows a user-facing error when saving the batch fails", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+    ]);
+    vi.mocked(rangesApi.batchAssignRange).mockRejectedValue(new Error("batch"));
+    renderModal({ event: event([]) });
+
+    fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
+    fireEvent.click(screen.getByTestId("save-assignments"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("שמירת השיבוצים נכשלה");
+  });
+
+  it("re-fetches candidates after a successful batch save so a just-assigned soldier is no longer offered", async () => {
+    vi.mocked(rangesApi.getRangeCandidates)
+      .mockResolvedValueOnce([
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
+      { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
+    ]);
+    renderModal({ event: { ...event([]), required_count: 1 } });
+
+    fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
+    fireEvent.click(screen.getByTestId("save-assignments"));
+
+    await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId("candidate-checkbox-s1")).not.toBeInTheDocument());
+  });
+
+  it("re-fetches candidates after removing an assignment so the freed soldier becomes selectable again", async () => {
+    vi.mocked(rangesApi.getRangeCandidates)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      ]);
+    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+    renderModal({ event: event([assignment("a1", "s1")]) });
+
+    fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+
+    await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId("candidate-checkbox-s1")).toBeInTheDocument();
   });
 
   it("reports full primary and reserve capacity and closes explicitly", () => {

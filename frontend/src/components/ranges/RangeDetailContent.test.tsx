@@ -14,8 +14,12 @@ const event = (overrides: Partial<RangeEvent> = {}): RangeEvent => ({
   ...overrides,
 });
 
+function baseProps(overrides: Partial<React.ComponentProps<typeof RangeDetailContent>> = {}): React.ComponentProps<typeof RangeDetailContent> {
+  return { event: event(), canManage: false, userId: "me", soldierName: () => "אורי", onExcuse: vi.fn().mockResolvedValue(undefined), onDecide: vi.fn().mockResolvedValue(undefined), onAttendance: vi.fn(), ...overrides };
+}
+
 function renderDetail(overrides: Partial<React.ComponentProps<typeof RangeDetailContent>> = {}) {
-  const props = { event: event(), canManage: false, userId: "me", soldierName: () => "אורי", onExcuse: vi.fn().mockResolvedValue(undefined), onDecide: vi.fn().mockResolvedValue(undefined), onAttendance: vi.fn(), ...overrides };
+  const props = baseProps(overrides);
   return { ...render(<RangeDetailContent {...props} />), props };
 }
 
@@ -59,5 +63,13 @@ describe("RangeDetailContent attendance permissions", () => {
     expect(screen.getByTestId("present-a1")).toBeInTheDocument();
     expect(screen.getByTestId("no-show-a1")).toBeInTheDocument();
     expect(screen.getByTestId("submit-a1")).toBeInTheDocument();
+  });
+});
+
+describe("RangeDetailContent assignment actions", () => {
+  it("never renders an edit-assignments entry point — that's reached via the row action now", () => {
+    render(<RangeDetailContent {...baseProps({ canManage: true })} />);
+    expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
+    expect(screen.queryByText("פעולות שיבוץ")).not.toBeInTheDocument();
   });
 });

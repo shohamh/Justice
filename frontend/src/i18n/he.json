@@ -1303,7 +1303,8 @@
       "remove_assignment": "הסרת השיבוץ נכשלה",
       "auto_assign": "השיבוץ האוטומטי נכשל",
       "confirm_assignment": "אישור השיבוץ נכשל",
-      "confirm_assignments": "אישור השיבוצים נכשל"
+      "confirm_assignments": "אישור השיבוצים נכשל",
+      "save_assignments": "שמירת השיבוצים נכשלה"
     }
   },
   "action": {

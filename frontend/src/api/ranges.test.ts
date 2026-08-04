@@ -36,30 +36,4 @@ describe("ranges api", () => {
     expect(result.id).toBe("event-1");
   });
 
-  it("autoAssignRange calls POST /ranges/event-1/auto-assign", async () => {
-    const created = [{ id: "a1", is_draft: true }];
-    mockPost.mockResolvedValue({ data: { created, shortfall: 1 } });
-    const { autoAssignRange } = await import("./ranges");
-    const result = await autoAssignRange("event-1");
-    expect(mockPost).toHaveBeenCalledWith("/ranges/event-1/auto-assign");
-    expect(result).toEqual({ created, shortfall: 1 });
-  });
-
-  it("confirmDraftAssignment calls POST /ranges/event-1/assignments/a1/confirm", async () => {
-    const assignment = { id: "a1", is_draft: false };
-    mockPost.mockResolvedValue({ data: assignment });
-    const { confirmDraftAssignment } = await import("./ranges");
-    const result = await confirmDraftAssignment("event-1", "a1");
-    expect(mockPost).toHaveBeenCalledWith("/ranges/event-1/assignments/a1/confirm");
-    expect(result).toEqual(assignment);
-  });
-
-  it("confirmAllDrafts calls POST /ranges/event-1/assignments/confirm-all", async () => {
-    const assignments = [{ id: "a1", is_draft: false }, { id: "a2", is_draft: false }];
-    mockPost.mockResolvedValue({ data: assignments });
-    const { confirmAllDrafts } = await import("./ranges");
-    const result = await confirmAllDrafts("event-1");
-    expect(mockPost).toHaveBeenCalledWith("/ranges/event-1/assignments/confirm-all");
-    expect(result).toEqual(assignments);
-  });
 });

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -416,225 +415,124 @@ def test_list_range_events_filters_by_date_range(
     assert locations == ["מטווח אוקטובר"]
 
 
-def test_auto_assign_creates_drafts(client: TestClient, admin_session: Session) -> None:
-    _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו1")
-    dm = create_soldier(
-        admin_session, personal_number="6400001", role="duty_manager", hierarchy_node_id=node.id
-    )
-    weapon_duty = DutyType(
-        name="שמירה עם נשק אוטו1",
-        score_per_day=Decimal("1.00"),
-        requires_weapon=True,
-        eligible_node_ids=[node.id],
-    )
-    admin_session.add(weapon_duty)
-    admin_session.commit()
-    create_soldier(admin_session, personal_number="6400002", hierarchy_node_id=node.id)
-
-    create_resp = client.post(
-        "/api/ranges",
-        json={
-            "hierarchy_node_id": str(node.id),
-            "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
-            "required_count": 1,
-        },
-        headers=auth_headers(dm),
-    )
-    event_id = create_resp.json()["id"]
-
-    auto_resp = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(dm))
-    assert auto_resp.status_code == 200, auto_resp.text
-    body = auto_resp.json()
-    assert body["created"] and all(a["is_draft"] for a in body["created"])
-    assert isinstance(body["shortfall"], int)
-
-
-def test_auto_assign_requires_range_manage(client: TestClient, admin_session: Session) -> None:
-    _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו2")
-    dm = create_soldier(
-        admin_session, personal_number="6400003", role="duty_manager", hierarchy_node_id=node.id
-    )
-    soldier = create_soldier(admin_session, personal_number="6400004", hierarchy_node_id=node.id)
-
-    create_resp = client.post(
-        "/api/ranges",
-        json={
-            "hierarchy_node_id": str(node.id),
-            "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
-            "required_count": 1,
-        },
-        headers=auth_headers(dm),
-    )
-    event_id = create_resp.json()["id"]
-
-    response = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(soldier))
-    assert response.status_code == 403
-
-
-def test_auto_assign_404_when_flag_disabled(client: TestClient, admin_session: Session) -> None:
-    soldier = create_soldier(admin_session, personal_number="6400005")
-    create_node(admin_session, level="פלוגה", name="פלוגה אוטו3")
-
-    response = client.post(
-        f"/api/ranges/{uuid.uuid4()}/auto-assign",
-        headers=auth_headers(soldier),
-    )
-    assert response.status_code == 404
-
-
-def test_confirm_draft_flips_is_draft(client: TestClient, admin_session: Session) -> None:
-    _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו4")
-    dm = create_soldier(
-        admin_session, personal_number="6400006", role="duty_manager", hierarchy_node_id=node.id
-    )
-    weapon_duty = DutyType(
-        name="שמירה עם נשק אוטו4",
-        score_per_day=Decimal("1.00"),
-        requires_weapon=True,
-        eligible_node_ids=[node.id],
-    )
-    admin_session.add(weapon_duty)
-    admin_session.commit()
-    create_soldier(admin_session, personal_number="6400007", hierarchy_node_id=node.id)
-
-    create_resp = client.post(
-        "/api/ranges",
-        json={
-            "hierarchy_node_id": str(node.id),
-            "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
-            "required_count": 1,
-        },
-        headers=auth_headers(dm),
-    )
-    event_id = create_resp.json()["id"]
-    auto_resp = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(dm))
-    assignment_id = auto_resp.json()["created"][0]["id"]
-
-    confirm_resp = client.post(
-        f"/api/ranges/{event_id}/assignments/{assignment_id}/confirm",
-        headers=auth_headers(dm),
-    )
-    assert confirm_resp.status_code == 200, confirm_resp.text
-    assert confirm_resp.json()["is_draft"] is False
-
-
-def test_confirm_all_drafts_confirms_every_draft(
+def test_get_range_candidates_forbidden_for_non_manager(
     client: TestClient, admin_session: Session
 ) -> None:
     _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו5")
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מועמדים1")
     dm = create_soldier(
-        admin_session, personal_number="6400008", role="duty_manager", hierarchy_node_id=node.id
+        admin_session, personal_number="6400001", role="duty_manager", hierarchy_node_id=node.id
     )
-    weapon_duty = DutyType(
-        name="שמירה עם נשק אוטו5",
-        score_per_day=Decimal("1.00"),
-        requires_weapon=True,
-        eligible_node_ids=[node.id],
-    )
-    admin_session.add(weapon_duty)
-    admin_session.commit()
-    create_soldier(admin_session, personal_number="6400009", hierarchy_node_id=node.id)
-    create_soldier(admin_session, personal_number="6400010", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="6400002", hierarchy_node_id=node.id)
 
     create_resp = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
+            "date": "2026-09-01",
+            "location": "מטווח",
             "required_count": 2,
         },
         headers=auth_headers(dm),
     )
     event_id = create_resp.json()["id"]
-    auto_resp = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(dm))
-    assert len(auto_resp.json()["created"]) == 2
 
-    confirm_resp = client.post(
-        f"/api/ranges/{event_id}/assignments/confirm-all", headers=auth_headers(dm)
+    response = client.get(
+        f"/api/ranges/{event_id}/candidates", headers=auth_headers(soldier)
     )
-    assert confirm_resp.status_code == 200, confirm_resp.text
-    confirmed = confirm_resp.json()
-    assert isinstance(confirmed, list) and len(confirmed) == 2
-    assert all(a["is_draft"] is False for a in confirmed)
+    assert response.status_code == 403
 
 
-def test_confirm_nonexistent_assignment_404s(client: TestClient, admin_session: Session) -> None:
+def test_get_range_candidates_404_when_disabled(
+    client: TestClient, admin_session: Session
+) -> None:
     _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו6")
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מועמדים2")
     dm = create_soldier(
-        admin_session, personal_number="6400011", role="duty_manager", hierarchy_node_id=node.id
+        admin_session, personal_number="6400003", role="duty_manager", hierarchy_node_id=node.id
     )
-
     create_resp = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
-            "required_count": 1,
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
         },
         headers=auth_headers(dm),
     )
     event_id = create_resp.json()["id"]
 
-    response = client.post(
-        f"/api/ranges/{event_id}/assignments/{uuid.uuid4()}/confirm",
-        headers=auth_headers(dm),
+    apply_settings(admin_session, {}, {"mitvachim.enabled": False}, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        f"/api/ranges/{event_id}/candidates", headers=auth_headers(dm)
     )
     assert response.status_code == 404
 
 
-def test_confirm_all_400_on_cancelled_event(client: TestClient, admin_session: Session) -> None:
+def test_batch_assign_forbidden_for_non_manager(
+    client: TestClient, admin_session: Session
+) -> None:
     _enable_mitvachim(admin_session)
-    node = create_node(admin_session, level="פלוגה", name="פלוגה אוטו7")
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-באצ1")
     dm = create_soldier(
-        admin_session, personal_number="6500000", role="duty_manager", hierarchy_node_id=node.id
+        admin_session, personal_number="6400004", role="duty_manager", hierarchy_node_id=node.id
     )
-    weapon_duty = DutyType(
-        name="שמירה עם נשק אוטו7",
-        score_per_day=Decimal("1.00"),
-        requires_weapon=True,
-        eligible_node_ids=[node.id],
-    )
-    admin_session.add(weapon_duty)
-    admin_session.commit()
-    create_soldier(admin_session, personal_number="6500001", hierarchy_node_id=node.id)
+    soldier = create_soldier(admin_session, personal_number="6400005", hierarchy_node_id=node.id)
 
     create_resp = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
-            "date": "2026-09-20",
-            "location": "מטווח אוטו",
-            "required_count": 1,
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
         },
         headers=auth_headers(dm),
     )
     event_id = create_resp.json()["id"]
-    auto_resp = client.post(f"/api/ranges/{event_id}/auto-assign", headers=auth_headers(dm))
-    assert auto_resp.status_code == 200
-
-    cancel_resp = client.patch(
-        f"/api/ranges/{event_id}", json={"cancel": True, "cancellation_reason": "????? ????"}, headers=auth_headers(dm)
-    )
-    assert cancel_resp.status_code == 200
 
     response = client.post(
-        f"/api/ranges/{event_id}/assignments/confirm-all", headers=auth_headers(dm)
+        f"/api/ranges/{event_id}/assignments/batch",
+        json={"primaries": [str(soldier.id)], "reserves": []},
+        headers=auth_headers(soldier),
     )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "event_not_planned"
+    assert response.status_code == 403
+
+
+def test_batch_assign_404_when_disabled(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-באצ2")
+    dm = create_soldier(
+        admin_session, personal_number="6400006", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="6400007", hierarchy_node_id=node.id)
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    apply_settings(admin_session, {}, {"mitvachim.enabled": False}, actor_id=None)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/ranges/{event_id}/assignments/batch",
+        json={"primaries": [str(soldier.id)], "reserves": []},
+        headers=auth_headers(dm),
+    )
+    assert response.status_code == 404

@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-08-04
+
+### Features
+- Bug reports now support inline threaded comments with image attachments (and upload retry) for both admins and reporters; the admin table gained comment-count and latest-response columns, status icons with labels, and stronger status row colors.
+- Soldiers can now see and reply to their own bug reports from a new profile-linked "הדיווחים שלי" page, with notifications for replies deep-linking straight to the relevant report from the bell and the notifications page.
+- Range assignments now show and persist the reasons/capabilities behind automatic assignment choices, with matching Hebrew explanations in the UI.
+- Range planning modals and the range assignment editor were reworked to match the shift-planning UI, including a shift-style assignment editor and consistent Hebrew i18n coverage.
+
+### Fixes
+- Fixed the feedback (bug report) submission modal so it scrolls correctly and stays usable on mobile viewports.
+- Fixed range assignment/visibility issues: draft assignments no longer leak into general lists, gating now correctly reflects range actions, and range visibility refreshes properly after changes.
+- Fixed dark-mode contrast in the cancel dialog and in range modal text, added a shortcut for direct assignments, and removed a duplicate top-level key in the Hebrew translations.
+- Fixed reserve promotion ranking to be preserved correctly, and resolved a diverged Alembic migration history after concurrent range work merged.
+- Made the shift-style range assignment editor modal-only and fixed modal history handoff to be stack-safe across nested modals.
+
+### Chores
+- Added regression tests for range advance reminders, read-only range assignment controls, and cross-user bug-report comment access, and expanded frontend coverage across the bug-report and ranges UI changes.
+- Documented the ranges UI parity and range-assignment-reasons designs and implementation plans.
+
+## 2026-08-02
+
+### Features
+- Added a shift-like Mitvachim planning board and shared UI for arranging range events and rosters.
+- Added full range lifecycle controls, including roster management, editing, and cancellation.
+- Added range notifications for relevant planning and assignment events.
+
+### Fixes
+- Added scoped and history guards to range workflows so actions and historical data respect authorization and lifecycle state.
+- Made range seed scenarios deterministic for repeatable development and test data.
+- Hardened range API startup and validation, including date-field annotation resolution, explicit node-id handling, and correct delete responses.
+
+### Chores
+- Improved backend solver-test throughput by parallelizing independent fairness scenarios and making their generated inputs deterministic.
+- Added automatic-assignment regression tests and documented the range planning design and implementation.
+- Stabilized date-sensitive range, attendance, roster, and constraint tests; the full backend and frontend suites now pass on the release branch.
+
+## 2026-08-01
+
+### Features
+- Added the Mitvachim (ranges) workflow: feature-flagged range planning, scoped event and roster management, reserve assignments, attendance confirmation, no-show handling, qualification updates, score adjustments, and range visibility across the homepage, calendar, and dashboard.
+- Added automatic range assignment with eligibility filtering and three-tier priority ranking, including draft rosters, shortfall reporting, quota checks, and manager confirmation/confirmation-all controls.
+- Added range-specific notifications for confirmed assignments, with links to the ranges page and matching Hebrew UI coverage.
+
+### Fixes
+- Hardened range assignment workflows around draft visibility, planned-event boundaries, exclusive end dates, duplicate same-day assignments, atomic confirm-all operations, and transactional notification creation.
+
+### Chores
+- Added the database migrations and backend/frontend test coverage required for range assignments, attendance, authorization, exemptions, and auto-assignment.
+
 ## 2026-07-31
 
 ### Features
