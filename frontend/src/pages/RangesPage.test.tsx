@@ -194,13 +194,12 @@ describe("RangesPage", () => {
     expect(screen.getByText("הערות:")).toBeInTheDocument();
   });
 
-  it("does not offer deletion when assignments exist despite stale filled counts", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("shows the delete button disabled (not hidden) when the event has assignments", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
         id: "event-with-assignment", hierarchy_node_id: "node-1", range_type: "laser",
         date: "2026-09-01", location: "מטווח עם שיבוץ", required_count: 4,
-        reserve_count: 1, primary_filled: 0, reserve_filled: 0, status: "planned",
+        reserve_count: 1, primary_filled: 1, reserve_filled: 0, status: "planned",
         assignments: [{
           id: "assignment-1", soldier_id: "soldier-1", is_reserve: false,
           is_draft: false, attendance_status: "pending", note: null,
@@ -210,42 +209,29 @@ describe("RangesPage", () => {
 
     renderWithQuery(<RangesPage />);
 
-    expect(window.confirm).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("delete-range-event-with-assignment")).not.toBeInTheDocument();
+    const del = await screen.findByTestId("delete-range-event-with-assignment");
+    expect(del).toBeDisabled();
+    fireEvent.click(del);
     expect(rangesApi.deleteRangeEvent).not.toHaveBeenCalled();
   });
 
-  it("uses list summary counts for production list responses with no inline assignments", async () => {
-    vi.mocked(rangesApi.getRanges).mockResolvedValue([{
-      id: "event-summary-assigned", hierarchy_node_id: "node-1", range_type: "laser",
-      date: "2026-09-01", location: "מטווח עם סיכום שיבוץ", required_count: 1,
-      reserve_count: 0, primary_filled: 1, reserve_filled: 0, status: "planned", assignments: [],
-    }]);
-
-    renderWithQuery(<RangesPage />);
-
-    await screen.findByText("מטווח עם סיכום שיבוץ");
-    expect(screen.queryByTestId("delete-range-event-summary-assigned")).not.toBeInTheDocument();
-  });
-
-  it("rechecks authoritative detail before deleting a range with draft assignments", async () => {
+  it("shows the delete button enabled and deletes when the event has no assignments", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      {
+        id: "event-empty", hierarchy_node_id: "node-1", range_type: "laser",
+        date: "2026-09-01", location: "מטווח ריק", required_count: 4,
+        reserve_count: 1, status: "planned", assignments: [],
+      },
+    ]);
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const listed = {
-      id: "event-detail-assigned", hierarchy_node_id: "node-1", range_type: "laser" as const,
-      date: "2026-09-01", location: "מטווח עם טיוטת שיבוץ", required_count: 1,
-      reserve_count: 0, primary_filled: 0, reserve_filled: 0, status: "planned" as const, assignments: [],
-    };
-    vi.mocked(rangesApi.getRanges).mockResolvedValue([listed]);
-    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue({
-      ...listed,
-      assignments: [{ id: "draft-1", soldier_id: "s1", is_reserve: false, is_draft: true, attendance_status: "pending", note: null }],
-    });
+    vi.mocked(rangesApi.deleteRangeEvent).mockResolvedValue(undefined);
 
     renderWithQuery(<RangesPage />);
-    fireEvent.click(await screen.findByTestId("delete-range-event-detail-assigned"));
 
-    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-detail-assigned"));
-    expect(rangesApi.deleteRangeEvent).not.toHaveBeenCalled();
+    const del = await screen.findByTestId("delete-range-event-empty");
+    expect(del).not.toBeDisabled();
+    fireEvent.click(del);
+    await waitFor(() => expect(rangesApi.deleteRangeEvent).toHaveBeenCalledWith("event-empty"));
   });
 
   it("keeps detail selected when Escape closes the edit modal", async () => {
