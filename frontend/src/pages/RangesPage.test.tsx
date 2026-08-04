@@ -583,4 +583,63 @@ describe("RangesPage assignment editor integration", () => {
     expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "מטווח דרום" })).toBeInTheDocument();
   });
+
+  it("bulk-deletes only the selected events with no assignments, skipping the rest", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-empty", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח ריק", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-full", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+        location: "מטווח מלא", required_count: 1, reserve_count: 0, status: "planned",
+        assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
+    ]);
+    vi.mocked(rangesApi.deleteRangeEvent).mockResolvedValue(undefined);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח ריק");
+    fireEvent.click(screen.getByTestId("select-range-event-empty"));
+    fireEvent.click(screen.getByTestId("select-range-event-full"));
+    fireEvent.click(await screen.findByTestId("bulk-delete-button"));
+
+    await waitFor(() => expect(rangesApi.deleteRangeEvent).toHaveBeenCalledWith("event-empty"));
+    expect(rangesApi.deleteRangeEvent).not.toHaveBeenCalledWith("event-full");
+  });
+
+  it("bulk-cancels selected active events with a shared reason", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-2", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+        location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.cancelRangeEvent).mockResolvedValue(undefined);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    fireEvent.click(screen.getByTestId("select-range-event-2"));
+    fireEvent.click(await screen.findByTestId("bulk-cancel-button"));
+    fireEvent.change(await screen.findByLabelText("סיבת הביטול"), { target: { value: "גשם" } });
+    fireEvent.click(screen.getByTestId("confirm-bulk-cancel-button"));
+
+    await waitFor(() => expect(rangesApi.cancelRangeEvent).toHaveBeenCalledWith("event-1", "גשם"));
+    expect(rangesApi.cancelRangeEvent).toHaveBeenCalledWith("event-2", "גשם");
+  });
+
+  it("bulk-clears all assignments from selected events", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned",
+        assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
+    ]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    fireEvent.click(await screen.findByTestId("bulk-clear-button"));
+
+    await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1"));
+  });
 });
