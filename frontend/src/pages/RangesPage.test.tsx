@@ -46,6 +46,7 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
   vi.mocked(rangesApi.getRangeExcusalRequests).mockResolvedValue([]);
+  vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
 });
 
 describe("RangesPage", () => {
