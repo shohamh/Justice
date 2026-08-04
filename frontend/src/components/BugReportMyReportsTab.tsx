@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../queryKeys";
@@ -29,18 +30,24 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
   function handleToggle(reportId: string) {
     const collapsing = expandedId === reportId;
     onToggle(collapsing ? null : reportId);
-    if (!collapsing) {
-      // Fire-and-forget: marking a report "seen" clears its unread badge.
-      // Failure here is non-fatal — the report simply stays flagged unread
-      // until a future successful expand, which is an acceptable degrade.
-      void markBugReportSeen(reportId)
-        .then(() => {
-          void qc.invalidateQueries({ queryKey: queryKeys.myBugReports() });
-          void qc.invalidateQueries({ queryKey: queryKeys.myBugReportsUnseenCount() });
-        })
-        .catch(() => {});
-    }
   }
+
+  useEffect(() => {
+    if (!expandedId) return;
+    // Fire-and-forget: marking a report "seen" clears its unread badge.
+    // Failure here is non-fatal — the report simply stays flagged unread
+    // until a future successful expand, which is an acceptable degrade.
+    // Keyed on expandedId (not a click handler) so this fires both for a
+    // manual expand AND for a report that arrives already expanded via the
+    // `expandedId` prop (deep links from notifications / push / email —
+    // see BugReportModalContext's `initialReportId`).
+    void markBugReportSeen(expandedId)
+      .then(() => {
+        void qc.invalidateQueries({ queryKey: queryKeys.myBugReports() });
+        void qc.invalidateQueries({ queryKey: queryKeys.myBugReportsUnseenCount() });
+      })
+      .catch(() => {});
+  }, [expandedId, qc]);
 
   return (
     <div className="space-y-3">

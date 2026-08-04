@@ -15,6 +15,7 @@ vi.mock("../api/bugReports", () => ({
   createComment: vi.fn(),
   uploadCommentAttachment: vi.fn(),
   bugReportCommentAttachmentDownloadUrl: vi.fn(() => ""),
+  markBugReportSeen: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../hooks/useNavigationHistory", () => ({
   useNavigationHistory: () => [{ path: "/", timestamp: "2026-07-25T10:00:00Z" }],
@@ -149,7 +150,7 @@ describe("BugReportModal", () => {
   });
 
   test("opens directly on the my-reports tab with a report expanded when given initialTab/initialReportId", async () => {
-    const { getMyBugReports, listComments } = await import("../api/bugReports");
+    const { getMyBugReports, listComments, markBugReportSeen } = await import("../api/bugReports");
     vi.mocked(getMyBugReports).mockResolvedValue({
       items: [{
         id: "r1", reporter_id: "s1", description: "deep-linked report", severity: "low", status: "open",
@@ -166,6 +167,7 @@ describe("BugReportModal", () => {
     expect(screen.getByTestId("bug-report-tab-mine")).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByText("אין תגובות עדיין")).toBeInTheDocument();
     await waitFor(() => expect(listComments).toHaveBeenCalledWith("r1"));
+    await waitFor(() => expect(markBugReportSeen).toHaveBeenCalledWith("r1"));
   });
 
   test("shows an unseen-count badge on the my-reports tab", async () => {

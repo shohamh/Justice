@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -40,6 +41,24 @@ function renderTab(expandedId: string | null = null, onToggle = vi.fn()) {
   return render(
     <QueryClientProvider client={queryClient}>
       <BugReportMyReportsTab expandedId={expandedId} onToggle={onToggle} />
+    </QueryClientProvider>,
+  );
+}
+
+// Renders the tab as a real controlled component (state actually round-trips
+// through onToggle), for tests that need a click to genuinely update
+// `expandedId` — unlike `renderTab`, whose default `onToggle` mock doesn't
+// re-render the tab with the new value.
+function StatefulTab({ initialExpandedId = null }: { initialExpandedId?: string | null }) {
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId);
+  return <BugReportMyReportsTab expandedId={expandedId} onToggle={setExpandedId} />;
+}
+
+function renderControlledTab(initialExpandedId: string | null = null) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <StatefulTab initialExpandedId={initialExpandedId} />
     </QueryClientProvider>,
   );
 }
@@ -89,7 +108,7 @@ describe("BugReportMyReportsTab", () => {
   });
 
   it("marks the report seen when it is expanded", async () => {
-    renderTab(null, vi.fn());
+    renderControlledTab(null);
     const expand = await screen.findByTestId("my-bug-report-expand-r1");
 
     fireEvent.click(expand);
@@ -97,9 +116,18 @@ describe("BugReportMyReportsTab", () => {
     await waitFor(() => expect(bugReportsApi.markBugReportSeen).toHaveBeenCalledWith("r1"));
   });
 
-  it("does not mark the report seen when collapsing it", async () => {
+  it("marks the report seen when it renders already expanded (e.g. a deep link)", async () => {
+    renderTab("r1", vi.fn());
+
+    await waitFor(() => expect(bugReportsApi.markBugReportSeen).toHaveBeenCalledWith("r1"));
+  });
+
+  it("does not re-mark the report seen when collapsing it", async () => {
     renderTab("r1", vi.fn());
     const expand = await screen.findByTestId("my-bug-report-expand-r1");
+
+    await waitFor(() => expect(bugReportsApi.markBugReportSeen).toHaveBeenCalledWith("r1"));
+    vi.mocked(bugReportsApi.markBugReportSeen).mockClear();
 
     fireEvent.click(expand);
 

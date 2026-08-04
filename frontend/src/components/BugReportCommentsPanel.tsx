@@ -121,6 +121,8 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await qc.invalidateQueries({ queryKey: queryKeys.bugReportComments(reportId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.myBugReports() });
+      void qc.invalidateQueries({ queryKey: queryKeys.myBugReportsUnseenCount() });
 
       if (pendingFile) {
         try {
