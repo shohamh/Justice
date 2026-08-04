@@ -12,8 +12,14 @@ vi.mock("../api/bugReports", () => ({
   createComment: vi.fn(),
   uploadCommentAttachment: vi.fn(),
   bugReportCommentAttachmentDownloadUrl: vi.fn(() => ""),
+  markBugReportSeen: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+
+const mockUseAuth = vi.fn(() => ({ loggedIn: true }));
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => mockUseAuth(),
+}));
 
 function Consumer() {
   const { openBugReportModal } = useBugReportModal();
@@ -55,5 +61,26 @@ describe("BugReportModalProvider", () => {
     );
     expect(await screen.findByTestId("bug-report-modal-overlay")).toBeInTheDocument();
     expect(window.location.search).toBe("");
+  });
+
+  it("does not open the modal or strip the bugReport param while logged out", async () => {
+    mockUseAuth.mockReturnValue({ loggedIn: false });
+    try {
+      window.history.pushState({}, "", "/?bugReport=r1");
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={["/?bugReport=r1"]}>
+            <BugReportModalProvider><Consumer /></BugReportModalProvider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+      await screen.findByTestId("open");
+      expect(screen.queryByTestId("bug-report-modal-overlay")).not.toBeInTheDocument();
+      expect(window.location.search).toBe("?bugReport=r1");
+    } finally {
+      mockUseAuth.mockReturnValue({ loggedIn: true });
+    }
   });
 });

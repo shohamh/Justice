@@ -22,6 +22,7 @@ vi.mock("../components/Layout", () => ({
 }));
 
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 
 vi.mock("../api/notifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/notifications")>()),

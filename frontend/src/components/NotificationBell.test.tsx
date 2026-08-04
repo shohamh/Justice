@@ -9,6 +9,7 @@ import * as bugReportsApi from "../api/bugReports";
 
 vi.mock("../api/notifications");
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/bugReports", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/bugReports")>()),
   getMyBugReportsUnseenCount: vi.fn().mockResolvedValue({ count: 0 }),

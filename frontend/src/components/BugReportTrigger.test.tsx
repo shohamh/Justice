@@ -8,6 +8,7 @@ import { toPng } from "html-to-image";
 
 vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue("data:image/png;base64,AAA") }));
 vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/bugReports", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/bugReports")>()),
   getMyBugReportsUnseenCount: vi.fn().mockResolvedValue({ count: 0 }),

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import BugReportModal from "../components/BugReportModal";
+import { useAuth } from "../auth/AuthContext";
 
 export type BugReportModalTab = "new" | "mine";
 
@@ -29,8 +30,10 @@ interface ModalState {
 }
 
 export function BugReportModalProvider({ children }: { children: ReactNode }) {
+  const { loggedIn } = useAuth();
   const [modal, setModal] = useState<ModalState | null>(null);
   const nextToken = useRef(0);
+  const consumedBugReportParam = useRef(false);
 
   const openBugReportModal = useCallback((opts: OpenBugReportModalOptions = {}) => {
     nextToken.current += 1;
@@ -44,19 +47,23 @@ export function BugReportModalProvider({ children }: { children: ReactNode }) {
 
   // External push/email links carry ?bugReport=<id> (see backend
   // _FRONTEND_PATHS) instead of a route, since the modal has no route of
-  // its own. Open it once on first mount, then strip the param so it
-  // doesn't re-trigger on an in-app refresh or get carried into a share.
+  // its own. Wait until the user is actually logged in before consuming it
+  // — this provider sits above the router (including the login page), so
+  // opening the modal or stripping the param before auth resolves would
+  // show a broken (401) modal over the login form and then lose the link
+  // for good once the param is gone.
   useEffect(() => {
+    if (!loggedIn || consumedBugReportParam.current) return;
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get("bugReport");
     if (!reportId) return;
+    consumedBugReportParam.current = true;
     openBugReportModal({ tab: "mine", reportId });
     params.delete("bugReport");
     const newSearch = params.toString();
     const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "") + window.location.hash;
     window.history.replaceState(window.history.state, "", newUrl);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loggedIn, openBugReportModal]);
 
   function handleClose() {
     setModal(null);
