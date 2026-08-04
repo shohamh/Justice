@@ -143,7 +143,7 @@ describe("RangesPage", () => {
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
   });
 
-  it("opens the range detail directly from the שיבוצים row action without clicking the location link", async () => {
+  it("opens the assignments editor directly from the שיבוצים row action, without the detail modal", async () => {
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
       {
         id: "event-1", hierarchy_node_id: "node-1", range_type: "laser",
@@ -163,8 +163,8 @@ describe("RangesPage", () => {
     fireEvent.click(screen.getByTestId("view-assignments-event-1"));
 
     await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByTestId("range-detail-content")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "עריכת שיבוצים" })).toBeInTheDocument();
+    expect(screen.queryByTestId("range-detail-content")).not.toBeInTheDocument();
   });
 
   it("uses standard detail metadata, action buttons, and grouped range information", async () => {
