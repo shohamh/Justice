@@ -25,6 +25,9 @@ vi.mock("./NotificationBell", () => ({
 vi.mock("./JusticeLogo", () => ({
   default: () => null,
 }));
+vi.mock("./BugReportTrigger", () => ({
+  default: () => null,
+}));
 
 describe("Layout theme toggle", () => {
   it("renders the toggle and calls cycleTheme on click", async () => {
