@@ -9,7 +9,7 @@
 - **Part A — Interaction parity**: collapse ranges' 4-modal chain (detail → edit-assignments → form → cancel) down to direct row actions, matching shifts' "no intermediate read-only screen for managers" pattern. Removes duplicate ערוך/בטל buttons and the ambiguous hidden-vs-disabled delete button.
 - **Part B — Candidate panel replaces one-click auto-assign**: today's `RangeEditAssignmentsModal` has a "שיבוץ אוטומטי" button that synchronously creates *draft* assignments server-side, which the user then reviews and confirms one-by-one. Shifts instead shows a persistent, ranked candidate list with checkboxes and a "בחר אוטומטית" button that pre-checks the top-N candidates *client-side*, and the user reviews/adjusts *before* anything is saved. This plan ports that pattern to ranges: a new read-only `GET /ranges/{event_id}/candidates` endpoint (reusing the existing ranking logic) plus a new `POST /ranges/{event_id}/assignments/batch` endpoint that creates real (non-draft) assignments in one call — the client-side review *is* the confirmation step, so the server-side draft/confirm workflow becomes dead code and is removed along with it.
 - **Part C — Bulk operations**: adds row-selection checkboxes and a bulk action bar to `RangesPage.tsx`, mirroring `ShiftsPage.tsx`'s `BulkActionBar` exactly — bulk clear-assignments, bulk cancel, bulk delete, each implemented as a client-side `Promise.all`/`Promise.allSettled` loop over the existing single-item endpoints (this is the established convention in this codebase; shifts does not have real batch endpoints for these three either).
-- **Part D — Unit calendar filter dropdowns** *(status: done)*: replaced the one-pill-per-duty-type / one-pill-per-range-type filter rows in `UnitCalendar.tsx` with two `CheckboxListDropdown` multi-select dropdowns (one per category, already rendered as separate groups before this change — only the control type changed). Implemented and committed on branch `worktree-calendar-filter-dropdowns` (worktree at `.claude/worktrees/calendar-filter-dropdowns`), commit `5848cfdc` — "feat: replace unit calendar filter pills with multi-select dropdowns". Not yet merged to `dev`. See Task D1 below for the merge step.
+- **Part D — Unit calendar filter dropdowns** *(status: done)*: replaced the one-pill-per-duty-type / one-pill-per-range-type filter rows in `UnitCalendar.tsx` with two `CheckboxListDropdown` multi-select dropdowns (one per category, already rendered as separate groups before this change — only the control type changed). Implemented and committed on branch `worktree-calendar-filter-dropdowns` (worktree at `.claude/worktrees/calendar-filter-dropdowns`), commit `5848cfdc` — "feat: replace unit calendar filter pills with multi-select dropdowns". Not yet merged to `dev`. See Task 12 below for the merge step.
 
 **Tech Stack:** FastAPI + SQLAlchemy (backend/app), React + TypeScript + Vite + Tailwind + react-i18next + TanStack Query (frontend/src), pytest (backend/tests), vitest + Testing Library (frontend/src/**/*.test.tsx).
 
@@ -26,7 +26,7 @@
 
 ## Part A — Interaction Parity
 
-### Task A1: Route the שיבוצים row button directly to the assignments editor
+### Task 1: Route the שיבוצים row button directly to the assignments editor
 
 Today `RangesPage.tsx`'s "📋 שיבוצים" row button (added in a prior session) calls `setSelected(e.id)`, which opens the read-only `RangeDetailContent` modal; a manager then has to click "ערוך שיבוצים" *inside* that modal to reach `RangeEditAssignmentsModal`. This task makes שיבוצים jump straight to the assignments editor, matching shifts (row button → editor, no detail screen in between).
 
@@ -97,7 +97,7 @@ git add frontend/src/pages/RangesPage.tsx frontend/src/pages/RangesPage.test.tsx
 git commit -m "feat: open range assignments editor directly from row action"
 ```
 
-### Task A2: Remove duplicate ערוך/בטל buttons from the detail modal
+### Task 2: Remove duplicate ערוך/בטל buttons from the detail modal
 
 `RangesPage.tsx:69` passes an `actions` prop to `EventDetailModal` (via `RangeDetailContent`) containing "ערוך" (→ `setFormEvent`) and "בטל" (→ `setCancelId`) buttons — both exact duplicates of the row's "✏️ עריכה" and "🚫 ביטול" buttons. Shifts has no such duplication (no detail screen at all). Remove this `actions` prop entirely; the detail modal becomes purely a read-only/self-service view (info, self-excusal, excusal-request review, attendance) reached via the location-name link.
 
@@ -108,7 +108,7 @@ git commit -m "feat: open range assignments editor directly from row action"
 
 **Interfaces:**
 - Consumes: `EventDetailModal`'s `actions?: ReactNode` prop (`frontend/src/components/planning/EventDetailModal.tsx:16`) — passing `undefined` renders nothing (`EventDetailModal.tsx:70`: `{actions && ...}`).
-- Produces: `RangeDetailContent`'s `Props` interface loses `onEditAssignments` and the "פעולות שיבוץ" section (see Task A3 — done together since both remove the same duplication source).
+- Produces: `RangeDetailContent`'s `Props` interface loses `onEditAssignments` and the "פעולות שיבוץ" section (see Task 3 — done together since both remove the same duplication source).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -180,7 +180,7 @@ Expected: FAIL — `range-detail-actions` still present, "ערוך"/"בטל" sti
 
 In `frontend/src/pages/RangesPage.tsx`, remove the `actions={...}` prop entirely from the `EventDetailModal` call (the block starting `actions={manage && event.data.status === "planned" ? <div data-testid="range-detail-actions" ...` through its closing `: undefined}`), so the modal is invoked without an `actions` prop at all.
 
-Also remove the now-unused `onEditAssignments={() => setEditAssignments(event.data!)}` prop passed to `RangeDetailContent` in that same call (Task A3 removes the corresponding prop from `RangeDetailContent` itself).
+Also remove the now-unused `onEditAssignments={() => setEditAssignments(event.data!)}` prop passed to `RangeDetailContent` in that same call (Task 3 removes the corresponding prop from `RangeDetailContent` itself).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -194,9 +194,9 @@ git add frontend/src/pages/RangesPage.tsx frontend/src/pages/RangesPage.test.tsx
 git commit -m "fix: remove duplicate edit/cancel buttons from range detail modal"
 ```
 
-### Task A3: Remove the "פעולות שיבוץ" section from RangeDetailContent
+### Task 3: Remove the "פעולות שיבוץ" section from RangeDetailContent
 
-With Task A1 routing שיבוצים directly to the editor, the "ערוך שיבוצים" button inside `RangeDetailContent`'s "פעולות שיבוץ" section is now a second, redundant path to the same modal. Remove it — the detail modal becomes purely read-only for managers too (self-excusal and attendance marking remain, since those aren't roster-editing actions).
+With Task 1 routing שיבוצים directly to the editor, the "ערוך שיבוצים" button inside `RangeDetailContent`'s "פעולות שיבוץ" section is now a second, redundant path to the same modal. Remove it — the detail modal becomes purely read-only for managers too (self-excusal and attendance marking remain, since those aren't roster-editing actions).
 
 **Files:**
 - Modify: `frontend/src/components/ranges/RangeDetailContent.tsx`
@@ -293,7 +293,7 @@ git add frontend/src/components/ranges/RangeDetailContent.tsx frontend/src/compo
 git commit -m "fix: remove redundant edit-assignments entry point from detail view"
 ```
 
-### Task A4: Delete button — always visible, disabled when assigned (matches shifts)
+### Task 4: Delete button — always visible, disabled when assigned (matches shifts)
 
 Today the row's "🗑️ מחיקה" button is *hidden* entirely when `count(e,false) > 0 || count(e,true) > 0`, and its `onClick` re-fetches the full event and re-checks assignment count before calling `deleteRangeEvent` (a defensive double-check). `backend/app/services/ranges.py:263-280 delete_range_event` already raises `RangeValidationError("event_has_assignments")` authoritatively if any assignment rows exist — the frontend re-fetch is redundant. Shifts shows delete always, disabled by `disabled={s.assigned_count > 0}`, relying on the backend as final authority. Match that: always show the button, disable it when the (already-known, no extra fetch) counts are non-zero, and drop the extra fetch-then-check.
 
@@ -388,9 +388,9 @@ git commit -m "fix: always show range delete button, disabled when assigned (mat
 
 ## Part B — Candidate Panel Replaces One-Click Auto-Assign
 
-### Task B1: Backend — non-mutating ranked candidates endpoint
+### Task 5: Backend — non-mutating ranked candidates endpoint
 
-Add `GET /ranges/{event_id}/candidates`, returning every eligible soldier for the event ranked the same way `propose_range_assignments` already ranks them, annotated with a `blocked`/`blocked_reason` flag for ineligible soldiers (mirroring `ShiftCandidateOut` at `backend/app/routes/shifts.py:608-615`) — but *not* writing anything to the database. Refactor `_candidate_pool`/`_rank_candidate` out of the mutating flow so both the new endpoint and the (soon-to-be-removed) `propose_range_assignments` can share them during the transition; `propose_range_assignments` and the draft/confirm machinery are deleted in Task B4 once nothing else depends on them.
+Add `GET /ranges/{event_id}/candidates`, returning every eligible soldier for the event ranked the same way `propose_range_assignments` already ranks them, annotated with a `blocked`/`blocked_reason` flag for ineligible soldiers (mirroring `ShiftCandidateOut` at `backend/app/routes/shifts.py:608-615`) — but *not* writing anything to the database. Refactor `_candidate_pool`/`_rank_candidate` out of the mutating flow so both the new endpoint and the (soon-to-be-removed) `propose_range_assignments` can share them during the transition; `propose_range_assignments` and the draft/confirm machinery are deleted in Task 8 once nothing else depends on them.
 
 **Files:**
 - Modify: `backend/app/services/range_auto_assign.py`
@@ -399,7 +399,7 @@ Add `GET /ranges/{event_id}/candidates`, returning every eligible soldier for th
 
 **Interfaces:**
 - Consumes: `_candidate_pool(session, *, event, exclude_soldier_ids) -> list[Soldier]` and `_rank_candidate(session, *, soldier, event) -> tuple[tuple, str]` (both already exist, unchanged signatures, at `range_auto_assign.py:104,92`).
-- Produces: `rank_candidates(session, *, event: RangeEvent) -> list[RankedCandidate]` where `RankedCandidate` is a new `@dataclass` `{soldier: Soldier, reason_code: str, blocked: bool, blocked_reason: str | None}` — Task B2 (batch-assign) and the frontend both consume this shape via the route's Pydantic `RangeCandidateOut`.
+- Produces: `rank_candidates(session, *, event: RangeEvent) -> list[RankedCandidate]` where `RankedCandidate` is a new `@dataclass` `{soldier: Soldier, reason_code: str, blocked: bool, blocked_reason: str | None}` — Task 6 (batch-assign) and the frontend both consume this shape via the route's Pydantic `RangeCandidateOut`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -541,7 +541,7 @@ def rank_candidates(session: Session, *, event: RangeEvent) -> list[RankedCandid
 
 - [ ] **Step 4: Implement — route**
 
-In `backend/app/routes/ranges.py`, add after the existing `AutoAssignResponse`/`auto_assign` route (they'll be removed in Task B4, so place the new route right after them for now):
+In `backend/app/routes/ranges.py`, add after the existing `AutoAssignResponse`/`auto_assign` route (they'll be removed in Task 8, so place the new route right after them for now):
 
 ```python
 class RangeCandidateOut(BaseModel):
@@ -584,7 +584,7 @@ git add backend/app/services/range_auto_assign.py backend/app/routes/ranges.py b
 git commit -m "feat: add read-only ranked candidates endpoint for range events"
 ```
 
-### Task B2: Backend — batch-assign endpoint
+### Task 6: Backend — batch-assign endpoint
 
 Add `POST /ranges/{event_id}/assignments/batch`, mirroring `assignBatch`'s shape for shifts (`backend/app/routes/shifts.py` — the route backing `frontend/src/api/shifts.ts:122-127`): takes `{primaries: [soldier_id], reserves: [soldier_id]}`, validates each against the same rules `add_range_assignment` already enforces (subtree membership, exemption, same-date conflict), and creates all of them as real (non-draft, `is_draft=False`) `RangeAssignment` rows in one transaction — no draft flag, since the client-side candidate panel *is* the review step.
 
@@ -771,7 +771,7 @@ git add backend/app/services/ranges.py backend/app/routes/ranges.py backend/test
 git commit -m "feat: add batch-assign endpoint for range events"
 ```
 
-### Task B3: Frontend API client — candidates + batch-assign
+### Task 7: Frontend API client — candidates + batch-assign
 
 **Files:**
 - Modify: `frontend/src/api/ranges.ts`
@@ -779,7 +779,7 @@ git commit -m "feat: add batch-assign endpoint for range events"
 **Interfaces:**
 - Produces: `interface RangeCandidate {soldier_id: string; full_name: string; personal_number: string; reason_code: string; blocked: boolean; blocked_reason: string | null}`, `getRangeCandidates(eventId: string): Promise<RangeCandidate[]>`, `batchAssignRange(eventId: string, input: {primaries: string[]; reserves: string[]}): Promise<RangeAssignment[]>`.
 
-- [ ] **Step 1: Implement (no test — this is a thin typed wrapper matching the existing untested style of every other function in this file, e.g. `autoAssignRange` at `ranges.ts:20` has no dedicated unit test either; it's covered transitively by the component tests in Task B4/B5)**
+- [ ] **Step 1: Implement (no test — this is a thin typed wrapper matching the existing untested style of every other function in this file, e.g. `autoAssignRange` at `ranges.ts:20` has no dedicated unit test either; it's covered transitively by the component tests in Task 8/B5)**
 
 In `frontend/src/api/ranges.ts`, add:
 
@@ -816,16 +816,16 @@ git add frontend/src/api/ranges.ts
 git commit -m "feat: add candidates/batch-assign API client functions"
 ```
 
-### Task B4: Frontend — candidate panel replaces auto-assign button, draft/confirm UI removed
+### Task 8: Frontend — candidate panel replaces auto-assign button, draft/confirm UI removed
 
-Rework `RangeEditAssignmentsModal.tsx`'s primary/reserve "add soldier" flow: replace the free-text search box with a persistent ranked candidate list (fetched via `getRangeCandidates`) with checkboxes per soldier, a "בחר אוטומטית" button per section (primary/reserve) that pre-checks the top-N unblocked candidates (mirroring `autoSelectPrimary`/`autoSelectReserves` at `frontend/src/components/ShiftEditAssignmentsModal.tsx:193-203`), and a single "שמור שיבוצים" button that calls `batchAssignRange` once. Remove the old one-click "שיבוץ אוטומטי" button, the draft badges, and the confirm/confirm-all buttons — nothing produces drafts anymore (Task B2's `assign_batch` always creates `is_draft=False` rows, and `add_range_assignment` already did too), so there is nothing left to confirm.
+Rework `RangeEditAssignmentsModal.tsx`'s primary/reserve "add soldier" flow: replace the free-text search box with a persistent ranked candidate list (fetched via `getRangeCandidates`) with checkboxes per soldier, a "בחר אוטומטית" button per section (primary/reserve) that pre-checks the top-N unblocked candidates (mirroring `autoSelectPrimary`/`autoSelectReserves` at `frontend/src/components/ShiftEditAssignmentsModal.tsx:193-203`), and a single "שמור שיבוצים" button that calls `batchAssignRange` once. Remove the old one-click "שיבוץ אוטומטי" button, the draft badges, and the confirm/confirm-all buttons — nothing produces drafts anymore (Task 6's `assign_batch` always creates `is_draft=False` rows, and `add_range_assignment` already did too), so there is nothing left to confirm.
 
 **Files:**
 - Modify: `frontend/src/components/ranges/RangeEditAssignmentsModal.tsx`
 - Modify: `frontend/src/components/ranges/RangeEditAssignmentsModal.test.tsx`
 
 **Interfaces:**
-- Consumes: `getRangeCandidates`, `batchAssignRange`, `RangeCandidate` (Task B3); existing `RangeAssignment`, `RangeEvent`, `removeRangeAssignment`, `updateRangeAssignmentReason` (unchanged, still used for the existing roster list + reason-edit + remove flows, which this task does not touch).
+- Consumes: `getRangeCandidates`, `batchAssignRange`, `RangeCandidate` (Task 7); existing `RangeAssignment`, `RangeEvent`, `removeRangeAssignment`, `updateRangeAssignmentReason` (unchanged, still used for the existing roster list + reason-edit + remove flows, which this task does not touch).
 - Produces: `RangeEditAssignmentsModal`'s public `Props` interface is unchanged (same `open`/`event`/`soldiers`/`canManage`/`onClose`/`onChanged`).
 
 - [ ] **Step 1: Write the failing test**
@@ -907,7 +907,7 @@ Expected: FAIL — `range-auto-select-primary`/`candidate-checkbox-s1`/`save-ass
 
 In `frontend/src/components/ranges/RangeEditAssignmentsModal.tsx`:
 - Import `getRangeCandidates`, `batchAssignRange`, `RangeCandidate` from `../../api/ranges`.
-- Remove: `autoAssignRange`, `confirmAllDrafts`, `confirmDraftAssignment` imports (no longer called anywhere in this file); the `query`/`setQuery`/`reserve`/`setReserve` free-text-search state and `candidates`/`add()` derived from `soldiers` prop (the `soldiers: SoldierDTO[]` prop itself stays — Task B5 doesn't remove it, other call sites may still pass it, but it's no longer used for the search box); the `autoAssigning`/`setAutoAssigning`/`shortfall`/`setShortfall`/`confirming`/`setConfirming`/`confirmingAll`/`setConfirmingAll` state; the `autoAssign()`/`confirmDraft()`/`confirmAll()` functions; the draft-badge JSX inside `renderAssignment`; the entire `{editable && <section>...auto-assign/confirm-all/search/candidates list...}` block.
+- Remove: `autoAssignRange`, `confirmAllDrafts`, `confirmDraftAssignment` imports (no longer called anywhere in this file); the `query`/`setQuery`/`reserve`/`setReserve` free-text-search state and `candidates`/`add()` derived from `soldiers` prop (the `soldiers: SoldierDTO[]` prop itself stays — Task 9 doesn't remove it, other call sites may still pass it, but it's no longer used for the search box); the `autoAssigning`/`setAutoAssigning`/`shortfall`/`setShortfall`/`confirming`/`setConfirming`/`confirmingAll`/`setConfirmingAll` state; the `autoAssign()`/`confirmDraft()`/`confirmAll()` functions; the draft-badge JSX inside `renderAssignment`; the entire `{editable && <section>...auto-assign/confirm-all/search/candidates list...}` block.
 - Add new state: `const [rangeCandidates, setRangeCandidates] = useState<RangeCandidate[]>([]);`, `const [primarySelected, setPrimarySelected] = useState<Set<string>>(new Set());`, `const [reserveSelected, setReserveSelected] = useState<Set<string>>(new Set());`, `const [saving, setSaving] = useState(false);`.
 - Fetch candidates on open/event change:
 
@@ -990,9 +990,9 @@ git add frontend/src/components/ranges/RangeEditAssignmentsModal.tsx frontend/sr
 git commit -m "feat: replace one-click range auto-assign with a candidate selection panel"
 ```
 
-### Task B5: Backend — remove the now-dead draft/confirm machinery
+### Task 9: Backend — remove the now-dead draft/confirm machinery
 
-Nothing produces `is_draft=True` rows anymore (Task B4 removed the only frontend caller of the old auto-assign endpoint). Remove the dead code rather than leaving it unreachable.
+Nothing produces `is_draft=True` rows anymore (Task 8 removed the only frontend caller of the old auto-assign endpoint). Remove the dead code rather than leaving it unreachable.
 
 **Files:**
 - Modify: `backend/app/routes/ranges.py`
@@ -1006,12 +1006,12 @@ Nothing produces `is_draft=True` rows anymore (Task B4 removed the only frontend
 
 - [ ] **Step 1: Update the test that will fail once the code is gone**
 
-`backend/tests/unit/test_range_auto_assign.py` currently tests `propose_range_assignments`/`confirm_draft_assignment`/`confirm_all_drafts` directly. Replace its entire contents with tests for `rank_candidates` (Task B1 already covers most of this in `test_range_candidates.py` — check for overlap; if `test_range_auto_assign.py`'s existing test bodies cover scenarios `test_range_candidates.py` doesn't, port those specific scenarios into `test_range_candidates.py` and delete `test_range_auto_assign.py` entirely rather than leaving a near-empty file). Also check `backend/tests/integration/test_ranges_api.py` and `backend/tests/integration/test_public_settings_ranges.py` (and any other integration test file — grep the whole `backend/tests/` tree for `auto-assign`, `auto_assign_range`, `/confirm`, `confirmDraftAssignment`, `confirmAllDrafts`, `propose_range_assignments`) for any reference to the removed routes/functions and delete those specific test cases (not the whole files, unless a file becomes entirely empty).
+`backend/tests/unit/test_range_auto_assign.py` currently tests `propose_range_assignments`/`confirm_draft_assignment`/`confirm_all_drafts` directly. Replace its entire contents with tests for `rank_candidates` (Task 5 already covers most of this in `test_range_candidates.py` — check for overlap; if `test_range_auto_assign.py`'s existing test bodies cover scenarios `test_range_candidates.py` doesn't, port those specific scenarios into `test_range_candidates.py` and delete `test_range_auto_assign.py` entirely rather than leaving a near-empty file). Also check `backend/tests/integration/test_ranges_api.py` and `backend/tests/integration/test_public_settings_ranges.py` (and any other integration test file — grep the whole `backend/tests/` tree for `auto-assign`, `auto_assign_range`, `/confirm`, `confirmDraftAssignment`, `confirmAllDrafts`, `propose_range_assignments`) for any reference to the removed routes/functions and delete those specific test cases (not the whole files, unless a file becomes entirely empty).
 
-- [ ] **Step 2: Run the full backend suite to see current failures from Task B4's frontend-only change (none expected yet — this task hasn't touched backend code)**
+- [ ] **Step 2: Run the full backend suite to see current failures from Task 8's frontend-only change (none expected yet — this task hasn't touched backend code)**
 
 Run: `cd backend && pytest -q`
-Expected: PASS (Task B4 was frontend-only; backend dead code still compiles and passes, it's just unreachable from the UI now).
+Expected: PASS (Task 8 was frontend-only; backend dead code still compiles and passes, it's just unreachable from the UI now).
 
 - [ ] **Step 3: Remove the dead backend routes**
 
@@ -1019,11 +1019,11 @@ In `backend/app/routes/ranges.py`, delete the `AutoAssignResponse` class, the `a
 
 - [ ] **Step 4: Remove the dead service functions**
 
-In `backend/app/services/range_auto_assign.py`, delete `propose_range_assignments`, `_stage_draft_confirmation`, `confirm_draft_assignment`, `confirm_all_drafts`. Keep `_candidate_pool`, `_rank_candidate`, `rank_candidates`, and every helper `rank_candidates` depends on (`_qualification_types_at_or_above`, `_best_qualification_valid_until`, `_earliest_future_weapon_duty_start`, `_has_approved_constraint_on_date`, `_has_duty_assignment_on_date`, `_has_range_assignment_on_date`) — note `_candidate_pool` itself is now only used by nothing (it was `propose_range_assignments`'s exclusion-list builder; `rank_candidates` inlines its own soldier-fetch+exclude logic per Task B1's Step 3) — **check whether `_candidate_pool` still has any caller after this deletion; if not, delete it too** rather than leaving an unused function.
+In `backend/app/services/range_auto_assign.py`, delete `propose_range_assignments`, `_stage_draft_confirmation`, `confirm_draft_assignment`, `confirm_all_drafts`. Keep `_candidate_pool`, `_rank_candidate`, `rank_candidates`, and every helper `rank_candidates` depends on (`_qualification_types_at_or_above`, `_best_qualification_valid_until`, `_earliest_future_weapon_duty_start`, `_has_approved_constraint_on_date`, `_has_duty_assignment_on_date`, `_has_range_assignment_on_date`) — note `_candidate_pool` itself is now only used by nothing (it was `propose_range_assignments`'s exclusion-list builder; `rank_candidates` inlines its own soldier-fetch+exclude logic per Task 5's Step 3) — **check whether `_candidate_pool` still has any caller after this deletion; if not, delete it too** rather than leaving an unused function.
 
 - [ ] **Step 5: Remove the dead frontend API client code**
 
-In `frontend/src/api/ranges.ts`, delete `autoAssignRange`, `confirmDraftAssignment`, `confirmAllDrafts`, and the `AutoAssignResult` interface (all now unused after Task B4).
+In `frontend/src/api/ranges.ts`, delete `autoAssignRange`, `confirmDraftAssignment`, `confirmAllDrafts`, and the `AutoAssignResult` interface (all now unused after Task 8).
 
 - [ ] **Step 6: Run the full backend and frontend suites**
 
@@ -1041,7 +1041,7 @@ git commit -m "chore: remove dead range draft/confirm auto-assign code"
 
 ## Part C — Bulk Operations
 
-### Task C1: Row-selection checkboxes on the ranges list
+### Task 10: Row-selection checkboxes on the ranges list
 
 **Files:**
 - Modify: `frontend/src/pages/RangesPage.tsx`
@@ -1108,7 +1108,7 @@ const columns: PlanningColumn<RangeEvent>[] = [
 
 In `RangesPage.tsx`, pass `selectedIds={selectedIds}` and `onToggleSelect={toggleSelected}` to `<RangePlanningTable>`.
 
-- Render the bulk action bar above the table when `selectedIds.size > 0` (placeholder content for now — Task C2 fills in the real actions):
+- Render the bulk action bar above the table when `selectedIds.size > 0` (placeholder content for now — Task 11 fills in the real actions):
 
 ```tsx
 {selectedIds.size > 0 && <div data-testid="range-bulk-action-bar" className="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-800 dark:bg-indigo-950" dir="rtl"><span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{selectedIds.size} נבחרו</span></div>}
@@ -1126,7 +1126,7 @@ git add frontend/src/pages/RangesPage.tsx frontend/src/components/ranges/RangePl
 git commit -m "feat: add row-selection checkboxes to the ranges list"
 ```
 
-### Task C2: Bulk action bar — clear assignments, cancel, delete
+### Task 11: Bulk action bar — clear assignments, cancel, delete
 
 Mirrors `BulkActionBar`'s `handleClear`/`handleCancel`/`handleDelete` (`frontend/src/pages/ShiftsPage.tsx:265-305`) exactly: client-side `Promise.all`/`Promise.allSettled` loops over the existing single-event endpoints, no new backend code. "Cancel" reuses the existing typed-reason requirement (`RangeCancelDialog`'s pattern) but applies one shared reason to every selected event in the batch, via a small new bulk-cancel dialog (not a reuse of `RangeCancelDialog` itself, since that component is wired to a single `cancelId`, not a list — a new lightweight sibling component is simpler than retrofitting).
 
@@ -1329,7 +1329,7 @@ In `frontend/src/pages/RangesPage.tsx`:
   }
 ```
 
-- Replace the placeholder bulk-action-bar `<div>` from Task C1 with the real bar:
+- Replace the placeholder bulk-action-bar `<div>` from Task 10 with the real bar:
 
 ```tsx
 {selectedIds.size > 0 && <div data-testid="range-bulk-action-bar" className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-800 dark:bg-indigo-950" dir="rtl">
@@ -1363,7 +1363,7 @@ Separate subsystem from Parts A-C (touches `frontend/src/components/UnitCalendar
 
 **Verification already done:** `npm run typecheck` clean, `npm run lint` clean (the project's own eslint config doesn't lint `.json` files — a stray direct `eslint src/i18n/he.json` invocation outside the project config flagged unrelated pre-existing duplicate-key warnings in that file; confirmed false-positive/out-of-scope, not caused by this change), full `npm test` 623/623 passing. Live browser verification was attempted but the sandboxed `dev.ps1` stack proved unreliable in that session (served a stale bundle from a leftover process) — a human should do a quick visual check before/after merge.
 
-### Task D1: Merge the calendar filter work into dev
+### Task 12: Merge the calendar filter work into dev
 
 **Files:** none — this is a merge operation, not a code change. If review during the merge step surfaces anything to fix, fix it in the `worktree-calendar-filter-dropdowns` worktree directly and re-verify with `npm test`/`npm run typecheck` before merging.
 
