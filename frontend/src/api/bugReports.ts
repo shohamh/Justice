@@ -31,6 +31,7 @@ export interface BugReportSummary {
   updated_at: string;
   comment_count: number;
   last_comment_at: string | null;
+  has_unseen_activity: boolean;
 }
 
 export interface PaginatedBugReports {
@@ -83,6 +84,18 @@ export async function importBugReports(files: File[]): Promise<BugReportImportSu
 
 export async function getMyBugReports(): Promise<PaginatedBugReports> {
   return (await api.get<PaginatedBugReports>("/my/bug-reports")).data;
+}
+
+export interface BugReportUnseenCount {
+  count: number;
+}
+
+export async function markBugReportSeen(reportId: string): Promise<void> {
+  await api.post(`/bug-reports/${reportId}/seen`);
+}
+
+export async function getMyBugReportsUnseenCount(): Promise<BugReportUnseenCount> {
+  return (await api.get<BugReportUnseenCount>("/my/bug-reports/unseen-count")).data;
 }
 
 export interface BugReportCommentAttachment {

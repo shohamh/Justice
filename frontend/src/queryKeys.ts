@@ -83,6 +83,7 @@ export const queryKeys = {
   soldierScore: (soldierId: string) => ["soldiers", "score", soldierId] as const,
   registrationPublicSettings: () => ["registrationPublicSettings"] as const,
   myBugReports: () => ["bugReports", "mine"] as const,
+  myBugReportsUnseenCount: () => ["bugReports", "unseenCount"] as const,
   bugReportComments: (reportId: string) => ["bugReports", "comments", reportId] as const,
   ranges: () => ["ranges"] as const,
   rangeEvent: (id: string) => ["ranges", id] as const,

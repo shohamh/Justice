@@ -44,6 +44,7 @@ const SAMPLE_REPORT: BugReportSummary = {
   updated_at: "2026-07-25T10:05:00Z",
   comment_count: 2,
   last_comment_at: "2026-07-25T10:07:00Z",
+  has_unseen_activity: false,
 };
 
 describe("BugReportsContent", () => {

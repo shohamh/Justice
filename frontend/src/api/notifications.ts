@@ -46,9 +46,6 @@ export function getNotificationLink(
   if (n.reference_type === "duty_assignment") {
     return "/";
   }
-  if (n.reference_type === "bug_report" && n.reference_id) {
-    return `/my-bug-reports?report=${n.reference_id}`;
-  }
   if ((n.reference_type === "range_event" || n.reference_type === "range_assignment") && n.reference_id) {
     return `/ranges?event=${n.reference_id}`;
   }
