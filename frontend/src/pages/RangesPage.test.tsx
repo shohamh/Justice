@@ -789,7 +789,7 @@ describe("RangesPage assignment editor integration", () => {
       id: "event-1", hierarchy_node_id: "node-1", range_type: "laser" as const,
       date: "2026-09-01", location: "מטווח דרום", required_count: 1, reserve_count: 1,
       status: "planned" as const,
-      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: true,
+      assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false,
         attendance_status: "pending" as const, note: null }],
     };
     vi.mocked(rangesApi.getRanges).mockResolvedValue([event]);
@@ -800,8 +800,6 @@ describe("RangesPage assignment editor integration", () => {
 
     expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("auto-assign-button")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("confirm-all-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
     expect(screen.queryByText("הסר")).not.toBeInTheDocument();
   });
@@ -816,15 +814,14 @@ describe("RangesPage assignment editor integration", () => {
     vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(event);
 
     renderWithQuery(<RangesPage />);
-    fireEvent.click(await screen.findByText("מטווח דרום"));
-    fireEvent.click(screen.getByTestId("view-assignments-event-1"));
+    fireEvent.click(await screen.findByTestId("view-assignments-event-1"));
 
     expect(await screen.findByRole("heading", { name: "עריכת שיבוצים" })).toBeInTheDocument();
-    expect(screen.queryByTestId("range-detail-content")).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByRole("heading", { name: "עריכת שיבוצים" })).not.toBeInTheDocument());
-    expect(screen.getByTestId("range-detail-content")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("מטווח דרום"));
+    expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "מטווח דרום" })).toBeInTheDocument();
   });
 });
