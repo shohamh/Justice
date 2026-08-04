@@ -76,6 +76,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
       setAssignments(current => [...current, ...created]);
       setPrimarySelected(new Set());
       setReserveSelected(new Set());
+      await getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
       await onChanged();
     } catch {
       setError(text("ranges.errors.save_assignments", "שמירת השיבוצים נכשלה"));
@@ -91,6 +92,7 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
     try {
       await removeRangeAssignment(event.id, assignmentId);
       setAssignments(current => current.filter(a => a.id !== assignmentId));
+      await getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
       await onChanged();
     } catch {
       setError(text("ranges.errors.remove_assignment", "הסרת השיבוץ נכשלה"));

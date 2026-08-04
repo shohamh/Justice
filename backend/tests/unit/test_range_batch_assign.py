@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, RangeAssignment, RangeType
+from app.db.models import DutyType, RangeAssignment, RangeType, SoldierRangeQualification
 from app.services.ranges import RangeValidationError, assign_batch, create_range_event
 from tests.helpers import create_node, create_soldier
 
@@ -50,3 +50,19 @@ def test_rejects_the_whole_batch_if_one_soldier_is_invalid(app_session: Session)
         select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
     ).scalars().all()
     assert remaining == []
+
+
+def test_records_the_real_assignment_reason_not_manual(app_session: Session) -> None:
+    node, event = _event(app_session)
+    qualified = create_soldier(app_session, personal_number="batch-qualified", hierarchy_node_id=node.id)
+    app_session.add(SoldierRangeQualification(
+        soldier_id=qualified.id, range_type=RangeType.laser,
+        valid_until=date.today() + timedelta(days=30),
+    ))
+    app_session.flush()
+
+    created = assign_batch(app_session, event=event, primary_soldier_ids=[qualified.id], reserve_soldier_ids=[], actor_id=None)
+
+    assert len(created) == 1
+    assert created[0].assignment_reason_code == "qualified"
+    assert created[0].assignment_reason_code != "manual"

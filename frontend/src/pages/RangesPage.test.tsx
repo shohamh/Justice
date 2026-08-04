@@ -626,12 +626,19 @@ describe("RangesPage assignment editor integration", () => {
     expect(rangesApi.cancelRangeEvent).toHaveBeenCalledWith("event-2", "גשם");
   });
 
-  it("bulk-clears all assignments from selected events", async () => {
+  it("bulk-clears all assignments from selected events by fetching each event's real assignments", async () => {
+    // The list row itself carries an empty assignments array (matching the real
+    // list endpoint, which never includes assignments) — bulkClear must fetch
+    // event detail to find what to remove, not read off the stale list row.
     vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.getRangeEvent).mockResolvedValue(
       { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
         location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned",
         assignments: [{ id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null }] },
-    ]);
+    );
     vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
 
@@ -640,6 +647,68 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(screen.getByTestId("select-range-event-1"));
     fireEvent.click(await screen.findByTestId("bulk-clear-button"));
 
+    await waitFor(() => expect(rangesApi.getRangeEvent).toHaveBeenCalledWith("event-1"));
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-1", "a1"));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("1 שיבוצים"));
+  });
+
+  it("shows an error message when a bulk action fails", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+    // bulkClear (Promise.all under the hood) rejects on the first failure, unlike
+    // bulkDelete's Promise.allSettled which never rejects — exercise the catch path here.
+    vi.mocked(rangesApi.getRangeEvent).mockRejectedValue(new Error("boom"));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    fireEvent.click(await screen.findByTestId("bulk-clear-button"));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("filters bulk-cancel to planned events only and labels the button with the filtered count", async () => {
+    vi.mocked(rangesApi.cancelRangeEvent).mockClear();
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-2", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+        location: "מטווח ב", required_count: 1, reserve_count: 0, status: "cancelled", assignments: [] },
+    ]);
+    vi.mocked(rangesApi.cancelRangeEvent).mockResolvedValue(undefined);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    fireEvent.click(screen.getByTestId("select-range-event-2"));
+
+    const cancelButton = await screen.findByTestId("bulk-cancel-button");
+    expect(cancelButton).toHaveTextContent("בטל מטווחים (1)");
+    fireEvent.click(cancelButton);
+    fireEvent.change(await screen.findByLabelText("סיבת הביטול"), { target: { value: "גשם" } });
+    fireEvent.click(screen.getByTestId("confirm-bulk-cancel-button"));
+
+    await waitFor(() => expect(rangesApi.cancelRangeEvent).toHaveBeenCalledWith("event-1", "גשם"));
+    expect(rangesApi.cancelRangeEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show selection checkboxes or the bulk action bar for a non-manager", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mockUser = { id: "u1", hierarchy_node_id: "node-1", role: "soldier", is_duty_manager: false } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+
+    expect(screen.queryByTestId("select-range-event-1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("range-bulk-action-bar")).not.toBeInTheDocument();
   });
 });

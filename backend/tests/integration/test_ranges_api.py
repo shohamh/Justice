@@ -413,3 +413,126 @@ def test_list_range_events_filters_by_date_range(
     assert response.status_code == 200
     locations = [e["location"] for e in response.json()]
     assert locations == ["מטווח אוקטובר"]
+
+
+def test_get_range_candidates_forbidden_for_non_manager(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מועמדים1")
+    dm = create_soldier(
+        admin_session, personal_number="6400001", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="6400002", hierarchy_node_id=node.id)
+
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    response = client.get(
+        f"/api/ranges/{event_id}/candidates", headers=auth_headers(soldier)
+    )
+    assert response.status_code == 403
+
+
+def test_get_range_candidates_404_when_disabled(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-מועמדים2")
+    dm = create_soldier(
+        admin_session, personal_number="6400003", role="duty_manager", hierarchy_node_id=node.id
+    )
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    apply_settings(admin_session, {}, {"mitvachim.enabled": False}, actor_id=None)
+    admin_session.commit()
+
+    response = client.get(
+        f"/api/ranges/{event_id}/candidates", headers=auth_headers(dm)
+    )
+    assert response.status_code == 404
+
+
+def test_batch_assign_forbidden_for_non_manager(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-באצ1")
+    dm = create_soldier(
+        admin_session, personal_number="6400004", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="6400005", hierarchy_node_id=node.id)
+
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    response = client.post(
+        f"/api/ranges/{event_id}/assignments/batch",
+        json={"primaries": [str(soldier.id)], "reserves": []},
+        headers=auth_headers(soldier),
+    )
+    assert response.status_code == 403
+
+
+def test_batch_assign_404_when_disabled(
+    client: TestClient, admin_session: Session
+) -> None:
+    _enable_mitvachim(admin_session)
+    node = create_node(admin_session, level="פלוגה", name="פלוגה תת-באצ2")
+    dm = create_soldier(
+        admin_session, personal_number="6400006", role="duty_manager", hierarchy_node_id=node.id
+    )
+    soldier = create_soldier(admin_session, personal_number="6400007", hierarchy_node_id=node.id)
+    create_resp = client.post(
+        "/api/ranges",
+        json={
+            "hierarchy_node_id": str(node.id),
+            "range_type": "laser",
+            "date": "2026-09-01",
+            "location": "מטווח",
+            "required_count": 2,
+        },
+        headers=auth_headers(dm),
+    )
+    event_id = create_resp.json()["id"]
+
+    apply_settings(admin_session, {}, {"mitvachim.enabled": False}, actor_id=None)
+    admin_session.commit()
+
+    response = client.post(
+        f"/api/ranges/{event_id}/assignments/batch",
+        json={"primaries": [str(soldier.id)], "reserves": []},
+        headers=auth_headers(dm),
+    )
+    assert response.status_code == 404

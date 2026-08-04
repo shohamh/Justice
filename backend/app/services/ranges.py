@@ -356,6 +356,8 @@ def assign_batch(
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
 
+    from app.services.range_auto_assign import _rank_candidate
+
     rows = [
         _validate_and_build_assignment(session, event=event, soldier_id=sid, is_reserve=False)
         for sid in primary_soldier_ids
@@ -364,6 +366,9 @@ def assign_batch(
         for sid in reserve_soldier_ids
     ]
     for row in rows:
+        soldier = session.get(Soldier, row.soldier_id)
+        _, reason_code = _rank_candidate(session, soldier=soldier, event=event)
+        row.assignment_reason_code = reason_code
         session.add(row)
     session.flush()
     for row in rows:

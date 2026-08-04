@@ -165,6 +165,39 @@ describe("RangeEditAssignmentsModal", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("שמירת השיבוצים נכשלה");
   });
 
+  it("re-fetches candidates after a successful batch save so a just-assigned soldier is no longer offered", async () => {
+    vi.mocked(rangesApi.getRangeCandidates)
+      .mockResolvedValueOnce([
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(rangesApi.batchAssignRange).mockResolvedValue([
+      { id: "a1", soldier_id: "s1", is_reserve: false, is_draft: false, attendance_status: "pending", note: null, assignment_reason_code: "qualified", assignment_reason_text: null },
+    ]);
+    renderModal({ event: { ...event([]), required_count: 1 } });
+
+    fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
+    fireEvent.click(screen.getByTestId("save-assignments"));
+
+    await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId("candidate-checkbox-s1")).not.toBeInTheDocument());
+  });
+
+  it("re-fetches candidates after removing an assignment so the freed soldier becomes selectable again", async () => {
+    vi.mocked(rangesApi.getRangeCandidates)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      ]);
+    vi.mocked(rangesApi.removeRangeAssignment).mockResolvedValue(undefined);
+    renderModal({ event: event([assignment("a1", "s1")]) });
+
+    fireEvent.click(screen.getByTestId("remove-assignment-a1"));
+
+    await waitFor(() => expect(rangesApi.getRangeCandidates).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId("candidate-checkbox-s1")).toBeInTheDocument();
+  });
+
   it("reports full primary and reserve capacity and closes explicitly", () => {
     const { props } = renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2"), assignment("a3", "s3", true)]) });
     expect(screen.getAllByTestId("range-capacity-full").length).toBe(2);
