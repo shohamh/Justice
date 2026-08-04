@@ -36,6 +36,7 @@ const REPORT: BugReportSummary = {
   updated_at: "2026-07-25T10:05:00Z",
   comment_count: 0,
   last_comment_at: null,
+  has_unseen_activity: false,
 };
 
 function renderPage(initialEntries = ["/my-bug-reports"]) {
