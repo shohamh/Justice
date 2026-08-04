@@ -20,6 +20,9 @@ export interface AutoAssignResult { created:RangeAssignment[]; shortfall:number;
 export function autoAssignRange(eventId:string):Promise<AutoAssignResult>{return api.post(`/ranges/${eventId}/auto-assign`).then(r=>r.data);}
 export function confirmDraftAssignment(eventId:string,assignmentId:string):Promise<RangeAssignment>{return api.post(`/ranges/${eventId}/assignments/${assignmentId}/confirm`).then(r=>r.data);}
 export function confirmAllDrafts(eventId:string):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/confirm-all`).then(r=>r.data);}
+export interface RangeCandidate { soldier_id:string; full_name:string; personal_number:string; reason_code:string; blocked:boolean; blocked_reason:string|null; }
+export function getRangeCandidates(eventId:string):Promise<RangeCandidate[]>{return api.get(`/ranges/${eventId}/candidates`).then(r=>r.data);}
+export function batchAssignRange(eventId:string,input:{primaries:string[];reserves:string[]}):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/batch`,input).then(r=>r.data);}
 export interface RangeExcusalRequest { id:string; range_assignment_id:string; requested_by:string|null; reason:string; status:"pending"|"approved"|"rejected"; decided_by:string|null; decided_at:string|null; decision_note:string|null; promoted_assignment_id:string|null; }
 export function excuseRangeAssignment(eventId:string,assignmentId:string,reason:string):Promise<RangeExcusalRequest>{return api.post(`/ranges/${eventId}/assignments/${assignmentId}/excuse`,{reason}).then(r=>r.data);}
 export function getRangeExcusalRequests(eventId:string):Promise<RangeExcusalRequest[]>{return api.get(`/ranges/${eventId}/excusal-requests`).then(r=>r.data);}
