@@ -4,9 +4,11 @@
 
 ### Features
 - Bug reports now support inline threaded comments with image attachments (and upload retry) for both admins and reporters; the admin table gained comment-count and latest-response columns, status icons with labels, and stronger status row colors.
-- Soldiers can now see and reply to their own bug reports from a new profile-linked "הדיווחים שלי" page, with notifications for replies deep-linking straight to the relevant report from the bell and the notifications page.
+- The feedback ("מצאתי באג") button now opens a two-tab modal — submit a new report, or review and reply to your own past reports — with an unseen-activity badge on the button and on replies/status changes you haven't seen yet; reply notifications now open the right report directly instead of navigating to a separate page.
 - Range assignments now show and persist the reasons/capabilities behind automatic assignment choices, with matching Hebrew explanations in the UI.
 - Range planning modals and the range assignment editor were reworked to match the shift-planning UI, including a shift-style assignment editor and consistent Hebrew i18n coverage.
+- Ranges gained bulk actions: row-selection checkboxes, bulk clear/cancel/delete for selected ranges, and a candidate-selection panel replacing one-click auto-assign, plus a read-only ranked-candidates view and a batch-assign endpoint.
+- The unit calendar's filter pills were replaced with multi-select dropdowns.
 
 ### Fixes
 - Fixed the feedback (bug report) submission modal so it scrolls correctly and stays usable on mobile viewports.
@@ -14,10 +16,12 @@
 - Fixed dark-mode contrast in the cancel dialog and in range modal text, added a shortcut for direct assignments, and removed a duplicate top-level key in the Hebrew translations.
 - Fixed reserve promotion ranking to be preserved correctly, and resolved a diverged Alembic migration history after concurrent range work merged.
 - Made the shift-style range assignment editor modal-only and fixed modal history handoff to be stack-safe across nested modals.
+- Removed duplicate edit/cancel buttons and a redundant entry point from the range detail view, and made the range delete button always visible (disabled when assigned, matching shifts).
 
 ### Chores
 - Added regression tests for range advance reminders, read-only range assignment controls, and cross-user bug-report comment access, and expanded frontend coverage across the bug-report and ranges UI changes.
-- Documented the ranges UI parity and range-assignment-reasons designs and implementation plans.
+- Documented the ranges UI parity, range-assignment-reasons, bug-report feedback modal, and ranges/shifts UI parity designs and implementation plans.
+- Removed the standalone "my bug reports" page and its links now that the feedback modal covers the same flow, and removed dead range draft/confirm auto-assign code.
 
 ## 2026-08-02
 
