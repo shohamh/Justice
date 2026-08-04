@@ -273,6 +273,26 @@ describe("RangesPage", () => {
     expect(screen.getByTestId("range-detail-content")).toBeInTheDocument();
   });
 
+  it("selects rows via checkboxes and shows the bulk action bar once at least one is selected", async () => {
+    vi.mocked(rangesApi.getRanges).mockResolvedValue([
+      { id: "event-1", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-01",
+        location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+      { id: "event-2", hierarchy_node_id: "node-1", range_type: "laser", date: "2026-09-02",
+        location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [] },
+    ]);
+
+    renderWithQuery(<RangesPage />);
+    await screen.findByText("מטווח א");
+
+    expect(screen.queryByTestId("range-bulk-action-bar")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    expect(await screen.findByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
+    fireEvent.click(screen.getByTestId("select-range-event-2"));
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("2 נבחרו");
+    fireEvent.click(screen.getByTestId("select-range-event-1"));
+    expect(screen.getByTestId("range-bulk-action-bar")).toHaveTextContent("1 נבחרו");
+  });
+
   it("shows range list loading and request failures through the planning table", async () => {
     let resolve!: (rows: rangesApi.RangeEvent[]) => void;
     vi.mocked(rangesApi.getRanges).mockReturnValue(new Promise(r => { resolve = r; }));
