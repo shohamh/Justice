@@ -124,7 +124,6 @@
     "section_bug_reports": "הדיווחים שלי"
   },
   "my_bug_reports": {
-    "title": "הדיווחים שלי על באגים",
     "load_error": "שגיאה בטעינת הדיווחים"
   },
   "bug_reports": {
@@ -298,7 +297,6 @@
   "profile": {
     "title": "פרופיל",
     "change_password": "שינוי סיסמה",
-    "my_bug_reports": "הדיווחים שלי על באגים",
     "phone": "טלפון",
     "email": "כתובת אימייל",
     "email_verified": "מאומת",

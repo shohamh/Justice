@@ -14,7 +14,6 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import MyDutiesPage from "./pages/MyDutiesPage";
 import MyRequestsPage from "./pages/MyRequestsPage";
-import MyBugReportsPage from "./pages/MyBugReportsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -100,7 +99,6 @@ export default function App() {
                   <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
                   <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
                   <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
-                  <Route path="/my-bug-reports" element={<AppGate><MyBugReportsPage /></AppGate>} />
                   <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
                   <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
                   <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />

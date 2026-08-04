@@ -1,6 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
@@ -505,16 +504,6 @@ export default function MyRequestsPage() {
               );
             })}
           </ul>
-        </div>
-
-        <div className="pt-4 border-t dark:border-gray-600">
-          <Link
-            to="/my-bug-reports"
-            className="text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 text-sm"
-            data-testid="my-requests-bug-reports-link"
-          >
-            {t("profile.my_bug_reports")}
-          </Link>
         </div>
       </section>
     </Layout>
