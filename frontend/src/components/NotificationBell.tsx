@@ -2,9 +2,11 @@ import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { useBugReportModal } from "../contexts/BugReportModalContext";
 
 export default function NotificationBell() {
   const { t } = useTranslation();
+  const { openBugReportModal } = useBugReportModal();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
@@ -57,7 +59,16 @@ export default function NotificationBell() {
     setNotifications([]);
   }
 
-
+  function handleNotificationClick(n: NotificationDTO) {
+    void handleMarkRead(n.id);
+    if (n.reference_type === "bug_report" && n.reference_id) {
+      openBugReportModal({ tab: "mine", reportId: n.reference_id });
+    } else {
+      const link = getNotificationLink(n);
+      if (link) navigate(link);
+    }
+    setOpen(false);
+  }
 
   return (
     <div ref={ref}>
@@ -103,10 +114,10 @@ export default function NotificationBell() {
                 <div key={n.id} className="flex items-start gap-2 p-3 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <span className="text-lg" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
-                    {getNotificationLink(n) ? (
+                    {getNotificationLink(n) || (n.reference_type === "bug_report" && n.reference_id) ? (
                       <button
                         className="text-sm font-medium truncate text-right w-full hover:text-indigo-600"
-                        onClick={() => { void handleMarkRead(n.id); navigate(getNotificationLink(n)!); setOpen(false); }}
+                        onClick={() => handleNotificationClick(n)}
                       >
                         {n.title}
                       </button>

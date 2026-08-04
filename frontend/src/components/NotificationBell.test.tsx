@@ -1,10 +1,33 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import NotificationBell from "./NotificationBell";
+import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import * as notificationsApi from "../api/notifications";
+import * as bugReportsApi from "../api/bugReports";
 
 vi.mock("../api/notifications");
+vi.mock("../hooks/useNavigationHistory", () => ({ useNavigationHistory: () => [] }));
+vi.mock("../api/bugReports", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/bugReports")>()),
+  getMyBugReportsUnseenCount: vi.fn().mockResolvedValue({ count: 0 }),
+  getMyBugReports: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  listComments: vi.fn().mockResolvedValue([]),
+}));
+
+function renderBell() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <BugReportModalProvider>
+          <NotificationBell />
+        </BugReportModalProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
 
 const baseNotification = {
   id: "n1",
@@ -30,11 +53,7 @@ describe("NotificationBell icon differentiation", () => {
       ],
       total: 2,
     });
-    render(
-      <MemoryRouter>
-        <NotificationBell />
-      </MemoryRouter>
-    );
+    renderBell();
     const bellButton = await screen.findByTestId("notification-bell");
     bellButton.click();
     const scopedRow = await screen.findByText("Scoped");
@@ -47,7 +66,7 @@ describe("NotificationBell icon differentiation", () => {
       items: [{ ...baseNotification, title: "Range cancelled", type: "range_cancelled" }],
       total: 1,
     });
-    render(<MemoryRouter><NotificationBell /></MemoryRouter>);
+    renderBell();
     (await screen.findByTestId("notification-bell")).click();
     const row = await screen.findByText("Range cancelled");
     expect(row.closest("div")?.parentElement?.textContent).toContain(String.fromCodePoint(0x1f6ab));
@@ -62,16 +81,36 @@ describe("NotificationBell icon differentiation", () => {
       ],
       total: 2,
     });
-    render(
-      <MemoryRouter>
-        <NotificationBell />
-      </MemoryRouter>
-    );
+    renderBell();
     const bellButton = await screen.findByTestId("notification-bell");
     bellButton.click();
     const normalRow = await screen.findByText("Normal reminder");
     const shortfallRow = await screen.findByText("Shortfall reminder");
     expect(normalRow.closest("div")?.parentElement?.textContent).toContain("🔔");
     expect(shortfallRow.closest("div")?.parentElement?.textContent).toContain("⚠️");
+  });
+
+  it("opens the bug report modal instead of navigating for a bug_report notification", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "תגובה חדשה", type: "bug_report_comment", reference_type: "bug_report", reference_id: "report-123" }],
+      total: 1,
+    });
+    vi.mocked(notificationsApi.markRead).mockResolvedValue({ ...baseNotification, id: "n1", title: "תגובה חדשה", type: "bug_report_comment", is_read: true });
+    vi.mocked(bugReportsApi.getMyBugReports).mockResolvedValue({
+      items: [{
+        id: "report-123", reporter_id: "s1", description: "the modal opened", severity: "low", status: "open",
+        route: "/", nav_history: null, audit_snapshot: null, user_snapshot: null, has_screenshot: false,
+        created_at: "2026-08-01T10:00:00Z", updated_at: "2026-08-01T10:00:00Z",
+        comment_count: 0, last_comment_at: null, has_unseen_activity: true,
+      }],
+      total: 1,
+    });
+    vi.mocked(bugReportsApi.listComments).mockResolvedValue([]);
+
+    renderBell();
+    (await screen.findByTestId("notification-bell")).click();
+    (await screen.findByText("תגובה חדשה")).click();
+
+    expect(await screen.findByText("the modal opened")).toBeInTheDocument();
   });
 });

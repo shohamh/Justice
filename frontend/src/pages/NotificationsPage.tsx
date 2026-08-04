@@ -5,11 +5,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
 import Layout from "../components/Layout";
 import { usePagePagination } from "../hooks/usePagePagination";
-import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS } from "../api/notifications";
+import { useBugReportModal } from "../contexts/BugReportModalContext";
 
 export default function NotificationsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { openBugReportModal } = useBugReportModal();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>("all");
   const { page, setPage, offset, limit } = usePagePagination({ limit: 20 });
@@ -41,7 +43,14 @@ export default function NotificationsPage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
   }
 
-
+  function handleNotificationClick(n: NotificationDTO) {
+    if (n.reference_type === "bug_report" && n.reference_id) {
+      openBugReportModal({ tab: "mine", reportId: n.reference_id });
+    } else {
+      const link = getNotificationLink(n);
+      if (link) navigate(link);
+    }
+  }
 
   const pages = Math.ceil(total / limit);
 
@@ -76,8 +85,8 @@ export default function NotificationsPage() {
               <div key={n.id} className={`flex items-start gap-3 p-3 rounded border dark:border-gray-600 ${n.is_read ? "bg-gray-50 dark:bg-gray-700" : "bg-white dark:bg-gray-800"}`}>
                 <span className="text-xl" aria-label={t(`notifications.type_${n.type}`, { defaultValue: n.type })}>{NOTIFICATION_TYPE_ICONS[n.type] || "🔔"}</span>
                 <div className="flex-1">
-                  {getNotificationLink(n) ? (
-                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => navigate(getNotificationLink(n)!)}>{n.title}</button>
+                  {getNotificationLink(n) || (n.reference_type === "bug_report" && n.reference_id) ? (
+                    <button className={`text-right ${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`} onClick={() => handleNotificationClick(n)}>{n.title}</button>
                   ) : (
                     <p className={`${n.is_read ? "text-gray-600 dark:text-gray-300" : "font-semibold"}`}>{n.title}</p>
                   )}
