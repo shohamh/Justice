@@ -62,7 +62,7 @@ def test_bug_report_comment_notifications_open_the_referenced_bug_report():
 
     report_id = uuid.UUID("00000000-0000-0000-0000-000000000123")
     assert _frontend_url(NotificationType.bug_report_comment, report_id).endswith(
-        "/my-bug-reports?report=00000000-0000-0000-0000-000000000123"
+        "/?bugReport=00000000-0000-0000-0000-000000000123"
     )
 
 
@@ -70,4 +70,4 @@ def test_bug_report_comment_notifications_open_the_bug_reports_page_without_refe
     from app.db.models import NotificationType
     from app.services.notifications import _frontend_url
 
-    assert _frontend_url(NotificationType.bug_report_comment).endswith("/my-bug-reports")
+    assert _frontend_url(NotificationType.bug_report_comment).endswith("/")

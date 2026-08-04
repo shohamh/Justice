@@ -64,7 +64,7 @@ _FRONTEND_PATHS: dict[str, str] = {
     "gimelim_reserve_called_up": "/schedule",
     "gimelim_demoted_to_reserve": "/schedule",
     "gimelim_reassigned": "/schedule",
-    "bug_report_comment": "/my-bug-reports",
+    "bug_report_comment": "/",
 }
 
 
@@ -83,7 +83,7 @@ def _frontend_url(
     base = get_settings().frontend_url.rstrip("/")
     path = _FRONTEND_PATHS.get(notification_type.value, "/notifications")
     if notification_type == NotificationType.bug_report_comment and reference_id is not None:
-        path = f"{path}?report={reference_id}"
+        path = f"{path}?bugReport={reference_id}"
     return f"{base}{path}"
 
 

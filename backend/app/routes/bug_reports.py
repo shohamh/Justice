@@ -123,6 +123,7 @@ class BugReportSummaryOut(BaseModel):
     updated_at: datetime
     comment_count: int
     last_comment_at: datetime | None
+    has_unseen_activity: bool
 
 
 class PaginatedBugReports(BaseModel):
@@ -139,6 +140,7 @@ def _summary_out(
     *,
     comment_count: int,
     last_comment_at: datetime | None,
+    has_unseen_activity: bool = False,
 ) -> BugReportSummaryOut:
     return BugReportSummaryOut(
         id=report.id,
@@ -155,6 +157,7 @@ def _summary_out(
         updated_at=report.updated_at,
         comment_count=comment_count,
         last_comment_at=last_comment_at,
+        has_unseen_activity=has_unseen_activity,
     )
 
 
@@ -316,6 +319,13 @@ def update_bug_report_status(
     return _summary_with_comment_aggregates(session, report)
 
 
+def _has_unseen_activity(report: BugReport, last_comment_at: datetime | None) -> bool:
+    seen_at = report.reporter_last_seen_at
+    unseen_comment = last_comment_at is not None and (seen_at is None or last_comment_at > seen_at)
+    unseen_status = report.updated_at > report.created_at and (seen_at is None or report.updated_at > seen_at)
+    return unseen_comment or unseen_status
+
+
 @router.get("/my/bug-reports", response_model=PaginatedBugReports)
 def list_my_bug_reports(
     session: Session = Depends(get_session),
@@ -341,11 +351,31 @@ def list_my_bug_reports(
                 report,
                 comment_count=comment_count,
                 last_comment_at=last_comment_at,
+                has_unseen_activity=_has_unseen_activity(report, last_comment_at),
             )
             for report, comment_count, last_comment_at in rows
         ],
         total=len(rows),
     )
+
+
+class UnseenCountOut(BaseModel):
+    count: int
+
+
+@router.get("/my/bug-reports/unseen-count", response_model=UnseenCountOut)
+def get_my_bug_reports_unseen_count(
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> UnseenCountOut:
+    comment_aggregates = _comment_aggregates_subquery()
+    rows = session.execute(
+        select(BugReport, comment_aggregates.c.last_comment_at)
+        .outerjoin(comment_aggregates, comment_aggregates.c.bug_report_id == BugReport.id)
+        .where(BugReport.reporter_id == user.id)
+    ).all()
+    count = sum(1 for report, last_comment_at in rows if _has_unseen_activity(report, last_comment_at))
+    return UnseenCountOut(count=count)
 
 
 class BugReportCommentBody(BaseModel):
@@ -384,6 +414,21 @@ def _require_reporter_or_admin(session: Session, user: Soldier, report_id: uuid.
     return report
 
 
+@router.post("/bug-reports/{report_id}/seen", status_code=status.HTTP_204_NO_CONTENT)
+def mark_bug_report_seen(
+    report_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> None:
+    report = session.get(BugReport, report_id)
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if report.reporter_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    report.reporter_last_seen_at = datetime.now(UTC)
+    session.commit()
+
+
 @router.post(
     "/bug-reports/{report_id}/comments",
     response_model=BugReportCommentOut,
@@ -415,7 +460,9 @@ def create_bug_report_comment(
             reference_id=report.id,
             actor_id=user.id,
         )
-        session.commit()
+    else:
+        report.reporter_last_seen_at = comment.created_at
+    session.commit()
     return BugReportCommentOut(
         id=comment.id,
         bug_report_id=comment.bug_report_id,

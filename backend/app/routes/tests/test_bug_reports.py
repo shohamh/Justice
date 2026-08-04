@@ -423,6 +423,98 @@ def test_upload_attachment_rejected_after_comment_hits_attachment_cap(client: Te
     assert resp.json()["detail"] == "too_many_attachments"
 
 
+def test_bug_report_has_no_unseen_activity_when_reporter_never_left(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugseen001")
+    _submit(client, reporter)
+
+    resp = client.get("/api/my/bug-reports", headers=auth_headers(reporter))
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["has_unseen_activity"] is False
+
+
+def test_bug_report_is_unseen_after_someone_elses_comment(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen002", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen003")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    client.post(f"/api/bug-reports/{report_id}/comments", json={"body": "looking into it"}, headers=auth_headers(admin))
+
+    resp = client.get("/api/my/bug-reports", headers=auth_headers(reporter))
+    assert resp.json()["items"][0]["has_unseen_activity"] is True
+
+
+def test_bug_report_is_not_unseen_when_only_the_reporter_commented(client: TestClient, admin_session: Session):
+    reporter = create_soldier(admin_session, personal_number="bugseen004")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    client.post(f"/api/bug-reports/{report_id}/comments", json={"body": "adding detail"}, headers=auth_headers(reporter))
+
+    resp = client.get("/api/my/bug-reports", headers=auth_headers(reporter))
+    assert resp.json()["items"][0]["has_unseen_activity"] is False
+
+
+def test_bug_report_is_unseen_after_status_change(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen005", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen006")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    client.patch(f"/api/admin/bug-reports/{report_id}", json={"status": "in_progress"}, headers=auth_headers(admin))
+
+    resp = client.get("/api/my/bug-reports", headers=auth_headers(reporter))
+    assert resp.json()["items"][0]["has_unseen_activity"] is True
+
+
+def test_marking_a_bug_report_seen_clears_its_unseen_activity(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen007", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen008")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+    client.post(f"/api/bug-reports/{report_id}/comments", json={"body": "hi"}, headers=auth_headers(admin))
+
+    seen_resp = client.post(f"/api/bug-reports/{report_id}/seen", headers=auth_headers(reporter))
+    assert seen_resp.status_code == 204
+
+    resp = client.get("/api/my/bug-reports", headers=auth_headers(reporter))
+    assert resp.json()["items"][0]["has_unseen_activity"] is False
+
+
+def test_marking_seen_is_reporter_only_not_admin(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen009", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen010")
+    _submit(client, reporter)
+    report_id = admin_session.query(BugReport).filter_by(reporter_id=reporter.id).one().id
+
+    resp = client.post(f"/api/bug-reports/{report_id}/seen", headers=auth_headers(admin))
+    assert resp.status_code == 403
+
+
+def test_unseen_count_reflects_only_the_callers_own_unseen_reports(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="bugseen011", role="admin")
+    reporter = create_soldier(admin_session, personal_number="bugseen012")
+    other_reporter = create_soldier(admin_session, personal_number="bugseen013")
+    _submit(client, reporter, description="seen one")
+    _submit(client, reporter, description="unseen one")
+    _submit(client, other_reporter, description="other reporter own report")
+    reports = {
+        report.description: report
+        for report in admin_session.query(BugReport).filter(BugReport.reporter_id.in_([reporter.id, other_reporter.id])).all()
+    }
+    seen_id = reports["seen one"].id
+    unseen_id = reports["unseen one"].id
+    other_id = reports["other reporter own report"].id
+    client.post(f"/api/bug-reports/{seen_id}/comments", json={"body": "x"}, headers=auth_headers(admin))
+    client.post(f"/api/bug-reports/{seen_id}/seen", headers=auth_headers(reporter))
+    client.post(f"/api/bug-reports/{unseen_id}/comments", json={"body": "y"}, headers=auth_headers(admin))
+    client.post(f"/api/bug-reports/{other_id}/comments", json={"body": "z"}, headers=auth_headers(admin))
+
+    resp = client.get("/api/my/bug-reports/unseen-count", headers=auth_headers(reporter))
+    assert resp.status_code == 200
+    assert resp.json() == {"count": 1}
+
+
 def test_upload_attachment_rejects_oversized_file_without_reading_entire_body(
     client: TestClient, admin_session: Session
 ):
