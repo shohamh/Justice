@@ -69,6 +69,8 @@ export function BugReportModalProvider({ children }: { children: ReactNode }) {
         <BugReportModal
           key={modal.token}
           screenshot={modal.screenshot}
+          initialTab={modal.tab}
+          initialReportId={modal.reportId}
           onClose={handleClose}
         />
       )}
