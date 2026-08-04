@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import func, select
@@ -125,6 +126,62 @@ def _candidate_pool(session: Session, *, event: RangeEvent, exclude_soldier_ids:
             continue
         pool.append(soldier)
     return pool
+
+
+@dataclass
+class RankedCandidate:
+    soldier: Soldier
+    reason_code: str
+    blocked: bool
+    blocked_reason: str | None
+
+
+def rank_candidates(session: Session, *, event: RangeEvent) -> list[RankedCandidate]:
+    """Read-only: ranks every soldier in the event's subtree who isn't already
+    assigned to it, same tier ordering as propose_range_assignments, but never
+    writes to the database. Ineligible soldiers (exempt/constrained/already
+    duty- or range-assigned that day) are marked blocked=True instead of
+    being excluded, so the frontend can show them (greyed out) rather than
+    silently omitting them."""
+    existing_soldier_ids = {
+        a.soldier_id for a in session.execute(
+            select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
+        ).scalars().all()
+    }
+    subtree_node_ids = list(
+        session.execute(
+            select(HierarchyNode.id).where(HierarchyNode.path_ids.any(event.hierarchy_node_id))  # type: ignore[arg-type]
+        ).scalars().all()
+    )
+    soldiers = session.execute(
+        select(Soldier).where(Soldier.hierarchy_node_id.in_(subtree_node_ids))
+    ).scalars().all()
+
+    ranked: list[RankedCandidate] = []
+    for soldier in soldiers:
+        if soldier.id in existing_soldier_ids:
+            continue
+        blocked_reason = None
+        if is_range_exempt(session, soldier=soldier, event_date=event.date):
+            blocked_reason = "exempt"
+        elif _has_approved_constraint_on_date(session, soldier_id=soldier.id, event_date=event.date):
+            blocked_reason = "constraint"
+        elif _has_duty_assignment_on_date(session, soldier_id=soldier.id, event_date=event.date):
+            blocked_reason = "duty_assignment"
+        elif _has_range_assignment_on_date(session, soldier_id=soldier.id, event_date=event.date):
+            blocked_reason = "range_assignment"
+        _, reason_code = _rank_candidate(session, soldier=soldier, event=event)
+        ranked.append(RankedCandidate(
+            soldier=soldier, reason_code=reason_code,
+            blocked=blocked_reason is not None, blocked_reason=blocked_reason,
+        ))
+
+    def sort_key(c: RankedCandidate) -> tuple:
+        rank, _ = _rank_candidate(session, soldier=c.soldier, event=event)
+        return (c.blocked, rank)
+
+    ranked.sort(key=sort_key)
+    return ranked
 
 
 def propose_range_assignments(

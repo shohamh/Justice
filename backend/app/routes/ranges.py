@@ -516,6 +516,34 @@ def auto_assign(
     return AutoAssignResponse(created=[_assignment_out(a) for a in created], shortfall=shortfall)
 
 
+class RangeCandidateOut(BaseModel):
+    soldier_id: uuid.UUID
+    full_name: str
+    personal_number: str
+    reason_code: str
+    blocked: bool
+    blocked_reason: str | None = None
+
+
+@router.get("/{event_id}/candidates", response_model=list[RangeCandidateOut])
+def get_range_candidates(
+    event_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    user: Soldier = Depends(require_password_changed),
+) -> list[RangeCandidateOut]:
+    _require_enabled(session)
+    event = _load_event(session, event_id)
+    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
+    ranked = auto_assign_svc.rank_candidates(session, event=event)
+    return [
+        RangeCandidateOut(
+            soldier_id=c.soldier.id, full_name=c.soldier.full_name, personal_number=c.soldier.personal_number,
+            reason_code=c.reason_code, blocked=c.blocked, blocked_reason=c.blocked_reason,
+        )
+        for c in ranked
+    ]
+
+
 @router.post("/{event_id}/assignments/{assignment_id}/confirm", response_model=RangeAssignmentOut)
 def confirm_assignment(
     event_id: uuid.UUID,
