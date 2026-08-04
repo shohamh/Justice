@@ -184,14 +184,14 @@ describe("RangesPage", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog.querySelector("dl")).toHaveClass("grid", "rounded", "p-3");
-    expect(screen.getByTestId("range-detail-actions")).toHaveClass("flex", "flex-wrap", "gap-2");
+    expect(screen.queryByTestId("range-detail-actions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ערוך" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "בטל" })).not.toBeInTheDocument();
     expect(screen.getByTestId("range-detail-information")).toHaveClass("text-gray-800", "dark:text-gray-100");
     expect(screen.getByTestId("range-detail-roster")).toBeInTheDocument();
     expect(screen.getByText("הוראות הגעה:")).toBeInTheDocument();
     expect(screen.getByText("איש קשר:")).toBeInTheDocument();
     expect(screen.getByText("הערות:")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ערוך" })).toHaveClass("bg-blue-600", "text-white");
-    expect(screen.getByRole("button", { name: "בטל" })).toHaveClass("border", "text-amber-700");
   });
 
   it("does not offer deletion when assignments exist despite stale filled counts", async () => {
@@ -259,7 +259,8 @@ describe("RangesPage", () => {
 
     renderWithQuery(<RangesPage />);
     fireEvent.click(await screen.findByText("מטווח עריכה"));
-    fireEvent.click(await screen.findByRole("button", { name: "ערוך" }));
+    expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("edit-range-event-edit"));
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByTestId("range-form")).not.toBeInTheDocument());
@@ -277,7 +278,8 @@ describe("RangesPage", () => {
 
     renderWithQuery(<RangesPage />);
     fireEvent.click(await screen.findByText("מטווח ביטול"));
-    fireEvent.click(await screen.findByRole("button", { name: "בטל" }));
+    expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cancel-range-event-cancel"));
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(screen.queryByRole("heading", { name: "ביטול מטווח" })).not.toBeInTheDocument());
@@ -774,7 +776,7 @@ describe("RangesPage assignment editor integration", () => {
     const { client } = renderWithQuery(<RangesPage />);
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.click(await screen.findByText("מטווח לרענון"));
-    fireEvent.click(await screen.findByTestId("edit-range-assignments"));
+    fireEvent.click(screen.getByTestId("view-assignments-event-refresh"));
     fireEvent.click(await screen.findByTestId("remove-assignment-assignment-refresh"));
 
     await waitFor(() => expect(rangesApi.removeRangeAssignment).toHaveBeenCalledWith("event-refresh", "assignment-refresh"));
@@ -797,7 +799,7 @@ describe("RangesPage assignment editor integration", () => {
     fireEvent.click(await screen.findByText("מטווח דרום"));
 
     expect(await screen.findByTestId("range-detail-content")).toBeInTheDocument();
-    expect(screen.getByTestId("edit-range-assignments")).toBeInTheDocument();
+    expect(screen.queryByTestId("edit-range-assignments")).not.toBeInTheDocument();
     expect(screen.queryByTestId("auto-assign-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("confirm-all-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("add-soldier-button")).not.toBeInTheDocument();
@@ -815,7 +817,7 @@ describe("RangesPage assignment editor integration", () => {
 
     renderWithQuery(<RangesPage />);
     fireEvent.click(await screen.findByText("מטווח דרום"));
-    fireEvent.click(await screen.findByTestId("edit-range-assignments"));
+    fireEvent.click(screen.getByTestId("view-assignments-event-1"));
 
     expect(await screen.findByRole("heading", { name: "עריכת שיבוצים" })).toBeInTheDocument();
     expect(screen.queryByTestId("range-detail-content")).not.toBeInTheDocument();
