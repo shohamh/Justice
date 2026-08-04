@@ -1228,7 +1228,44 @@ In `frontend/src/i18n/he.json`, inside the `"bug_reports"` object, add:
 
 - [ ] **Step 2: Add failing tests**
 
-Append to `frontend/src/components/BugReportModal.test.tsx` (keep all existing tests as-is — they exercise the default "new" tab and must keep passing unchanged). The file currently has:
+Step 4 below adds `useQuery` (for the unseen-count badge) to `BugReportModal`, unconditionally — every render, including the 7 pre-existing tests, will need a `QueryClientProvider` ancestor from this point on (today's file has none, because today's component doesn't use React Query at all). Fix this ahead of time by introducing a shared render helper and switching every existing `render(...)` call in the file to use it — this is a modification to the existing tests' render calls (their assertions stay unchanged), not exempted by "keep existing tests as-is."
+
+At the top of `frontend/src/components/BugReportModal.test.tsx`, add the import and replace every one of the file's 7 existing `render(<MemoryRouter initialEntries={["/duty"]}><BugReportModal .../></MemoryRouter>)` call sites with a call to a new `renderModal(props)` helper that wraps in both `QueryClientProvider` and `MemoryRouter`:
+
+```typescript
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+```
+
+Add the helper near the top of the file, above the `describe` block:
+
+```typescript
+function renderModal(props: Partial<React.ComponentProps<typeof BugReportModal>> = {}) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/duty"]}>
+        <BugReportModal screenshot={null} onClose={vi.fn()} {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+```
+
+Then replace every existing test's render call — e.g. change:
+```tsx
+    render(
+      <MemoryRouter initialEntries={["/duty"]}>
+        <BugReportModal screenshot="data:image/png;base64,AAA" onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+```
+to:
+```tsx
+    renderModal({ screenshot: "data:image/png;base64,AAA" });
+```
+(and similarly for the one existing test that passes `screenshot={null}` explicitly — that's now the helper's default, so `renderModal()` with no args suffices there). Do this for all 7 existing render call sites; their subsequent assertions and interactions (`fireEvent`, `waitFor`, etc.) are unchanged.
+
+The file currently has:
 
 ```typescript
 vi.mock("../api/bugReports", () => ({
@@ -1252,15 +1289,11 @@ vi.mock("../api/bugReports", () => ({
 
 (`createComment`/`uploadCommentAttachment`/`bugReportCommentAttachmentDownloadUrl` are only present so `BugReportCommentsPanel` — rendered inside an expanded "mine" tab report — doesn't throw on an undefined import; none of this task's new tests exercise them.)
 
-Add new tests inside the `describe("BugReportModal", ...)` block:
+Add new tests inside the `describe("BugReportModal", ...)` block, using the same `renderModal` helper:
 
 ```typescript
   test("defaults to the new-report tab", async () => {
-    render(
-      <MemoryRouter initialEntries={["/duty"]}>
-        <BugReportModal screenshot={null} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    renderModal();
     expect(screen.getByTestId("bug-report-tab-new")).toHaveAttribute("aria-selected", "true");
     expect(screen.getByTestId("bug-report-description")).toBeInTheDocument();
   });
@@ -1277,11 +1310,7 @@ Add new tests inside the `describe("BugReportModal", ...)` block:
       total: 1,
     });
 
-    render(
-      <MemoryRouter initialEntries={["/duty"]}>
-        <BugReportModal screenshot={null} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    renderModal();
 
     fireEvent.click(screen.getByTestId("bug-report-tab-mine"));
 
@@ -1302,11 +1331,7 @@ Add new tests inside the `describe("BugReportModal", ...)` block:
     });
     vi.mocked(listComments).mockResolvedValue([]);
 
-    render(
-      <MemoryRouter initialEntries={["/duty"]}>
-        <BugReportModal screenshot={null} initialTab="mine" initialReportId="r1" onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    renderModal({ initialTab: "mine", initialReportId: "r1" });
 
     expect(screen.getByTestId("bug-report-tab-mine")).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByText("אין תגובות עדיין")).toBeInTheDocument();
@@ -1317,11 +1342,7 @@ Add new tests inside the `describe("BugReportModal", ...)` block:
     const { getMyBugReportsUnseenCount } = await import("../api/bugReports");
     vi.mocked(getMyBugReportsUnseenCount).mockResolvedValue({ count: 2 });
 
-    render(
-      <MemoryRouter initialEntries={["/duty"]}>
-        <BugReportModal screenshot={null} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    renderModal();
 
     expect(await screen.findByTestId("bug-report-tab-mine-badge")).toHaveTextContent("2");
   });
@@ -1594,9 +1615,12 @@ git commit -m "feat: add a my-reports tab to the feedback modal"
 
 The 3 existing tests in this file render `<NotificationBell />` inside just `<MemoryRouter>`. Since `NotificationBell` will call `useBugReportModal()` unconditionally, every render needs the provider too. Update the top of the file and every `render(...)` call:
 
+`NotificationBell` itself doesn't use React Query (it polls via a plain `setInterval`, unchanged by this task), but `BugReportModal` — which the provider can render once a bug_report notification is clicked — does use `useQuery` for its unseen-count badge (added in Task 6). `renderBell()` needs a `QueryClientProvider` ancestor for that reason:
+
 ```typescript
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import NotificationBell from "./NotificationBell";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
@@ -1612,11 +1636,14 @@ vi.mock("../api/bugReports", async (importOriginal) => ({
 }));
 
 function renderBell() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter>
-      <BugReportModalProvider>
-        <NotificationBell />
-      </BugReportModalProvider>
+      <QueryClientProvider client={queryClient}>
+        <BugReportModalProvider>
+          <NotificationBell />
+        </BugReportModalProvider>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
