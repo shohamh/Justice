@@ -16,10 +16,6 @@ export function addRangeAssignment(eventId:string,soldierId:string,isReserve:boo
 export function removeRangeAssignment(eventId:string,assignmentId:string):Promise<void>{return api.delete(`/ranges/${eventId}/assignments/${assignmentId}`).then(()=>undefined);}
 export function updateRangeAssignmentReason(eventId:string,assignmentId:string,assignment_reason_code:string,assignment_reason_text:string|null):Promise<RangeAssignment>{return api.patch(`/ranges/${eventId}/assignments/${assignmentId}/reason`,{assignment_reason_code,assignment_reason_text}).then(r=>r.data);}
 export function markRangeAttendance(eventId:string,assignmentId:string,status:RangeAttendanceStatus,note?:string):Promise<RangeAssignment>{return api.patch(`/ranges/${eventId}/assignments/${assignmentId}/attendance`,{status,note}).then(r=>r.data);}
-export interface AutoAssignResult { created:RangeAssignment[]; shortfall:number; }
-export function autoAssignRange(eventId:string):Promise<AutoAssignResult>{return api.post(`/ranges/${eventId}/auto-assign`).then(r=>r.data);}
-export function confirmDraftAssignment(eventId:string,assignmentId:string):Promise<RangeAssignment>{return api.post(`/ranges/${eventId}/assignments/${assignmentId}/confirm`).then(r=>r.data);}
-export function confirmAllDrafts(eventId:string):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/confirm-all`).then(r=>r.data);}
 export interface RangeCandidate { soldier_id:string; full_name:string; personal_number:string; reason_code:string; blocked:boolean; blocked_reason:string|null; }
 export function getRangeCandidates(eventId:string):Promise<RangeCandidate[]>{return api.get(`/ranges/${eventId}/candidates`).then(r=>r.data);}
 export function batchAssignRange(eventId:string,input:{primaries:string[];reserves:string[]}):Promise<RangeAssignment[]>{return api.post(`/ranges/${eventId}/assignments/batch`,input).then(r=>r.data);}

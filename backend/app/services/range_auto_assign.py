@@ -7,23 +7,18 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.audit.writer import write_audit
 from app.db.models import (
     RANGE_TYPE_RANK,
     DutyAssignment,
     DutyType,
     HierarchyNode,
-    NotificationType,
     RangeAssignment,
     RangeEvent,
-    RangeEventStatus,
     Soldier,
     SoldierRangeQualification,
 )
 from app.services.constraints import get_approved_constraint_dates
-from app.services.notifications import create_notification
 from app.services.range_exemption import is_range_exempt
-from app.services.ranges import RangeValidationError, _acquire_range_assignment_date_lock
 
 
 def _qualification_types_at_or_above(range_type: str) -> list[str]:
@@ -102,32 +97,6 @@ def _rank_candidate(session: Session, *, soldier: Soldier, event: RangeEvent) ->
     return (1, str(soldier.id)), "available_and_balanced"
 
 
-def _candidate_pool(session: Session, *, event: RangeEvent, exclude_soldier_ids: set[uuid.UUID]) -> list[Soldier]:
-    subtree_node_ids = list(
-        session.execute(
-            select(HierarchyNode.id).where(HierarchyNode.path_ids.any(event.hierarchy_node_id))  # type: ignore[arg-type]
-        ).scalars().all()
-    )
-    soldiers = session.execute(
-        select(Soldier).where(Soldier.hierarchy_node_id.in_(subtree_node_ids))
-    ).scalars().all()
-
-    pool: list[Soldier] = []
-    for soldier in soldiers:
-        if soldier.id in exclude_soldier_ids:
-            continue
-        if is_range_exempt(session, soldier=soldier, event_date=event.date):
-            continue
-        if _has_approved_constraint_on_date(session, soldier_id=soldier.id, event_date=event.date):
-            continue
-        if _has_duty_assignment_on_date(session, soldier_id=soldier.id, event_date=event.date):
-            continue
-        if _has_range_assignment_on_date(session, soldier_id=soldier.id, event_date=event.date):
-            continue
-        pool.append(soldier)
-    return pool
-
-
 @dataclass
 class RankedCandidate:
     soldier: Soldier
@@ -138,10 +107,10 @@ class RankedCandidate:
 
 def rank_candidates(session: Session, *, event: RangeEvent) -> list[RankedCandidate]:
     """Read-only: ranks every soldier in the event's subtree who isn't already
-    assigned to it, same tier ordering as propose_range_assignments, but never
-    writes to the database. Ineligible soldiers (exempt/constrained/already
-    duty- or range-assigned that day) are marked blocked=True instead of
-    being excluded, so the frontend can show them (greyed out) rather than
+    assigned to it, using the Phase 2 tier ordering, but never writes to the
+    database. Ineligible soldiers (exempt/constrained/already duty- or
+    range-assigned that day) are marked blocked=True instead of being
+    excluded, so the frontend can show them (greyed out) rather than
     silently omitting them."""
     existing_soldier_ids = {
         a.soldier_id for a in session.execute(
@@ -182,102 +151,3 @@ def rank_candidates(session: Session, *, event: RangeEvent) -> list[RankedCandid
 
     ranked.sort(key=sort_key)
     return ranked
-
-
-def propose_range_assignments(
-    session: Session, *, event: RangeEvent,
-) -> tuple[list[RangeAssignment], int]:
-    """Fills the event's currently-empty primary/reserve slots with draft
-    RangeAssignment rows (is_draft=True), ranked by the Phase 2 tier ordering.
-    Returns (created_drafts, shortfall) where shortfall is how many slots
-    could not be filled because the candidate pool ran out."""
-    _acquire_range_assignment_date_lock(session, event_date=event.date)
-    session.refresh(event)
-    if event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
-
-    existing = session.execute(
-        select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
-    ).scalars().all()
-    existing_soldier_ids = {a.soldier_id for a in existing}
-    remaining_primary = max(event.required_count - sum(1 for a in existing if not a.is_reserve), 0)
-    remaining_reserve = max(event.reserve_count - sum(1 for a in existing if a.is_reserve), 0)
-    total_needed = remaining_primary + remaining_reserve
-    if total_needed == 0:
-        return [], 0
-
-    pool = _candidate_pool(session, event=event, exclude_soldier_ids=existing_soldier_ids)
-    ranked = sorted(
-        ((soldier, _rank_candidate(session, soldier=soldier, event=event)) for soldier in pool),
-        key=lambda candidate: candidate[1][0],
-    )
-
-    chosen = ranked[:total_needed]
-    shortfall = total_needed - len(chosen)
-
-    created: list[RangeAssignment] = []
-    for index, (soldier, (_, reason_code)) in enumerate(chosen):
-        assignment = RangeAssignment(
-            range_event_id=event.id, soldier_id=soldier.id,
-            is_reserve=index >= remaining_primary, is_draft=True,
-            assignment_reason_code=reason_code, assignment_reason_text=None,
-        )
-        session.add(assignment)
-        created.append(assignment)
-
-    session.commit()
-    for assignment in created:
-        session.refresh(assignment)
-    return created, shortfall
-
-
-def _stage_draft_confirmation(
-    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None,
-) -> None:
-    if not assignment.is_draft:
-        raise RangeValidationError("assignment_not_draft")
-
-    assignment.is_draft = False
-    write_audit(
-        session, actor_id=actor_id, action="range_assignment_confirm", entity_type="range_assignment",
-        entity_id=assignment.id, before={"is_draft": True}, after={"is_draft": False},
-    )
-    create_notification(
-        session, soldier_id=assignment.soldier_id, type=NotificationType.range_assignment_confirmed,
-        title="שובצת למטווח", reference_type="range_assignment", reference_id=assignment.id, actor_id=actor_id,
-    )
-
-
-def confirm_draft_assignment(
-    session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None,
-) -> RangeAssignment:
-    event = session.get(RangeEvent, assignment.range_event_id)
-    if event is None or event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
-
-    _stage_draft_confirmation(session, assignment=assignment, actor_id=actor_id)
-    session.commit()
-    session.refresh(assignment)
-    return assignment
-
-
-def confirm_all_drafts(
-    session: Session, *, event: RangeEvent, actor_id: uuid.UUID | None = None,
-) -> list[RangeAssignment]:
-    if event.status != RangeEventStatus.planned:
-        raise RangeValidationError("event_not_planned")
-    drafts = session.execute(
-        select(RangeAssignment).where(
-            RangeAssignment.range_event_id == event.id, RangeAssignment.is_draft.is_(True),
-        )
-    ).scalars().all()
-    try:
-        for draft in drafts:
-            _stage_draft_confirmation(session, assignment=draft, actor_id=actor_id)
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    for draft in drafts:
-        session.refresh(draft)
-    return drafts

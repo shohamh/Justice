@@ -521,27 +521,6 @@ def mark_attendance_route(
     return _assignment_out(updated)
 
 
-class AutoAssignResponse(BaseModel):
-    created: list[RangeAssignmentOut]
-    shortfall: int
-
-
-@router.post("/{event_id}/auto-assign", response_model=AutoAssignResponse)
-def auto_assign(
-    event_id: uuid.UUID,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> AutoAssignResponse:
-    _require_enabled(session)
-    event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    try:
-        created, shortfall = auto_assign_svc.propose_range_assignments(session, event=event)
-    except svc.RangeValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return AutoAssignResponse(created=[_assignment_out(a) for a in created], shortfall=shortfall)
-
-
 class RangeCandidateOut(BaseModel):
     soldier_id: uuid.UUID
     full_name: str
@@ -568,44 +547,6 @@ def get_range_candidates(
         )
         for c in ranked
     ]
-
-
-@router.post("/{event_id}/assignments/{assignment_id}/confirm", response_model=RangeAssignmentOut)
-def confirm_assignment(
-    event_id: uuid.UUID,
-    assignment_id: uuid.UUID,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> RangeAssignmentOut:
-    _require_enabled(session)
-    event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    assignment = session.get(RangeAssignment, assignment_id)
-    if assignment is None or assignment.range_event_id != event_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assignment_not_found")
-    try:
-        confirmed = auto_assign_svc.confirm_draft_assignment(
-            session, assignment=assignment, actor_id=user.id
-        )
-    except svc.RangeValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return _assignment_out(confirmed)
-
-
-@router.post("/{event_id}/assignments/confirm-all", response_model=list[RangeAssignmentOut])
-def confirm_all_assignments(
-    event_id: uuid.UUID,
-    session: Session = Depends(get_session),
-    user: Soldier = Depends(require_password_changed),
-) -> list[RangeAssignmentOut]:
-    _require_enabled(session)
-    event = _load_event(session, event_id)
-    authorize(session, user, Action.RANGE_MANAGE, target_node=_event_node(session, event))
-    try:
-        confirmed = auto_assign_svc.confirm_all_drafts(session, event=event, actor_id=user.id)
-    except svc.RangeValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return [_assignment_out(a) for a in confirmed]
 
 
 def _authorize_excusal_decision(session: Session, user: Soldier, event: RangeEvent) -> None:
