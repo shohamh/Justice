@@ -16,6 +16,7 @@ import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
+import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 
 const RANGE_TYPE_COLORS: Record<string, string> = {
@@ -39,8 +40,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
-  const [dutyTypeFilter, setDutyTypeFilter] = useState<string[]>([]);
-  const [rangeTypeFilter, setRangeTypeFilter] = useState<string[]>([]);
+  // null means "no manual selection yet" — everything currently known is
+  // treated as selected. Once the user touches the dropdown, this becomes a
+  // concrete array reflecting exactly what's checked, including an empty
+  // array (meaning "show nothing of this category"), not "no filter".
+  const [dutyTypeFilter, setDutyTypeFilter] = useState<string[] | null>(null);
+  const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -85,49 +90,42 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     fetchData(from, to);
   }
 
-  const filteredShifts = useMemo(() => {
-    if (dutyTypeFilter.length === 0) return shifts;
-    return shifts.filter(s => dutyTypeFilter.includes(s.duty_type_id));
-  }, [shifts, dutyTypeFilter]);
-
-  const filteredRanges = useMemo(() => {
-    if (rangeTypeFilter.length === 0) return ranges;
-    return ranges.filter(r => rangeTypeFilter.includes(r.range_type));
-  }, [ranges, rangeTypeFilter]);
-
-  const shiftEvents = useMemo(() => {
-    const out: {
-      id: string;
-      title: string;
-      start: string;
-      end: string;
-      allDay: boolean;
-      backgroundColor: string;
-      borderColor: string;
-      classNames: string[];
-      extendedProps: { shiftId: string; dutyTypeId: string; swapCount: number };
-    }[] = [];
-    for (const s of filteredShifts) {
-      // start_at/end_at carry the shift's real wall-clock times, so the week
-      // view can position events within hour slots. Shifts that just use the
-      // full-day default (00:00-23:59) have no real hour data, so treat them
-      // as all-day: otherwise the week view crams them into narrow near-24h
-      // slivers instead of a compact banner.
-      const isFullDayDefault = s.start_time === "00:00" && s.end_time === "23:59";
-      out.push({
-        id: s.id,
-        title: `${s.duty_type_name} — ${s.duty_location_name}`,
-        start: isFullDayDefault ? s.start_date : s.start_at,
-        end: isFullDayDefault ? s.end_date : s.end_at,
-        allDay: isFullDayDefault,
-        backgroundColor: s.duty_type_color,
-        borderColor: s.duty_type_color,
-        classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
-        extendedProps: { shiftId: s.id, dutyTypeId: s.duty_type_id, swapCount: s.swap_request_count ?? 0 },
-      });
+  const dutyTypesInView = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of shifts) {
+      if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
     }
-    return out;
-  }, [filteredShifts]);
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [shifts]);
+
+  const rangeTypeOptions = useMemo(
+    () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
+    [],
+  );
+
+  // Effective selection for both filtering and the dropdown's checked state:
+  // before any manual interaction (null), everything currently known counts
+  // as selected, so the calendar shows everything by default.
+  const effectiveDutyTypeFilter = useMemo(
+    () => dutyTypeFilter ?? dutyTypesInView.map(dt => dt.id),
+    [dutyTypeFilter, dutyTypesInView],
+  );
+  const effectiveRangeTypeFilter = useMemo(
+    () => rangeTypeFilter ?? rangeTypeOptions.map(rt => rt.id),
+    [rangeTypeFilter, rangeTypeOptions],
+  );
+
+  const filteredShifts = useMemo(
+    () => shifts.filter(s => effectiveDutyTypeFilter.includes(s.duty_type_id)),
+    [shifts, effectiveDutyTypeFilter],
+  );
+
+  const filteredRanges = useMemo(
+    () => ranges.filter(r => effectiveRangeTypeFilter.includes(r.range_type)),
+    [ranges, effectiveRangeTypeFilter],
+  );
+
+  const shiftEvents = useMemo(() => filteredShifts.map(shiftToCalendarEvent), [filteredShifts]);
 
   const rangeCalEvents = useMemo(() =>
     filteredRanges.map((r) => ({
@@ -159,41 +157,27 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     if (shift) setSelectedShift(shift);
   }
 
-  const dutyTypesInView = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const s of shifts) {
-      if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
-    }
-    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [shifts]);
-
-  const rangeTypesInView = useMemo(() => {
-    const seen = new Set<string>();
-    for (const r of ranges) seen.add(r.range_type);
-    return Array.from(seen).map((id) => ({ id, name: RANGE_TYPE_LABELS[id] ?? id }));
-  }, [ranges]);
-
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
 
   return (
     <div className="space-y-4">
-      {(dutyTypesInView.length > 1 || rangeTypesInView.length > 0) && (
+      {(dutyTypesInView.length > 1 || rangesEnabled) && (
         <div className="flex flex-wrap gap-3 text-sm items-center">
           {dutyTypesInView.length > 1 && (
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
-              selected={dutyTypeFilter}
+              selected={effectiveDutyTypeFilter}
               onChange={setDutyTypeFilter}
               triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
               panelDir="rtl"
             />
           )}
-          {rangeTypesInView.length > 0 && (
+          {rangesEnabled && (
             <CheckboxListDropdown
-              items={rangeTypesInView.map((rt) => ({ id: rt.id, label: rt.name }))}
-              selected={rangeTypeFilter}
+              items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
+              selected={effectiveRangeTypeFilter}
               onChange={setRangeTypeFilter}
-              triggerLabel={t("unit_calendar.range_filter_label") || "מטווחים"}
+              triggerLabel={t("unit_calendar.range_filter_label") || "סוגי מטווחים"}
               panelDir="rtl"
             />
           )}
@@ -252,8 +236,16 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
             const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
+            const isMultiDay = shiftSpansMultipleDays(shift);
+            const edgeLabels = isMultiDay ? shiftEdgeLabels(shift) : null;
             return (
               <div className="text-xs leading-tight px-1 overflow-hidden w-full">
+                {edgeLabels && (
+                  <div dir="rtl" className="flex items-center justify-between gap-1 text-[10px] opacity-90 w-full">
+                    <span className="flex-shrink-0">{edgeLabels.start}</span>
+                    <span className="flex-shrink-0">{edgeLabels.end}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 w-full">
                   <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
                   {swapCount > 0 && (

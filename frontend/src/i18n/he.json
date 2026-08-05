@@ -408,7 +408,7 @@
     "duty_detail": "פרטי תורנות",
     "filter_label": "סינון לפי סוג:",
     "duty_type_filter_label": "סוגי תורנויות",
-    "range_filter_label": "מטווחים",
+    "range_filter_label": "סוגי מטווחים",
     "swap_requests_count": "{{count}} בקשות החלפה",
     "swap_requests_has": "יש בקשת החלפה",
     "cover_for_free": "כסה בחינם"
