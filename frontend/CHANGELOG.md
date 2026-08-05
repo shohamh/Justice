@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-05
+
+### Features
+- The unit calendar's range-type filter dropdown now stays visible whenever ranges are enabled, and calendar filters default to all-selected (with empty selection meaning "show none").
+- Multi-day shifts on the calendar now get Outlook-style edge labels, including the day-of-week on each edge.
+
+### Fixes
+- Fixed multi-day shift detection and stopped multi-day shifts from rendering as duplicate per-day segments on the calendar.
+
 ## 2026-08-04
 
 ### Features
