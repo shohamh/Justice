@@ -124,6 +124,13 @@ def effective_duty_spans(
         (o.duty_assignment_id, o.date): o
         for o in session.execute(select(DutyDayOverride)).scalars().all()
     }
+    dismissal_ranges: dict[uuid.UUID, list[tuple[date, date]]] = {}
+    for d in session.execute(select(DutyDismissal)).scalars().all():
+        dismissal_ranges.setdefault(d.duty_assignment_id, []).append((d.dismissed_from, d.dismissed_to))
+
+    def _is_dismissed(assignment_id: uuid.UUID, day: date) -> bool:
+        return any(df <= day <= dt for df, dt in dismissal_ranges.get(assignment_id, []))
+
     spans: list[dict[str, Any]] = []
     for a in assignments:
         last_assignment_day = a.end_date - timedelta(days=1)
@@ -158,7 +165,12 @@ def effective_duty_spans(
         day = a.start_date
         while day < a.end_date:
             ov = overrides.get((a.id, day))
-            eff = ov.effective_soldier_id if ov is not None else a.soldier_id
+            if ov is not None:
+                eff = ov.effective_soldier_id
+            elif _is_dismissed(a.id, day):
+                eff = None
+            else:
+                eff = a.soldier_id
             if eff == cur:
                 run_end = day
             else:
