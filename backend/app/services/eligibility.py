@@ -19,7 +19,7 @@ ENLISTED_RANKS = [
     "טוראי", "רבט", "סמל", "סמר", "רסל", "רסר", "רסמ", "רסב", "רנג",
 ]
 OFFICER_RANKS = [
-    "קמא", "סגמ", "סגן", "קאב", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
+    "קמא", "סגמ", "סגן", "קאב", "סרן", "קאם", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
 ]
 ALL_RANKS = ENLISTED_RANKS + OFFICER_RANKS
 
@@ -34,15 +34,15 @@ SOLDIER_EDITABLE_FIELDS = {
 }
 
 # Ranks that structurally cannot exist on the other track, confirmed with
-# product: קא"ב and סרן are קבע-only officer ranks (added explicitly below,
-# since neither falls under RANKS_RASAN_AND_ABOVE); סג"ם is always חובה
-# (already covered by CHOVAH_ONLY_RANKS). סגן is the only rank left
+# product: קא"ב, סרן, and קא"ם are קבע-only officer ranks (added explicitly
+# below, since none of them fall under RANKS_RASAN_AND_ABOVE); סג"ם is always
+# חובה (already covered by CHOVAH_ONLY_RANKS). סגן is the only rank left
 # deliberately unrestricted — it can be either track.
 _CHOVAH_ONLY_TRACK_RANKS = frozenset(CHOVAH_ONLY_RANKS)
 _KEVA_ONLY_TRACK_RANKS = frozenset(
     [r for r in ENLISTED_RANKS if r not in CHOVAH_ONLY_RANKS]
     + list(RANKS_RASAN_AND_ABOVE)
-    + ["קאב", "סרן"]
+    + ["קאב", "סרן", "קאם"]
 )
 
 RANK_TRACK_COMPATIBILITY: dict[str, frozenset[str]] = {

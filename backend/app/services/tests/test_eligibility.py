@@ -66,6 +66,20 @@ def test_saren_is_keva_only():
     validate_rank_track_compatibility(rank="סרן", is_career=True)  # should not raise
 
 
+def test_kaam_is_officer_rank_below_rasan():
+    from app.services.eligibility import OFFICER_RANKS
+    assert "קאם" in OFFICER_RANKS
+    assert OFFICER_RANKS.index("קאם") < OFFICER_RANKS.index("רסן")
+
+
+def test_kaam_is_keva_only():
+    from app.services.eligibility import validate_rank_track_compatibility
+    import pytest
+    with pytest.raises(ValueError, match="rank_track_incompatible"):
+        validate_rank_track_compatibility(rank="קאם", is_career=False)
+    validate_rank_track_compatibility(rank="קאם", is_career=True)  # should not raise
+
+
 def test_sgan_is_ambiguous_and_accepts_either_track():
     from app.services.eligibility import validate_rank_track_compatibility
     validate_rank_track_compatibility(rank="סגן", is_career=True)
