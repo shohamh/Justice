@@ -147,7 +147,12 @@ def test_register_duplicate_personal_number_raises(admin_session):
                  exemption_requests=[], personal_constraints=[], **_base(personal_number=pn))
 
 
-def test_register_always_starts_as_chovah(admin_session):
+# is_career is False here for two independent reasons: (1) rank "טוראי" is a
+# חובה-only rank, so is_career short-circuits to False regardless of dates, and
+# (2) mandatory_end_date (from _base()) is in the future anyway. This is NOT
+# evidence that registration always hardcodes חובה — see derive_is_career for
+# the actual date-based derivation this branch introduced.
+def test_register_starts_as_chovah_while_mandatory_service_is_ongoing(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     from app.services.invite_codes import create_invite_code

@@ -157,7 +157,19 @@ export default function RegisterPage() {
         : detail === "discharge_date_in_past"
         ? t("register.discharge_date_must_be_future")
         : detail ? knownErrors[detail] : undefined;
-      setError(detail ? (mappedDetail ?? detail) : t("register.errors.network"));
+      // Fall back to a generic `errors.<code>` lookup for any backend error
+      // code that already has a top-level translation (e.g. chovah_rank_cannot_be_keva,
+      // discharge_date_before_enlistment, mandatory_end_after_discharge) but isn't
+      // one of the special-cased codes above or listed in knownErrors. This keeps
+      // future backend error codes from showing as raw snake_case strings without
+      // requiring knownErrors to be kept in sync forever. i18next returns the key
+      // itself when a translation is missing, so we detect a genuine miss that way.
+      const genericTranslationKey = detail ? `errors.${detail}` : undefined;
+      const genericTranslated = genericTranslationKey ? t(genericTranslationKey) : undefined;
+      const genericDetail = genericTranslated && genericTranslated !== genericTranslationKey
+        ? genericTranslated
+        : undefined;
+      setError(detail ? (mappedDetail ?? genericDetail ?? detail) : t("register.errors.network"));
     } finally {
       setSubmitting(false);
     }
@@ -173,7 +185,7 @@ export default function RegisterPage() {
   const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, isCareer)
     ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
     : null;
-  const dischargeDateError = form.discharge_date && form.discharge_date <= new Date().toISOString().slice(0, 10)
+  const dischargeDateError = form.discharge_date && form.discharge_date < new Date().toISOString().slice(0, 10)
     ? t("register.discharge_date_must_be_future")
     : null;
 
