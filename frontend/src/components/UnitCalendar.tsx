@@ -40,8 +40,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShift, setSelectedShift] = useState<CalendarShift | null>(null);
-  const [dutyTypeFilter, setDutyTypeFilter] = useState<string[]>([]);
-  const [rangeTypeFilter, setRangeTypeFilter] = useState<string[]>([]);
+  // null means "no manual selection yet" — everything currently known is
+  // treated as selected. Once the user touches the dropdown, this becomes a
+  // concrete array reflecting exactly what's checked, including an empty
+  // array (meaning "show nothing of this category"), not "no filter".
+  const [dutyTypeFilter, setDutyTypeFilter] = useState<string[] | null>(null);
+  const [rangeTypeFilter, setRangeTypeFilter] = useState<string[] | null>(null);
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -86,15 +90,40 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     fetchData(from, to);
   }
 
-  const filteredShifts = useMemo(() => {
-    if (dutyTypeFilter.length === 0) return shifts;
-    return shifts.filter(s => dutyTypeFilter.includes(s.duty_type_id));
-  }, [shifts, dutyTypeFilter]);
+  const dutyTypesInView = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of shifts) {
+      if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [shifts]);
 
-  const filteredRanges = useMemo(() => {
-    if (rangeTypeFilter.length === 0) return ranges;
-    return ranges.filter(r => rangeTypeFilter.includes(r.range_type));
-  }, [ranges, rangeTypeFilter]);
+  const rangeTypeOptions = useMemo(
+    () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
+    [],
+  );
+
+  // Effective selection for both filtering and the dropdown's checked state:
+  // before any manual interaction (null), everything currently known counts
+  // as selected, so the calendar shows everything by default.
+  const effectiveDutyTypeFilter = useMemo(
+    () => dutyTypeFilter ?? dutyTypesInView.map(dt => dt.id),
+    [dutyTypeFilter, dutyTypesInView],
+  );
+  const effectiveRangeTypeFilter = useMemo(
+    () => rangeTypeFilter ?? rangeTypeOptions.map(rt => rt.id),
+    [rangeTypeFilter, rangeTypeOptions],
+  );
+
+  const filteredShifts = useMemo(
+    () => shifts.filter(s => effectiveDutyTypeFilter.includes(s.duty_type_id)),
+    [shifts, effectiveDutyTypeFilter],
+  );
+
+  const filteredRanges = useMemo(
+    () => ranges.filter(r => effectiveRangeTypeFilter.includes(r.range_type)),
+    [ranges, effectiveRangeTypeFilter],
+  );
 
   const shiftEvents = useMemo(() => filteredShifts.map(shiftToCalendarEvent), [filteredShifts]);
 
@@ -128,19 +157,6 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     if (shift) setSelectedShift(shift);
   }
 
-  const dutyTypesInView = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const s of shifts) {
-      if (!seen.has(s.duty_type_id)) seen.set(s.duty_type_id, s.duty_type_name);
-    }
-    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [shifts]);
-
-  const rangeTypeOptions = useMemo(
-    () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
-    [],
-  );
-
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
 
   return (
@@ -150,7 +166,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           {dutyTypesInView.length > 1 && (
             <CheckboxListDropdown
               items={dutyTypesInView.map((dt) => ({ id: dt.id, label: dt.name }))}
-              selected={dutyTypeFilter}
+              selected={effectiveDutyTypeFilter}
               onChange={setDutyTypeFilter}
               triggerLabel={t("unit_calendar.duty_type_filter_label") || "סוגי תורנויות"}
               panelDir="rtl"
@@ -159,7 +175,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
           {rangesEnabled && (
             <CheckboxListDropdown
               items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
-              selected={rangeTypeFilter}
+              selected={effectiveRangeTypeFilter}
               onChange={setRangeTypeFilter}
               triggerLabel={t("unit_calendar.range_filter_label") || "סוגי מטווחים"}
               panelDir="rtl"
