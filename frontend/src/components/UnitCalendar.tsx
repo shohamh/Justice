@@ -16,7 +16,7 @@ import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
-import { shiftToCalendarEvent } from "../utils/shiftCalendarEvent";
+import { shiftToCalendarEvent, shiftSpansMultipleDays, shiftEdgeLabels } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 
 const RANGE_TYPE_COLORS: Record<string, string> = {
@@ -221,8 +221,16 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
             const shift = shifts.find(s => s.id === arg.event.extendedProps.shiftId);
             if (!shift) return <div />;
             const swapCount = (arg.event.extendedProps.swapCount as number) ?? 0;
+            const isMultiDay = shiftSpansMultipleDays(shift);
+            const edgeLabels = isMultiDay ? shiftEdgeLabels(shift) : null;
             return (
               <div className="text-xs leading-tight px-1 overflow-hidden w-full">
+                {edgeLabels && (
+                  <div dir="rtl" className="flex items-center justify-between gap-1 text-[10px] opacity-90 w-full">
+                    <span className="flex-shrink-0">{edgeLabels.start}</span>
+                    <span className="flex-shrink-0">{edgeLabels.end}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1 w-full">
                   <span className="font-semibold truncate flex-1">{shift.duty_type_name} — {shift.duty_location_name}</span>
                   {swapCount > 0 && (
