@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ENLISTED_RANKS, OFFICER_RANKS, isOfficerRank, isRankTrackCompatible } from "./ranks";
+import { ENLISTED_RANKS, OFFICER_RANKS, isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate } from "./ranks";
 
 describe("rank constants", () => {
   it("classifies סגמ (סג\"ם) as an officer rank, not enlisted", () => {
@@ -55,5 +55,23 @@ describe("קא\"ם rank", () => {
   it("rejects קאם on the חובה track and accepts it on קבע", () => {
     expect(isRankTrackCompatible("קאם", false)).toBe(false);
     expect(isRankTrackCompatible("קאם", true)).toBe(true);
+  });
+});
+
+describe("deriveBahad1Graduate", () => {
+  it("is true for regular officer ranks", () => {
+    expect(deriveBahad1Graduate("סרן")).toBe(true);
+    expect(deriveBahad1Graduate("רסן")).toBe(true);
+    expect(deriveBahad1Graduate("סגן")).toBe(true);
+  });
+
+  it("is false for קמא, קאב, קאם", () => {
+    expect(deriveBahad1Graduate("קמא")).toBe(false);
+    expect(deriveBahad1Graduate("קאב")).toBe(false);
+    expect(deriveBahad1Graduate("קאם")).toBe(false);
+  });
+
+  it("is false for enlisted ranks", () => {
+    expect(deriveBahad1Graduate("טוראי")).toBe(false);
   });
 });

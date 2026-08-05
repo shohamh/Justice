@@ -110,6 +110,16 @@ def derive_is_career(
     return discharge_date is None or discharge_date > mandatory_end_date
 
 
+BAHAD1_EXCLUDED_OFFICER_RANKS = ["קמא", "קאב", "קאם"]
+
+
+def derive_bahad1_graduate(rank: str | None) -> bool:
+    """Every officer rank is a בה"ד 1 graduate except קמ"א, קא"ב, and קא"ם."""
+    if rank not in OFFICER_RANKS:
+        return False
+    return rank not in BAHAD1_EXCLUDED_OFFICER_RANKS
+
+
 def _is_eligible(soldier: Soldier, reqs: DutyTypeRequirements, *, mitvahim_months: int, alal_months: int, today: date) -> bool:
     """Return False if soldier fails any requirement (fail-safe: null field = blocked if restriction exists)."""
     if reqs.allowed_genders:

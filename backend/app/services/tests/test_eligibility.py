@@ -91,6 +91,27 @@ def test_unknown_rank_is_not_restricted():
     validate_rank_track_compatibility(rank="not_a_real_rank", is_career=True)
 
 
+def test_derive_bahad1_graduate_true_for_regular_officer():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("סרן") is True
+    assert derive_bahad1_graduate("רסן") is True
+    assert derive_bahad1_graduate("סגן") is True
+
+
+def test_derive_bahad1_graduate_false_for_excluded_officer_ranks():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("קמא") is False
+    assert derive_bahad1_graduate("קאב") is False
+    assert derive_bahad1_graduate("קאם") is False
+
+
+def test_derive_bahad1_graduate_false_for_enlisted_and_unknown():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("טוראי") is False
+    assert derive_bahad1_graduate(None) is False
+    assert derive_bahad1_graduate("not_a_real_rank") is False
+
+
 def test_enlisted_keva_soldier_is_eligible_for_at_least_one_seeded_duty_type(db_admin_url: str):
     """Regression for the seed-data bug where every enlisted duty type's
     requirements set allowed_service_types: ["חובה"] only, making enlisted

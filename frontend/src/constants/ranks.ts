@@ -40,3 +40,11 @@ export function isRankTrackCompatible(rank: string, isCareer: boolean): boolean 
   if (!required) return true;
   return required === (isCareer ? "קבע" : "חובה");
 }
+
+const BAHAD1_EXCLUDED_OFFICER_RANKS = ["קמא", "קאב", "קאם"];
+
+// Mirrors backend/app/services/eligibility.py derive_bahad1_graduate.
+export function deriveBahad1Graduate(rank: string): boolean {
+  if (!OFFICER_RANK_SET.has(rank)) return false;
+  return !BAHAD1_EXCLUDED_OFFICER_RANKS.includes(rank);
+}
