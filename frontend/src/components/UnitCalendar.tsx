@@ -167,17 +167,16 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
   }, [shifts]);
 
-  const rangeTypesInView = useMemo(() => {
-    const seen = new Set<string>();
-    for (const r of ranges) seen.add(r.range_type);
-    return Array.from(seen).map((id) => ({ id, name: RANGE_TYPE_LABELS[id] ?? id }));
-  }, [ranges]);
+  const rangeTypeOptions = useMemo(
+    () => Object.entries(RANGE_TYPE_LABELS).map(([id, name]) => ({ id, name })),
+    [],
+  );
 
   const calendarMinWidthPx = calendarViewMinWidth(activeViewType);
 
   return (
     <div className="space-y-4">
-      {(dutyTypesInView.length > 1 || rangeTypesInView.length > 0) && (
+      {(dutyTypesInView.length > 1 || rangesEnabled) && (
         <div className="flex flex-wrap gap-3 text-sm items-center">
           {dutyTypesInView.length > 1 && (
             <CheckboxListDropdown
@@ -188,12 +187,12 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
               panelDir="rtl"
             />
           )}
-          {rangeTypesInView.length > 0 && (
+          {rangesEnabled && (
             <CheckboxListDropdown
-              items={rangeTypesInView.map((rt) => ({ id: rt.id, label: rt.name }))}
+              items={rangeTypeOptions.map((rt) => ({ id: rt.id, label: rt.name }))}
               selected={rangeTypeFilter}
               onChange={setRangeTypeFilter}
-              triggerLabel={t("unit_calendar.range_filter_label") || "מטווחים"}
+              triggerLabel={t("unit_calendar.range_filter_label") || "סוגי מטווחים"}
               panelDir="rtl"
             />
           )}
