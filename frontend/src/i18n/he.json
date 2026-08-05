@@ -1205,7 +1205,9 @@
       "constraint_missing_fields": "יש למלא תאריך התחלה וסיום לכל אילוץ, או להסיר את השורה",
       "network": "שגיאת רשת. נסה שוב."
     },
-    "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר"
+    "rank_track_incompatible_chovah": "לא ניתן להיות בדרגה זו במסלול חובה",
+    "rank_track_incompatible_keva": "לא ניתן להיות בדרגה זו במסלול קבע",
+    "discharge_date_must_be_future": "תאריך השחרור חייב להיות בעתיד"
   },
   "telegram_setup": {
     "title": "חיבור טלגרם",
