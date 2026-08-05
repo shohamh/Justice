@@ -16,6 +16,7 @@ import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import ShiftDetailPanel from "./ShiftDetailPanel";
 import { calendarViewMinWidth } from "../utils/calendarViewWidth";
+import { shiftToCalendarEvent } from "../utils/shiftCalendarEvent";
 import CheckboxListDropdown from "./CheckboxListDropdown";
 
 const RANGE_TYPE_COLORS: Record<string, string> = {
@@ -95,39 +96,7 @@ export default function UnitCalendar({ nodeId }: UnitCalendarProps) {
     return ranges.filter(r => rangeTypeFilter.includes(r.range_type));
   }, [ranges, rangeTypeFilter]);
 
-  const shiftEvents = useMemo(() => {
-    const out: {
-      id: string;
-      title: string;
-      start: string;
-      end: string;
-      allDay: boolean;
-      backgroundColor: string;
-      borderColor: string;
-      classNames: string[];
-      extendedProps: { shiftId: string; dutyTypeId: string; swapCount: number };
-    }[] = [];
-    for (const s of filteredShifts) {
-      // start_at/end_at carry the shift's real wall-clock times, so the week
-      // view can position events within hour slots. Shifts that just use the
-      // full-day default (00:00-23:59) have no real hour data, so treat them
-      // as all-day: otherwise the week view crams them into narrow near-24h
-      // slivers instead of a compact banner.
-      const isFullDayDefault = s.start_time === "00:00" && s.end_time === "23:59";
-      out.push({
-        id: s.id,
-        title: `${s.duty_type_name} — ${s.duty_location_name}`,
-        start: isFullDayDefault ? s.start_date : s.start_at,
-        end: isFullDayDefault ? s.end_date : s.end_at,
-        allDay: isFullDayDefault,
-        backgroundColor: s.duty_type_color,
-        borderColor: s.duty_type_color,
-        classNames: s.reserve_count > 0 ? ["fc-event-has-reserves"] : [],
-        extendedProps: { shiftId: s.id, dutyTypeId: s.duty_type_id, swapCount: s.swap_request_count ?? 0 },
-      });
-    }
-    return out;
-  }, [filteredShifts]);
+  const shiftEvents = useMemo(() => filteredShifts.map(shiftToCalendarEvent), [filteredShifts]);
 
   const rangeCalEvents = useMemo(() =>
     filteredRanges.map((r) => ({
