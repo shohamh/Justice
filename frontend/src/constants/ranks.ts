@@ -5,7 +5,7 @@ export const ENLISTED_RANKS = [
 ];
 
 export const OFFICER_RANKS = [
-  "קמא", "סגמ", "סגן", "קאב", "סרן", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
+  "קמא", "סגמ", "סגן", "קאב", "סרן", "קאם", "רסן", "סאל", "אלמ", "תאל", "אלוף", "רב אלוף",
 ];
 
 export const ALL_RANKS = [...ENLISTED_RANKS, ...OFFICER_RANKS];
@@ -27,6 +27,7 @@ const KEVA_ONLY_RANKS = [
   ...RASAN_AND_ABOVE,
   "קאב",
   "סרן",
+  "קאם",
 ];
 
 const RANK_TRACK_COMPATIBILITY: Record<string, "חובה" | "קבע"> = {

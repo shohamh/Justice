@@ -45,3 +45,15 @@ describe("rank/track compatibility", () => {
     expect(isRankTrackCompatible("סגן", false)).toBe(true);
   });
 });
+
+describe("קא\"ם rank", () => {
+  it("classifies קאם as an officer rank positioned below רסן", () => {
+    expect(OFFICER_RANKS).toContain("קאם");
+    expect(OFFICER_RANKS.indexOf("קאם")).toBeLessThan(OFFICER_RANKS.indexOf("רסן"));
+  });
+
+  it("rejects קאם on the חובה track and accepts it on קבע", () => {
+    expect(isRankTrackCompatible("קאם", false)).toBe(false);
+    expect(isRankTrackCompatible("קאם", true)).toBe(true);
+  });
+});
