@@ -34,7 +34,6 @@ def _payload(invite_code, node_id, **overrides):
         "gender": "male",
         "is_officer": False,
         "rank": "טוראי",
-        "bahad1_graduate": False,
         # Relative to today so a חובה-only rank never accidentally looks like it
         # outlived its own mandatory-service window as the real calendar advances.
         "enlistment_date": (date.today() - timedelta(days=600)).isoformat(),

@@ -61,7 +61,6 @@ class RegisterRequest(BaseModel):
     gender: str
     is_officer: bool | None = None
     rank: str
-    bahad1_graduate: bool = False
     enlistment_date: date
     mandatory_end_date: date
     discharge_date: date
@@ -332,7 +331,6 @@ def register(
             gender=body.gender,
             is_officer=body.is_officer,
             rank=body.rank,
-            bahad1_graduate=body.bahad1_graduate,
             enlistment_date=body.enlistment_date,
             mandatory_end_date=body.mandatory_end_date,
             discharge_date=body.discharge_date,
