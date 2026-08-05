@@ -83,22 +83,23 @@ describe("shiftSpansMultipleDays", () => {
 });
 
 describe("shiftEdgeLabels", () => {
-  it("formats the start label from start_date + start_time directly", () => {
+  it("prefixes the start label with its Hebrew day-of-week short name", () => {
+    // 2026-08-10 is a Monday.
     const labels = shiftEdgeLabels(shift({ start_date: "2026-08-10", start_time: "08:00" }));
-    expect(labels.start).toBe("10.08.2026 08:00");
+    expect(labels.start).toBe("ב׳ 10.08.2026 08:00");
   });
 
-  it("formats the end label from the exclusive end_date's inclusive last day + end_time", () => {
-    // end_date=2026-08-12 is exclusive, so the actual last day is 2026-08-11.
+  it("prefixes the end label with the day-of-week of the exclusive end_date's inclusive last day", () => {
+    // end_date=2026-08-12 is exclusive, so the actual last day is 2026-08-11 (a Tuesday).
     const labels = shiftEdgeLabels(shift({ end_date: "2026-08-12", end_time: "08:00" }));
-    expect(labels.end).toBe("11.08.2026 08:00");
+    expect(labels.end).toBe("ג׳ 11.08.2026 08:00");
   });
 
   it("produces the same day for both edges on a single-day shift", () => {
     const labels = shiftEdgeLabels(shift({
       start_date: "2026-08-10", end_date: "2026-08-11", start_time: "08:00", end_time: "16:00",
     }));
-    expect(labels.start).toBe("10.08.2026 08:00");
-    expect(labels.end).toBe("10.08.2026 16:00");
+    expect(labels.start).toBe("ב׳ 10.08.2026 08:00");
+    expect(labels.end).toBe("ב׳ 10.08.2026 16:00");
   });
 });

@@ -26,16 +26,25 @@ export function shiftSpansMultipleDays(s: CalendarShift): boolean {
   return lastDutyDay(s.end_date) !== s.start_date;
 }
 
+const HEBREW_DAY_SHORT = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+
+/** Short Hebrew day-of-week label (א׳-ש׳) for a yyyy-mm-dd date, Sunday-first. */
+function hebrewDayShort(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return HEBREW_DAY_SHORT[new Date(y, m - 1, d).getDay()];
+}
+
 /**
- * "dd.mm.yyyy HH:MM" labels for a multi-day shift's true start and end
+ * "א׳ dd.mm.yyyy HH:MM" labels for a multi-day shift's true start and end
  * moments, for the Outlook-style edge labels shown on its all-day banner.
  * `end_date` is the backend's exclusive boundary (see formatDate.ts) —
  * `end_time` pairs with the actual inclusive last day, not that boundary.
  */
 export function shiftEdgeLabels(s: CalendarShift): { start: string; end: string } {
+  const endDay = lastDutyDay(s.end_date);
   return {
-    start: `${formatDate(s.start_date)} ${s.start_time}`,
-    end: `${formatDate(lastDutyDay(s.end_date))} ${s.end_time}`,
+    start: `${hebrewDayShort(s.start_date)} ${formatDate(s.start_date)} ${s.start_time}`,
+    end: `${hebrewDayShort(endDay)} ${formatDate(endDay)} ${s.end_time}`,
   };
 }
 
