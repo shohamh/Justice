@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ENLISTED_RANKS, OFFICER_RANKS, isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate } from "./ranks";
+import { ENLISTED_RANKS, OFFICER_RANKS, isOfficerRank, isRankTrackCompatible, deriveBahad1Graduate, deriveIsCareer } from "./ranks";
 
 describe("rank constants", () => {
   it("classifies סגמ (סג\"ם) as an officer rank, not enlisted", () => {
@@ -73,5 +73,23 @@ describe("deriveBahad1Graduate", () => {
 
   it("is false for enlisted ranks", () => {
     expect(deriveBahad1Graduate("טוראי")).toBe(false);
+  });
+});
+
+describe("deriveIsCareer", () => {
+  it("is false before mandatory end date", () => {
+    expect(deriveIsCareer("טוראי", "2027-01-01", "", "2026-07-19")).toBe(false);
+  });
+
+  it("is true after mandatory end date with no discharge date, for a non-חובה-only rank", () => {
+    expect(deriveIsCareer("רסן", "2025-01-01", "", "2026-07-19")).toBe(true);
+  });
+
+  it("is false if discharged before mandatory end date", () => {
+    expect(deriveIsCareer("רסן", "2027-01-01", "2026-06-01", "2026-07-19")).toBe(false);
+  });
+
+  it("is never true for a חובה-only rank regardless of dates", () => {
+    expect(deriveIsCareer("טוראי", "2020-01-01", "", "2026-07-19")).toBe(false);
   });
 });

@@ -48,3 +48,18 @@ export function deriveBahad1Graduate(rank: string): boolean {
   if (!OFFICER_RANK_SET.has(rank)) return false;
   return !BAHAD1_EXCLUDED_OFFICER_RANKS.includes(rank);
 }
+
+// Mirrors backend/app/services/eligibility.py derive_is_career. Dates are ISO
+// "YYYY-MM-DD" strings, compared lexicographically (safe for this format,
+// avoids `Date` timezone-parsing pitfalls for a same-day comparison).
+export function deriveIsCareer(
+  rank: string,
+  mandatoryEndDate: string,
+  dischargeDate: string,
+  todayIso: string = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (CHOVAH_ONLY_RANKS.includes(rank)) return false;
+  if (!mandatoryEndDate) return false;
+  if (todayIso <= mandatoryEndDate) return false;
+  return !dischargeDate || dischargeDate > mandatoryEndDate;
+}
