@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     AuditLog,
     DutyAssignment,
+    DutyDayOverride,
     DutyDismissal,
     DutyLocation,
     DutyType,
@@ -157,6 +158,21 @@ def get_duty_history(
             )
         ).scalars().all()
     )
+
+    # Days this soldier received via a swap: the swap flow only ever writes
+    # DutyDayOverride rows — it never mutates DutyAssignment.soldier_id — so
+    # those days are invisible to the query above. Only keep overrides whose
+    # owning assignment does NOT already belong to this soldier, to avoid
+    # double-counting a soldier's own (un-swapped) days.
+    override_rows = list(
+        session.execute(
+            select(DutyDayOverride).where(DutyDayOverride.effective_soldier_id == soldier_id)
+        ).scalars().all()
+    )
+    foreign_override_rows = [
+        o for o in override_rows
+        if session.get(DutyAssignment, o.duty_assignment_id).soldier_id != soldier_id
+    ]
 
     duty_type_cache: dict[uuid.UUID, str] = {}
     spd_cache: dict[uuid.UUID, Decimal] = {}
@@ -323,6 +339,93 @@ def get_duty_history(
                     status=None,
                     metadata=dis_metadata,
                     created_at=d.created_at.isoformat(),
+                )
+            )
+
+    # --- DutyDayOverride events (days received via swap, on assignments this
+    # soldier doesn't own) — grouped into one event per contiguous run of
+    # override days on the same assignment, mirroring the run-merging pattern
+    # used by effective_duty_spans (scoring.py). ---
+    if foreign_override_rows:
+        foreign_assignment_cache: dict[uuid.UUID, DutyAssignment] = {}
+        foreign_dismissal_cache: dict[uuid.UUID, list[tuple[date, date]]] = {}
+
+        def _foreign_assignment(aid: uuid.UUID) -> DutyAssignment | None:
+            if aid not in foreign_assignment_cache:
+                foreign_assignment_cache[aid] = session.get(DutyAssignment, aid)
+            return foreign_assignment_cache[aid]
+
+        def _foreign_dismissal_ranges(aid: uuid.UUID) -> list[tuple[date, date]]:
+            if aid not in foreign_dismissal_cache:
+                rows = session.execute(
+                    select(DutyDismissal).where(DutyDismissal.duty_assignment_id == aid)
+                ).scalars().all()
+                foreign_dismissal_cache[aid] = [(d.dismissed_from, d.dismissed_to) for d in rows]
+            return foreign_dismissal_cache[aid]
+
+        sorted_overrides = sorted(
+            foreign_override_rows, key=lambda o: (o.duty_assignment_id, o.date)
+        )
+
+        runs: list[list[DutyDayOverride]] = []
+        for o in sorted_overrides:
+            if (
+                runs
+                and runs[-1][-1].duty_assignment_id == o.duty_assignment_id
+                and runs[-1][-1].date == o.date - timedelta(days=1)
+            ):
+                runs[-1].append(o)
+            else:
+                runs.append([o])
+
+        for run in runs:
+            a = _foreign_assignment(run[0].duty_assignment_id)
+            if a is None:
+                continue
+            dt_name = _duty_type_name(a.duty_type_id)
+            spd = spd_cache.get(a.duty_type_id, Decimal("0"))
+            loc_name = _location_name(a.duty_location_id)
+            dismissal_ranges = _foreign_dismissal_ranges(a.id)
+
+            run_start = run[0].date
+            run_end = run[-1].date
+
+            run_total, run_formula, run_segments = _score_parts(
+                a,
+                dismissal_ranges,
+                spd,
+                standby_mult,
+                called_up_mult,
+                dismissed_mult,
+                date_from=run_start,
+                date_to=run_end,
+            )
+            run_metadata: dict[str, str | None] = {
+                "duty_type_name": dt_name,
+                "location_name": loc_name,
+                "duty_assignment_id": str(a.id),
+                "duty_type_id": str(a.duty_type_id),
+                "duty_location_id": str(a.duty_location_id),
+                "is_reserve": "true" if a.is_reserve else "false",
+                "called_up": "false",
+                "score_total": run_total,
+                "score_segments": run_segments,
+                "via_swap": "true",
+            }
+            if run_formula:
+                run_metadata["score_formula"] = run_formula
+            events.append(
+                TimelineEvent(
+                    id=uuid.uuid5(a.id, f"override:{run_start.isoformat()}"),
+                    event_type="assignment",
+                    date=run_start.isoformat(),
+                    # Exclusive, matching DutyAssignment's own end_date convention.
+                    end_date=_isodate(run_end + timedelta(days=1)),
+                    title=f"{dt_name} ב{loc_name}",
+                    description=a.notes,
+                    status=a.status,
+                    metadata=run_metadata,
+                    created_at=a.created_at.isoformat(),
                 )
             )
 

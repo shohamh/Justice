@@ -539,6 +539,49 @@ def test_duty_history_hides_revocation_metadata_when_include_sensitive_false(adm
     assert "revoked_at" not in meta
 
 
+def test_swap_override_appears_in_receiving_soldiers_history(admin_session, duty_type, location):
+    """A day received via swap (DutyDayOverride) appears in the receiving soldier's
+    history as an 'assignment' event, even though DutyAssignment.soldier_id still
+    belongs to the original requester (swaps never mutate soldier_id — only
+    DutyDayOverride rows are written)."""
+    from app.services.assignments import set_day_override
+
+    original = create_soldier(admin_session, personal_number=f"99{_uid()}", role="soldier")
+    receiver = create_soldier(admin_session, personal_number=f"99{_uid()}", role="soldier")
+    a = DutyAssignment(
+        soldier_id=original.id, duty_type_id=duty_type.id, duty_location_id=location.id,
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 3), status="published", is_reserve=False,
+    )
+    admin_session.add(a)
+    admin_session.flush()
+    set_day_override(
+        admin_session, assignment=a, date=date(2026, 6, 1),
+        effective_soldier_id=receiver.id, reason="replacement", actor_id=None,
+    )
+    admin_session.commit()
+
+    events = get_duty_history(admin_session, receiver.id)
+
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.event_type == "assignment"
+    assert ev.date == "2026-06-01"
+    # end_date follows the exclusive convention used elsewhere in this module
+    # (matches DutyAssignment's own end_date semantics) — a single overridden
+    # day (2026-06-01) has an exclusive end_date of 2026-06-02.
+    assert ev.end_date == "2026-06-02"
+    assert ev.metadata["duty_assignment_id"] == str(a.id)
+    assert ev.metadata["via_swap"] == "true"
+    assert duty_type.name in ev.title
+    assert location.name in ev.title
+
+    # The original requester still sees the (unmodified) full assignment as
+    # their own — this test only asserts the receiver now also sees it.
+    original_events = get_duty_history(admin_session, original.id)
+    assert len(original_events) == 1
+    assert original_events[0].event_type == "assignment"
+
+
 def test_draft_metadata_includes_job_id(admin_session, soldier, duty_type, location):
     """Draft assignment metadata includes job_id when an audit log entry exists."""
     import uuid as _uuid
