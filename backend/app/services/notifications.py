@@ -5,7 +5,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
@@ -755,23 +755,15 @@ def broadcast_announcement(session: Session, *, title: str, body: str | None = N
             raise AnnouncementRateLimitError("duplicate_announcement_cooldown")
 
     if hierarchy_node_ids:
-        nodes = session.execute(
-            select(HierarchyNode).where(HierarchyNode.id.in_(hierarchy_node_ids))
-        ).scalars().all()
-        path_sets = [set(n.path_ids) for n in nodes if n.path_ids]
-        if path_sets:
-            combined_paths = set().union(*path_sets)
-            soldiers = session.execute(
-                select(Soldier).where(
-                    Soldier.hierarchy_node_id.in_(
-                        select(HierarchyNode.id).where(
-                            HierarchyNode.path_ids.overlap(list(combined_paths))
-                        )
+        soldiers = session.execute(
+            select(Soldier).where(
+                Soldier.hierarchy_node_id.in_(
+                    select(HierarchyNode.id).where(
+                        or_(*[HierarchyNode.path_ids.any(nid) for nid in hierarchy_node_ids])
                     )
                 )
-            ).scalars().all()
-        else:
-            soldiers = []
+            )
+        ).scalars().all()
     else:
         soldiers = session.execute(select(Soldier)).scalars().all()
 
