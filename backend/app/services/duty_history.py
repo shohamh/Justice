@@ -172,7 +172,11 @@ def get_duty_history(
     foreign_override_rows = []
     for o in override_rows:
         owning = session.get(DutyAssignment, o.duty_assignment_id)
-        if owning is not None and owning.soldier_id != soldier_id:
+        if (
+            owning is not None
+            and owning.soldier_id != soldier_id
+            and owning.status not in excluded_statuses
+        ):
             foreign_override_rows.append(o)
 
     duty_type_cache: dict[uuid.UUID, str] = {}
