@@ -27,6 +27,7 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
 }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState<string | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -37,14 +38,20 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
       .get(bugReportCommentAttachmentDownloadUrl(reportId, commentId, attachmentId), { responseType: "blob" })
       .then((res) => {
         if (cancelled) return;
-        objectUrl = URL.createObjectURL(res.data as Blob);
+        const b = res.data as Blob;
+        objectUrl = URL.createObjectURL(b);
         setUrl(objectUrl);
+        setBlob(b);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
+      // Only revokes this thumbnail's own object URL — if the user opened this
+      // attachment in the fullscreen preview, onOpen() below created a second,
+      // independent object URL from the same blob for the modal to own, so
+      // revoking this one here can't pull the rug out from under an open preview.
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [reportId, commentId, attachmentId]);
@@ -60,15 +67,19 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, cont
       </div>
     );
   }
-  if (!url) return null;
+  if (!url || !blob) return null;
   const isImage = contentType.startsWith("image/");
+  // Creates a second, independent object URL from the same blob rather than
+  // handing over this thumbnail's own `url` — that one gets revoked by this
+  // component's cleanup effect on unmount/refetch, which would otherwise
+  // pull the image out from under an still-open fullscreen preview.
   const img = (
     <img
       src={url}
       alt={t("bug_reports.attachment_preview_alt")}
       title={fileName}
       className={`max-w-[160px] max-h-[160px] rounded border dark:border-gray-600 mt-1 ${isImage ? "cursor-zoom-in" : ""}`}
-      onClick={isImage ? () => onOpen(url, fileName) : undefined}
+      onClick={isImage ? () => onOpen(URL.createObjectURL(blob), fileName) : undefined}
     />
   );
   if (isImage) return img;
@@ -257,7 +268,10 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
           fileUrl={previewImage.url}
           fileName={previewImage.name}
           contentType={previewImage.contentType}
-          onClose={() => setPreviewImage(null)}
+          onClose={() => {
+            URL.revokeObjectURL(previewImage.url);
+            setPreviewImage(null);
+          }}
         />
       )}
     </>

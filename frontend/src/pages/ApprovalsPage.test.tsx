@@ -590,7 +590,7 @@ describe("ApprovalsPage - exemption file links", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("שגיאה בביצוע הפעולה")).not.toBeInTheDocument();
-      expect(screen.getByText("אין לך הרשאה לצפות במסמך זה")).toBeInTheDocument();
+      expect(screen.getByText("אין לך הרשאה לבצע פעולה זו")).toBeInTheDocument();
     });
   });
 });

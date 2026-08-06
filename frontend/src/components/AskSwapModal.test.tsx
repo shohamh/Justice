@@ -172,6 +172,18 @@ describe("AskSwapModal", () => {
     expect(screen.getByText(/Dana Levi/)).toBeInTheDocument();
   });
 
+  test("shows a distinct no-results message (not the no-eligible-targets message) when a search query matches nobody", async () => {
+    mockListEligibleTargets.mockResolvedValueOnce([
+      { soldier_id: "s1", full_name: "Yossi Cohen", node_name: null, hierarchy_distance: 1 },
+    ]);
+    renderModal();
+    expect(await screen.findByText(/Yossi Cohen/)).toBeInTheDocument();
+    const searchInput = screen.getByTestId("ask-swap-target-search");
+    fireEvent.change(searchInput, { target: { value: "Zzzzz nonexistent" } });
+    await waitFor(() => expect(screen.getByText("swaps.no_search_results")).toBeInTheDocument());
+    expect(screen.queryByText("swaps.no_eligible_targets")).not.toBeInTheDocument();
+  });
+
   test("edit mode: eligible people grey out with invite_limit_reached once existing candidates already fill the cap", async () => {
     mockGetSwapConfig.mockResolvedValueOnce({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 2 });
     mockListEligibleTargets.mockResolvedValueOnce([
