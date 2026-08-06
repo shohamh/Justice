@@ -105,9 +105,31 @@ describe("MyRequestsPage - personal constraint form labels", () => {
     renderPage();
     await screen.findByTestId("constraints-remaining");
 
-    expect(screen.getByTestId("req-start").closest("div")?.querySelector("label")).not.toBeNull();
-    expect(screen.getByTestId("req-end").closest("div")?.querySelector("label")).not.toBeNull();
-    expect(screen.getByTestId("req-reason").closest("div")?.querySelector("label")).not.toBeNull();
+    // Scoped to `.flex-col.gap-1` (the field's own label+input wrapper div), not
+    // `.closest("div")` or `.parentElement`: req-start/req-end's data-testid sits on
+    // the <input> *inside* DateInput's own wrapper <span> (see DateInput.tsx), so
+    // `.parentElement` resolves to that <span>, not the label div. `.closest("div")`
+    // would incorrectly skip past <form> (not a <div>) if the label+wrapper-div JSX
+    // were ever reverted to flat siblings, landing on some ambient ancestor div
+    // instead. Plain `.closest(".flex-col")` isn't specific enough either — Layout's
+    // page-wrapper div (Layout.tsx:49) also carries the `flex-col` class, so it would
+    // still match after a revert. `.flex-col.gap-1` together is unique to the field
+    // wrapper divs among this element's ancestors.
+    //
+    // Each wrapper is asserted for existence *before* querying it for a <label>:
+    // `elem?.querySelector(...)` returns `undefined` (not `null`) when `elem` is
+    // null, and `undefined` also satisfies `.not.toBeNull()` — so skipping the
+    // wrapper-existence check would silently pass even when `.closest(...)` finds
+    // no match at all (as verified manually against the pre-fix JSX).
+    const startWrapper = screen.getByTestId("req-start").closest(".flex-col.gap-1");
+    const endWrapper = screen.getByTestId("req-end").closest(".flex-col.gap-1");
+    const reasonWrapper = screen.getByTestId("req-reason").closest(".flex-col.gap-1");
+    expect(startWrapper).not.toBeNull();
+    expect(endWrapper).not.toBeNull();
+    expect(reasonWrapper).not.toBeNull();
+    expect(startWrapper!.querySelector("label")).not.toBeNull();
+    expect(endWrapper!.querySelector("label")).not.toBeNull();
+    expect(reasonWrapper!.querySelector("label")).not.toBeNull();
   });
 });
 
