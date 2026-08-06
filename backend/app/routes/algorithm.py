@@ -540,7 +540,7 @@ def create_job(
 
     job = _submit_job(
         session, background_tasks,
-        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(),
+        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(mode="json"),
         actor_id=user.id,
     )
     return {"id": str(job.id), "status": job.status}
