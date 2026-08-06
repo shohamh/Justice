@@ -169,10 +169,11 @@ def get_duty_history(
             select(DutyDayOverride).where(DutyDayOverride.effective_soldier_id == soldier_id)
         ).scalars().all()
     )
-    foreign_override_rows = [
-        o for o in override_rows
-        if session.get(DutyAssignment, o.duty_assignment_id).soldier_id != soldier_id
-    ]
+    foreign_override_rows = []
+    for o in override_rows:
+        owning = session.get(DutyAssignment, o.duty_assignment_id)
+        if owning is not None and owning.soldier_id != soldier_id:
+            foreign_override_rows.append(o)
 
     duty_type_cache: dict[uuid.UUID, str] = {}
     spd_cache: dict[uuid.UUID, Decimal] = {}
