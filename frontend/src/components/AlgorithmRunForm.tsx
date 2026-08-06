@@ -98,7 +98,10 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
     setSubmitting(true);
     try {
       const apiMode = mode === "draft" ? "shadow" : "dm_reviewed";
-      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings });
+      const effectiveSettings = eligibleNodeIds.length > 0
+        ? { ...settings, eligible_node_ids: eligibleNodeIds }
+        : settings;
+      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings: effectiveSettings });
       onJobSubmitted(resp.id);
     } catch (e: unknown) {
       setError(translateApiError(e, t, "שגיאה בשליחת הבקשה"));

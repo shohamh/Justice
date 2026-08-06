@@ -11,6 +11,7 @@ export interface SolverSettings {
   time_limit_seconds: number;
   num_workers: number;
   auto_relax_node_quotas?: boolean;
+  eligible_node_ids?: string[];
 }
 
 export interface AlgorithmDefaults {

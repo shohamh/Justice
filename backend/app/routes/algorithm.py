@@ -74,6 +74,7 @@ class SolverSettingsIn(BaseModel):
     alpha: float = 1.0
     time_limit_seconds: int = Field(default=30, ge=5, le=120)
     auto_relax_node_quotas: bool = False
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateJobRequest(BaseModel):

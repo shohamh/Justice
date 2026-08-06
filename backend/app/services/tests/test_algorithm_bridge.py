@@ -317,3 +317,22 @@ def test_load_duty_blocks_from_shifts_populates_node_quotas(admin_session):
     assert len(unquota_blocks) == 2
     for b in unquota_blocks:
         assert b.node_quotas is None
+
+
+def test_load_soldier_inputs_filters_by_eligible_node_ids(admin_session):
+    from datetime import date
+    from app.services.algorithm_bridge import load_soldier_inputs
+    from tests.helpers import create_node, create_soldier
+
+    root = create_node(admin_session, level="unit", name=f"alg_root_{uuid.uuid4().hex[:8]}")
+    inside = create_node(admin_session, level="unit", name=f"alg_inside_{uuid.uuid4().hex[:8]}", parent=root)
+    outside = create_node(admin_session, level="unit", name=f"alg_outside_{uuid.uuid4().hex[:8]}")
+
+    in_scope = create_soldier(admin_session, personal_number=f"alg1_{uuid.uuid4().hex[:8]}", hierarchy_node_id=inside.id)
+    out_of_scope = create_soldier(admin_session, personal_number=f"alg2_{uuid.uuid4().hex[:8]}", hierarchy_node_id=outside.id)
+    admin_session.commit()
+
+    result = load_soldier_inputs(admin_session, as_of=date(2026, 6, 1), eligible_node_ids=[root.id])
+    ids = {s.id for s in result}
+    assert in_scope.id in ids
+    assert out_of_scope.id not in ids

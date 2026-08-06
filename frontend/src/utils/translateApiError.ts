@@ -20,6 +20,12 @@ function extractDetail(err: unknown): string | undefined {
   if (err && typeof err === "object" && "response" in err) {
     const detail = (err as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
     if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const fields = (detail as { loc?: string[] }[])
+        .map((d) => d.loc?.slice(1).join(".") ?? "?")
+        .join(", ");
+      return fields ? `validation_error:${fields}` : undefined;
+    }
   }
   return undefined;
 }
@@ -28,6 +34,10 @@ export function translateApiError(err: unknown, t: TFn, fallback?: string): stri
   const fallbackText = fallback ?? t("errors.generic");
   const detail = extractDetail(err);
   if (!detail) return fallbackText;
+  if (detail.startsWith("validation_error:")) {
+    const fields = detail.slice("validation_error:".length);
+    return `${t("errors.validation_error", { defaultValue: "נתונים לא תקינים" })}: ${fields}`;
+  }
 
   const code = detail.includes(":") ? detail.split(":")[0] : detail;
   const key = `errors.${code}`;

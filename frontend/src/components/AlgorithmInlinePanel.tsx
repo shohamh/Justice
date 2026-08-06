@@ -39,7 +39,10 @@ export default function AlgorithmInlinePanel({ selectedShiftIds, onJobSubmitted,
     setSubmitting(true);
     try {
       const apiMode = mode === "draft" ? "shadow" : "dm_reviewed";
-      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings });
+      const effectiveSettings = eligibleNodeIds.length > 0
+        ? { ...settings, eligible_node_ids: eligibleNodeIds }
+        : settings;
+      const resp = await submitJob({ shift_ids: selectedShiftIds, mode: apiMode, settings: effectiveSettings });
       onJobSubmitted(resp.id);
       onClose();
     } catch (e: unknown) {
