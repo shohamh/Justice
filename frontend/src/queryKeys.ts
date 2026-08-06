@@ -88,4 +88,5 @@ export const queryKeys = {
   ranges: () => ["ranges"] as const,
   rangeEvent: (id: string) => ["ranges", id] as const,
   rangeExcusalRequests: (id: string) => ["ranges", id, "excusal-requests"] as const,
+  rangeLocations: () => ["rangeLocations"] as const,
 };
