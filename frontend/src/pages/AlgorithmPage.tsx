@@ -85,6 +85,16 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
   });
   const selectedJob = selectedJobQuery.data ?? null;
 
+  // Tick every second while a job is pending/running so the elapsed-time
+  // display advances in real time instead of only on poll responses.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (!selectedJob || (selectedJob.status !== "pending" && selectedJob.status !== "running")) return;
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJob?.status, selectedJob?.id]);
+
   // Opening a job dismisses its nav badge, unless it's still pending/running —
   // in that case the badge should stay until there's actually something to see.
   useEffect(() => {
@@ -273,7 +283,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
                   }
                 } catch { /* unknown format → keep indeterminate defaults */ }
                 const elapsed = selectedJob.started_at
-                  ? Math.floor((Date.now() - new Date(selectedJob.started_at).getTime()) / 1000)
+                  ? Math.floor((nowTick - new Date(selectedJob.started_at).getTime()) / 1000)
                   : null;
 
                 return (
