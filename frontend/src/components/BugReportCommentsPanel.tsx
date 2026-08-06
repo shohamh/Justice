@@ -11,16 +11,19 @@ import {
   BugReportComment,
 } from "../api/bugReports";
 import { translateApiError } from "../utils/translateApiError";
+import DocumentPreviewModal from "./DocumentPreviewModal";
 
 export interface BugReportCommentsPanelProps {
   reportId: string;
 }
 
-function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
+function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName, contentType, onOpen }: {
   reportId: string;
   commentId: string;
   attachmentId: string;
   fileName: string;
+  contentType: string;
+  onOpen: (url: string, name: string) => void;
 }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState<string | null>(null);
@@ -58,14 +61,20 @@ function AttachmentThumbnail({ reportId, commentId, attachmentId, fileName }: {
     );
   }
   if (!url) return null;
+  const isImage = contentType.startsWith("image/");
+  const img = (
+    <img
+      src={url}
+      alt={t("bug_reports.attachment_preview_alt")}
+      title={fileName}
+      className={`max-w-[160px] max-h-[160px] rounded border dark:border-gray-600 mt-1 ${isImage ? "cursor-zoom-in" : ""}`}
+      onClick={isImage ? () => onOpen(url, fileName) : undefined}
+    />
+  );
+  if (isImage) return img;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer">
-      <img
-        src={url}
-        alt={t("bug_reports.attachment_preview_alt")}
-        title={fileName}
-        className="max-w-[160px] max-h-[160px] rounded border dark:border-gray-600 mt-1"
-      />
+      {img}
     </a>
   );
 }
@@ -79,6 +88,7 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [failedUpload, setFailedUpload] = useState<{ commentId: string; file: File } | null>(null);
   const [sending, setSending] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string; contentType: string } | null>(null);
   const [retryingCommentId, setRetryingCommentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Mirrors `failedUpload` synchronously so an in-flight retry can tell, after
@@ -190,6 +200,8 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
                 commentId={c.id}
                 attachmentId={a.id}
                 fileName={a.file_name}
+                contentType={a.content_type}
+                onOpen={(url, name) => setPreviewImage({ url, name, contentType: a.content_type })}
               />
             ))}
           </div>
@@ -239,6 +251,15 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
           </button>
         </div>
       </div>
+
+      {previewImage && (
+        <DocumentPreviewModal
+          fileUrl={previewImage.url}
+          fileName={previewImage.name}
+          contentType={previewImage.contentType}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </>
   );
 }

@@ -186,6 +186,29 @@ describe("BugReportsContent", () => {
     revokeObjectURLSpy.mockRestore();
   });
 
+  it("opens the screenshot in a fullscreen preview modal when clicked", async () => {
+    const reportWithScreenshot = { ...SAMPLE_REPORT, has_screenshot: true };
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [reportWithScreenshot], total: 1 });
+    vi.mocked(bugReportsApi.fetchBugReportScreenshot).mockResolvedValue(new Blob(["fake"]));
+
+    if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake-url");
+
+    renderWithProviders(<BugReportsContent />);
+    await waitFor(() => expect(screen.getByTestId("bug-report-row-r1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "הרחב" }));
+    await waitFor(() => expect(createObjectURLSpy).toHaveBeenCalled());
+
+    const screenshot = await screen.findByAltText("screenshot");
+    fireEvent.click(screenshot);
+
+    expect(await screen.findByText("הורדה")).toBeInTheDocument();
+    expect(screen.getByText("✕")).toBeInTheDocument();
+
+    createObjectURLSpy.mockRestore();
+  });
+
   it("imports a batch of JSON files and shows a summary, then refreshes the list", async () => {
     vi.mocked(bugReportsApi.importBugReports).mockResolvedValue({
       results: [

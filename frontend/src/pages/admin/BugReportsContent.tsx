@@ -16,6 +16,7 @@ import {
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
 import BugReportCommentsPanel from "../../components/BugReportCommentsPanel";
+import DocumentPreviewModal from "../../components/DocumentPreviewModal";
 import { usePagePagination } from "../../hooks/usePagePagination";
 import { DataTable, ColDef } from "../../components/DataTable";
 
@@ -54,6 +55,7 @@ export function BugReportsContent() {
   const [statusErrorById, setStatusErrorById] = useState<Record<string, string>>({});
   const [jsonErrorById, setJsonErrorById] = useState<Record<string, string>>({});
   const [screenshotErrorById, setScreenshotErrorById] = useState<Record<string, string>>({});
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<BugReportImportSummary | null>(null);
   const [importError, setImportError] = useState("");
@@ -328,8 +330,9 @@ export function BugReportsContent() {
                 {report.has_screenshot && screenshotUrlById[report.id] && (
                   <img
                     src={screenshotUrlById[report.id]}
-                    alt=""
-                    className="max-w-md rounded border dark:border-gray-600 mb-2"
+                    alt="screenshot"
+                    className="max-w-md rounded border dark:border-gray-600 mb-2 cursor-zoom-in"
+                    onClick={() => setPreviewImage({ url: screenshotUrlById[report.id], name: `bug-report-${report.id}.png` })}
                   />
                 )}
                 {screenshotErrorById[report.id] && (
@@ -399,6 +402,15 @@ export function BugReportsContent() {
             </button>
           ))}
         </div>
+      )}
+
+      {previewImage && (
+        <DocumentPreviewModal
+          fileUrl={previewImage.url}
+          fileName={previewImage.name}
+          contentType="image/png"
+          onClose={() => setPreviewImage(null)}
+        />
       )}
     </div>
   );
