@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
+import Fuse from "fuse.js";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
 import { createSwap, addSwapTargets, publishSwapToMarketplace, listEligibleTargets, getSwapConfig, CreateSwapInput } from "../api/swaps";
@@ -52,7 +53,15 @@ export default function AskSwapModal({
     queryKey: ["swaps", "eligible-targets", duty.assignment_id],
     queryFn: () => listEligibleTargets(duty.assignment_id),
   });
-  const eligibleTargets = eligibleQuery.data ?? [];
+  const eligibleTargets = useMemo(() => eligibleQuery.data ?? [], [eligibleQuery.data]);
+  const [targetQuery, setTargetQuery] = useState("");
+  const targetFuse = useMemo(
+    () => new Fuse(eligibleTargets, { keys: ["full_name", "node_name"], threshold: 0.4 }),
+    [eligibleTargets]
+  );
+  const filteredTargets = targetQuery.trim() === ""
+    ? eligibleTargets
+    : targetFuse.search(targetQuery).map(r => r.item);
   const configQuery = useQuery({ queryKey: queryKeys.swapConfig(), queryFn: getSwapConfig });
   const maxTargets = configQuery.data?.max_specific_targets ?? 5;
 
@@ -142,14 +151,22 @@ export default function AskSwapModal({
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {t("swaps.select_up_to", { n: maxTargets })} ({alreadyInvitedIds.size + selectedTargets.size}/{maxTargets})
             </p>
+            <input
+              type="text"
+              data-testid="ask-swap-target-search"
+              value={targetQuery}
+              onChange={e => setTargetQuery(e.target.value)}
+              placeholder={t("swaps.search_soldier")}
+              className="block w-full border rounded p-1 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+            />
             <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
               {eligibleQuery.isLoading ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.loading_eligible_targets")}</p>
-              ) : eligibleTargets.length === 0 ? (
+              ) : filteredTargets.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
               ) : (
                 <ul>
-                  {eligibleTargets.map((s) => {
+                  {filteredTargets.map((s) => {
                     const alreadyInvited = alreadyInvitedIds.has(s.soldier_id);
                     const limitReached = !alreadyInvited && !selectedTargets.has(s.soldier_id) && selectedTargets.size >= remainingSlots;
                     return (
