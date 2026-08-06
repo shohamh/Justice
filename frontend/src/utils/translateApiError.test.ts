@@ -35,4 +35,15 @@ describe("translateApiError", () => {
   it("falls back to the generic error for non-axios errors", () => {
     expect(translateApiError(new Error("boom"), t)).toBe("שגיאה");
   });
+
+  it("surfaces field names for a Pydantic-style list detail instead of the generic fallback", () => {
+    const tWithDefault = (key: string, options?: Record<string, unknown>) =>
+      dict[key] ?? (options?.defaultValue as string) ?? key;
+    const err = axiosErrorWithDetail([
+      { loc: ["body", "settings", "eligible_node_ids"], msg: "bad", type: "value_error" },
+    ]);
+    const msg = translateApiError(err, tWithDefault, "fallback");
+    expect(msg).toContain("settings.eligible_node_ids");
+    expect(msg).not.toBe("fallback");
+  });
 });

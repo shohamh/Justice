@@ -127,7 +127,9 @@ def _count_space_stats(
     }
 
 
-def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
+def load_soldier_inputs(
+    session: Session, *, as_of: date, eligible_node_ids: list[uuid.UUID] | None = None
+) -> list[SoldierInput]:
     """Load every active soldier as a SoldierInput for the algorithm."""
     soldiers = (
         session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
@@ -136,6 +138,13 @@ def load_soldier_inputs(session: Session, *, as_of: date) -> list[SoldierInput]:
         n.id: list(n.path_ids)
         for n in session.execute(select(HierarchyNode.id, HierarchyNode.path_ids)).all()
     }
+    if eligible_node_ids:
+        eligible_set = {uuid.UUID(str(nid)) for nid in eligible_node_ids}
+        soldiers = [
+            s for s in soldiers
+            if s.hierarchy_node_id is not None
+            and eligible_set & set(node_path_map.get(s.hierarchy_node_id, []))
+        ]
     duty_scores = scoring_svc.duty_score_by_soldier(session)
     adj_scores = scoring_svc.adjustments_by_soldier(session)
 
@@ -1156,7 +1165,10 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 planning_end = max(d.end_date for d in duties)
 
                 _phase("load_soldier_inputs: start")
-                soldiers = load_soldier_inputs(session, as_of=planning_start)
+                soldiers = load_soldier_inputs(
+                    session, as_of=planning_start,
+                    eligible_node_ids=job.settings_json.get("eligible_node_ids"),
+                )
                 _phase(f"load_soldier_inputs: done ({len(soldiers)} soldiers)")
                 # Compute and inject quarterly effort scores
                 try:
@@ -1640,7 +1652,10 @@ def export_solver_inputs(job: "AlgorithmJob", session: "Session") -> dict:
         planning_start = job.planning_start
         planning_end = job.planning_end
 
-    soldiers = load_soldier_inputs(session, as_of=planning_start)
+    soldiers = load_soldier_inputs(
+        session, as_of=planning_start,
+        eligible_node_ids=job.settings_json.get("eligible_node_ids"),
+    )
 
     try:
         _reset_raw = get_setting(session, "fairness.reset_date")

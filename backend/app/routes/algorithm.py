@@ -74,6 +74,7 @@ class SolverSettingsIn(BaseModel):
     alpha: float = 1.0
     time_limit_seconds: int = Field(default=30, ge=5, le=120)
     auto_relax_node_quotas: bool = False
+    eligible_node_ids: list[uuid.UUID] | None = None
 
 
 class CreateJobRequest(BaseModel):
@@ -539,7 +540,7 @@ def create_job(
 
     job = _submit_job(
         session, background_tasks,
-        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(),
+        shift_ids=body.shift_ids, mode=body.mode, settings_json=body.settings.model_dump(mode="json"),
         actor_id=user.id,
     )
     return {"id": str(job.id), "status": job.status}

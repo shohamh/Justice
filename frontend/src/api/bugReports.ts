@@ -101,6 +101,7 @@ export async function getMyBugReportsUnseenCount(): Promise<BugReportUnseenCount
 export interface BugReportCommentAttachment {
   id: string;
   file_name: string;
+  content_type: string;
 }
 
 export interface BugReportComment {

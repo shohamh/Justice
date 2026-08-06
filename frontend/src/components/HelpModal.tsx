@@ -772,7 +772,10 @@ function DeepDiveTab() {
           לאחר שיבוץ:
         </p>
 
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200">
+        <div
+          dir="ltr"
+          className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200"
+        >
           <BlockMath math="\begin{aligned}\text{projected\_effort}[i] &= \text{effort\_offset}[i] \\ &\quad + \text{effort\_per\_milli}[i] \times \sum_d \bigl(\text{block\_score}(d) \times x_{d,i}\bigr)\end{aligned}" />
         </div>
 

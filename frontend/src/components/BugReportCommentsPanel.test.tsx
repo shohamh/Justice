@@ -31,7 +31,7 @@ const comment = {
   author_name: "Author",
   body: "hello",
   created_at: "2026-01-01T00:00:00Z",
-  attachments: [{ id: "att1", file_name: "photo.png" }],
+  attachments: [{ id: "att1", file_name: "photo.png", content_type: "image/png" }],
 };
 
 function renderPanel() {
@@ -89,6 +89,24 @@ describe("BugReportCommentsPanel", () => {
     await waitFor(() => expect(bugReportsApi.createComment).toHaveBeenCalledWith("r1", "a comment"));
     expect(textarea).toHaveValue("");
     expect(bugReportsApi.listComments).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens an image attachment in a fullscreen preview modal when clicked", async () => {
+    if (!URL.createObjectURL) URL.createObjectURL = vi.fn();
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = vi.fn();
+    const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake-url");
+    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    renderPanel();
+
+    const thumbnail = await screen.findByAltText("bug_reports.attachment_preview_alt");
+    fireEvent.click(thumbnail);
+
+    expect(await screen.findByText("הורדה")).toBeInTheDocument();
+    expect(screen.getByText("✕")).toBeInTheDocument();
+
+    createObjectURLSpy.mockRestore();
+    revokeObjectURLSpy.mockRestore();
   });
 
   it("offers a retry after an attachment upload fails and clears it after success", async () => {

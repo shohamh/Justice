@@ -257,6 +257,7 @@ def test_attachment_upload_succeeds_for_comment_author(client: TestClient, admin
     )
     assert resp.status_code == 201
     assert resp.json()["file_name"] == "shot.png"
+    assert resp.json()["content_type"] == "image/png"
 
 
 def test_attachment_upload_rejects_oversized_file(client: TestClient, admin_session: Session):
@@ -333,6 +334,20 @@ def test_download_attachment_succeeds_for_comment_participant(client: TestClient
     )
     assert resp.status_code == 200
     assert resp.content == _PNG_BYTES
+
+    # content_type must also round-trip through the comment list's embedded
+    # attachment DTO (BugReportCommentAttachmentOut), not just the upload
+    # response — this is what the frontend uses to decide whether an
+    # attachment is previewable inline vs. opened via target="_blank".
+    comments_resp = client.get(
+        f"/api/bug-reports/{report_id}/comments",
+        headers=auth_headers(reporter),
+    )
+    assert comments_resp.status_code == 200
+    [comment] = comments_resp.json()
+    [attachment] = comment["attachments"]
+    assert attachment["id"] == str(attachment_id)
+    assert attachment["content_type"] == "image/png"
 
 
 def test_download_attachment_404_for_mismatched_report_id(client: TestClient, admin_session: Session):

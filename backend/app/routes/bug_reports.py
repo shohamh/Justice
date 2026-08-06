@@ -385,6 +385,7 @@ class BugReportCommentBody(BaseModel):
 class BugReportCommentAttachmentOut(BaseModel):
     id: uuid.UUID
     file_name: str
+    content_type: str
 
 
 class BugReportCommentOut(BaseModel):
@@ -501,7 +502,9 @@ def list_bug_report_comments(
             .order_by(BugReportCommentAttachment.created_at)
         ).scalars().all()
         for a in attachments:
-            attachments_by_comment[a.comment_id].append(BugReportCommentAttachmentOut(id=a.id, file_name=a.file_name))
+            attachments_by_comment[a.comment_id].append(
+                BugReportCommentAttachmentOut(id=a.id, file_name=a.file_name, content_type=a.content_type)
+            )
     return [
         BugReportCommentOut(
             id=c.id,
@@ -558,7 +561,7 @@ async def upload_bug_report_comment_attachment(
     )
     session.add(attachment)
     session.commit()
-    return BugReportCommentAttachmentOut(id=attachment.id, file_name=attachment.file_name)
+    return BugReportCommentAttachmentOut(id=attachment.id, file_name=attachment.file_name, content_type=attachment.content_type)
 
 
 @router.get("/bug-reports/{report_id}/comments/{comment_id}/attachments/{attachment_id}")

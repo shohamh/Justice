@@ -83,6 +83,38 @@ def test_create_job_accepts_auto_relax_node_quotas(client, admin_session):
     assert job.settings_json["auto_relax_node_quotas"] is True
 
 
+def test_create_job_with_eligible_node_ids_returns_202(client, admin_session):
+    """Regression test: SolverSettingsIn.eligible_node_ids is list[uuid.UUID] | None.
+    Pydantic's default model_dump() leaves those as UUID objects, which are not
+    JSON-serializable by the JSONB settings_json column — this previously caused
+    a 500 on any real request that scoped the job to a subtree via eligible_node_ids.
+    """
+    dm, node = _setup_dm(admin_session, "route_alg_enid")
+    shift, _dt, _loc = _make_shift(admin_session, "route_enid", "2027-07-05")
+    create_soldier(admin_session, personal_number="route_soldier_enid", role="soldier")
+
+    resp = client.post(
+        "/api/algorithm/jobs",
+        json={
+            "shift_ids": [str(shift.id)],
+            "mode": "shadow",
+            "settings": {
+                "T": 7, "W": 14, "alpha": 1.0, "time_limit_seconds": 15,
+                "eligible_node_ids": [str(node.id)],
+            },
+        },
+        headers=auth_headers(dm),
+    )
+    assert resp.status_code == 202, resp.text
+    data = resp.json()
+    assert "id" in data
+    assert data["status"] == "pending"
+
+    admin_session.expire_all()
+    job = admin_session.get(AlgorithmJob, data["id"])
+    assert job.settings_json["eligible_node_ids"] == [str(node.id)]
+
+
 def test_algorithm_defaults_returns_resolved_settings(client, admin_session):
     from app.services.settings_loader import set_setting
     dm, _node = _setup_dm(admin_session, "route_alg_def")
