@@ -19,8 +19,7 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
   const [force, setForce] = useState(false); const [error, setError] = useState(""); const [pending, setPending] = useState(false);
   useEffect(() => { if (open) { setForce(false); setError(""); setAddingLocation(false); setNewLocName(""); setForm({ range_type: event?.range_type ?? "laser", date: event?.date ?? "", start_time: event?.start_time ?? "", end_time: event?.end_time ?? "", range_location_id: event?.range_location_id ?? "", arrival_instructions: event?.arrival_instructions ?? "", contact_name: event?.contact_name ?? "", contact_phone: event?.contact_phone ?? "", required_count: event?.required_count ?? 0, reserve_count: event?.reserve_count ?? 0, notes: event?.notes ?? "" }); } }, [open, event]);
   const set = (key: string, value: string | number) => setForm(prev => ({ ...prev, [key]: value }));
-  async function handleAddLocation(e: FormEvent) {
-    e.preventDefault();
+  async function handleAddLocation() {
     if (!newLocName.trim()) return;
     setLocSaving(true);
     try {
@@ -29,11 +28,13 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
       set("range_location_id", created.id);
       setNewLocName("");
       setAddingLocation(false);
+    } catch {
+      setError("יצירת המיקום נכשלה");
     } finally {
       setLocSaving(false);
     }
   }
-  async function submit(e: FormEvent) { e.preventDefault(); setError(""); if (form.start_time && form.end_time && form.start_time > form.end_time) { setError("שעת התחלה חייבת להיות לפני שעת הסיום"); return; } if (event && event.assignments.length > 0 && (form.date !== event.date || form.range_type !== event.range_type) && !force) { setError("שינוי תאריך או סוג דורש אישור מפורש"); return; } setPending(true); try { await onSubmit(event ? { ...form, start_time: form.start_time || null, end_time: form.end_time || null, arrival_instructions: form.arrival_instructions || null, contact_name: form.contact_name || null, contact_phone: form.contact_phone || null, notes: form.notes || null, required_count: Number(form.required_count), reserve_count: Number(form.reserve_count), force_schedule_change: force } : { hierarchy_node_id: hierarchyNodeId, ...form, start_time: form.start_time || null, end_time: form.end_time || null, arrival_instructions: form.arrival_instructions || null, contact_name: form.contact_name || null, contact_phone: form.contact_phone || null, notes: form.notes || null }); onClose(); } catch { setError("שמירת המטווח נכשלה"); } finally { setPending(false); } }
+  async function submit(e: FormEvent) { e.preventDefault(); setError(""); if (!form.range_location_id) { setError("יש לבחור מיקום"); return; } if (form.start_time && form.end_time && form.start_time > form.end_time) { setError("שעת התחלה חייבת להיות לפני שעת הסיום"); return; } if (event && event.assignments.length > 0 && (form.date !== event.date || form.range_type !== event.range_type) && !force) { setError("שינוי תאריך או סוג דורש אישור מפורש"); return; } setPending(true); try { await onSubmit(event ? { ...form, start_time: form.start_time || null, end_time: form.end_time || null, arrival_instructions: form.arrival_instructions || null, contact_name: form.contact_name || null, contact_phone: form.contact_phone || null, notes: form.notes || null, required_count: Number(form.required_count), reserve_count: Number(form.reserve_count), force_schedule_change: force } : { hierarchy_node_id: hierarchyNodeId, ...form, start_time: form.start_time || null, end_time: form.end_time || null, arrival_instructions: form.arrival_instructions || null, contact_name: form.contact_name || null, contact_phone: form.contact_phone || null, notes: form.notes || null }); onClose(); } catch { setError("שמירת המטווח נכשלה"); } finally { setPending(false); } }
   const fields: Array<[string,string,"text"|"date"|"time"|"number"]> = [["date","תאריך","date"],["start_time","התחלה","time"],["end_time","סיום","time"],["required_count","ראשיים","number"],["reserve_count","רזרבה","number"],["contact_name","איש קשר","text"],["contact_phone","טלפון","text"]];
   const inputClass = "mt-1 block w-full rounded border p-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100";
   return <EventDetailModal open={open} title={event ? "עריכת מטווח" : "מטווח חדש"} onClose={onClose}>
@@ -55,7 +56,7 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
               )}
             </div>
             {addingLocation ? (
-              <form onSubmit={handleAddLocation} className="flex gap-1">
+              <div className="flex gap-1">
                 <input
                   autoFocus
                   type="text"
@@ -64,13 +65,13 @@ export default function RangeFormModal({ open, event, hierarchyNodeId, locations
                   placeholder="שם המיקום"
                   className={inputClass}
                 />
-                <button type="submit" disabled={locSaving || !newLocName.trim()} className="px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:opacity-50">
+                <button type="button" onClick={handleAddLocation} disabled={locSaving || !newLocName.trim()} className="px-2 py-1 text-xs bg-blue-600 text-white rounded disabled:opacity-50">
                   שמור
                 </button>
                 <button type="button" onClick={() => { setAddingLocation(false); setNewLocName(""); }} className="px-2 py-1 text-xs border dark:border-gray-600 dark:text-gray-300 rounded">
                   בטל
                 </button>
-              </form>
+              </div>
             ) : (
               <Combobox
                 testId={event ? "edit-range-location" : "new-range-location"}
