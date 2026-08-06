@@ -425,6 +425,7 @@
     "constraint_not_found": "הבקשה לא נמצאה",
     "not_pending": "הבקשה כבר טופלה",
     "generic": "שגיאה",
+    "validation_error": "נתונים לא תקינים",
     "password_too_short": "הסיסמה חייבת להכיל לפחות 10 תווים",
     "date_range_invalid": "טווח תאריכים לא תקין",
     "exemption_not_found": "הפטור לא נמצא",
