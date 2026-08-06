@@ -431,6 +431,7 @@
     "exemption_not_found": "הפטור לא נמצא",
     "already_exists": "כבר קיים במערכת",
     "exemption_request_not_found": "בקשת הפטור לא נמצאה",
+    "no_permission": "אין לך הרשאה לצפות במסמך זה",
     "exemption_request_not_pending": "בקשת הפטור כבר טופלה",
     "exemption_type_not_found": "סוג הפטור לא נמצא",
     "insufficient_rank_for_exemption_approval": "נדרש דרג רסן ומעלה לאישור פטורים",

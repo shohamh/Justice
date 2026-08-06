@@ -563,6 +563,36 @@ describe("ApprovalsPage - exemption file links", () => {
       expect(screen.getByText("הקובץ לא נמצא")).toBeInTheDocument();
     });
   });
+
+  it("shows a specific message when opening an exemption file returns no_permission", async () => {
+    vi.mocked(exemptionsApi.listPendingExemptionRequests).mockResolvedValue([exemptionRequestWithFile]);
+    vi.mocked(exemptionsApi.exemptionFileDownloadUrl).mockReturnValue("/exemption-requests/er1/files/f1");
+    vi.mocked(api.get).mockRejectedValue({
+      response: { status: 403, data: { detail: "no_permission" } },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const exemptionsTab = await screen.findByTestId("approvals-tab-exemptions");
+    fireEvent.click(exemptionsTab);
+    const fileLink = await screen.findByText(/note\.pdf/);
+    fireEvent.click(fileLink);
+
+    await waitFor(() => {
+      expect(screen.queryByText("שגיאה בביצוע הפעולה")).not.toBeInTheDocument();
+      expect(screen.getByText("אין לך הרשאה לצפות במסמך זה")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("ApprovalsPage - approve button authority", () => {
