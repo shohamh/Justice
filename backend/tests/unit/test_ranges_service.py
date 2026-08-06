@@ -59,6 +59,22 @@ def test_create_range_event_rejects_unknown_node(app_session: Session) -> None:
         )
 
 
+def test_create_range_event_rejects_unknown_location(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה מיקום-לא-קיים")
+
+    with pytest.raises(RangeValidationError, match="range_location_not_found"):
+        create_range_event(
+            app_session,
+            hierarchy_node_id=node.id,
+            range_type=RangeType.live,
+            event_date=date(2026, 8, 20),
+            range_location_id=uuid.uuid4(),
+            required_count=2,
+        )
+
+
 def test_create_range_event_rejects_negative_counts(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ב")
 
@@ -85,6 +101,19 @@ def test_update_range_event_changes_fields(app_session: Session) -> None:
 
     assert updated.range_location_id == new_location.id
     assert updated.required_count == 5
+
+
+def test_update_range_event_rejects_unknown_location(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה עדכון-מיקום-לא-קיים")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח ישן").id, required_count=3,
+    )
+
+    with pytest.raises(RangeValidationError, match="range_location_not_found"):
+        update_range_event(app_session, event=event, range_location_id=uuid.uuid4())
 
 
 def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
