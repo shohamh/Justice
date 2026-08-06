@@ -68,7 +68,7 @@ class CreateRangeEventBody(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: RangeType
     date: date_type
-    location: str = Field(min_length=1)
+    range_location_id: uuid.UUID
     required_count: int = Field(ge=0)
     reserve_count: int = Field(default=0, ge=0)
     start_time: str | None = None
@@ -85,7 +85,7 @@ class UpdateRangeEventBody(BaseModel):
     date: date_type | None = None
     start_time: str | None = None
     end_time: str | None = None
-    location: str | None = None
+    range_location_id: uuid.UUID | None = None
     required_count: int | None = Field(default=None, ge=0)
     reserve_count: int | None = Field(default=None, ge=0)
     arrival_instructions: str | None = None
@@ -126,6 +126,7 @@ class RangeEventOut(BaseModel):
     hierarchy_node_id: uuid.UUID
     range_type: str
     date: date_type
+    range_location_id: uuid.UUID
     location: str
     required_count: int
     reserve_count: int
@@ -166,6 +167,9 @@ def _event_out(
     confirmed_rows = [a for a in rows if not a.is_draft]
     assignments = [_assignment_out(a) for a in rows] if include_assignments else []
     node = _event_node(session, event)
+    from app.db.models import RangeLocation
+    location = session.get(RangeLocation, event.range_location_id)
+    location_name = location.name if location else ""
     assigned_to_me = any(assignment.soldier_id == user.id for assignment in rows)
     can_edit_attendance = node is not None and range_attendance_edit_authorized(
         session, user=user, target_node=node,
@@ -175,7 +179,8 @@ def _event_out(
         hierarchy_node_id=event.hierarchy_node_id,
         range_type=event.range_type,
         date=event.date,
-        location=event.location,
+        range_location_id=event.range_location_id,
+        location=location_name,
         required_count=event.required_count,
         start_time=event.start_time,
         end_time=event.end_time,
@@ -209,7 +214,7 @@ def create_range_event(
             hierarchy_node_id=body.hierarchy_node_id,
             range_type=body.range_type,
             event_date=body.date,
-            location=body.location,
+            range_location_id=body.range_location_id,
             required_count=body.required_count,
             reserve_count=body.reserve_count,
             start_time=body.start_time,

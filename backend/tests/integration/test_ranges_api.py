@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DutyType, RangeAssignment
 from app.services.settings_loader import apply_settings
-from tests.helpers import auth_headers, create_node, create_soldier
+from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
 
 
 def _enable_mitvachim(session: Session) -> None:
@@ -44,6 +44,8 @@ def test_create_range_event_success(client: TestClient, admin_session: Session) 
     dm = create_soldier(
         admin_session, personal_number="6000001", role="duty_manager", hierarchy_node_id=node.id
     )
+    loc = create_range_location(admin_session, name="מטווח דרום")
+    admin_session.commit()
 
     response = client.post(
         "/api/ranges",
@@ -51,7 +53,7 @@ def test_create_range_event_success(client: TestClient, admin_session: Session) 
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח דרום",
+            "range_location_id": str(loc.id),
             "required_count": 4,
             "reserve_count": 1,
         },
@@ -74,6 +76,8 @@ def test_create_range_event_forbidden_outside_dm_scope(
         role="duty_manager",
         hierarchy_node_id=other_node.id,
     )
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     response = client.post(
         "/api/ranges",
@@ -81,7 +85,7 @@ def test_create_range_event_forbidden_outside_dm_scope(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -105,6 +109,8 @@ def test_add_and_remove_assignment(client: TestClient, admin_session: Session) -
     admin_session.add(weapon_duty)
     admin_session.commit()
     soldier = create_soldier(admin_session, personal_number="6000004", hierarchy_node_id=node.id)
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     create_resp = client.post(
         "/api/ranges",
@@ -112,7 +118,7 @@ def test_add_and_remove_assignment(client: TestClient, admin_session: Session) -
             "hierarchy_node_id": str(node.id),
             "range_type": "live",
             "date": "2026-09-05",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 3,
         },
         headers=auth_headers(dm),
@@ -139,6 +145,8 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
     dm = create_soldier(
         admin_session, personal_number="6000005", role="duty_manager", hierarchy_node_id=node.id
     )
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     create_resp = client.post(
         "/api/ranges",
@@ -146,7 +154,7 @@ def test_get_range_event_returns_roster(client: TestClient, admin_session: Sessi
             "hierarchy_node_id": str(node.id),
             "range_type": "alal",
             "date": "2026-09-10",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -180,6 +188,7 @@ def test_get_range_event_hides_drafts_from_commander_but_not_range_managers(
         admin_session, personal_number="6300007", hierarchy_node_id=node.id
     )
     node.commander_id = commander.id
+    loc = create_range_location(admin_session, name="מטווח")
     admin_session.commit()
 
     create_resp = client.post(
@@ -188,7 +197,7 @@ def test_get_range_event_hides_drafts_from_commander_but_not_range_managers(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-10",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -239,6 +248,7 @@ def test_get_range_event_forbidden_for_commander_outside_scope(
         admin_session, personal_number="6300004", role="commander", hierarchy_node_id=other_node.id
     )
     other_node.commander_id = commander.id
+    loc = create_range_location(admin_session, name="מטווח")
     admin_session.commit()
 
     create_resp = client.post(
@@ -247,7 +257,7 @@ def test_get_range_event_forbidden_for_commander_outside_scope(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-10",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -283,6 +293,8 @@ def test_mark_attendance_requires_elevated_dm_scope(
     admin_session.add(weapon_duty)
     admin_session.commit()
     soldier = create_soldier(admin_session, personal_number="6100003", hierarchy_node_id=platoon.id)
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     past_date = date.today() - timedelta(days=1)
     create_resp = client.post(
@@ -291,7 +303,7 @@ def test_mark_attendance_requires_elevated_dm_scope(
             "hierarchy_node_id": str(platoon.id),
             "range_type": "laser",
             "date": past_date.isoformat(),
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 1,
         },
         headers=auth_headers(high_dm),
@@ -340,13 +352,15 @@ def test_list_range_events_filters_by_node_and_date(
     dm = create_soldier(
         admin_session, personal_number="6200002", role="duty_manager", hierarchy_node_id=node.id
     )
+    loc_in = create_range_location(admin_session, name="מטווח בתוך")
+    admin_session.commit()
     client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח בתוך",
+            "range_location_id": str(loc_in.id),
             "required_count": 1,
         },
         headers=auth_headers(dm),
@@ -357,13 +371,15 @@ def test_list_range_events_filters_by_node_and_date(
         role="duty_manager",
         hierarchy_node_id=other_node.id,
     )
+    loc_out = create_range_location(admin_session, name="מטווח מחוץ")
+    admin_session.commit()
     client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(other_node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח מחוץ",
+            "range_location_id": str(loc_out.id),
             "required_count": 1,
         },
         headers=auth_headers(other_dm),
@@ -383,24 +399,28 @@ def test_list_range_events_filters_by_date_range(
     dm = create_soldier(
         admin_session, personal_number="6200004", role="duty_manager", hierarchy_node_id=node.id
     )
+    loc_sept = create_range_location(admin_session, name="מטווח ספטמבר")
+    admin_session.commit()
     client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח ספטמבר",
+            "range_location_id": str(loc_sept.id),
             "required_count": 1,
         },
         headers=auth_headers(dm),
     )
+    loc_oct = create_range_location(admin_session, name="מטווח אוקטובר")
+    admin_session.commit()
     client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-10-01",
-            "location": "מטווח אוקטובר",
+            "range_location_id": str(loc_oct.id),
             "required_count": 1,
         },
         headers=auth_headers(dm),
@@ -424,6 +444,8 @@ def test_get_range_candidates_forbidden_for_non_manager(
         admin_session, personal_number="6400001", role="duty_manager", hierarchy_node_id=node.id
     )
     soldier = create_soldier(admin_session, personal_number="6400002", hierarchy_node_id=node.id)
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     create_resp = client.post(
         "/api/ranges",
@@ -431,7 +453,7 @@ def test_get_range_candidates_forbidden_for_non_manager(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -452,13 +474,15 @@ def test_get_range_candidates_404_when_disabled(
     dm = create_soldier(
         admin_session, personal_number="6400003", role="duty_manager", hierarchy_node_id=node.id
     )
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
     create_resp = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -483,6 +507,8 @@ def test_batch_assign_forbidden_for_non_manager(
         admin_session, personal_number="6400004", role="duty_manager", hierarchy_node_id=node.id
     )
     soldier = create_soldier(admin_session, personal_number="6400005", hierarchy_node_id=node.id)
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
 
     create_resp = client.post(
         "/api/ranges",
@@ -490,7 +516,7 @@ def test_batch_assign_forbidden_for_non_manager(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),
@@ -514,13 +540,15 @@ def test_batch_assign_404_when_disabled(
         admin_session, personal_number="6400006", role="duty_manager", hierarchy_node_id=node.id
     )
     soldier = create_soldier(admin_session, personal_number="6400007", hierarchy_node_id=node.id)
+    loc = create_range_location(admin_session, name="מטווח")
+    admin_session.commit()
     create_resp = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-09-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 2,
         },
         headers=auth_headers(dm),

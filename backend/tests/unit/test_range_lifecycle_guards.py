@@ -13,7 +13,7 @@ from app.services.ranges import (
     delete_range_event,
     update_range_event,
 )
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def _event(session: Session):
@@ -23,7 +23,7 @@ def _event(session: Session):
         hierarchy_node_id=node.id,
         range_type=RangeType.laser,
         event_date=date(2026, 9, 10),
-        location="????",
+        range_location_id=create_range_location(session, name="????").id,
         required_count=2,
     )
 
@@ -31,6 +31,7 @@ def _event(session: Session):
 def test_update_planned_event_edits_every_planning_field(app_session: Session) -> None:
     event = _event(app_session)
     new_node = create_node(app_session, level="?????", name="???????-?????-2-???")
+    new_location = create_range_location(app_session, name="????")
 
     updated = update_range_event(
         app_session,
@@ -40,7 +41,7 @@ def test_update_planned_event_edits_every_planning_field(app_session: Session) -
         event_date=date(2026, 9, 11),
         start_time="08:00",
         end_time="12:00",
-        location="????",
+        range_location_id=new_location.id,
         required_count=3,
         reserve_count=1,
         arrival_instructions="????? ??????",
@@ -55,7 +56,7 @@ def test_update_planned_event_edits_every_planning_field(app_session: Session) -
         date(2026, 9, 11),
     )
     assert (updated.start_time, updated.end_time) == ("08:00", "12:00")
-    assert (updated.location, updated.required_count, updated.reserve_count) == ("????", 3, 1)
+    assert (updated.range_location_id, updated.required_count, updated.reserve_count) == (new_location.id, 3, 1)
     assert updated.arrival_instructions == "????? ??????"
 
 
@@ -103,7 +104,7 @@ def test_completed_and_cancelled_events_are_immutable(
     app_session.commit()
 
     with pytest.raises(RangeValidationError, match="event_not_planned"):
-        update_range_event(app_session, event=event, location="????")
+        update_range_event(app_session, event=event, range_location_id=create_range_location(app_session, name="????").id)
     with pytest.raises(RangeValidationError, match="event_not_planned"):
         cancel_range_event(app_session, event=event, reason="????")
     with pytest.raises(RangeValidationError, match="event_not_planned"):

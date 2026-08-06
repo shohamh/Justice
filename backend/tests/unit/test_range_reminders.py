@@ -14,7 +14,7 @@ from app.db.models import (
 )
 from app.services.range_reminders import send_due_range_reminders
 from app.services.ranges import add_range_assignment, cancel_range_event, create_range_event
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def _setup(session: Session, *, days_before: int = 3, required_count: int = 1, reserve_count: int = 0):
@@ -27,7 +27,8 @@ def _setup(session: Session, *, days_before: int = 3, required_count: int = 1, r
     manager = create_soldier(session, personal_number=f"dm-{node.name}", role="duty_manager", hierarchy_node_id=node.id)
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=days_before), location="range",
+        event_date=date.today() + timedelta(days=days_before),
+        range_location_id=create_range_location(session, name="range").id,
         required_count=required_count, reserve_count=reserve_count,
     )
     return node, manager, event

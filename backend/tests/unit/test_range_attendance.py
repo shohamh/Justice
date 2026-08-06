@@ -24,7 +24,7 @@ from app.services.ranges import (
     mark_attendance,
 )
 from app.services.settings_loader import apply_settings
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def _setup_event_and_assignment(session: Session, *, event_date: date, range_type: RangeType = RangeType.laser):
@@ -38,7 +38,7 @@ def _setup_event_and_assignment(session: Session, *, event_date: date, range_typ
     soldier = create_soldier(session, personal_number=f"5{event_date.toordinal()}"[:10], hierarchy_node_id=node.id)
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=range_type,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(session, name="מטווח").id, required_count=1,
     )
     assignment = add_range_assignment(session, event=event, soldier_id=soldier.id, is_reserve=False)
     return event, soldier, assignment
@@ -95,7 +95,7 @@ def test_mark_no_show_notifies_manager_once_with_range_context(app_session: Sess
     soldier = create_soldier(app_session, personal_number="5900003", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=past_date, location="×ž×˜×•×•×— ××™×¨×•×¢", required_count=1,
+        event_date=past_date, range_location_id=create_range_location(app_session, name="×ž×˜×•×•×— ××™×¨×•×¢").id, required_count=1,
     )
     assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
 
@@ -240,12 +240,12 @@ def test_correcting_newer_present_to_no_show_preserves_older_still_valid_qualifi
     soldier = create_soldier(app_session, personal_number="5900001", hierarchy_node_id=node.id)
 
     event_a = create_range_event(app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-                                  event_date=older_date, location="מטווח א", required_count=1)
+                                  event_date=older_date, range_location_id=create_range_location(app_session, name="מטווח א").id, required_count=1)
     assignment_a = add_range_assignment(app_session, event=event_a, soldier_id=soldier.id, is_reserve=False)
     mark_attendance(app_session, assignment=assignment_a, status=RangeAttendanceStatus.present, marked_by=soldier.id)
 
     event_b = create_range_event(app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-                                  event_date=newer_date, location="מטווח ב", required_count=1)
+                                  event_date=newer_date, range_location_id=create_range_location(app_session, name="מטווח ב").id, required_count=1)
     assignment_b = add_range_assignment(app_session, event=event_b, soldier_id=soldier.id, is_reserve=False)
     mark_attendance(app_session, assignment=assignment_b, status=RangeAttendanceStatus.present, marked_by=soldier.id)
 

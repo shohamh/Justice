@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import DutyType, RangeAssignment, RangeExcusalStatus, RangeType
 from app.services.range_excusal import request_primary_excusal, request_reserve_excusal
 from app.services.ranges import add_range_assignment, create_range_event
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def _assignment(session: Session, *, is_reserve: bool):
@@ -16,7 +16,8 @@ def _assignment(session: Session, *, is_reserve: bool):
     soldier = create_soldier(session, personal_number=f"excusal-{is_reserve}", hierarchy_node_id=node.id)
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="range", required_count=1,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(session, name="range").id, required_count=1,
     )
     return event, add_range_assignment(session, event=event, soldier_id=soldier.id, is_reserve=is_reserve)
 
@@ -47,7 +48,8 @@ def test_approving_primary_excusal_promotes_assigned_reserve(app_session: Sessio
     reserve = create_soldier(app_session, personal_number="excusal-reserve", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="promotion range", required_count=1,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session, name="promotion range").id, required_count=1,
     )
     primary_assignment = add_range_assignment(app_session, event=event, soldier_id=primary.id, is_reserve=False)
     reserve_assignment = add_range_assignment(app_session, event=event, soldier_id=reserve.id, is_reserve=True)
