@@ -100,6 +100,17 @@ describe("MyRequestsPage - day-count badges", () => {
   });
 });
 
+describe("MyRequestsPage - personal constraint form labels", () => {
+  it("renders labels above the personal constraint request fields", async () => {
+    renderPage();
+    await screen.findByTestId("constraints-remaining");
+
+    expect(screen.getByTestId("req-start").closest("div")?.querySelector("label")).not.toBeNull();
+    expect(screen.getByTestId("req-end").closest("div")?.querySelector("label")).not.toBeNull();
+    expect(screen.getByTestId("req-reason").closest("div")?.querySelector("label")).not.toBeNull();
+  });
+});
+
 describe("MyRequestsPage - constraint start date cannot be in the past", () => {
   it("disables the submit button and blocks submission for a past start date", async () => {
     renderPage();
