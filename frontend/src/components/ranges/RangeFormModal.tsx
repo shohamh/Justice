@@ -8,6 +8,10 @@ import Combobox from "../Combobox";
 interface Props { open: boolean; event?: RangeEvent | null; hierarchyNodeId: string; locations: RangeLocation[]; onClose: () => void; onSubmit: (body: CreateRangeEventBody | UpdateRangeEventBody) => Promise<void>; }
 export default function RangeFormModal({ open, event, hierarchyNodeId, locations: initialLocations, onClose, onSubmit }: Props) {
   const [locations, setLocations] = useState<RangeLocation[]>(initialLocations);
+  // RangeFormModal is mounted once (unconditionally) by RangesPage, before the
+  // range-locations query resolves. Re-sync whenever the fetched list changes
+  // so the Combobox isn't stuck showing the empty initial snapshot.
+  useEffect(() => { setLocations(initialLocations); }, [initialLocations]);
   const [addingLocation, setAddingLocation] = useState(false);
   const [newLocName, setNewLocName] = useState("");
   const [locSaving, setLocSaving] = useState(false);
