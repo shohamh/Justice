@@ -162,8 +162,10 @@ export default function AskSwapModal({
             <div className="max-h-48 overflow-y-auto border rounded dark:border-gray-600">
               {eligibleQuery.isLoading ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.loading_eligible_targets")}</p>
-              ) : filteredTargets.length === 0 ? (
+              ) : eligibleTargets.length === 0 ? (
                 <p className="text-sm text-gray-500 p-2">{t("swaps.no_eligible_targets")}</p>
+              ) : filteredTargets.length === 0 ? (
+                <p className="text-sm text-gray-500 p-2">{t("swaps.no_search_results")}</p>
               ) : (
                 <ul>
                   {filteredTargets.map((s) => {

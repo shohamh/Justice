@@ -571,7 +571,7 @@ def test_swap_override_appears_in_receiving_soldiers_history(admin_session, duty
     # day (2026-06-01) has an exclusive end_date of 2026-06-02.
     assert ev.end_date == "2026-06-02"
     assert ev.metadata["duty_assignment_id"] == str(a.id)
-    assert ev.metadata["via_swap"] == "true"
+    assert ev.metadata["override_reason"] == "replacement"
     assert duty_type.name in ev.title
     assert location.name in ev.title
 

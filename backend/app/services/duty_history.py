@@ -415,7 +415,7 @@ def get_duty_history(
                 "called_up": "false",
                 "score_total": run_total,
                 "score_segments": run_segments,
-                "via_swap": "true",
+                "override_reason": run[0].reason,
             }
             if run_formula:
                 run_metadata["score_formula"] = run_formula
