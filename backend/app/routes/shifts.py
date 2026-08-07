@@ -612,6 +612,7 @@ class ShiftCandidateOut(BaseModel):
     effort: float
     blocked: bool
     blocked_reason: str | None = None
+    weapon_warning: bool = False
     hierarchy_path_ids: list[str] = []
 
 
@@ -624,6 +625,12 @@ def get_shift_candidates(
     """Return eligible soldiers for a shift, sorted by effort ascending. Blocked soldiers (conflict/constraint) appear at end."""
     shift = _load(session, shift_id)
     authorize(session, user, Action.SHIFT_MANAGE, target_node=None)
+
+    from app.db.models import DutyType as _DutyType
+    from app.services.weapon_eligibility import compute_eligibility
+
+    shift_duty_type = session.get(_DutyType, shift.duty_type_id)
+    required_range_type = shift_duty_type.required_range_type if shift_duty_type else None
 
     soldier_map: dict[uuid.UUID, Soldier] = {
         s.id: s for s in session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
@@ -687,6 +694,14 @@ def get_shift_candidates(
 
         effort = float(si.cumulative_score) / float(si.active_days)
 
+        weapon_warning = False
+        if required_range_type is not None:
+            eligible, _reason = compute_eligibility(
+                session, soldier_id=si.id, required_range_type=required_range_type,
+                as_of=shift.start_date,
+            )
+            weapon_warning = not eligible
+
         path_ids = [str(pid) for pid in soldier_path_ids]
 
         result.append(ShiftCandidateOut(
@@ -696,10 +711,11 @@ def get_shift_candidates(
             effort=round(effort, 3),
             blocked=blocked,
             blocked_reason=blocked_reason,
+            weapon_warning=weapon_warning,
             hierarchy_path_ids=path_ids,
         ))
 
-    result.sort(key=lambda x: (x.blocked, x.effort))
+    result.sort(key=lambda x: (x.blocked, x.weapon_warning, x.effort))
     return result
 
 
