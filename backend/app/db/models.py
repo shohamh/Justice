@@ -938,6 +938,12 @@ class RangeExcusalRequest(Base):
     range_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("range_assignments.id", ondelete="SET NULL"), nullable=True
     )
+    # Set once at request creation and never cleared — survives range_assignment_id
+    # being nulled out when the assignment row is later deleted (approved excusal),
+    # so duty-history can still identify which range this request was for.
+    range_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_events.id", ondelete="SET NULL"), nullable=True, kw_only=True, default=None
+    )
     requested_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("soldiers.id", ondelete="SET NULL"), nullable=True
     )
