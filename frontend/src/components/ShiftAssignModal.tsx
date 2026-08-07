@@ -19,6 +19,8 @@ const BLOCKED_REASON_LABEL: Record<string, string> = {
   assignment: "כבר משובץ",
 };
 
+const WEAPON_WARNING_LABEL = "ללא הכשרת נשק בתוקף";
+
 function hierarchyDistance(pathA: string[], pathB: string[]): number {
   let common = 0;
   while (common < pathA.length && common < pathB.length && pathA[common] === pathB[common]) {
@@ -133,6 +135,14 @@ export default function ShiftAssignModal({ shift, dutyTypes, onSaved, onClose }:
 
   async function handleAssign() {
     if (primarySelected.size === 0 && reserveSelected.size === 0) return;
+    const selectedIds = new Set([...primarySelected, ...reserveSelected]);
+    const hasWeaponWarning = candidates.some(c => selectedIds.has(c.soldier_id) && c.weapon_warning);
+    if (hasWeaponWarning) {
+      const confirmed = window.confirm(
+        "חלק מהחיילים שנבחרו אינם כשירים מבחינת הכשרת נשק לתורנות זו. לשבץ בכל זאת?"
+      );
+      if (!confirmed) return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -281,7 +291,12 @@ function PrimaryTable({ unblocked, blocked, selected, onToggle }: PrimaryTablePr
               className="border-t dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
               onClick={() => onToggle(c.soldier_id)}>
               <td className="p-2"><input type="checkbox" checked={selected.has(c.soldier_id)} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-              <td className="p-2">{c.full_name}</td>
+              <td className="p-2">
+                {c.full_name}
+                {c.weapon_warning && (
+                  <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                )}
+              </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
               <td className="p-2"></td>
@@ -344,7 +359,12 @@ function ReserveTable({ unblocked, blocked, selected, onToggle, showDist }: Rese
               className="border-t dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
               onClick={() => onToggle(c.soldier_id)}>
               <td className="p-2"><input type="checkbox" checked={selected.has(c.soldier_id)} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-              <td className="p-2">{c.full_name}</td>
+              <td className="p-2">
+                {c.full_name}
+                {c.weapon_warning && (
+                  <span title={WEAPON_WARNING_LABEL} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>
+                )}
+              </td>
               <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
               <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
               {showDist && (

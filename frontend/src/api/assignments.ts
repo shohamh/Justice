@@ -47,6 +47,7 @@ export interface ShiftCandidate {
   effort: number;
   blocked: boolean;
   blocked_reason: "constraint" | "assignment" | null;
+  weapon_warning: boolean;
   hierarchy_path_ids: string[];
 }
 
