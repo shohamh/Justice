@@ -136,3 +136,27 @@ def test_score_per_day_from_duty_type(admin_session):
 
     blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
     assert blocks[0].score_per_day == Decimal("5.50")
+
+
+def test_load_duty_blocks_from_shifts_populates_required_range_type(admin_session):
+    from app.db.models import RangeType
+    from tests.helpers import create_node
+
+    create_node(admin_session, level="branch", name="ab-node-1")
+    dt = DutyType(
+        name="ab-weapon", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.live,
+    )
+    loc = DutyLocation(name="ab-loc-1")
+    admin_session.add_all([dt, loc])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=dt.id, duty_location_id=loc.id,
+        start_date=date.today() + timedelta(days=1), end_date=date.today() + timedelta(days=2),
+        required_count=1, status="active",
+    )
+    admin_session.add(shift)
+    admin_session.commit()
+
+    blocks, _ = load_duty_blocks_from_shifts(admin_session, shift_ids=[shift.id])
+    assert all(b.required_range_type == RangeType.live for b in blocks if b.duty_type_id == dt.id)

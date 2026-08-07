@@ -312,6 +312,7 @@ def load_duty_blocks(
                     start_date=day,
                     end_date=day,
                     score_per_day=dt.score_per_day,
+                    required_range_type=dt.required_range_type,
                 )
             )
         day += timedelta(days=1)
@@ -349,6 +350,7 @@ def load_duty_blocks_from_shifts(
     type_ids = {s.duty_type_id for s in shifts}
     types_q = session.execute(select(DutyType).where(DutyType.id.in_(type_ids))).scalars().all()
     score_map = {dt.id: dt.score_per_day for dt in types_q}
+    required_range_type_map = {dt.id: dt.required_range_type for dt in types_q}
     default_rest_hours = get_setting_int(session, "duty.default_rest_hours", 12)
     rest_hours_map = {dt.id: resolve_rest_hours(dt, default_rest_hours) for dt in types_q}
 
@@ -416,6 +418,7 @@ def load_duty_blocks_from_shifts(
                 eligible_node_ids=shift.eligible_node_ids,
                 node_quotas=expanded_quotas[i] if i < len(expanded_quotas) else None,
                 rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
+                required_range_type=required_range_type_map.get(shift.duty_type_id),
             ))
             block_to_shift[block_id] = shift.id
         r_count = reserve_count_for_shift(session, shift=shift)
@@ -435,6 +438,7 @@ def load_duty_blocks_from_shifts(
                 is_reserve=True,
                 eligible_node_ids=shift.eligible_node_ids,
                 rest_hours=rest_hours_map.get(shift.duty_type_id, default_rest_hours),
+                required_range_type=required_range_type_map.get(shift.duty_type_id),
             ))
             block_to_shift[block_id] = shift.id
 
@@ -869,6 +873,9 @@ def resolve_solver_settings(session: Session, settings_json: dict) -> SolverSett
         auto_relax_node_quotas=bool(settings_json.get(
             "auto_relax_node_quotas", _setting_bool("algorithm.auto_relax_node_quotas", False)
         )),
+        enforce_weapon_qualification=bool(settings_json.get(
+            "enforce_weapon_qualification", _setting_bool("weapon_qualification.enforce_eligibility", True)
+        )),
     )
 
 
@@ -1170,6 +1177,15 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                     eligible_node_ids=job.settings_json.get("eligible_node_ids"),
                 )
                 _phase(f"load_soldier_inputs: done ({len(soldiers)} soldiers)")
+
+                from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
+                _phase("weapon_eligibility: start")
+                weapon_ineligible = bulk_ineligible_duty_blocks(
+                    session, soldier_ids=[s.id for s in soldiers], duties=duties,
+                )
+                for s in soldiers:
+                    s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
+                _phase("weapon_eligibility: done")
                 # Compute and inject quarterly effort scores
                 try:
                     _reset_raw = get_setting(session, "fairness.reset_date")
