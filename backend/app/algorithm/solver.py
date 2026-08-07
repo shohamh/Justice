@@ -291,7 +291,7 @@ def _auto_relax_node_quotas(
 
 
 def _eligible_pairs(
-    soldiers: Sequence[SoldierInput], duties: Sequence[DutyBlock]
+    soldiers: Sequence[SoldierInput], duties: Sequence[DutyBlock], settings: SolverSettings
 ) -> list[tuple[int, int]]:
     """(duty_idx, soldier_idx) pairs where the soldier may take the duty.
 
@@ -316,6 +316,8 @@ def _eligible_pairs(
             if any(t in constraint_dates[si] for t in ddates):
                 continue
             if not node_in_scope(d.eligible_node_ids, s.path_ids):
+                continue
+            if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
                 continue
             pairs.append((di, si))
     return pairs
@@ -409,7 +411,7 @@ def _interleaved_solve(
     soldier_by_id = {s.id: s for s in work}
     duty_by_id = {d.id: d for d in duties}
 
-    pairs = _eligible_pairs(work, duties)
+    pairs = _eligible_pairs(work, duties, settings)
     components = _connected_components(len(duties), len(work), pairs)
 
     plan: list[tuple[int, list[int], list[int]]] = []
@@ -583,7 +585,7 @@ def _decomposed_solve(
     soldier_by_id = {s.id: s for s in work}
     duty_by_id = {d.id: d for d in duties}
 
-    pairs = _eligible_pairs(work, duties)
+    pairs = _eligible_pairs(work, duties, settings)
     components = _connected_components(len(duties), len(work), pairs)
 
     # Pre-compute the full batch plan so we can report total progress upfront.
@@ -1078,7 +1080,7 @@ def _effort_round_solve(
     global_duty_idx: dict[object, int] = {d.id: i for i, d in enumerate(duties)}
     global_sol_idx: dict[object, int] = {s.id: i for i, s in enumerate(work)}
 
-    pairs = _eligible_pairs(work, duties)
+    pairs = _eligible_pairs(work, duties, settings)
     components = _connected_components(len(duties), len(work), pairs)
 
     def _remap_rd(
@@ -1360,6 +1362,8 @@ def _swap_pass(
             if d.eligible_node_ids is not None and s.hierarchy_node_id is not None:
                 if s.hierarchy_node_id not in d.eligible_node_ids:
                     continue
+            if settings.enforce_weapon_qualification and d.id in s.weapon_ineligible_duty_block_ids:
+                continue
             elig.add(s.id)
         eligible_for[d.id] = elig
 
