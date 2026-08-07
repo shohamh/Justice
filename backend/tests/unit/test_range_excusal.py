@@ -65,3 +65,40 @@ def test_approving_primary_excusal_promotes_assigned_reserve(app_session: Sessio
     promoted = app_session.get(RangeAssignment, reserve_assignment.id)
     assert promoted is not None and promoted.is_reserve is False
     assert decided.promoted_assignment_id == reserve_assignment.id
+
+
+def test_primary_excusal_request_stores_range_event_id(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="rex-node-1")
+    app_session.add(DutyType(name="rex-weapon-1", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="rex-001", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    request = request_primary_excusal(app_session, assignment=assignment, reason="בדיקה", requested_by=soldier.id)
+
+    assert request.range_event_id == event.id
+
+
+def test_reserve_excusal_request_stores_range_event_id(app_session: Session) -> None:
+    node = create_node(app_session, level="branch", name="rex-node-2")
+    app_session.add(DutyType(name="rex-weapon-2", score_per_day=Decimal("1.00"), requires_weapon=True, eligible_node_ids=[node.id]))
+    app_session.flush()
+    soldier = create_soldier(app_session, personal_number="rex-002", hierarchy_node_id=node.id)
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1, reserve_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=True)
+
+    request = request_reserve_excusal(app_session, assignment=assignment, reason="בדיקה", requested_by=soldier.id)
+
+    assert request.range_event_id == event.id
+    # The assignment is deleted synchronously by request_reserve_excusal — confirm
+    # range_event_id survives that even within the same request/response cycle.
+    assert request.range_assignment_id is None

@@ -65,7 +65,7 @@ def request_primary_excusal(
         raise RangeValidationError("not_assignment_owner")
     _ensure_no_pending(session, assignment.id)
     request = RangeExcusalRequest(
-        range_assignment_id=assignment.id, requested_by=requested_by,
+        range_assignment_id=assignment.id, range_event_id=assignment.range_event_id, requested_by=requested_by,
         reason=_validate_reason(reason), status=RangeExcusalStatus.pending,
     )
     session.add(request)
@@ -90,7 +90,7 @@ def request_reserve_excusal(
         raise RangeValidationError("not_assignment_owner")
     _ensure_no_pending(session, assignment.id)
     request = RangeExcusalRequest(
-        range_assignment_id=assignment.id, requested_by=requested_by,
+        range_assignment_id=assignment.id, range_event_id=assignment.range_event_id, requested_by=requested_by,
         reason=_validate_reason(reason), status=RangeExcusalStatus.approved,
         decided_by=None, decided_at=datetime.now(UTC),
     )
