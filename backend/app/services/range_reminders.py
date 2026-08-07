@@ -12,6 +12,7 @@ from app.db.models import (
     RangeAssignment,
     RangeEvent,
     RangeEventStatus,
+    RangeLocation,
     SystemSetting,
 )
 from app.services.notifications import create_notification
@@ -27,8 +28,10 @@ def _int_setting(session: Session, key: str, default: int) -> int:
         return default
 
 
-def _event_details(event: RangeEvent) -> str:
-    parts = [f"תאריך: {event.date.isoformat()}", f"מיקום: {event.location}"]
+def _event_details(session: Session, event: RangeEvent) -> str:
+    location = session.get(RangeLocation, event.range_location_id)
+    location_name = location.name if location else ""
+    parts = [f"תאריך: {event.date.isoformat()}", f"מיקום: {location_name}"]
     if event.start_time:
         parts.append(f"שעה: {event.start_time}")
     if event.contact_name:
@@ -65,7 +68,7 @@ def send_due_range_reminders(session: Session, *, today: date | None = None) -> 
         primary = sum(1 for a in assignments if not a.is_reserve and not a.is_draft)
         reserve = sum(1 for a in assignments if a.is_reserve and not a.is_draft)
         shortfall = primary < event.required_count or reserve < event.reserve_count
-        details = _event_details(event)
+        details = _event_details(session, event)
         for assignment in assignments:
             if assignment.is_draft:
                 continue

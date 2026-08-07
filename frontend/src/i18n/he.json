@@ -431,7 +431,7 @@
     "exemption_not_found": "הפטור לא נמצא",
     "already_exists": "כבר קיים במערכת",
     "exemption_request_not_found": "בקשת הפטור לא נמצאה",
-    "no_permission": "אין לך הרשאה לצפות במסמך זה",
+    "no_permission": "אין לך הרשאה לבצע פעולה זו",
     "exemption_request_not_pending": "בקשת הפטור כבר טופלה",
     "exemption_type_not_found": "סוג הפטור לא נמצא",
     "insufficient_rank_for_exemption_approval": "נדרש דרג רסן ומעלה לאישור פטורים",
@@ -459,6 +459,7 @@
     "mandatory_end_after_discharge": "תאריך סיום החובה לא יכול להיות אחרי תאריך השחרור",
     "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר",
     "career_discharge_in_past": "תאריך השחרור של חייל בקבע לא יכול להיות בעבר",
+    "discharge_date_in_past": "תאריך השחרור חייב להיות בעתיד",
     "chovah_rank_cannot_be_keva": "דרג חובה אינו יכול להיות משויך למעמד קבע",
     "personal_number_exists": "מספר אישי זה כבר קיים במערכת",
     "hierarchy_node_not_found": "יחידת ההיררכיה לא נמצאה",
@@ -873,6 +874,7 @@
     "select_up_to": "בחר עד {{n}} חיילים לבקש מהם",
     "select_at_least_one": "יש לבחור לפחות חייל אחד",
     "no_eligible_targets": "אין חיילים זמינים וכשירים לתורנות זו",
+    "no_search_results": "לא נמצאו חיילים התואמים את החיפוש",
     "loading_eligible_targets": "טוען רשימת חיילים...",
     "personal_message": "הודעה אישית (לעורר אמפתיה...)",
     "cover_free": "כסה בחינם (מוסיף לניקוד שלך)",
@@ -1207,7 +1209,9 @@
       "constraint_missing_fields": "יש למלא תאריך התחלה וסיום לכל אילוץ, או להסיר את השורה",
       "network": "שגיאת רשת. נסה שוב."
     },
-    "rank_track_incompatible": "הדרגה שנבחרה אינה תואמת למסלול השירות שנבחר"
+    "rank_track_incompatible_chovah": "לא ניתן להיות בדרגה זו במסלול חובה",
+    "rank_track_incompatible_keva": "לא ניתן להיות בדרגה זו במסלול קבע",
+    "discharge_date_must_be_future": "תאריך השחרור חייב להיות בעתיד"
   },
   "telegram_setup": {
     "title": "חיבור טלגרם",

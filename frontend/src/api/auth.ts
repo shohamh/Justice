@@ -58,7 +58,6 @@ export interface RegisterPayload {
   gender: string | null;
   is_officer: boolean | null;
   rank: string | null;
-  bahad1_graduate: boolean;
   enlistment_date: string | null;
   mandatory_end_date: string | null;
   discharge_date: string | null;

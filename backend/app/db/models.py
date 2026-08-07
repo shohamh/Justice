@@ -822,6 +822,22 @@ class RangeExcusalStatus(str, _enum.Enum):
     rejected = "rejected"
 
 
+class RangeLocation(Base):
+    __tablename__ = "range_locations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"), init=False
+    )
+    name: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), init=False
+    )
+
+
 class RangeEvent(Base):
     __tablename__ = "range_events"
 
@@ -833,7 +849,9 @@ class RangeEvent(Base):
     )
     range_type: Mapped[str] = mapped_column(Enum(RangeType, name="range_type"))
     date: Mapped[date] = mapped_column(Date)
-    location: Mapped[str] = mapped_column(Text)
+    range_location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("range_locations.id", ondelete="RESTRICT")
+    )
     required_count: Mapped[int] = mapped_column(Integer)
     start_time: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     end_time: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)

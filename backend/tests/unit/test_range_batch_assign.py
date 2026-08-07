@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import DutyType, RangeAssignment, RangeType, SoldierRangeQualification
 from app.services.ranges import RangeValidationError, assign_batch, create_range_event
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def _event(session: Session, *, required_count: int = 2, reserve_count: int = 1):
@@ -16,7 +16,8 @@ def _event(session: Session, *, required_count: int = 2, reserve_count: int = 1)
     session.flush()
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="range",
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(session, name="range").id,
         required_count=required_count, reserve_count=reserve_count,
     )
     return node, event

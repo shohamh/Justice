@@ -66,6 +66,20 @@ def test_saren_is_keva_only():
     validate_rank_track_compatibility(rank="סרן", is_career=True)  # should not raise
 
 
+def test_kaam_is_officer_rank_below_rasan():
+    from app.services.eligibility import OFFICER_RANKS
+    assert "קאם" in OFFICER_RANKS
+    assert OFFICER_RANKS.index("קאם") < OFFICER_RANKS.index("רסן")
+
+
+def test_kaam_is_keva_only():
+    from app.services.eligibility import validate_rank_track_compatibility
+    import pytest
+    with pytest.raises(ValueError, match="rank_track_incompatible"):
+        validate_rank_track_compatibility(rank="קאם", is_career=False)
+    validate_rank_track_compatibility(rank="קאם", is_career=True)  # should not raise
+
+
 def test_sgan_is_ambiguous_and_accepts_either_track():
     from app.services.eligibility import validate_rank_track_compatibility
     validate_rank_track_compatibility(rank="סגן", is_career=True)
@@ -75,6 +89,27 @@ def test_sgan_is_ambiguous_and_accepts_either_track():
 def test_unknown_rank_is_not_restricted():
     from app.services.eligibility import validate_rank_track_compatibility
     validate_rank_track_compatibility(rank="not_a_real_rank", is_career=True)
+
+
+def test_derive_bahad1_graduate_true_for_regular_officer():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("סרן") is True
+    assert derive_bahad1_graduate("רסן") is True
+    assert derive_bahad1_graduate("סגן") is True
+
+
+def test_derive_bahad1_graduate_false_for_excluded_officer_ranks():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("קמא") is False
+    assert derive_bahad1_graduate("קאב") is False
+    assert derive_bahad1_graduate("קאם") is False
+
+
+def test_derive_bahad1_graduate_false_for_enlisted_and_unknown():
+    from app.services.eligibility import derive_bahad1_graduate
+    assert derive_bahad1_graduate("טוראי") is False
+    assert derive_bahad1_graduate(None) is False
+    assert derive_bahad1_graduate("not_a_real_rank") is False
 
 
 def test_enlisted_keva_soldier_is_eligible_for_at_least_one_seeded_duty_type(db_admin_url: str):

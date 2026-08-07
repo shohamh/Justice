@@ -14,7 +14,7 @@ from app.db.models import (
 )
 from app.services.range_auto_assign import rank_candidates
 from app.services.ranges import add_range_assignment, create_range_event
-from tests.helpers import create_duty_location, create_node, create_soldier
+from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
 
 
 def _weapon_duty_type(session: Session, *, node, name: str) -> DutyType:
@@ -30,7 +30,8 @@ def _event(session: Session, *, required_count: int = 2, reserve_count: int = 1)
     session.flush()
     event = create_range_event(
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="range",
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(session, name="range").id,
         required_count=required_count, reserve_count=reserve_count,
     )
     return node, event
@@ -86,7 +87,7 @@ def test_candidates_exclude_soldier_outside_subtree(app_session: Session) -> Non
     outsider = create_soldier(app_session, personal_number="6000001", hierarchy_node_id=other_node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -100,7 +101,7 @@ def test_marks_range_exempt_soldier_as_blocked(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="6000003", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -117,7 +118,7 @@ def test_marks_soldier_with_approved_constraint_as_blocked(app_session: Session)
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
     app_session.add(PersonalConstraint(
         soldier_id=soldier.id, start_date=event_date - timedelta(days=1),
@@ -140,7 +141,7 @@ def test_marks_soldier_on_duty_that_day_as_blocked(app_session: Session) -> None
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
@@ -163,7 +164,7 @@ def test_does_not_block_soldier_when_duty_ends_on_event_date(app_session: Sessio
     event_date = date.today() + timedelta(days=5)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
     app_session.add(DutyAssignment(
         soldier_id=soldier.id, duty_type_id=weapon_dt.id, duty_location_id=location.id,
@@ -184,12 +185,12 @@ def test_marks_soldier_at_another_range_same_day_as_blocked(app_session: Session
     event_date = date.today() + timedelta(days=5)
     other_event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=event_date, location="מטווח אחר", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח אחר").id, required_count=1,
     )
     add_range_assignment(app_session, event=other_event, soldier_id=soldier.id, is_reserve=False)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -220,13 +221,13 @@ def test_applies_all_eligibility_filters_independently_before_ranking(app_sessio
     ))
     other_event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=event_date, location="another range", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="another range").id, required_count=1,
     )
     add_range_assignment(app_session, event=other_event, soldier_id=at_another_range.id, is_reserve=False)
     app_session.flush()
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -263,7 +264,7 @@ def test_tier_a_sorts_before_tier_b_before_tier_c(app_session: Session) -> None:
 
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=3,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -292,7 +293,7 @@ def test_tier_a_orders_by_earliest_duty_start(app_session: Session) -> None:
 
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=2,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -318,7 +319,7 @@ def test_tier_c_orders_by_soonest_expiring_qualification(app_session: Session) -
 
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=2,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -341,7 +342,7 @@ def test_qualification_at_higher_range_type_counts_as_tier_c(app_session: Sessio
 
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -357,7 +358,7 @@ def test_reason_code_available_and_balanced_when_no_qualification_or_duty(app_se
     soldier = create_soldier(app_session, personal_number="7010001", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)
@@ -379,7 +380,7 @@ def test_reason_code_weapon_duty_priority_for_future_weapon_duty(app_session: Se
     app_session.flush()
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date.today() + timedelta(days=5), location="מטווח", required_count=1,
+        event_date=date.today() + timedelta(days=5), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=1,
     )
 
     ranked = rank_candidates(app_session, event=event)

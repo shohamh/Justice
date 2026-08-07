@@ -14,7 +14,7 @@ import PasswordStrengthHint, { passwordValid } from "../components/PasswordStren
 import { queryKeys } from "../queryKeys";
 import { isDateRangeValid } from "../utils/formatDate";
 import { isValidIsraeliPhone } from "../utils/phoneValidation";
-import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible } from "../constants/ranks";
+import { ENLISTED_RANKS, OFFICER_RANKS as OFFICER_RANKS_LIST, isOfficerRank, isRankTrackCompatible, deriveIsCareer, deriveBahad1Graduate } from "../constants/ranks";
 
 function buildTree(nodes: NodeOut[]): { node: NodeOut; depth: number }[] {
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -44,7 +44,7 @@ interface ConstraintRow { start_date: string; end_date: string; reason: string; 
 interface FormData {
   invite_code: string; personal_number: string; full_name: string;
   password: string; confirm_password: string; phone: string; email: string;
-  gender: string; is_officer: boolean; rank: string; bahad1_graduate: boolean;
+  gender: string; is_officer: boolean; rank: string;
   enlistment_date: string; mandatory_end_date: string; discharge_date: string;
   last_mitvahim_date: string; last_alal_date: string;
   has_military_driving_license: boolean; military_driving_license_expiry: string;
@@ -56,7 +56,7 @@ interface FormData {
 const INITIAL: FormData = {
   invite_code: "", personal_number: "", full_name: "", password: "",
   confirm_password: "", phone: "", email: "", gender: "", is_officer: false, rank: "",
-  bahad1_graduate: false, enlistment_date: "", mandatory_end_date: "",
+  enlistment_date: "", mandatory_end_date: "",
   discharge_date: "", last_mitvahim_date: "", last_alal_date: "",
   has_military_driving_license: false, military_driving_license_expiry: "",
   requested_node_id: "", exemption_requests: [], personal_constraints: [],
@@ -122,7 +122,6 @@ export default function RegisterPage() {
         gender: form.gender || null,
         is_officer: form.is_officer,
         rank: form.rank || null,
-        bahad1_graduate: form.bahad1_graduate,
         enlistment_date: form.enlistment_date || null,
         mandatory_end_date: form.mandatory_end_date || null,
         discharge_date: form.discharge_date || null,
@@ -154,20 +153,40 @@ export default function RegisterPage() {
         "constraint_missing_fields": t("register.errors.constraint_missing_fields"),
       };
       const mappedDetail = detail && detail.startsWith("rank_track_incompatible")
-        ? t("register.rank_track_incompatible")
+        ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
+        : detail === "discharge_date_in_past"
+        ? t("register.discharge_date_must_be_future")
         : detail ? knownErrors[detail] : undefined;
-      setError(detail ? (mappedDetail ?? detail) : t("register.errors.network"));
+      // Fall back to a generic `errors.<code>` lookup for any backend error
+      // code that already has a top-level translation (e.g. chovah_rank_cannot_be_keva,
+      // discharge_date_before_enlistment, mandatory_end_after_discharge) but isn't
+      // one of the special-cased codes above or listed in knownErrors. This keeps
+      // future backend error codes from showing as raw snake_case strings without
+      // requiring knownErrors to be kept in sync forever. i18next returns the key
+      // itself when a translation is missing, so we detect a genuine miss that way.
+      const genericTranslationKey = detail ? `errors.${detail}` : undefined;
+      const genericTranslated = genericTranslationKey ? t(genericTranslationKey) : undefined;
+      const genericDetail = genericTranslated && genericTranslated !== genericTranslationKey
+        ? genericTranslated
+        : undefined;
+      setError(detail ? (mappedDetail ?? genericDetail ?? detail) : t("register.errors.network"));
     } finally {
       setSubmitting(false);
     }
   }
 
   const selectedNode = nodes.find(n => n.id === form.requested_node_id);
-  // Registration always starts a soldier as חובה (is_career=False — see
-  // backend/app/services/registration.py), so the compatibility check always
-  // runs against the חובה track here.
-  const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, false)
-    ? t("register.rank_track_incompatible")
+  // is_career mirrors backend/app/services/registration.py's derive_is_career
+  // call: a soldier whose mandatory service already ended (mandatory_end_date
+  // in the past) is קבע even at registration time, not always חובה.
+  const isCareer = form.mandatory_end_date
+    ? deriveIsCareer(form.rank, form.mandatory_end_date, form.discharge_date)
+    : false;
+  const rankTrackError = form.rank && !isRankTrackCompatible(form.rank, isCareer)
+    ? t(isCareer ? "register.rank_track_incompatible_keva" : "register.rank_track_incompatible_chovah")
+    : null;
+  const dischargeDateError = form.discharge_date && form.discharge_date < new Date().toISOString().slice(0, 10)
+    ? t("register.discharge_date_must_be_future")
     : null;
 
   return (
@@ -237,11 +256,6 @@ export default function RegisterPage() {
                     ...prev,
                     rank: v,
                     is_officer: isOfficer,
-                    // bahad1_graduate is a separate fact from is_officer — e.g. קא"ב
-                    // (academic officer) is an officer who did NOT graduate בה"ד 1.
-                    // Reset to false on rank change instead of mirroring is_officer, and let
-                    // the user check the "בה"ד 1 graduate" checkbox explicitly when relevant.
-                    bahad1_graduate: false,
                     last_alal_date: isOfficer ? prev.last_alal_date : "",
                   }));
                 }}
@@ -252,21 +266,20 @@ export default function RegisterPage() {
             {form.rank && (
               <div className="text-xs text-gray-500 space-x-3 flex gap-3">
                 {form.is_officer && <span className="text-indigo-600 dark:text-indigo-300">✓ קצין</span>}
+                {deriveBahad1Graduate(form.rank) && <span className="text-indigo-600 dark:text-indigo-300">✓ בוגר בה&quot;ד 1</span>}
               </div>
             )}
-            {form.is_officer && (
-              <label className="flex items-center gap-1 text-sm">
-                <input type="checkbox" checked={form.bahad1_graduate}
-                  onChange={e => set("bahad1_graduate", e.target.checked)} />
-                בוגר בה&quot;ד 1
-              </label>
-            )}
-            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["discharge_date","שחרור"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
+            {([["enlistment_date","תאריך גיוס"],["mandatory_end_date","סיום חובה"],["last_mitvahim_date","מטווח אחרון"]] as [keyof FormData, string][]).map(([key, label]) => (
               <label key={key as string} className="block text-sm">{label} <span className="text-red-500">*</span>
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                   value={form[key] as string} onChange={iso => set(key, iso)} />
               </label>
             ))}
+            <label className="block text-sm">שחרור <span className="text-red-500">*</span>
+              <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                value={form.discharge_date} onChange={iso => set("discharge_date", iso)} />
+              {dischargeDateError && <p className="text-red-600 text-xs mt-1">{dischargeDateError}</p>}
+            </label>
             {form.is_officer && (
               <label className="block text-sm">אל&quot;ל אחרון
                 <DateInput className="mt-1 block w-full border rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
@@ -302,7 +315,7 @@ export default function RegisterPage() {
                 disabled={
                   !form.personal_number || !form.full_name || !isValidIsraeliPhone(form.phone) || !form.email ||
                   !form.gender || !form.rank || !!rankTrackError || !form.enlistment_date || !form.mandatory_end_date ||
-                  !form.discharge_date || !form.last_mitvahim_date ||
+                  !form.discharge_date || !!dischargeDateError || !form.last_mitvahim_date ||
                   !passwordValid(form.password) || form.password !== form.confirm_password
                 }
                 onClick={() => setStep(3)}>{t("register.next")}</button>

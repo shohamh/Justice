@@ -4,9 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RangesPage from "./RangesPage";
 import * as rangesApi from "../api/ranges";
+import * as rangeLocationsApi from "../api/rangeLocations";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 
 vi.mock("../api/ranges");
+vi.mock("../api/rangeLocations");
 vi.mock("../api/soldiers", async () => {
   const actual = await vi.importActual<typeof import("../api/soldiers")>("../api/soldiers");
   return { ...actual, listSoldiers: vi.fn().mockResolvedValue([]) };
@@ -47,6 +49,7 @@ beforeEach(() => {
   vi.mocked(useAuth).mockReturnValue({ user: mockUser } as any);
   vi.mocked(rangesApi.getRangeExcusalRequests).mockResolvedValue([]);
   vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([]);
+  vi.mocked(rangeLocationsApi.listRangeLocations).mockResolvedValue([]);
 });
 
 describe("RangesPage", () => {
@@ -315,6 +318,9 @@ describe("RangesPage create event", () => {
       date: "2026-10-01", location: "מטווח צפון", required_count: 6,
       reserve_count: 2, status: "planned", assignments: [],
     });
+    vi.mocked(rangeLocationsApi.listRangeLocations).mockResolvedValue([
+      { id: "loc-1", name: "מטווח צפון", active: true },
+    ]);
 
     renderWithQuery(<RangesPage />);
 
@@ -323,7 +329,10 @@ describe("RangesPage create event", () => {
 
     fireEvent.change(screen.getByTestId("new-range-type"), { target: { value: "live" } });
     fireEvent.change(screen.getByTestId("new-date"), { target: { value: "2026-10-01" } });
-    fireEvent.change(screen.getByTestId("new-location"), { target: { value: "מטווח צפון" } });
+    fireEvent.focus(screen.getByTestId("new-range-location"));
+    const locationOption = await screen.findByText("מטווח צפון");
+    fireEvent.pointerDown(locationOption);
+    fireEvent.pointerUp(locationOption);
     fireEvent.change(screen.getByTestId("new-start-time"), { target: { value: "08:00" } });
     fireEvent.change(screen.getByTestId("new-end-time"), { target: { value: "12:00" } });
     fireEvent.change(screen.getByTestId("new-required-count"), { target: { value: "6" } });
@@ -340,7 +349,7 @@ describe("RangesPage create event", () => {
         hierarchy_node_id: "node-1",
         range_type: "live",
         date: "2026-10-01",
-        location: "מטווח צפון",
+        range_location_id: "loc-1",
         start_time: "08:00",
         end_time: "12:00",
         arrival_instructions: "להגיע בשמונה",

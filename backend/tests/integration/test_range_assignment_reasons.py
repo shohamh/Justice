@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import AuditLog, DutyType, RangeAssignment
 from app.services.settings_loader import apply_settings
-from tests.helpers import auth_headers, create_node, create_soldier
+from tests.helpers import auth_headers, create_node, create_range_location, create_soldier
 
 
 def _enable_mitvachim(session: Session) -> None:
@@ -29,6 +29,7 @@ def test_manual_assignment_defaults_reason_fields_and_event_capabilities(
         requires_weapon=True,
         eligible_node_ids=[node.id],
     ))
+    loc = create_range_location(admin_session, name="מטווח")
     admin_session.commit()
     event_response = client.post(
         "/api/ranges",
@@ -36,7 +37,7 @@ def test_manual_assignment_defaults_reason_fields_and_event_capabilities(
             "hierarchy_node_id": str(node.id),
             "range_type": "laser",
             "date": "2026-10-01",
-            "location": "מטווח",
+            "range_location_id": str(loc.id),
             "required_count": 1,
         },
         headers=auth_headers(planner),
@@ -83,11 +84,13 @@ def test_manual_assignment_defaults_reason_fields_and_event_capabilities(
     assert blank_custom_reason.status_code == 400
     assert blank_custom_reason.json()["detail"] == "custom_reason_text_required"
 
+    other_loc = create_range_location(admin_session, name="מטווח אחר")
+    admin_session.commit()
     other_event = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id), "range_type": "live", "date": "2026-10-02",
-            "location": "מטווח אחר", "required_count": 1,
+            "range_location_id": str(other_loc.id), "required_count": 1,
         },
         headers=auth_headers(planner),
     )
@@ -124,12 +127,13 @@ def test_read_only_commander_cannot_see_own_draft_assignment_or_mutate_its_reaso
         admin_session, personal_number="7010011", role="commander", hierarchy_node_id=node.id
     )
     node.commander_id = commander.id
+    loc = create_range_location(admin_session, name="מטווח")
     admin_session.commit()
     event_response = client.post(
         "/api/ranges",
         json={
             "hierarchy_node_id": str(node.id), "range_type": "laser", "date": "2026-10-03",
-            "location": "מטווח", "required_count": 1,
+            "range_location_id": str(loc.id), "required_count": 1,
         },
         headers=auth_headers(planner),
     )

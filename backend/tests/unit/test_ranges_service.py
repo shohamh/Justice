@@ -25,7 +25,7 @@ from app.services.ranges import (
     remove_range_assignment,
     update_range_event,
 )
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def test_create_range_event_success(app_session: Session) -> None:
@@ -36,7 +36,7 @@ def test_create_range_event_success(app_session: Session) -> None:
         hierarchy_node_id=node.id,
         range_type=RangeType.laser,
         event_date=date(2026, 8, 20),
-        location="מטווח דרום",
+        range_location_id=create_range_location(app_session, name="מטווח דרום").id,
         required_count=4,
         reserve_count=1,
     )
@@ -54,7 +54,23 @@ def test_create_range_event_rejects_unknown_node(app_session: Session) -> None:
             hierarchy_node_id=uuid.uuid4(),
             range_type=RangeType.live,
             event_date=date(2026, 8, 20),
-            location="מטווח",
+            range_location_id=create_range_location(app_session, name="מטווח").id,
+            required_count=2,
+        )
+
+
+def test_create_range_event_rejects_unknown_location(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה מיקום-לא-קיים")
+
+    with pytest.raises(RangeValidationError, match="range_location_not_found"):
+        create_range_event(
+            app_session,
+            hierarchy_node_id=node.id,
+            range_type=RangeType.live,
+            event_date=date(2026, 8, 20),
+            range_location_id=uuid.uuid4(),
             required_count=2,
         )
 
@@ -68,7 +84,7 @@ def test_create_range_event_rejects_negative_counts(app_session: Session) -> Non
             hierarchy_node_id=node.id,
             range_type=RangeType.alal,
             event_date=date(2026, 8, 20),
-            location="מטווח",
+            range_location_id=create_range_location(app_session, name="מטווח").id,
             required_count=-1,
         )
 
@@ -77,13 +93,27 @@ def test_update_range_event_changes_fields(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ג")
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=date(2026, 8, 20), location="מטווח ישן", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח ישן").id, required_count=3,
     )
 
-    updated = update_range_event(app_session, event=event, location="מטווח חדש", required_count=5)
+    new_location = create_range_location(app_session, name="מטווח חדש")
+    updated = update_range_event(app_session, event=event, range_location_id=new_location.id, required_count=5)
 
-    assert updated.location == "מטווח חדש"
+    assert updated.range_location_id == new_location.id
     assert updated.required_count == 5
+
+
+def test_update_range_event_rejects_unknown_location(app_session: Session) -> None:
+    import uuid
+
+    node = create_node(app_session, level="פלוגה", name="פלוגה עדכון-מיקום-לא-קיים")
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח ישן").id, required_count=3,
+    )
+
+    with pytest.raises(RangeValidationError, match="range_location_not_found"):
+        update_range_event(app_session, event=event, range_location_id=uuid.uuid4())
 
 
 def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
@@ -92,11 +122,13 @@ def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה עדכון-ביקורת")
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=date(2026, 8, 20), location="מטווח ישן", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח ישן").id, required_count=3,
     )
     actor_id = uuid.uuid4()
+    old_location_id = event.range_location_id
+    new_location = create_range_location(app_session, name="מטווח חדש")
 
-    update_range_event(app_session, event=event, location="מטווח חדש", actor_id=actor_id)
+    update_range_event(app_session, event=event, range_location_id=new_location.id, actor_id=actor_id)
 
     entry = app_session.execute(
         select(AuditLog).where(
@@ -106,15 +138,15 @@ def test_update_range_event_writes_audit_entry(app_session: Session) -> None:
         )
     ).scalar_one()
     assert entry.actor_id == actor_id
-    assert entry.before.get("location") == "מטווח ישן"
-    assert entry.after.get("location") == "מטווח חדש"
+    assert entry.before.get("range_location_id") == str(old_location_id)
+    assert entry.after.get("range_location_id") == str(new_location.id)
 
 
 def test_cancel_range_event_sets_status(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ד")
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=2,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
     cancelled = cancel_range_event(app_session, event=event, reason="weather")
@@ -128,7 +160,7 @@ def test_cancel_range_event_writes_audit_entry(app_session: Session) -> None:
     node = create_node(app_session, level="פלוגה", name="פלוגה ביטול-ביקורת")
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=2,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
     actor_id = uuid.uuid4()
 
@@ -153,7 +185,7 @@ def test_cancel_range_event_rejects_already_cancelled_event(app_session: Session
     node = create_node(app_session, level="פלוגה", name="פלוגה ביטול-כפול")
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=2,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=2,
     )
 
     cancel_range_event(app_session, event=event, reason="weather")
@@ -185,7 +217,7 @@ def test_add_range_assignment_success(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="4000001", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     weapon_duty = DutyType(name="שמירה עם נשק א", score_per_day=Decimal("1.00"),
                             requires_weapon=True, eligible_node_ids=[node.id])
@@ -213,7 +245,7 @@ def test_add_range_assignment_rejects_soldier_outside_subunit(app_session: Sessi
     soldier = create_soldier(app_session, personal_number="4000002", hierarchy_node_id=other_node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     weapon_duty = DutyType(name="שמירה עם נשק ו", score_per_day=Decimal("1.00"),
                             requires_weapon=True, eligible_node_ids=[other_node.id])
@@ -229,7 +261,7 @@ def test_add_range_assignment_rejects_exempt_soldier(app_session: Session) -> No
     soldier = create_soldier(app_session, personal_number="4000003", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     # No requires_weapon=True duty type is eligible for this node -> structurally exempt.
 
@@ -253,11 +285,11 @@ def test_add_range_assignment_rejects_soldier_booked_at_another_range_same_day(
     event_date = date(2026, 8, 20)
     first_event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=event_date, location="מטווח א", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח א").id, required_count=1,
     )
     second_event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=event_date, location="מטווח ב", required_count=1,
+        event_date=event_date, range_location_id=create_range_location(app_session, name="מטווח ב").id, required_count=1,
     )
     add_range_assignment(
         app_session, event=first_event, soldier_id=soldier.id, is_reserve=False
@@ -274,7 +306,7 @@ def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="4000004", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     weapon_duty = DutyType(name="שמירה עם נשק ט", score_per_day=Decimal("1.00"),
                             requires_weapon=True, eligible_node_ids=[node.id])
@@ -294,7 +326,7 @@ def test_roster_change_notifies_existing_and_removed_assignees(app_session: Sess
     second = create_soldier(app_session, personal_number="4900002", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="×ž×˜×•×•×—", required_count=2,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="×ž×˜×•×•×—").id, required_count=2,
     )
     weapon_duty = DutyType(
         name="×©×ž×™×¨×” ×¢× × ×©×§ ×¨×•×¡×˜×¨", score_per_day=Decimal("1.00"),
@@ -326,7 +358,7 @@ def test_cancellation_notifies_assignees_with_reason_and_event_reference(app_ses
     soldier = create_soldier(app_session, personal_number="4900003", hierarchy_node_id=node.id)
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.live,
-        event_date=date(2026, 8, 20), location="×ž×˜×•×•×— ×¦×¤×•× ×™", required_count=1,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="×ž×˜×•×•×— ×¦×¤×•× ×™").id, required_count=1,
     )
     weapon_duty = DutyType(
         name="×©×ž×™×¨×” ×¢× × ×©×§ ×‘×™×˜×•×œ", score_per_day=Decimal("1.00"),
@@ -356,7 +388,7 @@ def test_add_range_assignment_rejects_when_event_not_planned(app_session: Sessio
     app_session.flush()
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     cancel_range_event(app_session, event=event, reason="cancelled")
 
@@ -373,7 +405,7 @@ def test_remove_range_assignment_rejects_when_event_not_planned(app_session: Ses
     app_session.flush()
     event = create_range_event(
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
-        event_date=date(2026, 8, 20), location="מטווח", required_count=3,
+        event_date=date(2026, 8, 20), range_location_id=create_range_location(app_session, name="מטווח").id, required_count=3,
     )
     assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
     cancel_range_event(app_session, event=event, reason="cancelled")

@@ -16,7 +16,7 @@ from app.db.models import (
     RangeType,
     SoldierRangeQualification,
 )
-from tests.helpers import create_node, create_soldier
+from tests.helpers import create_node, create_range_location, create_soldier
 
 
 def test_range_event_round_trip(app_session: Session) -> None:
@@ -25,7 +25,7 @@ def test_range_event_round_trip(app_session: Session) -> None:
         hierarchy_node_id=node.id,
         range_type=RangeType.laser,
         date=date(2026, 8, 15),
-        location="×ž×˜×•×•×— ×“×¨×•×",
+        range_location_id=create_range_location(app_session, name="×ž×˜×•×•×— ×“×¨×•×").id,
         required_count=5,
         reserve_count=2,
     )
@@ -44,7 +44,7 @@ def test_range_assignment_and_qualification_round_trip(app_session: Session) -> 
         hierarchy_node_id=node.id,
         range_type=RangeType.live,
         date=date(2026, 9, 1),
-        location="×ž×˜×•×•×— ×¦×¤×•×Ÿ",
+        range_location_id=create_range_location(app_session, name="×ž×˜×•×•×— ×¦×¤×•×Ÿ").id,
         required_count=3,
     )
     app_session.add(event)
@@ -97,7 +97,7 @@ def test_range_assignment_is_draft_defaults_false(app_session: Session) -> None:
     soldier = create_soldier(app_session, personal_number="9000001", hierarchy_node_id=node.id)
     event = RangeEvent(
         hierarchy_node_id=node.id, range_type=RangeType.laser,
-        date=date(2026, 8, 25), location="×ž×˜×•×•×—", required_count=1,
+        date=date(2026, 8, 25), range_location_id=create_range_location(app_session, name="×ž×˜×•×•×—").id, required_count=1,
     )
     app_session.add(event)
     app_session.flush()
@@ -118,7 +118,7 @@ def test_range_excusal_request_allows_only_one_pending_request_per_assignment(ap
         hierarchy_node_id=node.id,
         range_type=RangeType.laser,
         date=date(2026, 8, 26),
-        location="×ž×˜×•×•×—",
+        range_location_id=create_range_location(app_session, name="×ž×˜×•×•×—").id,
         required_count=1,
     )
     app_session.add(event)
@@ -156,7 +156,7 @@ def test_range_excusal_request_starts_pending_without_a_decision(app_session: Se
         hierarchy_node_id=node.id,
         range_type=RangeType.live,
         date=date(2026, 8, 27),
-        location="×ž×˜×•×•×—",
+        range_location_id=create_range_location(app_session, name="×ž×˜×•×•×—").id,
         required_count=1,
     )
     app_session.add(event)

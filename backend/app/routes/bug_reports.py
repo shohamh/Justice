@@ -415,7 +415,7 @@ def _require_reporter_or_admin(session: Session, user: Soldier, report_id: uuid.
     return report
 
 
-@router.post("/bug-reports/{report_id}/seen", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/bug-reports/{report_id}/seen", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def mark_bug_report_seen(
     report_id: uuid.UUID,
     session: Session = Depends(get_session),

@@ -15,7 +15,7 @@ from app.db.models import (
     Soldier,
     SoldierEnrollmentRequest,
 )
-from app.services.eligibility import validate_rank_track_compatibility
+from app.services.eligibility import derive_bahad1_graduate, derive_is_career, validate_rank_track_compatibility
 from app.services.invite_codes import InviteCodeError, consume_invite_code
 from app.services.settings_loader import SettingNotFound, get_setting
 from app.services.soldiers import SoldierError, _check_soldier_dates
@@ -37,7 +37,6 @@ def register(
     gender: str | None,
     is_officer: bool | None,
     rank: str | None,
-    bahad1_graduate: bool,
     enlistment_date: date | None,
     mandatory_end_date: date | None,
     discharge_date: date | None,
@@ -67,18 +66,25 @@ def register(
     if session.get(HierarchyNode, requested_node_id) is None:
         raise RegistrationError("requested node not found")
 
+    if discharge_date is not None and discharge_date < date.today():
+        raise RegistrationError("discharge_date_in_past")
+
+    is_career = derive_is_career(rank, mandatory_end_date, discharge_date)
+
     try:
         _check_soldier_dates(
             rank=rank, enlistment_date=enlistment_date, discharge_date=discharge_date,
-            mandatory_end_date=mandatory_end_date, is_career=False,
+            mandatory_end_date=mandatory_end_date, is_career=is_career,
         )
     except SoldierError as exc:
         raise RegistrationError(str(exc)) from exc
 
     try:
-        validate_rank_track_compatibility(rank=rank, is_career=False)
+        validate_rank_track_compatibility(rank=rank, is_career=is_career)
     except ValueError as exc:
         raise RegistrationError(str(exc)) from exc
+
+    bahad1_graduate = derive_bahad1_graduate(rank)
 
     soldier = Soldier(
         personal_number=personal_number,
@@ -92,6 +98,7 @@ def register(
         gender=gender,
         is_officer=is_officer,
         rank=rank,
+        is_career=is_career,
         bahad1_graduate=bahad1_graduate,
         enlistment_date=enlistment_date,
         mandatory_end_date=mandatory_end_date,

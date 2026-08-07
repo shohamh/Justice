@@ -35,7 +35,6 @@ def _base(**overrides):
         "gender": "male",
         "is_officer": False,
         "rank": "טוראי",
-        "bahad1_graduate": False,
         # Relative to today so a חובה-only rank never accidentally looks like it
         # outlived its own mandatory-service window as the real calendar advances.
         "enlistment_date": date.today() - timedelta(days=600),
@@ -88,9 +87,10 @@ def test_register_rejects_discharge_before_enlistment(admin_session):
 
 
 def test_register_rejects_incompatible_rank_track(admin_session):
-    # Registration always starts a soldier as חובה (is_career=False, see
-    # test_register_always_starts_as_chovah), so a קבע-only rank like רסל is
-    # always incompatible at registration time.
+    # is_career is derived from mandatory_end_date/discharge_date (see
+    # test_register_allows_keva_only_rank_once_mandatory_service_has_ended);
+    # _base()'s mandatory_end_date is in the future, so is_career is still
+    # False here, making a קבע-only rank like רסל incompatible.
     from app.services.registration import register, RegistrationError
     from app.services.invite_codes import create_invite_code
 
@@ -147,7 +147,12 @@ def test_register_duplicate_personal_number_raises(admin_session):
                  exemption_requests=[], personal_constraints=[], **_base(personal_number=pn))
 
 
-def test_register_always_starts_as_chovah(admin_session):
+# is_career is False here for two independent reasons: (1) rank "טוראי" is a
+# חובה-only rank, so is_career short-circuits to False regardless of dates, and
+# (2) mandatory_end_date (from _base()) is in the future anyway. This is NOT
+# evidence that registration always hardcodes חובה — see derive_is_career for
+# the actual date-based derivation this branch introduced.
+def test_register_starts_as_chovah_while_mandatory_service_is_ongoing(admin_session):
     holding = _make_holding(admin_session)
     node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
     from app.services.invite_codes import create_invite_code
@@ -268,3 +273,86 @@ def test_register_rejects_bad_exemption_date_range(admin_session):
             }],
             personal_constraints=[], **_base()
         )
+
+
+def test_register_allows_keva_only_rank_once_mandatory_service_has_ended(admin_session):
+    """Regression: registration used to hardcode is_career=False, so a soldier
+    whose mandatory service already ended (mandatory_end_date in the past,
+    rank is קבע-only) was incorrectly rejected as a track mismatch."""
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    soldier = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[],
+        **_base(
+            rank="רסן",
+            mandatory_end_date=date.today() - timedelta(days=30),
+            discharge_date=date.today() + timedelta(days=365 * 3),
+        ),
+    )
+    admin_session.commit()
+
+    assert soldier.is_career is True
+    assert soldier.rank == "רסן"
+
+
+def test_register_rejects_discharge_date_in_past(admin_session):
+    from app.services.registration import register, RegistrationError
+    from app.services.invite_codes import create_invite_code
+
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    with pytest.raises(RegistrationError, match="discharge_date_in_past"):
+        register(
+            admin_session, invite_code=invite.code, requested_node_id=node.id,
+            exemption_requests=[], personal_constraints=[],
+            **_base(discharge_date=date.today() - timedelta(days=1)),
+        )
+
+
+def test_register_derives_bahad1_graduate_from_rank(admin_session):
+    holding = _make_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    from app.services.invite_codes import create_invite_code
+    from app.services.registration import register
+    invite = create_invite_code(admin_session, uses_left=2, actor_id=None)
+    admin_session.commit()
+
+    # סרן and קאב are קבע-only ranks (see _KEVA_ONLY_TRACK_RANKS in
+    # eligibility.py), so mandatory_end_date must already be in the past for
+    # derive_is_career to land on True and pass rank/track compatibility —
+    # otherwise register() raises rank_track_incompatible before we ever get
+    # to check the derived bahad1_graduate value.
+    officer = register(
+        admin_session, invite_code=invite.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[],
+        **_base(
+            rank="סרן", is_officer=True,
+            mandatory_end_date=date.today() - timedelta(days=30),
+            discharge_date=date.today() + timedelta(days=365 * 3),
+        ),
+    )
+    admin_session.commit()
+    assert officer.bahad1_graduate is True
+
+    invite2 = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+    kaab_officer = register(
+        admin_session, invite_code=invite2.code, requested_node_id=node.id,
+        exemption_requests=[], personal_constraints=[],
+        **_base(
+            rank="קאב", is_officer=True,
+            mandatory_end_date=date.today() - timedelta(days=30),
+            discharge_date=date.today() + timedelta(days=365 * 3),
+        ),
+    )
+    admin_session.commit()
+    assert kaab_officer.bahad1_graduate is False

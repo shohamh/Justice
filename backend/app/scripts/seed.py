@@ -46,6 +46,7 @@ from app.db.models import (
     RangeAttendanceStatus,
     RangeEvent,
     RangeExcusalRequest,
+    RangeLocation,
     SoldierRangeQualification,
     RangeEventStatus,
     RangeType,
@@ -81,6 +82,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             session.query(SoldierRangeQualification).delete()
             session.query(RangeAssignment).delete()
             session.query(RangeEvent).delete()
+            session.query(RangeLocation).delete()
             session.query(ExemptionDutyTypeMap).delete()
             session.query(DutyReserveLink).delete()
             session.query(DutyAssignment).delete()
@@ -1585,6 +1587,13 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
             if s.hierarchy_node_id in node_by_id
             and range_node.id in node_by_id[s.hierarchy_node_id].path_ids
         ]
+        range_locations = {
+            name: RangeLocation(name=name)
+            for name in ("מטווח דרום", "מטווח חי - שדה האש הצפוני", "שטח אימונים - אלל")
+        }
+        for loc in range_locations.values():
+            session.add(loc)
+        session.flush()
         if len(range_soldiers) >= 4:
             # Past laser range: attended (present ×2), one no-show — exercises
             # qualification-expiry and score-penalty side effects end to end.
@@ -1592,7 +1601,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 hierarchy_node_id=range_node.id,
                 range_type=RangeType.laser,
                 date=today - timedelta(days=14),
-                location="מטווח דרום",
+                range_location_id=range_locations["מטווח דרום"].id,
                 required_count=3,
                 reserve_count=1,
                 status=RangeEventStatus.planned,
@@ -1630,7 +1639,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 hierarchy_node_id=range_node.id,
                 range_type=RangeType.live,
                 date=today + timedelta(days=10),
-                location="מטווח חי - שדה האש הצפוני",
+                range_location_id=range_locations["מטווח חי - שדה האש הצפוני"].id,
                 required_count=4,
                 reserve_count=2,
                 status=RangeEventStatus.planned,
@@ -1652,7 +1661,7 @@ def seed(*, force: bool = False, with_assignments: bool = False, fair: bool = Fa
                 hierarchy_node_id=range_node.id,
                 range_type=RangeType.alal,
                 date=today + timedelta(days=30),
-                location="שטח אימונים - אלל",
+                range_location_id=range_locations["שטח אימונים - אלל"].id,
                 required_count=6,
                 reserve_count=2,
                 status=RangeEventStatus.planned,
