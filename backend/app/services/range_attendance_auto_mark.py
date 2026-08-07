@@ -5,13 +5,8 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeEventStatus, SystemSetting
-from app.services.ranges import mark_attendance
-
-
-def _mitvachim_enabled(session: Session) -> bool:
-    setting = session.get(SystemSetting, "mitvachim.enabled")
-    return setting is None or setting.value is True
+from app.db.models import RangeAssignment, RangeAttendanceStatus, RangeEvent, RangeEventStatus
+from app.services.ranges import _mitvachim_enabled, mark_attendance
 
 
 def auto_mark_present_for_elapsed_events(session: Session, *, today: date | None = None) -> int:

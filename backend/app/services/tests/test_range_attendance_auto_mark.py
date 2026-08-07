@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyType, RangeAttendanceStatus, RangeEventStatus, RangeType, SoldierRangeQualification
+from app.db.models import DutyType, RangeAttendanceStatus, RangeType, SoldierRangeQualification
 from app.services.range_attendance_auto_mark import auto_mark_present_for_elapsed_events
 from app.services.ranges import add_range_assignment, cancel_range_event, create_range_event
 from app.services.settings_loader import apply_settings
@@ -115,3 +115,17 @@ def test_disabled_setting_skips_entirely(app_session: Session) -> None:
     assert count == 0
     app_session.refresh(assignment)
     assert assignment.attendance_status == RangeAttendanceStatus.pending
+
+
+def test_draft_assignment_not_auto_marked(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    node, event = _event(app_session, event_date=date.today() - timedelta(days=1))
+    soldier = create_soldier(app_session, personal_number="am-007", hierarchy_node_id=node.id)
+    draft_assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+    draft_assignment.is_draft = True
+    app_session.commit()
+
+    auto_mark_present_for_elapsed_events(app_session)
+
+    app_session.refresh(draft_assignment)
+    assert draft_assignment.attendance_status == RangeAttendanceStatus.pending
