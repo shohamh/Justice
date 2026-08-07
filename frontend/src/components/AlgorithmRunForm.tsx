@@ -271,6 +271,14 @@ export default function AlgorithmRunForm({ dutyTypes, onJobSubmitted, initialOve
             />
             אפשר הרחבת יחידה אוטומטית במכסות
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={settings.enforce_weapon_qualification ?? true}
+              onChange={e => setSettings(s => ({ ...s, enforce_weapon_qualification: e.target.checked }))}
+            />
+            אכוף כשירות הכשרת נשק בשיבוץ אוטומטי
+          </label>
         </div>
       )}
 
