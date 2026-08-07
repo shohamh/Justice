@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { RangeAssignment, RangeEvent, RangeExcusalRequest } from "../../api/ranges";
 import { RosterSection } from "../planning";
 import RangeAttendancePanel from "./RangeAttendancePanel";
+import { ATTENDANCE_STATUS_LABELS } from "../../utils/rangeLabels";
 
 interface Props {
   event: RangeEvent;
@@ -32,7 +33,7 @@ export default function RangeDetailContent(p: Props) {
   const selfAssignment = event.assignments.find(a => future && !a.is_draft && a.soldier_id === p.userId);
   const actionClass = "rounded border px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50";
 
-  const row = (a: RangeAssignment) => ({ id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status: a.attendance_status });
+  const row = (a: RangeAssignment) => ({ id: a.id, soldierId: a.soldier_id, soldierName: p.soldierName(a.soldier_id), isDraft: a.is_draft, status: ATTENDANCE_STATUS_LABELS[a.attendance_status] ?? a.attendance_status });
 
   return <div className="space-y-4" data-testid="range-detail-content">
     {p.actions}
