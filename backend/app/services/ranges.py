@@ -23,6 +23,7 @@ from app.db.models import (
     SoldierRangeQualification,
 )
 from app.services.adjustments import create_adjustment
+from app.services.approval_scope import commander_chain_for_soldier
 from app.services.notifications import create_notification, notify_duty_managers_in_scope
 from app.services.range_exemption import is_range_exempt
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -464,9 +465,14 @@ def _delete_qualification_from_this_assignment(session: Session, *, assignment: 
     ))
 
 
+def _direct_commander_id(session: Session, soldier_id: uuid.UUID) -> uuid.UUID | None:
+    chain = commander_chain_for_soldier(session, soldier_id)
+    return chain[0] if chain else None
+
+
 def mark_attendance(
     session: Session, *, assignment: RangeAssignment, status: RangeAttendanceStatus,
-    marked_by: uuid.UUID, note: str | None = None,
+    marked_by: uuid.UUID | None = None, note: str | None = None,
 ) -> RangeAssignment:
     if assignment.is_draft:
         raise RangeValidationError("assignment_not_confirmed")
@@ -477,10 +483,14 @@ def mark_attendance(
         raise RangeValidationError("event_cancelled")
     if event.date > date.today():
         raise RangeValidationError("event_not_yet_occurred")
-    if status == RangeAttendanceStatus.no_show and not note:
-        raise RangeValidationError("note_required_for_no_show")
 
     previous_status = assignment.attendance_status
+    note_required = status == RangeAttendanceStatus.no_show or (
+        previous_status != RangeAttendanceStatus.pending and status != previous_status
+    )
+    if note_required and not note:
+        raise RangeValidationError("note_required_for_attendance_change")
+
     if previous_status == status:
         if status == RangeAttendanceStatus.no_show and _mitvachim_enabled(session):
             latest_body = f"{_range_context(session, event, reason=note)} | assignment={assignment.id}"
@@ -493,6 +503,7 @@ def mark_attendance(
         session.refresh(assignment)
         return assignment
     no_show_transition = previous_status != RangeAttendanceStatus.no_show and status == RangeAttendanceStatus.no_show
+    present_correction = previous_status == RangeAttendanceStatus.no_show and status == RangeAttendanceStatus.present
 
     # Reverse the previous side effect, if any.
     if previous_status == RangeAttendanceStatus.no_show and assignment.score_adjustment_id is not None:
@@ -518,6 +529,19 @@ def mark_attendance(
             session, soldier_id=assignment.soldier_id, range_type=event.range_type,
             valid_until=valid_until, source_range_assignment_id=assignment.id,
         )
+        if present_correction:
+            commander_id = _direct_commander_id(session, assignment.soldier_id)
+            _range_notification(
+                session, soldier_id=assignment.soldier_id, type=NotificationType.range_attendance_corrected_to_present,
+                title="תיקון נוכחות במטווח", body=note, reference_type="range_assignment",
+                reference_id=assignment.id, actor_id=marked_by,
+            )
+            if commander_id is not None:
+                _range_notification(
+                    session, soldier_id=commander_id, type=NotificationType.range_attendance_corrected_to_present,
+                    title="תיקון נוכחות במטווח", body=note, reference_type="range_assignment",
+                    reference_id=assignment.id, actor_id=marked_by,
+                )
     elif status == RangeAttendanceStatus.no_show:
         adjustment = create_adjustment(
             session, soldier_id=assignment.soldier_id, delta=_NO_SHOW_PENALTY,
@@ -537,6 +561,13 @@ def mark_attendance(
                 body=f"{_range_context(session, event, reason=note)} | assignment={assignment.id}",
                 reference_type="range_event", reference_id=event.id, actor_id=marked_by,
             )
+            commander_id = _direct_commander_id(session, assignment.soldier_id)
+            if commander_id is not None:
+                _range_notification(
+                    session, soldier_id=commander_id, type=NotificationType.range_absence_reported_to_commander,
+                    title="נרשמה היעדרות ממטווח", body=note, reference_type="range_assignment",
+                    reference_id=assignment.id, actor_id=marked_by,
+                )
 
     assignment.attendance_status = status
     assignment.marked_by = marked_by
