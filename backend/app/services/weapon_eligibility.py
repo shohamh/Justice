@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.algorithm.types import DutyBlock
-from app.db.models import RangeAssignment, RangeEvent, RangeExcusalRequest, RangeExcusalStatus
+from app.db.models import RangeAssignment, RangeEvent, RangeEventStatus, RangeExcusalRequest, RangeExcusalStatus
 from app.services.range_auto_assign import _qualification_types_at_or_above
 from app.services.ranges import _validity_days
 from app.services.settings_loader import SettingNotFound, get_setting
@@ -21,7 +21,17 @@ def _bool_setting(session: Session, key: str, default: bool) -> bool:
         return default
 
 
+def _mitvachim_enabled(session: Session) -> bool:
+    """Hard gate: the ranges module (מטווחים) itself. When it's off, no soldier
+    ever has a qualification row and no range events exist, so weapon-qualification
+    checks can never be meaningfully evaluated -- this must win regardless of any
+    other setting or per-run override."""
+    return _bool_setting(session, "mitvachim.enabled", False)
+
+
 def _enforce_enabled(session: Session) -> bool:
+    if not _mitvachim_enabled(session):
+        return False
     return _bool_setting(session, "weapon_qualification.enforce_eligibility", True)
 
 
@@ -72,7 +82,10 @@ def _future_windows(
         .where(
             RangeAssignment.soldier_id == soldier_id,
             RangeAssignment.is_reserve.is_(False),
+            RangeAssignment.is_draft.is_(False),
             RangeEvent.range_type.in_(candidate_types),
+            RangeEvent.status == RangeEventStatus.planned,
+            RangeEvent.date >= date.today(),
         )
     ).all()
     if not rows:
@@ -125,11 +138,26 @@ def compute_eligibility(
 
 def bulk_ineligible_duty_blocks(
     session: Session, *, soldier_ids: Sequence[uuid.UUID], duties: Sequence[DutyBlock],
+    respect_system_toggle: bool = True,
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """For each soldier, the set of duty-block ids (among `duties`) they are NOT
     eligible for due to weapon qualification. Blocks whose `required_range_type`
-    is None are never included. Returns {} entirely if the feature is disabled."""
-    if not _enforce_enabled(session):
+    is None are never included. Returns {} entirely if the feature is disabled.
+
+    respect_system_toggle: when True (default), short-circuits to {} if either
+    מטווחים (mitvachim.enabled) or the weapon_qualification.enforce_eligibility
+    master toggle is off -- matching compute_eligibility's behavior, used by
+    callers (e.g. the manual assign-modal candidates endpoint) with no notion of
+    a per-run override. Callers that have already resolved enforcement through
+    their own settings layering (system setting + per-run override), such as the
+    algorithm bridge, should pass False here to avoid double-reading the raw
+    system setting and silently discarding an explicit per-run override -- מטווחים
+    itself still gates the check either way, since no qualification data can
+    exist while it's off."""
+    if respect_system_toggle:
+        if not _enforce_enabled(session):
+            return {}
+    elif not _mitvachim_enabled(session):
         return {}
 
     relevant = [d for d in duties if d.required_range_type is not None]

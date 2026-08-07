@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.db.models import DutyLocation, DutyType, RangeType
+from app.services.settings_loader import set_setting
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -17,6 +18,7 @@ def test_ineligible_candidate_flagged_but_not_removed(client, admin_session):
     )
     loc = DutyLocation(name="wc-loc-1")
     admin_session.add_all([dt, loc])
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
     admin_session.commit()
 
     start = (date.today() + timedelta(days=10)).isoformat()
@@ -50,6 +52,7 @@ def test_eligible_candidate_has_no_warning(client, admin_session):
     )
     loc = DutyLocation(name="wc-loc-2")
     admin_session.add_all([dt, loc])
+    set_setting(admin_session, "mitvachim.enabled", True, actor_id=None)
     admin_session.commit()
 
     range_event = create_range_event(

@@ -1178,13 +1178,19 @@ def run_algorithm_job(job_id: uuid.UUID, actor_id: uuid.UUID | None) -> None:
                 )
                 _phase(f"load_soldier_inputs: done ({len(soldiers)} soldiers)")
 
-                from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
                 _phase("weapon_eligibility: start")
-                weapon_ineligible = bulk_ineligible_duty_blocks(
-                    session, soldier_ids=[s.id for s in soldiers], duties=duties,
-                )
-                for s in soldiers:
-                    s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
+                if settings.enforce_weapon_qualification:
+                    from app.services.weapon_eligibility import bulk_ineligible_duty_blocks
+                    # Enforcement intent is already fully resolved into `settings`
+                    # (per-run override > system setting > default) -- don't let
+                    # bulk_ineligible_duty_blocks re-read the raw system setting
+                    # and potentially discard an explicit per-run override.
+                    weapon_ineligible = bulk_ineligible_duty_blocks(
+                        session, soldier_ids=[s.id for s in soldiers], duties=duties,
+                        respect_system_toggle=False,
+                    )
+                    for s in soldiers:
+                        s.weapon_ineligible_duty_block_ids = weapon_ineligible.get(s.id, set())
                 _phase("weapon_eligibility: done")
                 # Compute and inject quarterly effort scores
                 try:
