@@ -61,6 +61,17 @@ def _acquire_range_assignment_date_lock(session: Session, *, event_date: date) -
 
 
 
+_RANGE_TYPE_HE: dict[RangeType, str] = {
+    RangeType.laser: "מטווח לייזר",
+    RangeType.live: "מטווח חי",
+    RangeType.alal: 'אל"ל',
+}
+
+
+def _range_assignment_body(event: RangeEvent) -> str:
+    return f"{_RANGE_TYPE_HE.get(event.range_type, event.range_type.value)} · {event.date.strftime('%d.%m.%Y')}"
+
+
 def _range_context(session: Session, event: RangeEvent, *, reason: str | None = None) -> str:
     from app.db.models import RangeLocation
     loc = session.get(RangeLocation, event.range_location_id)
@@ -319,6 +330,20 @@ def _validate_and_build_assignment(
     return RangeAssignment(range_event_id=event.id, soldier_id=soldier_id, is_reserve=is_reserve)
 
 
+def _check_capacity(session: Session, *, event: RangeEvent, new_primary: int, new_reserve: int) -> None:
+    counts = session.execute(
+        select(RangeAssignment.is_reserve, func.count())
+        .where(RangeAssignment.range_event_id == event.id)
+        .group_by(RangeAssignment.is_reserve)
+    ).all()
+    existing_primary = next((c for is_res, c in counts if not is_res), 0)
+    existing_reserve = next((c for is_res, c in counts if is_res), 0)
+    if existing_primary + new_primary > event.required_count:
+        raise RangeValidationError("primary_capacity_exceeded")
+    if existing_reserve + new_reserve > event.reserve_count:
+        raise RangeValidationError("reserve_capacity_exceeded")
+
+
 def add_range_assignment(
     session: Session, *, event: RangeEvent, soldier_id: uuid.UUID, is_reserve: bool,
     assignment_reason_code: str = "manual", assignment_reason_text: str | None = "שיבוץ ידני",
@@ -327,6 +352,11 @@ def add_range_assignment(
     session.refresh(event)
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
+    _check_capacity(
+        session, event=event,
+        new_primary=0 if is_reserve else 1,
+        new_reserve=1 if is_reserve else 0,
+    )
     assignment = _validate_and_build_assignment(session, event=event, soldier_id=soldier_id, is_reserve=is_reserve)
 
     existing_soldier_ids = set(session.execute(select(RangeAssignment.soldier_id).where(
@@ -342,8 +372,9 @@ def add_range_assignment(
         soldier_id=soldier_id,
         type=NotificationType.range_assignment_confirmed,
         title="שובצת למטווח",
-        reference_type="range_assignment",
-        reference_id=assignment.id,
+        body=_range_assignment_body(event),
+        reference_type="range_event",
+        reference_id=event.id,
     )
     session.commit()
     session.refresh(assignment)
@@ -364,6 +395,11 @@ def assign_batch(
     session.refresh(event)
     if event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
+    _check_capacity(
+        session, event=event,
+        new_primary=len(primary_soldier_ids),
+        new_reserve=len(reserve_soldier_ids),
+    )
 
     from app.services.range_auto_assign import _rank_candidate
 
@@ -383,7 +419,8 @@ def assign_batch(
     for row in rows:
         _range_notification(
             session, soldier_id=row.soldier_id, type=NotificationType.range_assignment_confirmed,
-            title="שובצת למטווח", reference_type="range_assignment", reference_id=row.id,
+            title="שובצת למטווח", body=_range_assignment_body(event),
+            reference_type="range_event", reference_id=event.id,
         )
     session.commit()
     for row in rows:

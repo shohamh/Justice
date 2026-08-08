@@ -40,10 +40,12 @@ beforeEach(() => {
 });
 
 describe("RangeEditAssignmentsModal", () => {
-  it("renders primary and reserve sections and marks existing drafts", () => {
+  it("renders primary and reserve assignments in the summary table", () => {
     renderModal({ event: event([assignment("a1", "s1"), assignment("a2", "s2", true, true)]) });
-    expect(screen.getByTestId("range-primary-assignments")).toBeInTheDocument();
-    expect(screen.getByTestId("range-reserve-assignments")).toBeInTheDocument();
+    expect(screen.getByText("אורי")).toBeInTheDocument();
+    expect(screen.getByText("דנה")).toBeInTheDocument();
+    expect(screen.getAllByText("ראשי").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("רזרבה").length).toBeGreaterThan(0);
   });
 
   it("renders Hebrew assignment reasons for automatic and manual assignments", () => {
@@ -51,10 +53,8 @@ describe("RangeEditAssignmentsModal", () => {
       assignment("a1", "s1", false, false, "qualified", null),
       assignment("a2", "s2", true, false, "manual", "שיבוץ לפי צורך מבצעי"),
     ]) });
-    const reasons = screen.getAllByText(/סיבת השיבוץ:/);
-    expect(reasons).toHaveLength(2);
-    expect(reasons[0]).toHaveTextContent("כשירות תקפה למטווח");
-    expect(reasons[1]).toHaveTextContent("שיבוץ לפי צורך מבצעי");
+    expect(screen.getByText("כשירות תקפה למטווח")).toBeInTheDocument();
+    expect(screen.getByText("שיבוץ לפי צורך מבצעי")).toBeInTheDocument();
   });
 
   it("lets a planner edit and save an assignment explanation", async () => {
@@ -71,7 +71,7 @@ describe("RangeEditAssignmentsModal", () => {
 
   it("keeps assignment reasons visible but hides editing controls from a non-manager", () => {
     renderModal({ canManage: false, event: event([assignment("a1", "s1", false, false, "manual", "שיבוץ לפי צורך מבצעי")]) });
-    expect(screen.getByText(/סיבת השיבוץ: שיבוץ לפי צורך מבצעי/)).toBeInTheDocument();
+    expect(screen.getByText("שיבוץ לפי צורך מבצעי")).toBeInTheDocument();
     expect(screen.queryByTestId("edit-assignment-reason-a1")).not.toBeInTheDocument();
     expect(screen.queryByTestId("save-assignment-reason-a1")).not.toBeInTheDocument();
   });
@@ -143,12 +143,60 @@ describe("RangeEditAssignmentsModal", () => {
     expect(props.onChanged).toHaveBeenCalled();
   });
 
+  it("does not auto-select any reserve candidates once the reserve slots are already full", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+    ]);
+    // reserve_count: 1, and one reserve assignment already fills that slot.
+    renderModal({ event: { ...event([assignment("a1", "s3", true)]), reserve_count: 1 } });
+
+    await screen.findByTestId("range-auto-select-reserve");
+    expect(screen.getByTestId("range-auto-select-reserve")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("range-auto-select-reserve"));
+    expect(screen.getByTestId("reserve-candidate-checkbox-s1")).not.toBeChecked();
+    expect(screen.getByTestId("reserve-candidate-checkbox-s2")).not.toBeChecked();
+  });
+
+  it("disables auto-select once a pending (not-yet-saved) selection already fills the slots", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s1", full_name: "אורי", personal_number: "s1", reason_code: "qualified", blocked: false, blocked_reason: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "s2", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+    ]);
+    renderModal({ event: { ...event([]), required_count: 1 } });
+
+    fireEvent.click(await screen.findByTestId("candidate-checkbox-s1"));
+    expect(screen.getByTestId("range-auto-select-primary")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("range-auto-select-primary"));
+    expect(screen.getByTestId("candidate-checkbox-s2")).not.toBeChecked();
+  });
+
+  it("filters the primary candidate list live as the user types in the search box", async () => {
+    vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
+      { soldier_id: "s1", full_name: "אורי", personal_number: "111", reason_code: "qualified", blocked: false, blocked_reason: null },
+      { soldier_id: "s2", full_name: "דנה", personal_number: "222", reason_code: "available_and_balanced", blocked: false, blocked_reason: null },
+    ]);
+    renderModal({ event: event([]) });
+
+    await screen.findByTestId("candidate-checkbox-s1");
+    expect(screen.getByTestId("candidate-checkbox-s2")).toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByPlaceholderText("חיפוש...")[0], { target: { value: "דנה" } });
+
+    expect(screen.queryByTestId("candidate-checkbox-s1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("candidate-checkbox-s2")).toBeInTheDocument();
+  });
+
   it("shows blocked candidates but keeps their checkbox disabled", async () => {
     vi.mocked(rangesApi.getRangeCandidates).mockResolvedValue([
       { soldier_id: "s3", full_name: "רון", personal_number: "s3", reason_code: "available_and_balanced", blocked: true, blocked_reason: "exempt" },
     ]);
     renderModal({ event: event([]) });
 
+    const toggles = await screen.findAllByText(/חסומים/);
+    fireEvent.click(toggles[0]);
     const checkbox = await screen.findByTestId("candidate-checkbox-s3");
     expect(checkbox).toBeDisabled();
   });

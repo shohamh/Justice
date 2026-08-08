@@ -7,6 +7,13 @@ import { CalendarShift, getCalendarShift } from "../api/calendar";
 import { lastDutyDay } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import { EventDetailModal } from "./planning";
+import TableSearchInput from "./TableSearchInput";
+
+function matchesQuery(name: string, personalNumber: string | undefined, query: string): boolean {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  return name.toLowerCase().includes(q) || !!personalNumber?.toLowerCase().includes(q);
+}
 
 interface Props {
   shift: DutyShift;
@@ -41,6 +48,9 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   const [error, setError] = useState<string | null>(null);
   const [primaryPanelOpen, setPrimaryPanelOpen] = useState(true);
   const [reservePanelOpen, setReservePanelOpen] = useState(true);
+  const [summarySearch, setSummarySearch] = useState("");
+  const [primarySearch, setPrimarySearch] = useState("");
+  const [reserveSearch, setReserveSearch] = useState("");
 
   const dutyTypeName = dutyTypes.find(d => d.id === shift.duty_type_id)?.name ?? "";
 
@@ -86,9 +96,15 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
     [candidates, assignedIds]
   );
 
-  const primarySlotsLeft = Math.max(0, shift.required_count - (currentPrimaries.length - (shiftDetail?.assignees.filter(a => a.called_up_from).length ?? 0)));
+  // Slots remaining must account for not-yet-saved (pending) selections too —
+  // otherwise auto-select and its button stay enabled past capacity once the
+  // user has already picked enough candidates but hasn't hit "save" yet.
+  const calledUpCount = shiftDetail?.assignees.filter(a => a.called_up_from).length ?? 0;
+  const primaryFilled = (currentPrimaries.length - calledUpCount) + pendingPrimaries.length;
+  const primarySlotsLeft = Math.max(0, shift.required_count - primaryFilled);
   const totalReserveSlots = shift.reserve_count_override ?? shift.calculated_reserve_count ?? 0;
-  const reserveSlotsLeft = Math.max(0, totalReserveSlots - currentReserves.length);
+  const reserveFilled = currentReserves.length + pendingReserves.length;
+  const reserveSlotsLeft = Math.max(0, totalReserveSlots - reserveFilled);
 
   const selectedPrimaryCandidates = useMemo(
     () => unblockedCandidates.filter(c => primarySelected.has(c.soldier_id)),
@@ -169,6 +185,11 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }, [candidates, primarySelected, assignedIds, allPrimariesForMatching]);
 
   function togglePrimary(id: string) {
+    if (!primarySelected.has(id) && primarySlotsLeft === 0) {
+      setError("אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף");
+      return;
+    }
+    setError(null);
     setPrimarySelected(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -183,6 +204,11 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }
 
   function toggleReserve(id: string) {
+    if (!reserveSelected.has(id) && reserveSlotsLeft === 0) {
+      setError("אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף");
+      return;
+    }
+    setError(null);
     setReserveSelected(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -197,8 +223,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
   }
 
   function autoSelectReserves() {
-    const limit = reserveSlotsLeft > 0 ? reserveSlotsLeft : reserveCandidates.unblocked.length;
-    const top = reserveCandidates.unblocked.slice(0, limit).map(c => c.soldier_id);
+    const top = reserveCandidates.unblocked.slice(0, reserveSlotsLeft).map(c => c.soldier_id);
     setReserveSelected(new Set(top));
   }
 
@@ -229,6 +254,14 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
 
   async function handleSave() {
     if (totalSelected === 0) { onSaved(); return; }
+    if (primaryFilled > shift.required_count) {
+      setError("אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף");
+      return;
+    }
+    if (reserveFilled > totalReserveSlots) {
+      setError("אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -284,17 +317,20 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
           <div className="overflow-y-auto flex-1 space-y-5">
             {/* Summary table — current + pending */}
             <div>
-              <p className="text-sm font-medium mb-2">
-                שיבוצים
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400 mr-2">
-                  {currentPrimaries.length + pendingPrimaries.length}/{shift.required_count} ראשיים
-                  {totalReserveSlots > 0 && ` · ${currentReserves.length + pendingReserves.length}/${totalReserveSlots} רזרבות`}
-                </span>
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <p className="text-sm font-medium">
+                  שיבוצים
+                  <span className="text-xs font-normal text-gray-500 dark:text-gray-400 mr-2">
+                    {currentPrimaries.length + pendingPrimaries.length}/{shift.required_count} ראשיים
+                    {totalReserveSlots > 0 && ` · ${currentReserves.length + pendingReserves.length}/${totalReserveSlots} רזרבות`}
+                  </span>
+                </p>
+                {hasCurrentOrPending && <div className="w-48"><TableSearchInput value={summarySearch} onChange={setSummarySearch} /></div>}
+              </div>
               {!hasCurrentOrPending ? (
                 <p className="text-xs text-gray-400 italic">אין שיבוצים עדיין</p>
               ) : (
-                <div className="border dark:border-gray-600 rounded overflow-hidden">
+                <div className="border dark:border-gray-600 rounded overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-gray-50 dark:bg-gray-700">
                       <tr>
@@ -305,7 +341,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                       </tr>
                     </thead>
                     <tbody>
-                      {currentPrimaries.map(a => {
+                      {currentPrimaries.filter(a => matchesQuery(a.soldier_name, undefined, summarySearch)).map(a => {
                         const pendingReserveName = pendingCoverageByPrimary[a.soldier_id];
                         const savedReserveName = a.reserve_assignment_id ? (assigneeNameById[a.reserve_assignment_id] ?? null) : null;
                         const coverCell = pendingReserveName
@@ -329,7 +365,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                           </tr>
                         );
                       })}
-                      {pendingPrimaries.map(c => (
+                      {pendingPrimaries.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => (
                         <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50 dark:bg-indigo-950/40">
                           <td className="p-2 text-indigo-700 dark:text-indigo-300">
                             {c.full_name}
@@ -347,7 +383,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                           </td>
                         </tr>
                       ))}
-                      {currentReserves.map(a => {
+                      {currentReserves.filter(a => matchesQuery(a.soldier_name, undefined, summarySearch)).map(a => {
                         const coveredNames = a.primary_assignment_ids
                           .map(id => assigneeNameById[id])
                           .filter(Boolean)
@@ -367,7 +403,7 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
                           </tr>
                         );
                       })}
-                      {pendingReserves.map(c => {
+                      {pendingReserves.filter(c => matchesQuery(c.full_name, c.personal_number, summarySearch)).map(c => {
                         const coveringPrimaryNames = reserveCandidateCoverage[c.soldier_id]?.join(", ") || "—";
                         return (
                         <tr key={c.soldier_id} className="border-t dark:border-gray-600 bg-indigo-50/50 dark:bg-indigo-950/20">
@@ -410,22 +446,31 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
               </button>
               {primaryPanelOpen && (
                 <div className="border-t dark:border-gray-600 p-2 space-y-2">
-                  <div className="flex gap-2 text-xs justify-end">
-                    <button type="button" onClick={autoSelectPrimary}
-                      disabled={primarySlotsLeft === 0 || unblockedCandidates.length === 0}
-                      className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">
-                      בחר אוטומטית
-                    </button>
-                    <button type="button" onClick={() => setPrimarySelected(new Set())}
-                      className="text-blue-600 dark:text-blue-400 hover:underline">
-                      בטל
-                    </button>
+                  {primarySlotsLeft === 0 && (
+                    <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400">
+                      אין מקומות פנויים לשיבוץ ראשי — בטלו שיבוץ קיים כדי להוסיף
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1"><TableSearchInput value={primarySearch} onChange={setPrimarySearch} /></div>
+                    <div className="flex gap-2 text-xs whitespace-nowrap">
+                      <button type="button" onClick={autoSelectPrimary}
+                        disabled={primarySlotsLeft === 0 || unblockedCandidates.length === 0}
+                        className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">
+                        בחר אוטומטית
+                      </button>
+                      <button type="button" onClick={() => setPrimarySelected(new Set())}
+                        className="text-blue-600 dark:text-blue-400 hover:underline">
+                        בטל
+                      </button>
+                    </div>
                   </div>
                   <CandidateTable
-                    unblocked={unblockedCandidates}
-                    blocked={blockedCandidates}
+                    unblocked={unblockedCandidates.filter(c => matchesQuery(c.full_name, c.personal_number, primarySearch))}
+                    blocked={blockedCandidates.filter(c => matchesQuery(c.full_name, c.personal_number, primarySearch))}
                     selected={primarySelected}
                     onToggle={togglePrimary}
+                    full={primarySlotsLeft === 0}
                   />
                 </div>
               )}
@@ -451,23 +496,32 @@ export default function ShiftEditAssignmentsModal({ shift, dutyTypes, onSaved, o
               </button>
               {reservePanelOpen && (
                 <div className="border-t dark:border-gray-600 p-2 space-y-2">
-                  <div className="flex gap-2 text-xs justify-end">
-                    <button type="button" onClick={autoSelectReserves}
-                      disabled={reserveCandidates.unblocked.length === 0}
-                      className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">
-                      בחר אוטומטית
-                    </button>
-                    <button type="button" onClick={() => setReserveSelected(new Set())}
-                      className="text-blue-600 dark:text-blue-400 hover:underline">
-                      בטל
-                    </button>
+                  {totalReserveSlots > 0 && reserveSlotsLeft === 0 && (
+                    <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400">
+                      אין מקומות פנויים לרזרבה — בטלו שיבוץ קיים כדי להוסיף
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1"><TableSearchInput value={reserveSearch} onChange={setReserveSearch} /></div>
+                    <div className="flex gap-2 text-xs whitespace-nowrap">
+                      <button type="button" onClick={autoSelectReserves}
+                        disabled={reserveSlotsLeft === 0 || reserveCandidates.unblocked.length === 0}
+                        className="text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-40">
+                        בחר אוטומטית
+                      </button>
+                      <button type="button" onClick={() => setReserveSelected(new Set())}
+                        className="text-blue-600 dark:text-blue-400 hover:underline">
+                        בטל
+                      </button>
+                    </div>
                   </div>
                   <ReserveCandidateTable
-                    unblocked={reserveCandidates.unblocked}
-                    blocked={reserveCandidates.blocked}
+                    unblocked={reserveCandidates.unblocked.filter(c => matchesQuery(c.full_name, c.personal_number, reserveSearch))}
+                    blocked={reserveCandidates.blocked.filter(c => matchesQuery(c.full_name, c.personal_number, reserveSearch))}
                     selected={reserveSelected}
                     onToggle={toggleReserve}
                     showDist={allPrimariesForMatching.length > 0}
+                    full={reserveSlotsLeft === 0}
                   />
                 </div>
               )}
@@ -499,12 +553,13 @@ interface CandidateTableProps {
   blocked: ShiftCandidate[];
   selected: Set<string>;
   onToggle: (id: string) => void;
+  full: boolean;
 }
 
-function CandidateTable({ unblocked, blocked, selected, onToggle }: CandidateTableProps) {
+function CandidateTable({ unblocked, blocked, selected, onToggle, full }: CandidateTableProps) {
   const [blockedOpen, setBlockedOpen] = useState(false);
   return (
-    <div className="border dark:border-gray-600 rounded overflow-hidden">
+    <div className="border dark:border-gray-600 rounded overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
           <tr>
@@ -519,17 +574,21 @@ function CandidateTable({ unblocked, blocked, selected, onToggle }: CandidateTab
           {unblocked.length === 0 && blocked.length === 0 && (
             <tr><td colSpan={5} className="p-2 text-center text-gray-400 italic">אין מועמדים זמינים</td></tr>
           )}
-          {unblocked.map(c => (
-            <tr key={c.soldier_id}
-              className="border-t dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-              onClick={() => onToggle(c.soldier_id)}>
-              <td className="p-2"><input type="checkbox" checked={selected.has(c.soldier_id)} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-              <td className="p-2">{c.full_name}</td>
-              <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
-              <td className="p-2"></td>
-            </tr>
-          ))}
+          {unblocked.map(c => {
+            const isSelected = selected.has(c.soldier_id);
+            const isDisabled = full && !isSelected;
+            return (
+              <tr key={c.soldier_id}
+                className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
+                onClick={() => !isDisabled && onToggle(c.soldier_id)}>
+                <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
+                <td className="p-2">{c.full_name}</td>
+                <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
+                <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+                <td className="p-2"></td>
+              </tr>
+            );
+          })}
           {blocked.length > 0 && (
             <tr className="border-t dark:border-gray-600">
               <td colSpan={5} className="px-2 py-1 bg-gray-50 dark:bg-gray-700/50">
@@ -556,17 +615,18 @@ function CandidateTable({ unblocked, blocked, selected, onToggle }: CandidateTab
   );
 }
 
-function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDist }: {
+function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDist, full }: {
   unblocked: ReserveCandidate[];
   blocked: ShiftCandidate[];
   selected: Set<string>;
   onToggle: (id: string) => void;
   showDist: boolean;
+  full: boolean;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
   const cols = showDist ? 6 : 5;
   return (
-    <div className="border dark:border-gray-600 rounded overflow-hidden">
+    <div className="border dark:border-gray-600 rounded overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
           <tr>
@@ -582,18 +642,22 @@ function ReserveCandidateTable({ unblocked, blocked, selected, onToggle, showDis
           {unblocked.length === 0 && blocked.length === 0 && (
             <tr><td colSpan={cols} className="p-2 text-center text-gray-400 italic">אין מועמדים זמינים</td></tr>
           )}
-          {unblocked.map(c => (
-            <tr key={c.soldier_id}
-              className="border-t dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-              onClick={() => onToggle(c.soldier_id)}>
-              <td className="p-2"><input type="checkbox" checked={selected.has(c.soldier_id)} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
-              <td className="p-2">{c.full_name}</td>
-              <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
-              <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
-              {showDist && <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">{c.coveringNames.join(", ") || "–"}</td>}
-              <td className="p-2"></td>
-            </tr>
-          ))}
+          {unblocked.map(c => {
+            const isSelected = selected.has(c.soldier_id);
+            const isDisabled = full && !isSelected;
+            return (
+              <tr key={c.soldier_id}
+                className={`border-t dark:border-gray-600 ${isDisabled ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"}`}
+                onClick={() => !isDisabled && onToggle(c.soldier_id)}>
+                <td className="p-2"><input type="checkbox" checked={isSelected} disabled={isDisabled} onChange={() => onToggle(c.soldier_id)} onClick={e => e.stopPropagation()} /></td>
+                <td className="p-2">{c.full_name}</td>
+                <td className="p-2 text-gray-500 dark:text-gray-400" dir="ltr">{c.personal_number}</td>
+                <td className="p-2 font-mono">{c.effort.toFixed(3)}</td>
+                {showDist && <td className="p-2 text-gray-600 dark:text-gray-300 max-w-[160px]">{c.coveringNames.join(", ") || "–"}</td>}
+                <td className="p-2"></td>
+              </tr>
+            );
+          })}
           {blocked.length > 0 && (
             <tr className="border-t dark:border-gray-600">
               <td colSpan={cols} className="px-2 py-1 bg-gray-50 dark:bg-gray-700/50">

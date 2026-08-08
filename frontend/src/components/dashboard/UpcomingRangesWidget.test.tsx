@@ -46,7 +46,7 @@ describe("UpcomingRangesWidget", () => {
 
     render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);
 
-    expect(screen.getByText("לייזר")).toBeInTheDocument();
+    expect(screen.getByText("מטווח לייזר")).toBeInTheDocument();
     expect(screen.queryByText("laser")).not.toBeInTheDocument();
   });
 });

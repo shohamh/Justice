@@ -337,3 +337,30 @@ def test_update_shift(client, admin_session):
     assert patch_resp.status_code == 200
     assert patch_resp.json()["required_count"] == 4
     assert patch_resp.json()["notes"] == "test"
+
+
+def test_assign_batch_rejects_primaries_beyond_required_count(client, admin_session):
+    dm, dt, loc = _setup(admin_session, "sh_rt_007")
+    first = create_soldier(admin_session, personal_number="sh_rt_007a", hierarchy_node_id=dm.hierarchy_node_id)
+    second = create_soldier(admin_session, personal_number="sh_rt_007b", hierarchy_node_id=dm.hierarchy_node_id)
+    admin_session.commit()
+    create_resp = client.post("/api/shifts", json={
+        "duty_type_id": str(dt.id),
+        "duty_location_id": str(loc.id),
+        "start_date": "2026-12-01",
+        "end_date": "2026-12-02",
+        "required_count": 1,
+    }, headers=auth_headers(dm))
+    shift_id = create_resp.json()["id"]
+    ok_resp = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(first.id)],
+        "reserves": [],
+    }, headers=auth_headers(dm))
+    assert ok_resp.status_code == 201, ok_resp.text
+
+    over_resp = client.post(f"/api/shifts/{shift_id}/assign-batch", json={
+        "primaries": [str(second.id)],
+        "reserves": [],
+    }, headers=auth_headers(dm))
+    assert over_resp.status_code == 409
+    assert over_resp.json()["detail"] == "primary_capacity_exceeded"

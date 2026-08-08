@@ -18,6 +18,7 @@ def _assignment(session: Session, *, is_reserve: bool):
         session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=date.today() + timedelta(days=5),
         range_location_id=create_range_location(session, name="range").id, required_count=1,
+        reserve_count=1 if is_reserve else 0,
     )
     return event, add_range_assignment(session, event=event, soldier_id=soldier.id, is_reserve=is_reserve)
 
@@ -50,6 +51,7 @@ def test_approving_primary_excusal_promotes_assigned_reserve(app_session: Sessio
         app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
         event_date=date.today() + timedelta(days=5),
         range_location_id=create_range_location(app_session, name="promotion range").id, required_count=1,
+        reserve_count=1,
     )
     primary_assignment = add_range_assignment(app_session, event=event, soldier_id=primary.id, is_reserve=False)
     reserve_assignment = add_range_assignment(app_session, event=event, soldier_id=reserve.id, is_reserve=True)

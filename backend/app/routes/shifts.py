@@ -785,6 +785,31 @@ def assign_batch(
     if not body.primaries and not body.reserves:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_soldiers")
 
+    existing_primary_count = session.execute(
+        select(func.count()).select_from(DutyAssignment).where(
+            DutyAssignment.duty_shift_id == shift_id,
+            DutyAssignment.is_reserve == False,  # noqa: E712
+            DutyAssignment.status.in_(["published", "algorithm_draft"]),
+        )
+    ).scalar_one()
+    if existing_primary_count + len(body.primaries) > shift.required_count:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="primary_capacity_exceeded")
+
+    if body.reserves:
+        existing_reserve_count = session.execute(
+            select(func.count()).select_from(DutyAssignment).where(
+                DutyAssignment.duty_shift_id == shift_id,
+                DutyAssignment.is_reserve == True,  # noqa: E712
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+            )
+        ).scalar_one()
+        total_reserve_slots = shift.reserve_count_override
+        if total_reserve_slots is None:
+            from app.services.algorithm_bridge import reserve_count_for_shift
+            total_reserve_slots = reserve_count_for_shift(session, shift=shift) or 0
+        if existing_reserve_count + len(body.reserves) > total_reserve_slots:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="reserve_capacity_exceeded")
+
     from app.services import assignments as asvc
 
     primary_assignments: list[DutyAssignment] = []

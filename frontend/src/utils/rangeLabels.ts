@@ -1,6 +1,6 @@
 export const RANGE_TYPE_LABELS: Record<string, string> = {
-  laser: "לייזר",
-  live: "חי",
+  laser: "מטווח לייזר",
+  live: "מטווח חי",
   alal: 'אל"ל',
 };
 

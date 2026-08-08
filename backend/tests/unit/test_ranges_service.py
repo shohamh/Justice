@@ -232,11 +232,12 @@ def test_add_range_assignment_success(app_session: Session) -> None:
         select(Notification).where(
             Notification.soldier_id == soldier.id,
             Notification.type == NotificationType.range_assignment_confirmed,
-            Notification.reference_type == "range_assignment",
-            Notification.reference_id == assignment.id,
+            Notification.reference_type == "range_event",
+            Notification.reference_id == event.id,
         )
     ).scalar_one_or_none()
     assert notification is not None
+    assert notification.body == "מטווח לייזר · 20.08.2026"
 
 
 def test_add_range_assignment_rejects_soldier_outside_subunit(app_session: Session) -> None:

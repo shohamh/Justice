@@ -67,3 +67,42 @@ def test_records_the_real_assignment_reason_not_manual(app_session: Session) -> 
     assert len(created) == 1
     assert created[0].assignment_reason_code == "qualified"
     assert created[0].assignment_reason_code != "manual"
+
+
+def test_rejects_a_primary_batch_that_would_exceed_required_count(app_session: Session) -> None:
+    node, event = _event(app_session, required_count=1, reserve_count=0)
+    already = create_soldier(app_session, personal_number="batch-cap-existing", hierarchy_node_id=node.id)
+    assign_batch(app_session, event=event, primary_soldier_ids=[already.id], reserve_soldier_ids=[], actor_id=None)
+    extra = create_soldier(app_session, personal_number="batch-cap-extra", hierarchy_node_id=node.id)
+
+    with pytest.raises(RangeValidationError, match="primary_capacity_exceeded"):
+        assign_batch(app_session, event=event, primary_soldier_ids=[extra.id], reserve_soldier_ids=[], actor_id=None)
+
+    remaining = app_session.execute(
+        select(RangeAssignment).where(RangeAssignment.range_event_id == event.id, RangeAssignment.soldier_id == extra.id)
+    ).scalars().all()
+    assert remaining == []
+
+
+def test_rejects_a_reserve_batch_that_would_exceed_reserve_count(app_session: Session) -> None:
+    node, event = _event(app_session, required_count=1, reserve_count=1)
+    already = create_soldier(app_session, personal_number="batch-cap-reserve-existing", hierarchy_node_id=node.id)
+    assign_batch(app_session, event=event, primary_soldier_ids=[], reserve_soldier_ids=[already.id], actor_id=None)
+    extra = create_soldier(app_session, personal_number="batch-cap-reserve-extra", hierarchy_node_id=node.id)
+
+    with pytest.raises(RangeValidationError, match="reserve_capacity_exceeded"):
+        assign_batch(app_session, event=event, primary_soldier_ids=[], reserve_soldier_ids=[extra.id], actor_id=None)
+
+
+def test_rejects_a_batch_of_multiple_primaries_that_alone_exceeds_capacity(app_session: Session) -> None:
+    node, event = _event(app_session, required_count=1, reserve_count=0)
+    first = create_soldier(app_session, personal_number="batch-cap-multi-1", hierarchy_node_id=node.id)
+    second = create_soldier(app_session, personal_number="batch-cap-multi-2", hierarchy_node_id=node.id)
+
+    with pytest.raises(RangeValidationError, match="primary_capacity_exceeded"):
+        assign_batch(app_session, event=event, primary_soldier_ids=[first.id, second.id], reserve_soldier_ids=[], actor_id=None)
+
+    remaining = app_session.execute(
+        select(RangeAssignment).where(RangeAssignment.range_event_id == event.id)
+    ).scalars().all()
+    assert remaining == []
