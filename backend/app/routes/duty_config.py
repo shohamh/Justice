@@ -45,7 +45,9 @@ class DutyTypeOut(BaseModel):
     instructions: str | None = None
     is_external: bool = False
     requires_weapon: bool = False
+    required_range_type: str | None = None
     eligible_node_ids: list[uuid.UUID] | None = None
+
 
 
 class CreateDutyTypeRequest(BaseModel):
@@ -115,6 +117,7 @@ def _dt_out(d: DutyType) -> DutyTypeOut:
         instructions=d.instructions,
         is_external=d.is_external,
         requires_weapon=d.requires_weapon,
+        required_range_type=d.required_range_type,
         eligible_node_ids=d.eligible_node_ids,
     )
 

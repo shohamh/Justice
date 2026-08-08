@@ -1156,6 +1156,7 @@
     "type_range_reserve_promoted": "קודמת משיבוץ מילואים למטווח",
     "type_range_reserve_excused": "פטור משיבוץ מילואים למטווח",
     "type_range_excusal_no_backfill": "אין מילואים זמינים לשיבוץ חלופי",
+    "type_weapon_ineligible_detected": "נמצאו חיילים שאינם כשירים לנשק",
     "type_bug_report_comment": "תגובה חדשה לדיווח באג"
   },
   "announcements": {
