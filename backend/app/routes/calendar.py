@@ -106,6 +106,18 @@ def _swap_counts_for_shifts(session: Session, shift_ids: list[uuid.UUID]) -> dic
     return {shift_id: count for shift_id, count in rows}
 
 
+def _can_view_assignee_private(
+    user: Soldier,
+    assignee_soldier_id: uuid.UUID,
+    hierarchy_path_ids: list[str],
+    roots: set[uuid.UUID],
+) -> bool:
+    if user.role == "admin" or assignee_soldier_id == user.id:
+        return True
+    path_uuids = {uuid.UUID(p) for p in hierarchy_path_ids}
+    return bool(roots & path_uuids)
+
+
 def _visible_reason(
     user: Soldier,
     assignee_soldier_id: uuid.UUID,
@@ -115,21 +127,23 @@ def _visible_reason(
 ) -> str | None:
     if reason is None:
         return None
-    if user.role == "admin" or assignee_soldier_id == user.id:
-        return reason
-    path_uuids = {uuid.UUID(p) for p in hierarchy_path_ids}
-    if roots & path_uuids:
+    if _can_view_assignee_private(user, assignee_soldier_id, hierarchy_path_ids, roots):
         return reason
     return None
 
 
 def _redact_shift_reasons(shift: CalendarShiftOut, user: Soldier, roots: set[uuid.UUID]) -> None:
     for assignee in shift.assignees:
+        can_view_private = _can_view_assignee_private(
+            user, assignee.soldier_id, assignee.hierarchy_path_ids, roots
+        )
+        if not can_view_private:
+            assignee.weapon_ineligible = False
+            assignee.weapon_ineligible_reason = None
         for d in assignee.dismissals:
             d.reason = _visible_reason(
                 user, assignee.soldier_id, assignee.hierarchy_path_ids, roots, d.reason
             )
-
 
 @router.get("/shifts/{shift_id}", response_model=CalendarShiftOut)
 def get_shift_detail(

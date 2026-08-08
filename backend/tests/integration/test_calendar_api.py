@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, DutyShift, DutyType, RangeType
@@ -315,5 +316,64 @@ def test_calendar_shift_assignee_includes_weapon_ineligible_flag(client: TestCli
     assert r.status_code == 200
     row = next(s for s in r.json()["shifts"] if s["id"] == str(shift.id))
     assignee = next(a for a in row["assignees"] if a["soldier_id"] == str(soldier.id))
+    assert assignee["weapon_ineligible"] is True
+    assert assignee["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
+
+def _mark_weapon_ineligible(session: Session, shift_id):
+    assignment = session.execute(
+        select(DutyAssignment).where(DutyAssignment.duty_shift_id == shift_id)
+    ).scalar_one()
+    assignment.weapon_ineligible = True
+    assignment.weapon_ineligible_reason = "אין הכשרת נשק בתוקף לתאריך התורנות"
+    session.commit()
+
+
+def test_shift_detail_redacts_weapon_ineligibility_from_outside_soldier(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="8400001", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    _mark_weapon_ineligible(admin_session, shift_id)
+    outsider = create_soldier(admin_session, personal_number="8400002")
+    admin_session.commit()
+
+    r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(outsider))
+    assert r.status_code == 200, r.text
+    assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
+    assert assignee["weapon_ineligible"] is False
+    assert assignee["weapon_ineligible_reason"] is None
+
+
+def test_calendar_shifts_redacts_weapon_ineligibility_from_outside_soldier(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="8400003", role="admin")
+    branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    _mark_weapon_ineligible(admin_session, shift_id)
+    outsider = create_soldier(admin_session, personal_number="8400004")
+    admin_session.commit()
+
+    r = client.get(
+        f"/api/calendar/shifts?node_id={branch.id}&date_from=2026-11-01&date_to=2026-11-01",
+        headers=auth_headers(outsider),
+    )
+    assert r.status_code == 200, r.text
+    assignee = next(
+        a for a in r.json()["shifts"][0]["assignees"] if a["soldier_id"] == str(member.id)
+    )
+    assert assignee["weapon_ineligible"] is False
+    assert assignee["weapon_ineligible_reason"] is None
+
+
+def test_shift_detail_shows_weapon_ineligibility_to_affected_soldier(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="8400005", role="admin")
+    _branch, member, shift_id = _setup_shift_with_dismissal(admin_session, client, admin)
+    _mark_weapon_ineligible(admin_session, shift_id)
+
+    r = client.get(f"/api/calendar/shifts/{shift_id}", headers=auth_headers(member))
+    assert r.status_code == 200, r.text
+    assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["weapon_ineligible"] is True
     assert assignee["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
