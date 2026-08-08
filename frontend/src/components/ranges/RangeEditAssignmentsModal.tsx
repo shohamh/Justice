@@ -150,10 +150,12 @@ export default function RangeEditAssignmentsModal({ open, event, soldiers, canMa
 
   async function remove(assignmentId: string) {
     if (!editable || removing) return;
+    const reason = window.prompt("סיבת ההסרה:");
+    if (!reason || !reason.trim()) return;
     setRemoving(assignmentId);
     setError("");
     try {
-      await removeRangeAssignment(event.id, assignmentId);
+      await removeRangeAssignment(event.id, assignmentId, reason.trim());
       setAssignments(current => current.filter(a => a.id !== assignmentId));
       await getRangeCandidates(event.id).then(setRangeCandidates).catch(() => setRangeCandidates([]));
       await onChanged();

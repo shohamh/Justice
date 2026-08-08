@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -316,7 +316,7 @@ def test_remove_range_assignment_deletes_row(app_session: Session) -> None:
     assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
     assignment_id = assignment.id
 
-    remove_range_assignment(app_session, assignment=assignment)
+    remove_range_assignment(app_session, assignment=assignment, reason="test removal")
 
     assert app_session.get(RangeAssignment, assignment_id) is None
 
@@ -346,7 +346,7 @@ def test_roster_change_notifies_existing_and_removed_assignees(app_session: Sess
         Notification.reference_id == event.id,
     )).scalars().first() is not None
 
-    remove_range_assignment(app_session, assignment=second_assignment)
+    remove_range_assignment(app_session, assignment=second_assignment, reason="test removal")
     assert app_session.execute(select(Notification).where(
         Notification.soldier_id == second.id,
         Notification.type == NotificationType.range_roster_changed,
@@ -412,4 +412,57 @@ def test_remove_range_assignment_rejects_when_event_not_planned(app_session: Ses
     cancel_range_event(app_session, event=event, reason="cancelled")
 
     with pytest.raises(RangeValidationError):
-        remove_range_assignment(app_session, assignment=assignment)
+        remove_range_assignment(app_session, assignment=assignment, reason="test removal")
+
+
+def test_remove_range_assignment_requires_reason(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="rra-node-1")
+    soldier = create_soldier(app_session, personal_number="rra-001", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(name="שמירה עם נשק rra-1", score_per_day=Decimal("1.00"),
+                            requires_weapon=True, eligible_node_ids=[node.id])
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    with pytest.raises(TypeError):
+        remove_range_assignment(app_session, assignment=assignment, actor_id=soldier.id)  # type: ignore[call-arg]
+
+
+def test_remove_range_assignment_writes_audit_log(app_session: Session) -> None:
+    node = create_node(app_session, level="פלוגה", name="rra-node-2")
+    soldier = create_soldier(app_session, personal_number="rra-002", hierarchy_node_id=node.id)
+    manager = create_soldier(app_session, personal_number="rra-003", role="duty_manager", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(name="שמירה עם נשק rra-2", score_per_day=Decimal("1.00"),
+                            requires_weapon=True, eligible_node_ids=[node.id])
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=5),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+    assignment_id = assignment.id
+
+    remove_range_assignment(app_session, assignment=assignment, reason="חייל שוחרר מהיחידה", actor_id=manager.id)
+
+    remaining = app_session.execute(
+        select(RangeAssignment).where(RangeAssignment.id == assignment_id)
+    ).scalar_one_or_none()
+    assert remaining is None
+
+    audit = app_session.execute(
+        select(AuditLog).where(
+            AuditLog.action == "range_assignment.remove",
+            AuditLog.entity_id == assignment_id,
+        )
+    ).scalar_one()
+    assert audit.before["soldier_id"] == str(soldier.id)
+    assert audit.before["range_event_id"] == str(event.id)
+    assert audit.context["reason"] == "חייל שוחרר מהיחידה"
+    assert audit.actor_id == manager.id

@@ -21,6 +21,11 @@ from app.db.models import (
     ExemptionRequest,
     ExemptionType,
     PersonalConstraint,
+    RangeAssignment,
+    RangeEvent,
+    RangeExcusalRequest,
+    RangeExcusalStatus,
+    RangeLocation,
     Soldier,
     SoldierExemption,
 )
@@ -433,6 +438,132 @@ def get_duty_history(
                     created_at=a.created_at.isoformat(),
                 )
             )
+
+    # --- RangeAssignment events (current roster membership) ---
+    range_location_cache: dict[uuid.UUID, str] = {}
+
+    def _range_location_name(loc_id: uuid.UUID) -> str:
+        if loc_id not in range_location_cache:
+            loc = session.get(RangeLocation, loc_id)
+            range_location_cache[loc_id] = loc.name if loc else str(loc_id)
+        return range_location_cache[loc_id]
+
+    range_assignment_filters = [RangeAssignment.soldier_id == soldier_id]
+    if not include_drafts:
+        range_assignment_filters.append(RangeAssignment.is_draft.is_(False))
+    range_assignments = list(
+        session.execute(
+            select(RangeAssignment).where(*range_assignment_filters)
+        ).scalars().all()
+    )
+    promoted_assignment_ids: set[uuid.UUID] = set(
+        session.execute(
+            select(RangeExcusalRequest.promoted_assignment_id).where(
+                RangeExcusalRequest.promoted_assignment_id.in_(
+                    [ra.id for ra in range_assignments]
+                )
+            )
+        ).scalars().all()
+    ) if range_assignments else set()
+    for ra in range_assignments:
+        event = session.get(RangeEvent, ra.range_event_id)
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        events.append(
+            TimelineEvent(
+                id=ra.id,
+                event_type="range_assignment",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"מטווח {event.range_type} ב{loc_name}",
+                description=ra.note,
+                status=ra.attendance_status,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "is_reserve": "true" if ra.is_reserve else "false",
+                    "was_promoted_from_reserve": "true" if ra.id in promoted_assignment_ids else "false",
+                    "range_event_id": str(event.id),
+                },
+                created_at=ra.created_at.isoformat(),
+            )
+        )
+
+    # --- range_removed events (excusal-based and manual removal, unified) ---
+    excusal_removals = list(
+        session.execute(
+            select(RangeExcusalRequest).where(
+                RangeExcusalRequest.requested_by == soldier_id,
+                RangeExcusalRequest.status == RangeExcusalStatus.approved,
+                RangeExcusalRequest.range_assignment_id.is_(None),
+                RangeExcusalRequest.range_event_id.is_not(None),
+            )
+        ).scalars().all()
+    )
+    for req in excusal_removals:
+        event = session.get(RangeEvent, req.range_event_id)
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        decider = session.get(Soldier, req.decided_by) if req.decided_by else None
+        events.append(
+            TimelineEvent(
+                id=req.id,
+                event_type="range_removed",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                description=req.reason,
+                status=None,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "source": "excusal",
+                    "range_event_id": str(event.id),
+                    "removed_by_name": decider.full_name if decider else None,
+                },
+                created_at=req.requested_at.isoformat(),
+            )
+        )
+
+    manual_removal_logs = list(
+        session.execute(
+            select(AuditLog).where(
+                AuditLog.action == "range_assignment.remove",
+                AuditLog.before["soldier_id"].astext == str(soldier_id),
+            )
+        ).scalars().all()
+    )
+    for log in manual_removal_logs:
+        range_event_id_str = (log.before or {}).get("range_event_id")
+        if not range_event_id_str:
+            continue
+        event = session.get(RangeEvent, uuid.UUID(range_event_id_str))
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        reason = (log.context or {}).get("reason")
+        remover = session.get(Soldier, log.actor_id) if log.actor_id else None
+        events.append(
+            TimelineEvent(
+                id=log.id,
+                event_type="range_removed",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                description=reason,
+                status=None,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "source": "manual_removal",
+                    "range_event_id": str(event.id),
+                    "removed_by_name": remover.full_name if remover else None,
+                },
+                created_at=log.created_at.isoformat(),
+            )
+        )
 
     # --- ExemptionRequest events ---
     exemption_type_cache: dict[uuid.UUID, ExemptionType] = {}

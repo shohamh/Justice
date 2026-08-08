@@ -26,7 +26,8 @@ type FilterType =
   | "dismissal"
   | "exemption"
   | "exemption_request"
-  | "personal_constraint";
+  | "personal_constraint"
+  | "range";
 
 type StatusFilter = "all" | "published" | "draft" | "reserve" | "cancelled";
 
@@ -40,6 +41,7 @@ const FILTER_KEYS: { type: FilterType; i18nKey: string }[] = [
   { type: "exemption", i18nKey: "duty_history.filter_exemptions" },
   { type: "exemption_request", i18nKey: "duty_history.filter_exemption_requests" },
   { type: "personal_constraint", i18nKey: "duty_history.filter_constraints" },
+  { type: "range", i18nKey: "duty_history.filter_ranges" },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -50,6 +52,8 @@ const TYPE_COLORS: Record<string, string> = {
   exemption: "border-teal-400 bg-teal-50 dark:bg-teal-950",
   exemption_request: "border-blue-400 bg-blue-50 dark:bg-blue-950",
   personal_constraint: "border-purple-400 bg-purple-50 dark:bg-purple-950",
+  range_assignment: "border-cyan-500 bg-cyan-50 dark:bg-cyan-950",
+  range_removed: "border-gray-400 bg-gray-50 dark:bg-gray-800 border-dashed",
 };
 
 const DOT_COLORS: Record<string, string> = {
@@ -60,18 +64,22 @@ const DOT_COLORS: Record<string, string> = {
   exemption: "bg-teal-400",
   exemption_request: "bg-blue-400",
   personal_constraint: "bg-purple-400",
+  range_assignment: "bg-cyan-500",
+  range_removed: "bg-gray-400",
 };
 
 const STATUS_BADGE: Record<string, string> = {
   published: "bg-green-100 text-green-800",
   active: "bg-green-100 text-green-800",
   approved: "bg-green-100 text-green-800",
+  present: "bg-green-100 text-green-800",
   pending: "bg-yellow-100 text-yellow-800",
   proposed: "bg-blue-100 text-blue-800",
   algorithm_draft: "bg-blue-100 text-blue-800",
   cancelled: "bg-red-100 text-red-800",
   rejected: "bg-red-100 text-red-800",
   algorithm_rejected: "bg-red-100 text-red-800",
+  no_show: "bg-red-100 text-red-800",
 };
 
 interface ScoreSegment {
@@ -176,10 +184,21 @@ function EventCard({
                 return `${formatDate(e.date)}${end && end !== e.date ? ` – ${formatDate(end)}` : ""}`;
               })()}
             </p>
+            {e.event_type === "range_removed" && e.description && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {e.description}
+                {e.metadata.removed_by_name && <> ע״י {e.metadata.removed_by_name}</>}
+              </p>
+            )}
             <div className="flex gap-1 mt-1 flex-wrap">
               {e.metadata.is_reserve === "true" && (
                 <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
                   {t("duty_history.reserve")}
+                </span>
+              )}
+              {e.metadata.was_promoted_from_reserve === "true" && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800">
+                  קודם מרזרבה
                 </span>
               )}
               {e.metadata.called_up === "true" && (
@@ -242,7 +261,7 @@ function EventCard({
 
         {isExpanded && (
           <div className="mt-2 space-y-1">
-            {e.description && <p className="text-gray-600">{e.description}</p>}
+            {e.description && e.event_type !== "range_removed" && <p className="text-gray-600">{e.description}</p>}
             {(e.event_type === "exemption_request" || e.event_type === "exemption") && (() => {
               const raw = e.metadata.exempted_duty_types;
               if (!raw) return null;
@@ -634,12 +653,16 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, is
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const matchesFilter = (e: TimelineEvent, filterType: FilterType) =>
+    filterType === "all"
+    || e.event_type === filterType
+    || (filterType === "range" && (e.event_type === "range_assignment" || e.event_type === "range_removed"));
   const typeFiltered =
     filter === "all"
       ? events
       : filter === "algorithm_draft"
         ? events.filter((e) => e.status === "algorithm_draft")
-        : events.filter((e) => e.event_type === filter);
+        : events.filter((e) => matchesFilter(e, filter));
 
   const filtered = (() => {
     switch (statusFilter) {

@@ -428,7 +428,9 @@ def assign_batch(
     return rows
 
 
-def remove_range_assignment(session: Session, *, assignment: RangeAssignment, actor_id: uuid.UUID | None = None) -> None:
+def remove_range_assignment(
+    session: Session, *, assignment: RangeAssignment, reason: str, actor_id: uuid.UUID | None = None,
+) -> None:
     event = session.get(RangeEvent, assignment.range_event_id)
     if event is not None and event.status != RangeEventStatus.planned:
         raise RangeValidationError("event_not_planned")
@@ -437,6 +439,16 @@ def remove_range_assignment(session: Session, *, assignment: RangeAssignment, ac
         RangeAssignment.id != assignment.id,
     )).scalars())
     soldier_id = assignment.soldier_id
+    write_audit(
+        session, actor_id=actor_id, action="range_assignment.remove", entity_type="range_assignment",
+        entity_id=assignment.id,
+        before={
+            "soldier_id": str(soldier_id),
+            "range_event_id": str(assignment.range_event_id),
+            "is_reserve": assignment.is_reserve,
+        },
+        context={"reason": reason},
+    )
     session.delete(assignment)
     session.flush()
     _notify_roster_change(

@@ -14,7 +14,7 @@ export function updateRangeEvent(id:string,body:UpdateRangeEventBody):Promise<Ra
 export function deleteRangeEvent(id:string):Promise<void>{return api.delete(`/ranges/${id}`).then(()=>undefined);}
 export function cancelRangeEvent(id:string,reason:string):Promise<RangeEvent>{return updateRangeEvent(id,{cancel:true,cancellation_reason:reason});}
 export function addRangeAssignment(eventId:string,soldierId:string,isReserve:boolean):Promise<RangeAssignment>{return api.post(`/ranges/${eventId}/assignments`,{soldier_id:soldierId,is_reserve:isReserve}).then(r=>r.data);}
-export function removeRangeAssignment(eventId:string,assignmentId:string):Promise<void>{return api.delete(`/ranges/${eventId}/assignments/${assignmentId}`).then(()=>undefined);}
+export function removeRangeAssignment(eventId:string,assignmentId:string,reason:string):Promise<void>{return api.delete(`/ranges/${eventId}/assignments/${assignmentId}`,{data:{reason}}).then(()=>undefined);}
 export function updateRangeAssignmentReason(eventId:string,assignmentId:string,assignment_reason_code:string,assignment_reason_text:string|null):Promise<RangeAssignment>{return api.patch(`/ranges/${eventId}/assignments/${assignmentId}/reason`,{assignment_reason_code,assignment_reason_text}).then(r=>r.data);}
 export function markRangeAttendance(eventId:string,assignmentId:string,status:RangeAttendanceStatus,note?:string):Promise<RangeAssignment>{return api.patch(`/ranges/${eventId}/assignments/${assignmentId}/attendance`,{status,note}).then(r=>r.data);}
 export interface RangeCandidate { soldier_id:string; full_name:string; personal_number:string; reason_code:string; blocked:boolean; blocked_reason:string|null; }

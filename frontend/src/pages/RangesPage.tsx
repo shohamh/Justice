@@ -100,7 +100,9 @@ export default function RangesPage() {
       const details = await Promise.all(selectedEvents.map(e => getRangeEvent(e.id)));
       const totalAssignments = details.reduce((acc, e) => acc + e.assignments.length, 0);
       if (!confirm(`לנקות שיבוצים מ-${selectedEvents.length} מטווחים (${totalAssignments} שיבוצים)?`)) { setBulkBusy(false); return; }
-      await Promise.all(details.flatMap(e => e.assignments.map(a => removeRangeAssignment(e.id, a.id))));
+      const reason = window.prompt("סיבת הניקוי (תחול על כל השיבוצים שינוקו):");
+      if (!reason || !reason.trim()) { setBulkBusy(false); return; }
+      await Promise.all(details.flatMap(e => e.assignments.map(a => removeRangeAssignment(e.id, a.id, reason.trim()))));
       setSelectedIds(new Set());
       await invalidate();
     } catch {
