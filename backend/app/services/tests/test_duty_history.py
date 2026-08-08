@@ -732,3 +732,71 @@ def test_range_assignment_promoted_from_reserve_flagged(admin_session, soldier):
     assert len(range_events) == 1
     assert range_events[0].metadata["was_promoted_from_reserve"] == "true"
     assert range_events[0].metadata["is_reserve"] == "false"
+
+
+def test_range_removed_via_excusal_appears(admin_session, soldier):
+    from datetime import date, timedelta
+    from app.db.models import RangeType
+    from app.services.range_excusal import decide_primary_excusal, request_primary_excusal
+    from app.services.ranges import add_range_assignment, create_range_event
+    from tests.helpers import create_node, create_range_location, create_soldier
+
+    node = create_node(admin_session, level="branch", name="dh-removed-node-1")
+    admin_session.refresh(soldier)
+    soldier.hierarchy_node_id = node.id
+    admin_session.commit()
+    manager = create_soldier(admin_session, personal_number="dh-removed-mgr", role="duty_manager", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name=f"שמירה עם נשק {_uid()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.live,
+        event_date=date.today() + timedelta(days=3),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+    request = request_primary_excusal(admin_session, assignment=assignment, reason="חופשה", requested_by=soldier.id)
+    decide_primary_excusal(admin_session, request=request, approve=True, decided_by=manager.id)
+
+    events = get_duty_history(admin_session, soldier.id)
+    removed = [e for e in events if e.event_type == "range_removed"]
+    assert len(removed) == 1
+    assert removed[0].description == "חופשה"
+    assert removed[0].metadata["source"] == "excusal"
+    assert removed[0].metadata["range_type"] == "live"
+
+
+def test_range_removed_via_manual_removal_appears(admin_session, soldier):
+    from datetime import date, timedelta
+    from app.db.models import RangeType
+    from app.services.ranges import add_range_assignment, create_range_event, remove_range_assignment
+    from tests.helpers import create_node, create_range_location, create_soldier
+
+    node = create_node(admin_session, level="branch", name="dh-removed-node-2")
+    admin_session.refresh(soldier)
+    soldier.hierarchy_node_id = node.id
+    admin_session.commit()
+    manager = create_soldier(admin_session, personal_number="dh-removed-mgr2", role="duty_manager", hierarchy_node_id=node.id)
+    weapon_duty = DutyType(
+        name=f"שמירה עם נשק {_uid()}", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    admin_session.add(weapon_duty)
+    admin_session.commit()
+    event = create_range_event(
+        admin_session, hierarchy_node_id=node.id, range_type=RangeType.alal,
+        event_date=date.today() + timedelta(days=3),
+        range_location_id=create_range_location(admin_session).id, required_count=1,
+    )
+    assignment = add_range_assignment(admin_session, event=event, soldier_id=soldier.id, is_reserve=False)
+    remove_range_assignment(admin_session, assignment=assignment, reason="שוחרר מהיחידה", actor_id=manager.id)
+
+    events = get_duty_history(admin_session, soldier.id)
+    removed = [e for e in events if e.event_type == "range_removed"]
+    assert len(removed) == 1
+    assert removed[0].description == "שוחרר מהיחידה"
+    assert removed[0].metadata["source"] == "manual_removal"
+    assert removed[0].metadata["range_type"] == "alal"

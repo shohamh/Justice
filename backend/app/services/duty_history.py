@@ -485,6 +485,77 @@ def get_duty_history(
             )
         )
 
+    # --- range_removed events (excusal-based and manual removal, unified) ---
+    excusal_removals = list(
+        session.execute(
+            select(RangeExcusalRequest).where(
+                RangeExcusalRequest.requested_by == soldier_id,
+                RangeExcusalRequest.status == RangeExcusalStatus.approved,
+                RangeExcusalRequest.range_assignment_id.is_(None),
+                RangeExcusalRequest.range_event_id.is_not(None),
+            )
+        ).scalars().all()
+    )
+    for req in excusal_removals:
+        event = session.get(RangeEvent, req.range_event_id)
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        events.append(
+            TimelineEvent(
+                id=req.id,
+                event_type="range_removed",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                description=req.reason,
+                status=None,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "source": "excusal",
+                    "range_event_id": str(event.id),
+                },
+                created_at=req.requested_at.isoformat(),
+            )
+        )
+
+    manual_removal_logs = list(
+        session.execute(
+            select(AuditLog).where(
+                AuditLog.action == "range_assignment.remove",
+                AuditLog.before["soldier_id"].astext == str(soldier_id),
+            )
+        ).scalars().all()
+    )
+    for log in manual_removal_logs:
+        range_event_id_str = (log.before or {}).get("range_event_id")
+        if not range_event_id_str:
+            continue
+        event = session.get(RangeEvent, uuid.UUID(range_event_id_str))
+        if event is None:
+            continue
+        loc_name = _range_location_name(event.range_location_id)
+        reason = (log.context or {}).get("reason")
+        events.append(
+            TimelineEvent(
+                id=log.id,
+                event_type="range_removed",
+                date=event.date.isoformat(),
+                end_date=None,
+                title=f"הוסר ממטווח {event.range_type} ב{loc_name}",
+                description=reason,
+                status=None,
+                metadata={
+                    "range_type": event.range_type,
+                    "location_name": loc_name,
+                    "source": "manual_removal",
+                    "range_event_id": str(event.id),
+                },
+                created_at=log.created_at.isoformat(),
+            )
+        )
+
     # --- ExemptionRequest events ---
     exemption_type_cache: dict[uuid.UUID, ExemptionType] = {}
 
