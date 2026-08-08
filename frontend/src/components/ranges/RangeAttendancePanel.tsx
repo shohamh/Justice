@@ -38,7 +38,9 @@ export default function RangeAttendancePanel({ eventId, assignments, onMarked, s
       <h3 className="font-medium text-sm text-gray-500 dark:text-gray-400">נוכחות</h3>
       {assignments.map((a) => {
         const status = pendingStatus[a.id];
-        const canSubmit = status === "present" || (status === "no_show" && !!notes[a.id]);
+        const isCorrection = a.attendance_status !== "pending" && status !== a.attendance_status;
+        const noteRequired = status === "no_show" || isCorrection;
+        const canSubmit = !!status && (!noteRequired || !!notes[a.id]);
         return (
           <div
             key={a.id}
@@ -67,7 +69,7 @@ export default function RangeAttendancePanel({ eventId, assignments, onMarked, s
             >
               לא נכח
             </button>
-            {status === "no_show" && (
+            {noteRequired && (
               <input
                 data-testid={`note-${a.id}`}
                 value={notes[a.id] ?? ""}

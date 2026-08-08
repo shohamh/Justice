@@ -42,3 +42,54 @@ describe("RangeAttendancePanel", () => {
     expect(screen.getByTestId("submit-a1")).not.toBeDisabled();
   });
 });
+
+describe("RangeAttendancePanel correction note requirement", () => {
+  it("requires a note when correcting an already-present assignment to no_show", () => {
+    render(
+      <RangeAttendancePanel
+        eventId="e1"
+        assignments={[{
+          id: "a1", soldier_id: "s1", is_reserve: false,
+          attendance_status: "present", note: null,
+        }]}
+        onMarked={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId("no-show-a1"));
+    const submit = screen.getByTestId("submit-a1") as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+  });
+
+  it("requires a note when correcting an already no_show assignment back to present", () => {
+    render(
+      <RangeAttendancePanel
+        eventId="e2"
+        assignments={[{
+          id: "a2", soldier_id: "s2", is_reserve: false,
+          attendance_status: "no_show", note: "לא הגיע",
+        }]}
+        onMarked={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId("present-a2"));
+    const submit = screen.getByTestId("submit-a2") as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(screen.getByTestId("note-a2")).toBeTruthy();
+  });
+
+  it("does not require a note for a fresh pending-to-present mark", () => {
+    render(
+      <RangeAttendancePanel
+        eventId="e3"
+        assignments={[{
+          id: "a3", soldier_id: "s3", is_reserve: false,
+          attendance_status: "pending", note: null,
+        }]}
+        onMarked={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId("present-a3"));
+    const submit = screen.getByTestId("submit-a3") as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+  });
+});

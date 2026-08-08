@@ -215,7 +215,10 @@ def test_correcting_no_show_to_present_reverses_penalty_and_sets_qualification(a
         marked_by=soldier.id, note="סימון ראשוני",
     )
 
-    corrected = mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    corrected = mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.present,
+        marked_by=soldier.id, note="התברר שהוא כן הגיע",
+    )
 
     assert corrected.attendance_status == RangeAttendanceStatus.present
     assert corrected.score_adjustment_id is None
@@ -263,7 +266,10 @@ def test_correcting_no_show_to_present_actually_reverses_the_score_penalty(app_s
     mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
                      marked_by=soldier.id, note="סימון ראשוני")
 
-    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.present,
+        marked_by=soldier.id, note="התברר שכן הגיע",
+    )
 
     total = app_session.execute(
         select(func.coalesce(func.sum(ScoreAdjustment.delta), 0)).where(ScoreAdjustment.soldier_id == soldier.id)
@@ -288,7 +294,10 @@ def test_reversal_delta_negates_actual_original_delta_not_a_constant(app_session
     original_adjustment.delta = Decimal("-3")
     app_session.flush()
 
-    mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.present,
+        marked_by=soldier.id, note="התברר שכן הגיע",
+    )
 
     reversal = app_session.execute(
         select(ScoreAdjustment).where(
@@ -297,3 +306,127 @@ def test_reversal_delta_negates_actual_original_delta_not_a_constant(app_session
         )
     ).scalar_one()
     assert reversal.delta == Decimal("3")
+
+
+def test_correcting_no_show_to_present_without_note_raises(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="סימון ראשוני",
+    )
+
+    with pytest.raises(RangeValidationError, match="note_required_for_attendance_change"):
+        mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+
+def test_pending_to_present_still_does_not_require_note(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+
+    updated = mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=soldier.id)
+
+    assert updated.attendance_status == RangeAttendanceStatus.present
+
+
+def test_no_show_notifies_direct_commander(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    past_date = date.today() - timedelta(days=1)
+    commander = create_soldier(app_session, personal_number="5900010", role="commander")
+    node = create_node(app_session, level="פלוגה", name="פלוגה-מפקד", commander_id=commander.id)
+    app_session.commit()
+    weapon_duty = DutyType(
+        name="שמירה עם נשק מפקד", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=past_date, range_location_id=create_range_location(app_session, name="מטווח מפקד").id,
+        required_count=1,
+    )
+    soldier = create_soldier(app_session, personal_number="5900011", hierarchy_node_id=node.id)
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=commander.id, note="לא הגיע",
+    )
+
+    notif = app_session.execute(select(Notification).where(
+        Notification.soldier_id == commander.id,
+        Notification.type == NotificationType.range_absence_reported_to_commander,
+    )).scalar_one()
+    assert notif.body == "לא הגיע"
+
+
+def test_correcting_to_present_notifies_soldier_and_commander(app_session: Session) -> None:
+    apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
+    past_date = date.today() - timedelta(days=1)
+    commander = create_soldier(app_session, personal_number="5900012", role="commander")
+    node = create_node(app_session, level="פלוגה", name="פלוגה-מפקד-2", commander_id=commander.id)
+    app_session.commit()
+    weapon_duty = DutyType(
+        name="שמירה עם נשק מפקד 2", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=past_date, range_location_id=create_range_location(app_session, name="מטווח מפקד 2").id,
+        required_count=1,
+    )
+    soldier = create_soldier(app_session, personal_number="5900013", hierarchy_node_id=node.id)
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=commander.id, note="סימון ראשוני",
+    )
+
+    mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.present,
+        marked_by=commander.id, note="התברר שכן הגיע",
+    )
+
+    for recipient_id in (soldier.id, commander.id):
+        notif = app_session.execute(select(Notification).where(
+            Notification.soldier_id == recipient_id,
+            Notification.type == NotificationType.range_attendance_corrected_to_present,
+        )).scalar_one()
+        assert notif.body == "התברר שכן הגיע"
+
+
+def test_no_direct_commander_does_not_raise(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    node = create_node(app_session, level="פלוגה", name="פלוגה-ללא-מפקד")
+    weapon_duty = DutyType(
+        name="שמירה עם נשק ללא מפקד", score_per_day=Decimal("1.00"),
+        requires_weapon=True, eligible_node_ids=[node.id],
+    )
+    app_session.add(weapon_duty)
+    app_session.flush()
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=past_date, range_location_id=create_range_location(app_session, name="מטווח ללא מפקד").id,
+        required_count=1,
+    )
+    soldier = create_soldier(app_session, personal_number="5900014", hierarchy_node_id=node.id)
+    assignment = add_range_assignment(app_session, event=event, soldier_id=soldier.id, is_reserve=False)
+
+    updated = mark_attendance(
+        app_session, assignment=assignment, status=RangeAttendanceStatus.no_show,
+        marked_by=soldier.id, note="לא הגיע",
+    )
+    assert updated.attendance_status == RangeAttendanceStatus.no_show
+
+
+def test_auto_mark_uses_none_marked_by(app_session: Session) -> None:
+    past_date = date.today() - timedelta(days=1)
+    event, soldier, assignment = _setup_event_and_assignment(app_session, event_date=past_date)
+
+    updated = mark_attendance(app_session, assignment=assignment, status=RangeAttendanceStatus.present, marked_by=None)
+
+    assert updated.marked_by is None
+    assert updated.attendance_status == RangeAttendanceStatus.present
