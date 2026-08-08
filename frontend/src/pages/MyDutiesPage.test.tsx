@@ -43,11 +43,13 @@ vi.mock("../api/dutyConfig", () => ({
 
 vi.mock("../api/swaps", () => ({
   listMySwaps: vi.fn(() => Promise.resolve([])),
-  getEligibleDuties: vi.fn(() => Promise.resolve([])),
-  checkCoverEligibility: vi.fn(() => Promise.resolve({ eligible: true, reason: null })),
+  listEligibleTargets: vi.fn(() => Promise.resolve([])),
+  getSwapConfig: vi.fn(() => Promise.resolve({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 })),
   createSwap: vi.fn(() => Promise.resolve({})),
   takeDutyFree: vi.fn(() => Promise.resolve({})),
 }));
+
+const mockCreateSwap = vi.mocked(swapsApi.createSwap);
 
 const WEAPON_REASON = "אין הכשרת נשק בתוקף לתאריך התורנות";
 const FALLBACK_MESSAGE = "אינך כשיר לתורנות זו";
@@ -100,8 +102,9 @@ function renderPage() {
 describe("MyDutiesPage weapon-ineligibility swap path", () => {
   beforeEach(() => {
     vi.mocked(assignmentsApi.listEffectiveDuties).mockClear();
-    vi.mocked(swapsApi.checkCoverEligibility).mockClear();
-    vi.mocked(swapsApi.getEligibleDuties).mockClear();
+    vi.mocked(swapsApi.listEligibleTargets).mockClear();
+    vi.mocked(swapsApi.getSwapConfig).mockClear();
+    mockCreateSwap.mockClear();
   });
 
   it("shows the ineligibility reason and a swap-request button on an ineligible upcoming duty", async () => {
@@ -164,7 +167,7 @@ describe("MyDutiesPage weapon-ineligibility swap path", () => {
     expect(screen.getAllByRole("button", { name: "בקש החלפה" })).toHaveLength(2);
   });
 
-  it("clicking the swap button opens OfferSwapModal pre-filled with the ineligible assignment", async () => {
+  it("clicking the swap button opens AskSwapModal and submits a self-request for the ineligible assignment", async () => {
     vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([
       makeDuty({
         assignment_id: "a-bad",
@@ -172,16 +175,27 @@ describe("MyDutiesPage weapon-ineligibility swap path", () => {
         weapon_ineligible_reason: WEAPON_REASON,
       }),
     ]);
+    vi.mocked(swapsApi.listEligibleTargets).mockResolvedValue([
+      { soldier_id: "s2", full_name: "חייל שתיים", node_name: null, hierarchy_distance: 1 },
+    ]);
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "בקש החלפה" }));
 
-    // The modal loads coverage eligibility for the ineligible assignment and
-    // the offering soldier's eligible duties — proving it opened pre-filled
-    // with that duty (targetAssignmentId) for that soldier (targetSoldierId).
-    await waitFor(() =>
-      expect(swapsApi.checkCoverEligibility).toHaveBeenCalledWith("a-bad")
-    );
-    expect(swapsApi.getEligibleDuties).toHaveBeenCalledWith("s1");
+    expect(screen.getByText("swaps.ask_swap: שמירה")).toBeInTheDocument();
+    await screen.findByText("חייל שתיים", { exact: false });
+    const targetCheckbox = screen.getAllByRole("checkbox")[1];
+    fireEvent.click(targetCheckbox);
+    fireEvent.click(screen.getByText("swaps.save"));
+
+    await waitFor(() => expect(mockCreateSwap).toHaveBeenCalledWith({
+      duty_assignment_id: "a-bad",
+      reason: null,
+      target_soldier_ids: ["s2"],
+      open_to_marketplace: false,
+    }));
+    const payload = mockCreateSwap.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("target_soldier_id");
+    expect(payload.target_soldier_ids).not.toContain("s1");
   });
 });

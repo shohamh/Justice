@@ -42,8 +42,13 @@ describe("AskSwapModal", () => {
     fireEvent.click(targetCheckbox);
     fireEvent.click(screen.getByText("swaps.save"));
     await waitFor(() => expect(mockCreateSwap).toHaveBeenCalledWith(
-      expect.objectContaining({ open_to_marketplace: true, target_soldier_ids: ["s1"] }),
+      expect.objectContaining({
+        duty_assignment_id: "a1",
+        open_to_marketplace: true,
+        target_soldier_ids: ["s1"],
+      }),
     ));
+    expect(mockCreateSwap.mock.calls[0][0]).not.toHaveProperty("target_soldier_id");
   });
 
   test("submit is disabled with neither marketplace checked nor a target selected", () => {

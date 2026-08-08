@@ -13,7 +13,7 @@ import {
 
 import Layout from "../components/Layout";
 import DutyTypeBreakdownChart from "../components/dashboard/DutyTypeBreakdownChart";
-import OfferSwapModal from "../components/OfferSwapModal";
+import AskSwapModal from "../components/AskSwapModal";
 import { useAuth } from "../auth/AuthContext";
 import { listEffectiveDuties } from "../api/assignments";
 import { getTransparency, getBreakdown, TransparencyRow } from "../api/scoring";
@@ -51,13 +51,11 @@ const dayCount = (d: { start_date: string; end_date: string }) => {
 
 export default function MyDutiesPage() {
   const { user } = useAuth();
-  const [offerSwapTarget, setOfferSwapTarget] = useState<{
-    soldierId: string;
-    soldierName: string;
-    assignmentId: string;
-    dutyStart: string;
-    dutyEnd: string;
-    dutyTypeId: string;
+  const [askSwapDuty, setAskSwapDuty] = useState<{
+    assignment_id: string;
+    start_date: string;
+    end_date: string;
+    duty_type_name: string;
   } | null>(null);
 
   const transparencyQuery = useQuery({
@@ -254,13 +252,11 @@ export default function MyDutiesPage() {
                       <button
                         className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded hover:bg-red-200"
                         onClick={() =>
-                          setOfferSwapTarget({
-                            soldierId: d.soldier_id,
-                            soldierName: user!.full_name,
-                            assignmentId: d.assignment_id,
-                            dutyStart: d.start_date,
-                            dutyEnd: d.end_date,
-                            dutyTypeId: d.duty_type_id,
+                          setAskSwapDuty({
+                            assignment_id: d.assignment_id,
+                            start_date: d.start_date,
+                            end_date: d.end_date,
+                            duty_type_name: d.duty_type_name,
                           })
                         }
                       >
@@ -274,16 +270,12 @@ export default function MyDutiesPage() {
           </div>
         )}
 
-        {offerSwapTarget && (
-          <OfferSwapModal
-            targetSoldierId={offerSwapTarget.soldierId}
-            targetSoldierName={offerSwapTarget.soldierName}
-            targetAssignmentId={offerSwapTarget.assignmentId}
-            targetDutyStart={offerSwapTarget.dutyStart}
-            targetDutyEnd={offerSwapTarget.dutyEnd}
-            targetDutyTypeId={offerSwapTarget.dutyTypeId}
-            onClose={() => setOfferSwapTarget(null)}
-            onDone={() => setOfferSwapTarget(null)}
+        {askSwapDuty && (
+          <AskSwapModal
+            duty={askSwapDuty}
+            dutyTypeName={askSwapDuty.duty_type_name}
+            onClose={() => setAskSwapDuty(null)}
+            onCreated={() => setAskSwapDuty(null)}
           />
         )}
       </div>
