@@ -185,7 +185,10 @@ function EventCard({
               })()}
             </p>
             {e.event_type === "range_removed" && e.description && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{e.description}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {e.description}
+                {e.metadata.removed_by_name && <> ע״י {e.metadata.removed_by_name}</>}
+              </p>
             )}
             <div className="flex gap-1 mt-1 flex-wrap">
               {e.metadata.is_reserve === "true" && (

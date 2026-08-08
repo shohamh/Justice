@@ -448,18 +448,23 @@ def get_duty_history(
             range_location_cache[loc_id] = loc.name if loc else str(loc_id)
         return range_location_cache[loc_id]
 
+    range_assignment_filters = [RangeAssignment.soldier_id == soldier_id]
+    if not include_drafts:
+        range_assignment_filters.append(RangeAssignment.is_draft.is_(False))
     range_assignments = list(
         session.execute(
-            select(RangeAssignment).where(RangeAssignment.soldier_id == soldier_id)
+            select(RangeAssignment).where(*range_assignment_filters)
         ).scalars().all()
     )
     promoted_assignment_ids: set[uuid.UUID] = set(
         session.execute(
             select(RangeExcusalRequest.promoted_assignment_id).where(
-                RangeExcusalRequest.promoted_assignment_id.is_not(None)
+                RangeExcusalRequest.promoted_assignment_id.in_(
+                    [ra.id for ra in range_assignments]
+                )
             )
         ).scalars().all()
-    )
+    ) if range_assignments else set()
     for ra in range_assignments:
         event = session.get(RangeEvent, ra.range_event_id)
         if event is None:
@@ -501,6 +506,7 @@ def get_duty_history(
         if event is None:
             continue
         loc_name = _range_location_name(event.range_location_id)
+        decider = session.get(Soldier, req.decided_by) if req.decided_by else None
         events.append(
             TimelineEvent(
                 id=req.id,
@@ -515,6 +521,7 @@ def get_duty_history(
                     "location_name": loc_name,
                     "source": "excusal",
                     "range_event_id": str(event.id),
+                    "removed_by_name": decider.full_name if decider else None,
                 },
                 created_at=req.requested_at.isoformat(),
             )
@@ -537,6 +544,7 @@ def get_duty_history(
             continue
         loc_name = _range_location_name(event.range_location_id)
         reason = (log.context or {}).get("reason")
+        remover = session.get(Soldier, log.actor_id) if log.actor_id else None
         events.append(
             TimelineEvent(
                 id=log.id,
@@ -551,6 +559,7 @@ def get_duty_history(
                     "location_name": loc_name,
                     "source": "manual_removal",
                     "range_event_id": str(event.id),
+                    "removed_by_name": remover.full_name if remover else None,
                 },
                 created_at=log.created_at.isoformat(),
             )
