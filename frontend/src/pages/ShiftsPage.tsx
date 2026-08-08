@@ -430,6 +430,11 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
     queryFn: () => listShifts(shiftsParams),
   });
   const shifts = shiftsQuery.data ?? [];
+  const showWeaponIneligibleOnly = searchParams.get("filter") === "weapon_ineligible";
+  const displayedShifts = useMemo(
+    () => showWeaponIneligibleOnly ? shifts.filter(shift => shift.ineligible_count > 0) : shifts,
+    [shifts, showWeaponIneligibleOnly],
+  );
 
   const dutyTypesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
   const dutyTypes = useMemo(() => dutyTypesQuery.data ?? [], [dutyTypesQuery.data]);
@@ -480,7 +485,9 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
   useEffect(() => {
     if (searchParams.get("autoAssign") === "1") {
       setShowAlgorithmPanel(true);
-      setSearchParams({}, { replace: true });
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete("autoAssign");
+      setSearchParams(nextSearchParams, { replace: true });
       setTimeout(() => autoAssignSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     }
   }, [searchParams, setSearchParams]);
@@ -747,14 +754,14 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
             {t("shifts.filter_to")}
             <DateInput value={dateTo} onChange={iso => { setDateTo(iso); if (iso && dateFrom && iso < dateFrom) setDateFrom(iso); }} min={dateFrom || undefined} className="border rounded p-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
           </label>
-          {shifts.length > 0 && (
+          {displayedShifts.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <button
                 type="button"
-                onClick={() => setSelectedShiftIds(shifts.map(s => s.id))}
+                onClick={() => setSelectedShiftIds(displayedShifts.map(s => s.id))}
                 className="text-blue-600 dark:text-blue-400 hover:underline"
               >
-                בחר הכל ({shifts.length})
+                בחר הכל ({displayedShifts.length})
               </button>
               {selectedShiftIds.length > 0 && (
                 <>
@@ -790,7 +797,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
 
         {selectedShiftIds.length > 0 && (
           <BulkActionBar
-            selectedShifts={shifts.filter(s => selectedShiftIds.includes(s.id))}
+            selectedShifts={displayedShifts.filter(s => selectedShiftIds.includes(s.id))}
             onDone={() => { setSelectedShiftIds([]); void refresh(); }}
             onAutoAssign={() => setShowAlgorithmPanel(p => !p)}
             showAlgorithmPanel={showAlgorithmPanel}
@@ -800,7 +807,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
         )}
 
         {(() => {
-          const fullSelectedIds = shifts
+          const fullSelectedIds = displayedShifts
             .filter(s => s.fill_status === "full" && selectedShiftIds.includes(s.id))
             .map(s => s.id);
           const algorithmShiftIds = selectedShiftIds.filter(id => !fullSelectedIds.includes(id));
@@ -848,7 +855,7 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
                   minWidth: column.minWidth,
                   sortDescFirst: column.sortDescFirst,
                 }))}
-                rows={shifts}
+                rows={displayedShifts}
                 getRowId={shift => shift.id}
                 getRowLabel={shift => `${dtName(shift.duty_type_id)} ${shift.start_date}`}
                 onRowClick={setEditShift}

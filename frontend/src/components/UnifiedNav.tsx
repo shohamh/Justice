@@ -153,7 +153,7 @@ export default function UnifiedNav() {
   const weaponIneligibleTab: NavTab = {
     label: t("nav.weapon_ineligible"),
     icon: <AlertTriangle size={20} />,
-    to: "/shifts?filter=weapon_ineligible",
+    to: "/planning/shifts?filter=weapon_ineligible",
     badge: weaponIneligibleCount,
     badgeColor: "red",
     testId: "nav-weapon-ineligible",

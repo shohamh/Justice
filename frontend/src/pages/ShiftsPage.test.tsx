@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, MemoryRouter } from "react-router-dom";
 import { ShiftsContent } from "./ShiftsPage";
 import * as shiftsApi from "../api/shifts";
 import * as dutyConfigApi from "../api/dutyConfig";
@@ -122,4 +122,45 @@ test("does not show warning indicator when ineligible_count is 0", async () => {
   await screen.findByTestId("shifts-page");
   const indicator = screen.queryByTitle(/חייל\/ים לא כשירים מבחינת הכשרת נשק/);
   expect(indicator).not.toBeInTheDocument();
+});
+
+test("filters planning rows to weapon-ineligible shifts from the query parameter", async () => {
+  const queryClient = createTestQueryClient();
+  const ineligibleShift: shiftsApi.DutyShift = {
+    id: "ineligible-shift",
+    duty_type_id: "dt1",
+    duty_location_id: "loc1",
+    start_date: "2024-01-01",
+    end_date: "2024-01-02",
+    required_count: 5,
+    notes: null,
+    assigned_count: 3,
+    reserve_assigned_count: 0,
+    fill_status: "partial",
+    status: "active",
+    ineligible_count: 2,
+  };
+  const eligibleShift: shiftsApi.DutyShift = {
+    ...ineligibleShift,
+    id: "eligible-shift",
+    ineligible_count: 0,
+  };
+
+  vi.mocked(shiftsApi.listShifts).mockResolvedValue([ineligibleShift, eligibleShift]);
+  vi.mocked(dutyConfigApi.listDutyTypes).mockResolvedValue([]);
+  vi.mocked(dutyConfigApi.listLocations).mockResolvedValue([]);
+  vi.mocked(hierarchyApi.fetchFullTree).mockResolvedValue([]);
+  vi.mocked(algorithmApi.listJobs).mockResolvedValue({ items: [], total: 0 });
+  vi.mocked(templatesApi.listTemplates).mockResolvedValue([]);
+
+  render(
+    <MemoryRouter initialEntries={["/planning/shifts?filter=weapon_ineligible"]}>
+      <QueryClientProvider client={queryClient}>
+        <ShiftsContent />
+      </QueryClientProvider>
+    </MemoryRouter>
+  );
+
+  expect(await screen.findByTestId("ineligible-shift")).toBeInTheDocument();
+  expect(screen.queryByTestId("eligible-shift")).not.toBeInTheDocument();
 });

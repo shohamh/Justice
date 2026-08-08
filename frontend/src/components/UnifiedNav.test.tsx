@@ -281,7 +281,7 @@ describe("UnifiedNav — weapon-ineligible badge", () => {
     expect(
       badges.some((el) => el.textContent === "3" && el.className.includes("bg-red-500"))
     ).toBe(true);
-    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/shifts?filter=weapon_ineligible")).toBe(true);
+    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
   });
 
   test("hides the weapon-ineligible tab and count request for an ordinary commander", async () => {
@@ -299,7 +299,7 @@ describe("UnifiedNav — weapon-ineligible badge", () => {
     await waitFor(() => {
       expect(screen.getAllByTestId("nav-weapon-ineligible").length).toBeGreaterThan(0);
     });
-    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/shifts?filter=weapon_ineligible")).toBe(true);
+    expect(screen.getAllByTestId("nav-weapon-ineligible").every((el) => el.getAttribute("href") === "/planning/shifts?filter=weapon_ineligible")).toBe(true);
   });
 
   test("does not render the weapon-ineligible tab for a soldier", () => {
