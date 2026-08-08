@@ -5,7 +5,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, DutyShift, DutyType, RangeType
+from app.db.models import (
+    DutyAssignment,
+    DutyDismissal,
+    DutyLocation,
+    DutyReserveLink,
+    DutyShift,
+    DutyType,
+    RangeType,
+)
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -377,3 +385,94 @@ def test_shift_detail_shows_weapon_ineligibility_to_affected_soldier(
     assignee = next(a for a in r.json()["assignees"] if a["soldier_id"] == str(member.id))
     assert assignee["weapon_ineligible"] is True
     assert assignee["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
+
+
+def test_calendar_shifts_preserves_scoped_linked_reserve_weapon_fields(
+    client: TestClient, admin_session: Session
+):
+    admin = create_soldier(admin_session, personal_number="8400006", role="admin")
+    queried_node = create_node(admin_session, level="branch", name="cal-linked-primary")
+    reserve_node = create_node(admin_session, level="branch", name="cal-linked-reserve")
+    primary = create_soldier(
+        admin_session, personal_number="8400007", hierarchy_node_id=queried_node.id
+    )
+    reserve = create_soldier(
+        admin_session, personal_number="8400008", hierarchy_node_id=reserve_node.id
+    )
+    scoped_viewer = create_soldier(
+        admin_session,
+        personal_number="8400009",
+        role="duty_manager",
+        hierarchy_node_id=reserve_node.id,
+    )
+    outsider = create_soldier(admin_session, personal_number="8400010")
+    duty_type = DutyType(name="cal-linked-reserve", score_per_day=Decimal("1.00"))
+    duty_location = DutyLocation(name="cal-linked-reserve-location")
+    admin_session.add_all([duty_type, duty_location])
+    admin_session.flush()
+    shift = DutyShift(
+        duty_type_id=duty_type.id,
+        duty_location_id=duty_location.id,
+        start_date=date(2026, 12, 1),
+        end_date=date(2026, 12, 2),
+        required_count=1,
+        status="active",
+    )
+    admin_session.add(shift)
+    admin_session.flush()
+    primary_assignment = DutyAssignment(
+        soldier_id=primary.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=duty_location.id,
+        duty_shift_id=shift.id,
+        start_date=date(2026, 12, 1),
+        end_date=date(2026, 12, 2),
+        status="published",
+    )
+    reserve_assignment = DutyAssignment(
+        soldier_id=reserve.id,
+        duty_type_id=duty_type.id,
+        duty_location_id=duty_location.id,
+        duty_shift_id=shift.id,
+        start_date=date(2026, 12, 1),
+        end_date=date(2026, 12, 2),
+        status="published",
+        is_reserve=True,
+        weapon_ineligible=True,
+        weapon_ineligible_reason="reserve weapon reason",
+    )
+    admin_session.add_all([primary_assignment, reserve_assignment])
+    admin_session.flush()
+    admin_session.add(
+        DutyReserveLink(
+            primary_assignment_id=primary_assignment.id,
+            reserve_assignment_id=reserve_assignment.id,
+            hierarchy_distance=5,
+        )
+    )
+    admin_session.commit()
+
+    query = (
+        f"/api/calendar/shifts?node_id={queried_node.id}"
+        "&date_from=2026-12-01&date_to=2026-12-01"
+    )
+    scoped_response = client.get(query, headers=auth_headers(scoped_viewer))
+    assert scoped_response.status_code == 200, scoped_response.text
+    scoped_assignee = next(
+        a
+        for a in scoped_response.json()["shifts"][0]["assignees"]
+        if a["soldier_id"] == str(reserve.id)
+    )
+    assert scoped_assignee["hierarchy_path_ids"]
+    assert scoped_assignee["weapon_ineligible"] is True
+    assert scoped_assignee["weapon_ineligible_reason"] == "reserve weapon reason"
+
+    outsider_response = client.get(query, headers=auth_headers(outsider))
+    assert outsider_response.status_code == 200, outsider_response.text
+    outsider_assignee = next(
+        a
+        for a in outsider_response.json()["shifts"][0]["assignees"]
+        if a["soldier_id"] == str(reserve.id)
+    )
+    assert outsider_assignee["weapon_ineligible"] is False
+    assert outsider_assignee["weapon_ineligible_reason"] is None
