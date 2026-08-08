@@ -201,6 +201,19 @@ def update_duty_type(
     except svc.DutyConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
+
+    if body.required_range_type is not None and body.required_range_type != old_required_range_type:
+        from app.services.duty_eligibility_watch import recheck_assignments
+
+        affected_ids = session.execute(
+            select(DutyAssignment.id).where(
+                DutyAssignment.duty_type_id == duty_type_id,
+                DutyAssignment.status == "published",
+            )
+        ).scalars().all()
+        if affected_ids:
+            recheck_assignments(session, affected_ids)
+
     session.refresh(dt)
     return _dt_out(dt)
 
