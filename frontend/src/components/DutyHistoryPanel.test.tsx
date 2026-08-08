@@ -57,4 +57,79 @@ describe("DutyHistoryPanel range events", () => {
 
     expect(within(el).getAllByText("חופשה")).toHaveLength(1);
   });
+
+  it("shows who removed the soldier when removed_by_name is present", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "r4", event_type: "range_removed", date: "2026-09-01", end_date: null,
+        title: "הוסר ממטווח laser במטווח צפון", description: "חופשה", status: null,
+        metadata: { range_type: "laser", location_name: "מטווח צפון", source: "manual_removal", removed_by_name: "דני כהן" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    const el = await screen.findByTestId("history-event-range_removed");
+    expect(el.textContent).toContain("דני כהן");
+  });
+
+  it("renders the promoted-from-reserve badge on a range_assignment event", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "r5", event_type: "range_assignment", date: "2026-09-01", end_date: null,
+        title: "מטווח laser במטווח צפון", description: null, status: "present",
+        metadata: { range_type: "laser", location_name: "מטווח צפון", is_reserve: "false", was_promoted_from_reserve: "true" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    const el = await screen.findByTestId("history-event-range_assignment");
+    expect(within(el).getByText("קודם מרזרבה")).toBeTruthy();
+  });
+
+  it("does not render the promoted-from-reserve badge when false", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "r6", event_type: "range_assignment", date: "2026-09-01", end_date: null,
+        title: "מטווח laser במטווח צפון", description: null, status: "present",
+        metadata: { range_type: "laser", location_name: "מטווח צפון", is_reserve: "false", was_promoted_from_reserve: "false" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    const el = await screen.findByTestId("history-event-range_assignment");
+    expect(within(el).queryByText("קודם מרזרבה")).toBeNull();
+  });
+});
+
+describe("DutyHistoryPanel matchesFilter for range events", () => {
+  it("the 'range' filter chip shows both range_assignment and range_removed events", async () => {
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([
+      {
+        id: "ra1", event_type: "range_assignment", date: "2026-09-01", end_date: null,
+        title: "מטווח laser במטווח צפון", description: null, status: "present",
+        metadata: { range_type: "laser", location_name: "מטווח צפון", is_reserve: "false", was_promoted_from_reserve: "false" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        id: "rr1", event_type: "range_removed", date: "2026-09-02", end_date: null,
+        title: "הוסר ממטווח laser במטווח צפון", description: "חופשה", status: null,
+        metadata: { range_type: "laser", location_name: "מטווח צפון", source: "excusal" },
+        created_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        id: "a1", event_type: "assignment", date: "2026-09-03", end_date: "2026-09-04",
+        title: "שמירה במוצב", description: null, status: "published",
+        metadata: {},
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    ]);
+    render(<DutyHistoryPanel soldierId="s1" canManage={false} isActive={true} />);
+    await screen.findByTestId("history-event-range_assignment");
+
+    fireEvent.click(screen.getByTestId("history-filter-range"));
+
+    expect(screen.getByTestId("history-event-range_assignment")).toBeTruthy();
+    expect(screen.getByTestId("history-event-range_removed")).toBeTruthy();
+    expect(screen.queryByTestId("history-event-assignment")).toBeNull();
+  });
 });
