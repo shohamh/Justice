@@ -1,6 +1,6 @@
 # Ineligible Soldier Visibility Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Detect when a *published* duty assignment retroactively becomes weapon-ineligible (soldier's range qualification lapsed, excusal approved, setting/duty-type changed after the fact), cache the result on `DutyAssignment`, surface it in four UI locations with a red badge + ⚠️ markers, notify the soldier/commander/duty-managers once per transition, and give both the soldier and duty managers a one-click resolution path via the existing swap-request flow.
 
@@ -32,7 +32,7 @@
 **Interfaces:**
 - Produces: DB columns `duty_assignments.weapon_ineligible` (Boolean, `server_default=false`), `duty_assignments.weapon_ineligible_reason` (Text, nullable), `duty_assignments.weapon_ineligible_detected_at` (DateTime with tz, nullable), plus a partial index `ix_duty_assignments_weapon_ineligible` on `duty_assignments (id)` `WHERE weapon_ineligible = true`.
 
-- [ ] **Step 1: Generate the revision skeleton**
+- [x] **Step 1: Generate the revision skeleton**
 
 Run (from `backend/`, venv activated):
 ```bash
@@ -45,7 +45,7 @@ alembic revision -m "add_duty_assignment_weapon_ineligible_cache"
 ```
 Note the generated revision id (e.g. `a1b2c3d4e5f6`).
 
-- [ ] **Step 2: Write the migration body**
+- [x] **Step 2: Write the migration body**
 
 Replace the generated file's `upgrade`/`downgrade` with (the partial-index pattern is copied exactly from the existing precedent at `backend/alembic/versions/7f2c1a9d4e6b_add_range_excusal_requests.py:78-84`):
 
@@ -98,7 +98,7 @@ def downgrade() -> None:
     op.drop_column("duty_assignments", "weapon_ineligible")
 ```
 
-- [ ] **Step 3: Write a test proving the columns and defaults**
+- [x] **Step 3: Write a test proving the columns and defaults**
 
 ```python
 # backend/tests/unit/test_migrations_weapon_ineligible_cache.py
@@ -151,7 +151,7 @@ def test_weapon_ineligible_partial_index_exists(app_session: Session) -> None:
     assert "weapon_ineligible" in row["indexdef"]
 ```
 
-- [ ] **Step 4: Apply the migration and run the test**
+- [x] **Step 4: Apply the migration and run the test**
 
 ```bash
 alembic upgrade head
@@ -159,7 +159,7 @@ pytest tests/unit/test_migrations_weapon_ineligible_cache.py -v
 ```
 Expected: migration applies cleanly, both tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/alembic/versions/*_add_duty_assignment_weapon_ineligible_cache.py backend/tests/unit/test_migrations_weapon_ineligible_cache.py
@@ -176,7 +176,7 @@ git commit -m "feat: add DutyAssignment weapon-ineligibility cache columns"
 **Interfaces:**
 - Produces: `DutyAssignment.weapon_ineligible: bool` (default `False`), `DutyAssignment.weapon_ineligible_reason: str | None`, `DutyAssignment.weapon_ineligible_detected_at: datetime | None`; `NotificationType.weapon_ineligible_detected` member.
 
-- [ ] **Step 1: Add the three columns to `DutyAssignment`**
+- [x] **Step 1: Add the three columns to `DutyAssignment`**
 
 In `backend/app/db/models.py`, immediately before `created_at` (currently lines 380-382), after `forced_call_up_multiplier` (currently lines 377-379):
 
@@ -194,7 +194,7 @@ In `backend/app/db/models.py`, immediately before `created_at` (currently lines 
     )
 ```
 
-- [ ] **Step 2: Add the `NotificationType` member**
+- [x] **Step 2: Add the `NotificationType` member**
 
 In `backend/app/db/models.py`, inside the `NotificationType` enum, right after `bug_report_comment = "bug_report_comment"` (the last member):
 
@@ -203,7 +203,7 @@ In `backend/app/db/models.py`, inside the `NotificationType` enum, right after `
     weapon_ineligible_detected = "weapon_ineligible_detected"
 ```
 
-- [ ] **Step 3: Verify the model imports and constructs cleanly**
+- [x] **Step 3: Verify the model imports and constructs cleanly**
 
 ```bash
 python -c "
@@ -214,14 +214,14 @@ print('ok')
 ```
 Expected: prints `ok`.
 
-- [ ] **Step 4: Run the migration test from Task 1 (now covers ORM round-trip too)**
+- [x] **Step 4: Run the migration test from Task 1 (now covers ORM round-trip too)**
 
 ```bash
 pytest tests/unit/test_migrations_weapon_ineligible_cache.py -v
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/db/models.py
@@ -242,14 +242,14 @@ git commit -m "feat: add DutyAssignment weapon-ineligibility fields and Notifica
 
 This field currently exists only on the model (added by the weapon-qualification-eligibility plan) and is write-only via direct DB/migration — this task is the first time it becomes settable through the API, which Task 6's event hook depends on.
 
-- [ ] **Step 1: Check for an existing duty_config test file**
+- [x] **Step 1: Check for an existing duty_config test file**
 
 ```bash
 ls backend/app/services/tests/test_duty_config.py 2>&1
 ```
 Use it if it exists; if not, create it (mirror the import style of `backend/app/services/tests/test_weapon_eligibility.py:1-21`).
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```python
 # Add to backend/app/services/tests/test_duty_config.py
@@ -301,14 +301,14 @@ def test_update_duty_type_leaves_required_range_type_untouched_when_none(app_ses
     assert dt.required_range_type == "laser"
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 pytest app/services/tests/test_duty_config.py -v -k required_range_type
 ```
 Expected: FAIL with `TypeError: ...got an unexpected keyword argument 'required_range_type'`.
 
-- [ ] **Step 4: Add the parameter to `create_duty_type` and `update_duty_type`**
+- [x] **Step 4: Add the parameter to `create_duty_type` and `update_duty_type`**
 
 In `backend/app/services/duty_config.py`, add `required_range_type: str | None = None` to both functions' signatures (`create_duty_type` and `update_duty_type`, alongside the existing `requires_weapon: bool | None = None` parameter). In `create_duty_type`'s body, pass it straight into the `DutyType(...)` constructor call alongside `requires_weapon=requires_weapon,`. In `update_duty_type`'s body, add — following the exact `contact_name`/`contact_phone` sub-style at lines 132-135 (simple assign, no `before[...]` capture, since `required_range_type` isn't currently part of the audit-log `before`/`after` dict) — right after the existing `requires_weapon` handling:
 
@@ -317,7 +317,7 @@ In `backend/app/services/duty_config.py`, add `required_range_type: str | None =
         duty_type.required_range_type = required_range_type
 ```
 
-- [ ] **Step 5: Add the field to both request schemas and wire the routes**
+- [x] **Step 5: Add the field to both request schemas and wire the routes**
 
 In `backend/app/routes/duty_config.py`, add to both `CreateDutyTypeRequest` (after `requires_weapon: bool = False`) and `UpdateDutyTypeRequest` (after `requires_weapon: bool | None = None`):
 
@@ -335,14 +335,14 @@ In `update_duty_type`'s route function (around line 161-192): right after `dt = 
 
 Then add `required_range_type=body.required_range_type,` to the `svc.update_duty_type(...)` call alongside `requires_weapon=body.requires_weapon,`. Leave `old_required_range_type` unused for now (it's a placeholder Task 6 will consume) — but do not remove it; a `# noqa` or simply referencing it is not needed since Task 6 lands in the same file shortly after and will use it directly.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 ```bash
 pytest app/services/tests/test_duty_config.py -v
 ```
 Expected: all PASS (including pre-existing tests in the file — check for regressions).
 
-- [ ] **Step 7: Typecheck the frontend is unaffected (no frontend admin UI for this field — Global Constraint from the weapon-qualification plan still applies, no frontend changes in this task)**
+- [x] **Step 7: Typecheck the frontend is unaffected (no frontend admin UI for this field — Global Constraint from the weapon-qualification plan still applies, no frontend changes in this task)**
 
 ```bash
 cd ../frontend && npx tsc --noEmit -p .
@@ -350,7 +350,7 @@ cd ../backend
 ```
 Expected: clean (no frontend files were touched).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add backend/app/services/duty_config.py backend/app/routes/duty_config.py backend/app/services/tests/test_duty_config.py
@@ -369,7 +369,7 @@ git commit -m "feat: make DutyType.required_range_type settable via update/creat
 - Consumes: `app.services.weapon_eligibility.compute_eligibility` (existing), `app.services.approval_scope.commander_chain_for_soldier` (existing), `app.services.notifications.notify_duty_managers_in_scope`/`create_notification` (existing).
 - Produces: `recheck_assignments(session: Session, assignment_ids: Sequence[uuid.UUID]) -> int` — returns the count of assignments that just transitioned False→True (became newly ineligible). Updates the cache columns on every assignment in `assignment_ids`, sends notifications only on False→True.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/app/services/tests/test_duty_eligibility_watch.py
@@ -512,14 +512,14 @@ def test_non_weapon_duty_type_is_never_checked(app_session: Session) -> None:
     assert assignment.weapon_ineligible is False
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch.py -v
 ```
 Expected: FAIL with `ModuleNotFoundError: No module named 'app.services.duty_eligibility_watch'`.
 
-- [ ] **Step 3: Implement `duty_eligibility_watch.py`**
+- [x] **Step 3: Implement `duty_eligibility_watch.py`**
 
 ```python
 # backend/app/services/duty_eligibility_watch.py
@@ -618,14 +618,14 @@ def recheck_assignments(session: Session, assignment_ids: Sequence[uuid.UUID]) -
     return newly_ineligible
 ```
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch.py -v
 ```
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/duty_eligibility_watch.py backend/app/services/tests/test_duty_eligibility_watch.py
@@ -645,7 +645,7 @@ git commit -m "feat: add duty_eligibility_watch core (recheck_assignments)"
 - Consumes: `duty_eligibility_watch.recheck_assignments` (Task 4).
 - Produces: after any of these three functions changes a soldier's range-qualification-relevant state, that soldier's currently-published, weapon-requiring assignments get rechecked.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/app/services/tests/test_duty_eligibility_watch_integration.py
@@ -735,14 +735,14 @@ def test_decide_primary_excusal_approval_triggers_recheck(app_session: Session) 
     assert duty_assignment.weapon_ineligible is True
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch_integration.py -v
 ```
 Expected: FAIL — `duty_assignment.weapon_ineligible` stays `False` after both calls (the hooks don't exist yet).
 
-- [ ] **Step 3: Add the hook to `mark_attendance`**
+- [x] **Step 3: Add the hook to `mark_attendance`**
 
 In `backend/app/services/ranges.py`, `mark_attendance` (lines 522-633). Right after the core state assignment completes (currently `assignment.note = note` at line 624, before the `write_audit(...)` call at line 626), add:
 
@@ -767,7 +767,7 @@ In `backend/app/services/ranges.py`, `mark_attendance` (lines 522-633). Right af
 
 (Use a local import here — matching the existing local-import convention for cross-service calls seen elsewhere in this codebase, e.g. `backend/app/routes/shifts.py:630-631` — to avoid a circular import between `ranges.py` and `duty_eligibility_watch.py`, which itself imports from `weapon_eligibility.py`.)
 
-- [ ] **Step 4: Add the hook to `request_reserve_excusal` and `decide_primary_excusal`**
+- [x] **Step 4: Add the hook to `request_reserve_excusal` and `decide_primary_excusal`**
 
 In `backend/app/services/range_excusal.py`, `request_reserve_excusal` (lines 83-112): right after `session.flush()` (line 99), before the notification calls at lines 100-109, add:
 
@@ -808,21 +808,21 @@ In `decide_primary_excusal` (lines 160-206), inside the approval (`else:`) branc
                 recheck_assignments(session, affected_ids)
 ```
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch_integration.py -v
 ```
 Expected: both PASS.
 
-- [ ] **Step 6: Run the broader ranges/excusal suites for regressions**
+- [x] **Step 6: Run the broader ranges/excusal suites for regressions**
 
 ```bash
 pytest app/services/tests/test_ranges_service.py tests/unit/test_range_attendance.py tests/unit/test_range_excusal.py -v
 ```
 Expected: all PASS (the recheck is a no-op when the affected soldier has no published weapon-requiring assignments, which is true for every pre-existing test in these files).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/services/ranges.py backend/app/services/range_excusal.py backend/app/services/tests/test_duty_eligibility_watch_integration.py
@@ -842,7 +842,7 @@ git commit -m "feat: trigger weapon-ineligibility recheck from attendance and ex
 - Consumes: `duty_eligibility_watch.recheck_assignments` (Task 4), `old_required_range_type` captured in Task 3's route.
 - Produces: changing `weapon_qualification.enforce_eligibility` triggers a background-run, all-relevant-assignments recheck; changing a `DutyType`'s `required_range_type` triggers a recheck of every published assignment of that duty type.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/app/services/tests/test_duty_eligibility_watch_broad_triggers.py
@@ -918,14 +918,14 @@ def test_apply_settings_detects_enforce_eligibility_key_change() -> None:
     assert current.get("weapon_qualification.enforce_eligibility") != updates.get("weapon_qualification.enforce_eligibility")
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch_broad_triggers.py -v -k required_range_type
 ```
 Expected: FAIL — `assignment.weapon_ineligible` stays `False` (the route-level hook doesn't exist yet; note this test calls the service function directly and then manually invokes `recheck_assignments`, so it's really testing that `update_duty_type` accepts the field — Step 3 below adds the actual auto-trigger at the *route* layer, which needs an HTTP-level or route-function-level test; add one more test in Step 3 if the route function is easily callable directly).
 
-- [ ] **Step 3: Add the hook to `duty_config.py`'s `update_duty_type` route**
+- [x] **Step 3: Add the hook to `duty_config.py`'s `update_duty_type` route**
 
 In `backend/app/routes/duty_config.py`, the `update_duty_type` route function (already modified in Task 3 to capture `old_required_range_type` right after loading `dt`). After the `svc.update_duty_type(...)` call and `session.commit()`, add:
 
@@ -949,7 +949,7 @@ In `backend/app/routes/duty_config.py`, the `update_duty_type` route function (a
 
 (Place this after whatever the route's existing `session.commit()`/return-building logic is — read the current route body to find the exact insertion point; the key requirement is it runs after the duty-type change is committed, using `duty_type_id` from the route's own path parameter and `old_required_range_type` from Task 3.)
 
-- [ ] **Step 4: Add the hook to `settings_loader.py`'s `apply_settings`**
+- [x] **Step 4: Add the hook to `settings_loader.py`'s `apply_settings`**
 
 In `backend/app/services/settings_loader.py`, `apply_settings` (lines 114-132). Right after `merged = validate_settings_update(current, updates)` (line 121), before the `for key, value in to_write.items(): ... set_setting(...)` loop:
 
@@ -986,14 +986,14 @@ Then, after the existing `for key, value in to_write.items(): set_setting(...)` 
 
 Note `apply_settings`'s current signature takes `session` as its first parameter already (confirmed: `def apply_settings(session: Session, current: dict, updates: dict, *, actor_id) -> dict`), so `session` is already in scope for this block — no signature change needed. Per the design spec, this is a "run in the background so it doesn't block the settings-update API call" requirement — for this task, implement it synchronously (correctness first); if response latency becomes a real issue, follow-up work can move it to a background task using the same `asyncio.to_thread`/worker pattern used elsewhere in this codebase. Note this synchronous-vs-background deviation explicitly in your task report.
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 pytest app/services/tests/test_duty_eligibility_watch_broad_triggers.py -v
 ```
 Expected: all PASS.
 
-- [ ] **Step 6: Run the broader settings/duty_config suites for regressions**
+- [x] **Step 6: Run the broader settings/duty_config suites for regressions**
 
 ```bash
 pytest app/services/tests/test_duty_config.py tests/unit/test_settings_loader.py tests/integration/test_settings_routes.py -v
@@ -1001,7 +1001,7 @@ pytest app/services/tests/test_duty_config.py tests/unit/test_settings_loader.py
 (Check the exact settings-route test file name first with `ls backend/tests/integration/ | grep -i setting`; adjust the path if it differs.)
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/services/settings_loader.py backend/app/routes/duty_config.py backend/app/services/tests/test_duty_eligibility_watch_broad_triggers.py
@@ -1021,7 +1021,7 @@ git commit -m "feat: trigger weapon-ineligibility recheck from settings and duty
 - Consumes: `duty_eligibility_watch.recheck_assignments` (Task 4).
 - Produces: `run_duty_eligibility_worker() -> None` (async, infinite loop, 86400s poll interval), started/stopped in `main.py`'s lifespan alongside the other three workers.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # backend/tests/unit/test_duty_eligibility_worker.py
@@ -1042,14 +1042,14 @@ def test_worker_function_calls_recheck_assignments_and_handles_errors() -> None:
         mock_scope.assert_called_once()
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest tests/unit/test_duty_eligibility_worker.py -v
 ```
 Expected: FAIL with `ModuleNotFoundError: No module named 'app.duty_eligibility_worker'`.
 
-- [ ] **Step 3: Implement the worker**
+- [x] **Step 3: Implement the worker**
 
 Copy the exact structure of `backend/app/range_attendance_worker.py` (25 lines, poll constant / `session_scope` function / async loop with try/except-log):
 
@@ -1100,7 +1100,7 @@ async def run_duty_eligibility_worker() -> None:
             logger.warning("duty eligibility worker: unhandled error", exc_info=True)
 ```
 
-- [ ] **Step 4: Register the worker in `main.py`'s lifespan**
+- [x] **Step 4: Register the worker in `main.py`'s lifespan**
 
 In `backend/app/main.py`, add the import alongside the existing worker imports (near line 15, e.g. `from app.range_attendance_worker import run_range_attendance_worker`):
 
@@ -1116,14 +1116,14 @@ In the `lifespan` function (lines 121-138), add the task creation alongside the 
 
 And add it to the shutdown/cleanup loop (lines 131-137) exactly the same way the other three tasks are cancelled and awaited there — find the existing list/tuple of tasks being cancelled and add `duty_eligibility_task` to it.
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 pytest tests/unit/test_duty_eligibility_worker.py -v
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Verify the app still starts cleanly**
+- [x] **Step 6: Verify the app still starts cleanly**
 
 ```bash
 python -c "
@@ -1134,7 +1134,7 @@ print('import ok')
 ```
 Expected: prints `import ok`, no import errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/duty_eligibility_worker.py backend/app/main.py backend/tests/unit/test_duty_eligibility_worker.py
@@ -1152,7 +1152,7 @@ git commit -m "feat: add daily safety-net worker for weapon-ineligibility detect
 **Interfaces:**
 - Produces: `GET /api/shifts/weapon-ineligible/count` → `{"count": int}`, hierarchy-scoped per the requesting user exactly like the existing `GET /constraints/pending/count` pattern.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # backend/tests/integration/test_weapon_ineligible_count.py
@@ -1203,14 +1203,14 @@ def test_zero_count_when_no_ineligible_assignments(client, admin_session):
     assert r.json()["count"] == 0
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest tests/integration/test_weapon_ineligible_count.py -v
 ```
 Expected: FAIL — `404 Not Found` (route doesn't exist).
 
-- [ ] **Step 3: Implement the endpoint**
+- [x] **Step 3: Implement the endpoint**
 
 In `backend/app/routes/shifts.py`, add near the top (with the other response models, alongside `ShiftOut`):
 
@@ -1261,14 +1261,14 @@ def weapon_ineligible_count(
 
 **Step 3a — subtree scoping:** `roots` (from `scope_root_ids`) gives the node ids the user directly governs, but soldiers may sit in *descendant* nodes, not just those exact nodes. Check how `svc.pending_approval_count(session, node_ids=roots)` (the precedent this endpoint is modeled on, referenced by `backend/app/routes/constraints.py`'s `pending_count`) handles subtree expansion — it likely calls a hierarchy-path helper (search for `hierarchy_path_ids` or a `subtree_node_ids`/`descendant_node_ids` function in `backend/app/services/` or `backend/app/auth/authz.py`). Use the same subtree-expansion helper here instead of a bare `HierarchyNode.id.in_(roots)` exact match, so a branch commander sees ineligible assignments anywhere in their subtree, not just soldiers on the root node itself.
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 ```bash
 pytest tests/integration/test_weapon_ineligible_count.py -v
 ```
 Expected: both PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/routes/shifts.py backend/tests/integration/test_weapon_ineligible_count.py
@@ -1286,7 +1286,7 @@ git commit -m "feat: add hierarchy-scoped weapon-ineligible assignment count end
 **Interfaces:**
 - Produces: `ShiftOut.ineligible_count: int` (default `0`) — count of published, weapon-ineligible assignments for that specific shift.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # Add to backend/tests/integration/test_shifts_routes.py
@@ -1330,14 +1330,14 @@ def test_list_shifts_includes_ineligible_count(client, admin_session):
     assert row["ineligible_count"] == 1
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 pytest tests/integration/test_shifts_routes.py -v -k ineligible_count
 ```
 Expected: FAIL — `KeyError: 'ineligible_count'`.
 
-- [ ] **Step 3: Add the field to `ShiftOut` and batch-compute it in `list_shifts`**
+- [x] **Step 3: Add the field to `ShiftOut` and batch-compute it in `list_shifts`**
 
 In `backend/app/routes/shifts.py`, add to `ShiftOut` (after `node_quotas`):
 
@@ -1370,14 +1370,14 @@ In `list_shifts` (lines 155-170), following this file's established batch-then-p
 
 Then pass `ineligible_count=ineligible_counts.get(s.id, 0)` into each `_out(...)` call.
 
-- [ ] **Step 4: Run tests to verify pass**
+- [x] **Step 4: Run tests to verify pass**
 
 ```bash
 pytest tests/integration/test_shifts_routes.py -v
 ```
 Expected: all PASS (including pre-existing tests — check for regressions since `_out`'s signature changed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/routes/shifts.py backend/tests/integration/test_shifts_routes.py
@@ -1396,14 +1396,14 @@ git commit -m "feat: add ineligible_count to ShiftOut"
 **Interfaces:**
 - Produces: `CalendarShiftAssignee.weapon_ineligible: bool = False`, `CalendarShiftAssignee.weapon_ineligible_reason: str | None = None` — populated from the `DutyAssignment` rows already loaded in bulk by both functions.
 
-- [ ] **Step 1: Check the exact calendar-routes test file name**
+- [x] **Step 1: Check the exact calendar-routes test file name**
 
 ```bash
 ls backend/tests/integration/ | grep -i calendar
 ```
 Use whichever file exists; read its existing fixture/import style first.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # Add to the calendar routes integration test file found in Step 1
@@ -1449,14 +1449,14 @@ def test_calendar_shift_assignee_includes_weapon_ineligible_flag(client, admin_s
     assert assignee["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 pytest tests/integration/<calendar_test_file> -v -k weapon_ineligible
 ```
 Expected: FAIL — `KeyError: 'weapon_ineligible'`.
 
-- [ ] **Step 4: Add the fields to `CalendarShiftAssignee`**
+- [x] **Step 4: Add the fields to `CalendarShiftAssignee`**
 
 In `backend/app/routes/calendar.py`, add to `CalendarShiftAssignee` (after `hierarchy_path_ids`):
 
@@ -1465,18 +1465,18 @@ In `backend/app/routes/calendar.py`, add to `CalendarShiftAssignee` (after `hier
     weapon_ineligible_reason: str | None = None
 ```
 
-- [ ] **Step 5: Populate the fields in `calendar_shifts.py`**
+- [x] **Step 5: Populate the fields in `calendar_shifts.py`**
 
 In `backend/app/services/calendar_shifts.py`, both `get_calendar_shifts` and `get_single_shift` already load the full `DutyAssignment` ORM objects in bulk (`assignments = session.execute(select(DutyAssignment).where(...)).scalars().all()`). Since `weapon_ineligible`/`weapon_ineligible_reason` live directly on those already-loaded objects, no additional query is needed — just read them off each `DutyAssignment` object (`a.weapon_ineligible`, `a.weapon_ineligible_reason`) at the point where each function currently builds its per-assignee dict/object for the `assignees` list, and include the two new keys there. Locate that exact construction point in both functions (search for where `soldier_id`/`soldier_name`/`assignment_id` are assembled into the assignee representation) and add the two fields alongside them.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 ```bash
 pytest tests/integration/<calendar_test_file> -v
 ```
 Expected: all PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/routes/calendar.py backend/app/services/calendar_shifts.py backend/tests/integration/<calendar_test_file>
@@ -1495,14 +1495,14 @@ git commit -m "feat: surface weapon-ineligibility on CalendarShiftAssignee"
 **Interfaces:**
 - Produces: `EffectiveDutyOut.weapon_ineligible: bool = False`, `EffectiveDutyOut.weapon_ineligible_reason: str | None = None`.
 
-- [ ] **Step 1: Locate `effective_duty_spans`**
+- [x] **Step 1: Locate `effective_duty_spans`**
 
 ```bash
 grep -rn "def effective_duty_spans" backend/app/
 ```
 Read its full implementation before editing — confirm whether it queries `DutyAssignment` rows directly (in which case the new fields are a simple additional key in whatever dict/tuple it returns per span) or derives spans some other way (in which case you'll need to join back to `DutyAssignment` by `assignment_id` to pull the two new columns).
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # Add to the assignments routes integration test file (find exact name: ls backend/tests/integration/ | grep -i assignment)
@@ -1543,14 +1543,14 @@ def test_effective_duties_includes_weapon_ineligible_flag(client, admin_session)
     assert row["weapon_ineligible_reason"] == "אין הכשרת נשק בתוקף לתאריך התורנות"
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 pytest tests/integration/<assignments_test_file> -v -k weapon_ineligible
 ```
 Expected: FAIL — `KeyError`/`AssertionError` on missing field.
 
-- [ ] **Step 4: Add the fields to `EffectiveDutyOut` and populate them**
+- [x] **Step 4: Add the fields to `EffectiveDutyOut` and populate them**
 
 In `backend/app/routes/assignments.py`, add to `EffectiveDutyOut` (after `is_reserve`):
 
@@ -1586,14 +1586,14 @@ Populate them based on what Step 1 found: if `effective_duty_spans` already retu
 
 (Prefer whichever approach avoids the extra query — check Step 1's findings first; only add the batched lookup if `effective_duty_spans` genuinely doesn't have `DutyAssignment` rows in scope.)
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 pytest tests/integration/<assignments_test_file> -v
 ```
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/routes/assignments.py backend/app/services/scoring.py backend/tests/integration/<assignments_test_file>
@@ -1613,7 +1613,7 @@ git commit -m "feat: surface weapon-ineligibility on EffectiveDuty (soldier's ow
 - Consumes: `GET /api/shifts/weapon-ineligible/count` (Task 8).
 - Produces: `getWeaponIneligibleCount(): Promise<number>` in `shifts.ts`; a new red badge on the nav, visible to duty managers and commanders, scoped per the backend's own hierarchy filtering (no client-side scoping needed).
 
-- [ ] **Step 1: Add the API function**
+- [x] **Step 1: Add the API function**
 
 In `frontend/src/api/shifts.ts`:
 
@@ -1624,14 +1624,14 @@ export async function getWeaponIneligibleCount(): Promise<number> {
 }
 ```
 
-- [ ] **Step 2: Check for an existing `UnifiedNav.test.tsx`**
+- [x] **Step 2: Check for an existing `UnifiedNav.test.tsx`**
 
 ```bash
 ls frontend/src/components/UnifiedNav.test.tsx 2>&1
 ```
 Read it fully first if it exists, to match its mock/fixture conventions.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 ```tsx
 // Add to frontend/src/components/UnifiedNav.test.tsx (or create following existing test conventions in this directory)
@@ -1654,14 +1654,14 @@ describe("UnifiedNav weapon-ineligible badge", () => {
 });
 ```
 
-- [ ] **Step 4: Run to verify failure**
+- [x] **Step 4: Run to verify failure**
 
 ```bash
 npm test -- UnifiedNav.test.tsx
 ```
 Expected: FAIL — the badge doesn't exist yet.
 
-- [ ] **Step 5: Implement the badge**
+- [x] **Step 5: Implement the badge**
 
 In `frontend/src/components/UnifiedNav.tsx`, add the import (alongside the existing ones at lines 10-16):
 
@@ -1695,14 +1695,14 @@ Add a new nav tab entry (near the approvals tab at line 157), gated to duty mana
 
 Add the translation key `nav.weapon_ineligible` to `frontend/src/i18n/he.json` (find the `nav.*` section and add alongside `nav.approvals`) with value `"⚠️ חוסר כשירות"` or similar concise Hebrew label.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 ```bash
 npm test -- UnifiedNav.test.tsx
 ```
 Expected: PASS.
 
-- [ ] **Step 7: Typecheck and run the broader frontend suite**
+- [x] **Step 7: Typecheck and run the broader frontend suite**
 
 ```bash
 npx tsc --noEmit -p .
@@ -1710,7 +1710,7 @@ npm test
 ```
 Expected: clean, no regressions.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src/api/shifts.ts frontend/src/components/UnifiedNav.tsx frontend/src/components/UnifiedNav.test.tsx frontend/src/i18n/he.json
@@ -1728,14 +1728,14 @@ git commit -m "feat: add weapon-ineligible red badge to nav"
 **Interfaces:**
 - Consumes: `ShiftOut.ineligible_count` (Task 9).
 
-- [ ] **Step 1: Check for an existing `ShiftsPage.test.tsx`**
+- [x] **Step 1: Check for an existing `ShiftsPage.test.tsx`**
 
 ```bash
 ls frontend/src/pages/ShiftsPage.test.tsx 2>&1
 ```
 Read it fully first if it exists.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```tsx
 // Add to frontend/src/pages/ShiftsPage.test.tsx (matching its existing conventions)
@@ -1746,14 +1746,14 @@ it("shows a warning indicator for shifts with an ineligible_count", async () => 
 });
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 npm test -- ShiftsPage.test.tsx
 ```
 Expected: FAIL.
 
-- [ ] **Step 4: Add the indicator**
+- [x] **Step 4: Add the indicator**
 
 In `frontend/src/pages/ShiftsPage.tsx`, add a new column definition right after the `fill_status` column (lines 608-618), following the exact same column-object shape:
 
@@ -1776,21 +1776,21 @@ In `frontend/src/pages/ShiftsPage.tsx`, add a new column definition right after 
 
 Add `ineligible_count: number` to the frontend `Shift`/`ShiftOut`-equivalent TypeScript interface in `frontend/src/api/shifts.ts` (find the existing interface — likely named `Shift` or `ShiftOut` — and add the field matching the backend's new field exactly).
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 npm test -- ShiftsPage.test.tsx
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 ```bash
 npx tsc --noEmit -p .
 ```
 Expected: clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/pages/ShiftsPage.tsx frontend/src/api/shifts.ts frontend/src/pages/ShiftsPage.test.tsx
@@ -1810,14 +1810,14 @@ git commit -m "feat: show weapon-ineligibility warning indicator on shifts table
 - Consumes: `CalendarShiftAssignee.weapon_ineligible`/`weapon_ineligible_reason` (Task 10).
 - Produces: per-soldier ⚠️ marker in both the primaries and reserves lists; a "החלף" (Replace) button next to it for duty managers/admins that cancels the ineligible assignment and opens `ShiftAssignModal` targeted at the freed slot on that same shift.
 
-- [ ] **Step 1: Check for an existing `ShiftDetailPanel.test.tsx`**
+- [x] **Step 1: Check for an existing `ShiftDetailPanel.test.tsx`**
 
 ```bash
 ls frontend/src/components/ShiftDetailPanel.test.tsx 2>&1
 ```
 Read it fully first if it exists, to match its mock/render conventions (it will need a mock `CalendarShift`/`shift` prop and mocked `getCalendarShifts`/`cancelAssignment`/similar API calls).
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 ```tsx
 // Add to frontend/src/components/ShiftDetailPanel.test.tsx
@@ -1834,14 +1834,14 @@ it("shows a Replace button for duty managers next to the ineligible marker, whic
 });
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 npm test -- ShiftDetailPanel.test.tsx
 ```
 Expected: FAIL.
 
-- [ ] **Step 4: Add the fields to the frontend `CalendarShiftAssignee` interface**
+- [x] **Step 4: Add the fields to the frontend `CalendarShiftAssignee` interface**
 
 In `frontend/src/api/calendar.ts`, add to the `CalendarShiftAssignee` interface (matching the backend schema from Task 10 exactly):
 
@@ -1850,7 +1850,7 @@ In `frontend/src/api/calendar.ts`, add to the `CalendarShiftAssignee` interface 
   weapon_ineligible_reason: string | null;
 ```
 
-- [ ] **Step 5: Add the ⚠️ marker and Replace button**
+- [x] **Step 5: Add the ⚠️ marker and Replace button**
 
 In `frontend/src/components/ShiftDetailPanel.tsx`, in both the primaries row (around lines 199-201, right after the `SoldierLink`) and the reserves row (the equivalent point around line 305-306), add — following the exact `ShiftAssignModal.tsx` weapon-warning JSX style cited in research (`{c.weapon_warning && (<span title={...} className="mr-1 text-amber-500 dark:text-amber-400">⚠️</span>)}`):
 
@@ -1895,14 +1895,14 @@ Add a `replaceTarget` state (`useState<{ shiftId: string } | null>(null)`) and, 
 
 (Check `ShiftAssignModal`'s actual prop names against its current definition — it was last touched by the weapon-qualification-eligibility plan, confirm `shift`/`dutyTypes`/`onSaved`/`onClose` are still its exact prop names before wiring this up. Import `ShiftAssignModal` and `cancelAssignment` — locate the exact existing cancel-assignment API function name, likely in `frontend/src/api/shifts.ts` or `frontend/src/api/assignments.ts` — at the top of the file if not already imported.)
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 ```bash
 npm test -- ShiftDetailPanel.test.tsx
 ```
 Expected: both PASS.
 
-- [ ] **Step 7: Typecheck and run the broader frontend suite**
+- [x] **Step 7: Typecheck and run the broader frontend suite**
 
 ```bash
 npx tsc --noEmit -p .
@@ -1910,7 +1910,7 @@ npm test
 ```
 Expected: clean, no regressions.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src/components/ShiftDetailPanel.tsx frontend/src/api/calendar.ts frontend/src/components/ShiftDetailPanel.test.tsx
@@ -1930,14 +1930,14 @@ git commit -m "feat: show weapon-ineligibility marker and Replace action in shif
 - Consumes: `EffectiveDuty.weapon_ineligible`/`weapon_ineligible_reason` (Task 11).
 - Produces: a message + "בקש החלפה" (request swap) button on an ineligible duty row, opening `OfferSwapModal` pre-filled with that duty's `assignment_id`.
 
-- [ ] **Step 1: Check for an existing `MyDutiesPage.test.tsx`**
+- [x] **Step 1: Check for an existing `MyDutiesPage.test.tsx`**
 
 ```bash
 ls frontend/src/pages/MyDutiesPage.test.tsx 2>&1
 ```
 Read it fully first if it exists.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```tsx
 // Add to frontend/src/pages/MyDutiesPage.test.tsx
@@ -1949,14 +1949,14 @@ it("shows a swap-request button for an ineligible upcoming duty", async () => {
 });
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 npm test -- MyDutiesPage.test.tsx
 ```
 Expected: FAIL.
 
-- [ ] **Step 4: Add the fields to the frontend `EffectiveDuty` interface**
+- [x] **Step 4: Add the fields to the frontend `EffectiveDuty` interface**
 
 In `frontend/src/api/assignments.ts`, add to the `EffectiveDuty` interface (after `is_reserve`):
 
@@ -1965,7 +1965,7 @@ In `frontend/src/api/assignments.ts`, add to the `EffectiveDuty` interface (afte
   weapon_ineligible_reason: string | null;
 ```
 
-- [ ] **Step 5: Add the resolution UI**
+- [x] **Step 5: Add the resolution UI**
 
 In `frontend/src/pages/MyDutiesPage.tsx`, in the upcoming-duties rendering block (the section iterating `dutiesQuery.data`, near lines 67-80), add a conditional block per duty row:
 
@@ -1987,14 +1987,14 @@ In `frontend/src/pages/MyDutiesPage.tsx`, in the upcoming-duties rendering block
 
 Add the `offerSwapTarget` state and the conditional `OfferSwapModal` render at the bottom of the component, following the exact pattern already established in `ShiftDetailPanel.tsx` (lines 387-398) — `targetSoldierId`, `targetSoldierName`, `targetAssignmentId={offerSwapTarget.assignmentId}`, `targetDutyStart={d.start_date}`, `targetDutyEnd={d.end_date}`, `targetDutyTypeId={d.duty_type_id}`, `onClose`, `onDone`. Import `OfferSwapModal` at the top of the file if not already imported.
 
-- [ ] **Step 6: Run tests to verify pass**
+- [x] **Step 6: Run tests to verify pass**
 
 ```bash
 npm test -- MyDutiesPage.test.tsx
 ```
 Expected: PASS.
 
-- [ ] **Step 7: Typecheck and run the broader frontend suite**
+- [x] **Step 7: Typecheck and run the broader frontend suite**
 
 ```bash
 npx tsc --noEmit -p .
@@ -2002,7 +2002,7 @@ npm test
 ```
 Expected: clean, no regressions.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/src/pages/MyDutiesPage.tsx frontend/src/api/assignments.ts frontend/src/pages/MyDutiesPage.test.tsx
