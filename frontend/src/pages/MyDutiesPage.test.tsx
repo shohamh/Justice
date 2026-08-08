@@ -137,6 +137,33 @@ describe("MyDutiesPage weapon-ineligibility swap path", () => {
     expect(screen.getByRole("button", { name: "בקש החלפה" })).toBeInTheDocument();
   });
 
+  it("renders every run of a split-span multi-day assignment (shared assignment_id, distinct start_date)", async () => {
+    // listEffectiveDuties can return one entry PER DAY (or per override run) for
+    // a multi-day assignment, all sharing the same assignment_id. Both rows must
+    // render, each with its own swap-request button — no duplicate React keys.
+    vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([
+      makeDuty({
+        assignment_id: "a-multi",
+        start_date: "2099-01-10",
+        end_date: "2099-01-11",
+        weapon_ineligible: true,
+        weapon_ineligible_reason: "אין הכשרת נשק ביום הראשון",
+      }),
+      makeDuty({
+        assignment_id: "a-multi",
+        start_date: "2099-01-11",
+        end_date: "2099-01-12",
+        weapon_ineligible: true,
+        weapon_ineligible_reason: "אין הכשרת נשק ביום השני",
+      }),
+    ]);
+    renderPage();
+
+    expect(await screen.findByText("אין הכשרת נשק ביום הראשון", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("אין הכשרת נשק ביום השני", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "בקש החלפה" })).toHaveLength(2);
+  });
+
   it("clicking the swap button opens OfferSwapModal pre-filled with the ineligible assignment", async () => {
     vi.mocked(assignmentsApi.listEffectiveDuties).mockResolvedValue([
       makeDuty({

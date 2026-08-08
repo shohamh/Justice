@@ -241,7 +241,7 @@ export default function MyDutiesPage() {
             <h3 className="font-medium text-sm">תורנויות קרובות</h3>
             <ul className="space-y-3">
               {upcomingDuties.map((d) => (
-                <li key={d.assignment_id} className="border-b dark:border-gray-600 last:border-0 pb-2 last:pb-0">
+                <li key={`${d.assignment_id}-${d.start_date}`} className="border-b dark:border-gray-600 last:border-0 pb-2 last:pb-0">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">{d.duty_type_name}</span>
                     <span className="text-gray-500 dark:text-gray-400">
