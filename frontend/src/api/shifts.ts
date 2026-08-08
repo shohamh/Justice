@@ -18,6 +18,7 @@ export interface DutyShift {
   generated_from_template_id?: string | null;
   generated_from_template_name?: string | null;
   node_quotas?: NodeQuota[];
+  ineligible_count: number;
 }
 
 export interface NodeQuota {

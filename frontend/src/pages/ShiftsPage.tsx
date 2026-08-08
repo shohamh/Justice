@@ -617,6 +617,20 @@ export function ShiftsContent({ onJobSubmitted }: { onJobSubmitted?: (jobId: str
       filterValue: (s) => t(`shifts.fill_${s.fill_status}`),
     },
     {
+      id: "weapon_ineligible",
+      header: "",
+      cell: (s) =>
+        s.ineligible_count > 0 ? (
+          <span
+            title={`${s.ineligible_count} חייל/ים לא כשירים מבחינת הכשרת נשק`}
+            className="text-amber-500 dark:text-amber-400"
+          >
+            ⚠️
+          </span>
+        ) : null,
+      sortValue: (s) => s.ineligible_count,
+    },
+    {
       id: "shift_status",
       header: t("shifts.shift_status"),
       cell: (s) => s.status === "cancelled"
