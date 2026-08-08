@@ -54,6 +54,20 @@ def _ensure_no_pending(session: Session, assignment_id: uuid.UUID) -> None:
     if existing is not None:
         raise RangeValidationError("excusal_request_already_pending")
 
+def _recheck_soldier_assignments(session: Session, soldier_id: uuid.UUID) -> None:
+    from app.db.models import DutyAssignment as _DutyAssignment
+    from app.services.duty_eligibility_watch import recheck_assignments
+
+    affected_ids = session.execute(
+        select(_DutyAssignment.id).where(
+            _DutyAssignment.soldier_id == soldier_id,
+            _DutyAssignment.status == "published",
+        )
+    ).scalars().all()
+    if affected_ids:
+        recheck_assignments(session, affected_ids)
+
+
 
 def request_primary_excusal(
     session: Session, *, assignment: RangeAssignment, reason: str, requested_by: uuid.UUID,
@@ -70,6 +84,7 @@ def request_primary_excusal(
     )
     session.add(request)
     session.flush()
+    _recheck_soldier_assignments(session, assignment.soldier_id)
     _range_notification(
         session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_pending,
         title="בקשת ההיעדרות נשלחה", reference_type="range_excusal_request",
@@ -98,17 +113,7 @@ def request_reserve_excusal(
     session.delete(assignment)
     session.flush()
 
-    from app.db.models import DutyAssignment as _DutyAssignment
-    from app.services.duty_eligibility_watch import recheck_assignments
-
-    affected_ids = session.execute(
-        select(_DutyAssignment.id).where(
-            _DutyAssignment.soldier_id == assignment.soldier_id,
-            _DutyAssignment.status == "published",
-        )
-    ).scalars().all()
-    if affected_ids:
-        recheck_assignments(session, affected_ids)
+    _recheck_soldier_assignments(session, assignment.soldier_id)
 
     _range_notification(
         session, soldier_id=requested_by, type=NotificationType.range_reserve_excused,
@@ -184,8 +189,9 @@ def decide_primary_excusal(
     request.decided_by = decided_by
     request.decided_at = datetime.now(UTC)
     request.decision_note = note.strip() if note and note.strip() else None
-
     if not approve:
+        session.flush()
+        _recheck_soldier_assignments(session, assignment.soldier_id)
         _range_notification(
             session, soldier_id=assignment.soldier_id, type=NotificationType.range_excusal_rejected,
             title="בקשת ההיעדרות נדחתה", body=request.decision_note,
@@ -202,21 +208,11 @@ def decide_primary_excusal(
         # Both the excused soldier (whose future qualification window from this
         # assignment just disappeared) and, if applicable, the promoted reserve
         # (who just gained one) may have had their weapon eligibility affected.
-        from app.db.models import DutyAssignment as _DutyAssignment
-        from app.services.duty_eligibility_watch import recheck_assignments
-
         affected_soldier_ids = {assignment.soldier_id}
         if promoted is not None:
             affected_soldier_ids.add(promoted.soldier_id)
         for _soldier_id in affected_soldier_ids:
-            affected_ids = session.execute(
-                select(_DutyAssignment.id).where(
-                    _DutyAssignment.soldier_id == _soldier_id,
-                    _DutyAssignment.status == "published",
-                )
-            ).scalars().all()
-            if affected_ids:
-                recheck_assignments(session, affected_ids)
+            _recheck_soldier_assignments(session, _soldier_id)
 
         if promoted is not None:
             _range_notification(

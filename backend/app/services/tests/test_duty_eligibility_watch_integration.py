@@ -7,7 +7,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    DutyAssignment, DutyLocation, DutyShift, DutyType, RangeAttendanceStatus, RangeType,
+    DutyAssignment, DutyLocation, DutyShift, DutyType, Notification, NotificationType,
+    RangeAttendanceStatus, RangeType,
 )
 from app.services.range_excusal import decide_primary_excusal, request_primary_excusal, request_reserve_excusal
 from app.services.ranges import add_range_assignment, create_range_event, mark_attendance
@@ -105,6 +106,72 @@ def test_request_reserve_excusal_triggers_recheck(app_session: Session) -> None:
     app_session.refresh(duty_assignment)
     assert duty_assignment.weapon_ineligible is True
 
+
+
+def test_request_primary_excusal_rechecks_pending_transition(app_session: Session) -> None:
+    set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
+    node = create_node(app_session, level="branch", name="watchint-node-pending")
+    soldier = create_soldier(app_session, personal_number="watchint-sol-pending", hierarchy_node_id=node.id)
+    duty_assignment = _make_weapon_assignment(
+        app_session, soldier_id=soldier.id, node_id=node.id, start_date=date.today() + timedelta(days=5),
+    )
+
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=2),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    range_assignment = add_range_assignment(
+        app_session, event=event, soldier_id=soldier.id, is_reserve=False,
+    )
+    request_primary_excusal(
+        app_session, assignment=range_assignment, reason="בדיקה", requested_by=soldier.id,
+    )
+
+    app_session.refresh(duty_assignment)
+    assert duty_assignment.weapon_ineligible is True
+    assert app_session.query(Notification).filter(
+        Notification.type == NotificationType.weapon_ineligible_detected,
+        Notification.reference_id == duty_assignment.id,
+    ).count() == 1
+
+
+def test_rejecting_primary_excusal_clears_ineligibility_silently(app_session: Session) -> None:
+    set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
+    node = create_node(app_session, level="branch", name="watchint-node-rejected")
+    soldier = create_soldier(app_session, personal_number="watchint-sol-rejected", hierarchy_node_id=node.id)
+    duty_assignment = _make_weapon_assignment(
+        app_session, soldier_id=soldier.id, node_id=node.id, start_date=date.today() + timedelta(days=5),
+    )
+
+    event = create_range_event(
+        app_session, hierarchy_node_id=node.id, range_type=RangeType.laser,
+        event_date=date.today() + timedelta(days=2),
+        range_location_id=create_range_location(app_session).id, required_count=1,
+    )
+    range_assignment = add_range_assignment(
+        app_session, event=event, soldier_id=soldier.id, is_reserve=False,
+    )
+    request = request_primary_excusal(
+        app_session, assignment=range_assignment, reason="בדיקה", requested_by=soldier.id,
+    )
+    weapon_notifications = app_session.query(Notification).filter(
+        Notification.type == NotificationType.weapon_ineligible_detected,
+        Notification.reference_id == duty_assignment.id,
+    ).count()
+    assert weapon_notifications == 1
+
+    decide_primary_excusal(
+        app_session, request=request, approve=False, decided_by=soldier.id, note="נדחה",
+    )
+
+    app_session.refresh(duty_assignment)
+    assert duty_assignment.weapon_ineligible is False
+    assert duty_assignment.weapon_ineligible_reason is None
+    assert app_session.query(Notification).filter(
+        Notification.type == NotificationType.weapon_ineligible_detected,
+        Notification.reference_id == duty_assignment.id,
+    ).count() == weapon_notifications
 
 def test_decide_primary_excusal_approval_rechecks_excused_and_promoted_soldiers(app_session: Session) -> None:
     set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
