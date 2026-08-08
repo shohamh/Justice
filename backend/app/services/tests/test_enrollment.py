@@ -158,7 +158,7 @@ def test_approve_already_decided_raises(admin_session):
     approve_enrollment(admin_session, request_id=req.id, decider_id=decider.id, decision_note=None)
     admin_session.commit()
 
-    with pytest.raises(EnrollmentError, match="already decided"):
+    with pytest.raises(EnrollmentError, match="already_decided"):
         approve_enrollment(admin_session, request_id=req.id, decider_id=decider.id, decision_note=None)
 
 

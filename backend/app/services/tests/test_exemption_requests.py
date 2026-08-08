@@ -35,7 +35,7 @@ def test_submit_request_starts_at_pending_commander(app_session):
     app_session.add(et)
     app_session.flush()
     soldier = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     assert req.status == "pending_commander"
 
 
@@ -45,7 +45,7 @@ def test_approve_commander_step_moves_to_pending_duty_manager(app_session):
     app_session.flush()
     soldier = _soldier(app_session)
     approver = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     result = approve_commander_step(app_session, req.id, approved_by=approver.id)
     assert result.status == "pending_duty_manager"
     assert result.commander_approved_by == approver.id
@@ -89,7 +89,7 @@ def test_approve_commander_step_notifies_duty_managers(app_session):
     app_session.add(DutyManagerScope(duty_manager_id=dm.id, hierarchy_node_id=center_node.id))
     app_session.flush()
 
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     approve_commander_step(app_session, req.id, approved_by=commander.id)
 
     notif = app_session.query(Notification).filter_by(
@@ -105,7 +105,7 @@ def test_approve_duty_manager_step_finalizes_and_creates_exemption(app_session):
     soldier = _soldier(app_session)
     commander = _soldier(app_session)
     dm = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     approve_commander_step(app_session, req.id, approved_by=commander.id)
     result = approve_duty_manager_step(app_session, req.id, decided_by=dm.id)
     assert result.status == "approved"
@@ -123,7 +123,7 @@ def test_cannot_skip_commander_step(app_session):
     app_session.flush()
     soldier = _soldier(app_session)
     dm = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     try:
         approve_duty_manager_step(app_session, req.id, decided_by=dm.id)
         assert False, "expected ExemptionRequestError"
@@ -137,7 +137,7 @@ def test_reject_works_at_commander_stage(app_session):
     app_session.flush()
     soldier = _soldier(app_session)
     commander = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     result = reject_request(app_session, req.id, decided_by=commander.id)
     assert result.status == "rejected"
 
@@ -148,7 +148,7 @@ def test_submit_request_rejects_commander_exemption_type(app_session):
     app_session.flush()
     soldier = _soldier(app_session)
     try:
-        submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+        submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
         assert False, "expected ExemptionRequestError"
     except ExemptionRequestError as exc:
         assert "commander_exemption_not_requestable" in str(exc)
@@ -161,7 +161,7 @@ def test_reject_works_at_duty_manager_stage(app_session):
     soldier = _soldier(app_session)
     commander = _soldier(app_session)
     dm = _soldier(app_session)
-    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1))
+    req = submit_request(app_session, soldier.id, et.id, date(2026, 1, 1), reason="סיבה")
     approve_commander_step(app_session, req.id, approved_by=commander.id)
     result = reject_request(app_session, req.id, decided_by=dm.id)
     assert result.status == "rejected"
@@ -297,6 +297,7 @@ def test_submit_request_rejects_span_over_364_days(admin_session):
         submit_request(
             admin_session, soldier.id, et.id,
             start_date=start, end_date=start + timedelta(days=365),
+            reason="סיבה",
         )
 
 
@@ -314,6 +315,7 @@ def test_submit_request_allows_span_of_exactly_364_days(admin_session):
     req = submit_request(
         admin_session, soldier.id, et.id,
         start_date=start, end_date=start + timedelta(days=364),
+        reason="סיבה",
     )
     assert req.id is not None
 
@@ -328,5 +330,5 @@ def test_submit_request_allows_open_ended(admin_session):
     admin_session.commit()
     soldier = create_soldier(admin_session, personal_number="7910003")
 
-    req = submit_request(admin_session, soldier.id, et.id, start_date=date.today(), end_date=None)
+    req = submit_request(admin_session, soldier.id, et.id, start_date=date.today(), end_date=None, reason="סיבה")
     assert req.end_date is None
