@@ -561,6 +561,7 @@ def notify_duty_managers_in_scope(
     reference_type: str | None = None,
     reference_id: uuid.UUID | None = None,
     actor_id: uuid.UUID | None = None,
+    exclude_soldier_ids: set[uuid.UUID] | None = None,
 ) -> None:
     """Notify every duty manager whose scope covers soldier_id's hierarchy node."""
     from app.db.models import DutyManagerScope
@@ -578,7 +579,11 @@ def notify_duty_managers_in_scope(
     ).scalars().all()
     seen: set[uuid.UUID] = set()
     for dm_scope in dm_scopes:
-        if dm_scope.duty_manager_id in seen or dm_scope.duty_manager_id == soldier.id:
+        if (
+            dm_scope.duty_manager_id in seen
+            or dm_scope.duty_manager_id == soldier.id
+            or (exclude_soldier_ids is not None and dm_scope.duty_manager_id in exclude_soldier_ids)
+        ):
             continue
         seen.add(dm_scope.duty_manager_id)
         _create_notif(

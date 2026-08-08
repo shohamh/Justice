@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    DutyAssignment, DutyLocation, DutyShift, DutyType, Notification, NotificationType, RangeType,
+    CommanderNotificationScope, DutyAssignment, DutyLocation, DutyShift, DutyType, Notification, NotificationType, RangeType,
     SoldierRangeQualification,
 )
 from app.services.duty_eligibility_watch import recheck_assignments
@@ -42,15 +42,27 @@ def _make_weapon_assignment(
     return assignment
 
 
-def test_transition_to_ineligible_updates_cache_and_notifies_three_recipients(app_session: Session) -> None:
+def test_transition_to_ineligible_updates_cache_and_notifies_exact_audience(app_session: Session) -> None:
     # mitvachim.enabled defaults to False (weapon-eligibility enforcement off in
     # production until explicitly enabled) -- must opt in explicitly, matching
     # the convention in test_weapon_eligibility.py.
     set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
-    node = create_node(app_session, level="branch", name="watch-node-1")
+    parent = create_node(app_session, level="division", name="watch-parent-1")
+    node = create_node(app_session, level="branch", name="watch-node-1", parent=parent)
+    higher_commander = create_soldier(
+        app_session, personal_number="watch-cmd-parent-1", hierarchy_node_id=parent.id,
+    )
+    parent.commander_id = higher_commander.id
     commander = create_soldier(app_session, personal_number="watch-cmd-1", hierarchy_node_id=node.id)
     node.commander_id = commander.id
+    duty_manager = create_soldier(
+        app_session, personal_number="watch-dm-1", role="duty_manager", hierarchy_node_id=node.id,
+    )
     soldier = create_soldier(app_session, personal_number="watch-sol-1", hierarchy_node_id=node.id)
+    app_session.add_all([
+        CommanderNotificationScope(commander_id=commander.id, hierarchy_node_id=node.id),
+        CommanderNotificationScope(commander_id=higher_commander.id, hierarchy_node_id=parent.id),
+    ])
     app_session.commit()
 
     assignment = _make_weapon_assignment(
@@ -67,12 +79,11 @@ def test_transition_to_ineligible_updates_cache_and_notifies_three_recipients(ap
     assert assignment.weapon_ineligible_detected_at is not None
 
     notifs = app_session.query(Notification).filter(
-        Notification.type == NotificationType.weapon_ineligible_detected
+        Notification.type == NotificationType.weapon_ineligible_detected,
+        Notification.reference_id == assignment.id,
     ).all()
-    recipient_ids = {n.soldier_id for n in notifs}
-    assert soldier.id in recipient_ids
-    assert commander.id in recipient_ids
-    assert len(notifs) >= 2  # soldier + commander at minimum; duty-manager notification depends on scope setup
+    assert len(notifs) == 3
+    assert {n.soldier_id for n in notifs} == {soldier.id, commander.id, duty_manager.id}
 
 
 def test_transition_to_eligible_updates_cache_silently(app_session: Session) -> None:

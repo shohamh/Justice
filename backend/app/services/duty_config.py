@@ -104,7 +104,7 @@ def update_duty_type(
     instructions: str | None = None,
     is_external: bool | None = None,
     requires_weapon: bool | None = None,
-    required_range_type: str | None = None,
+    required_range_type: object = ...,
     eligible_node_ids: object = ...,
 ) -> DutyType:
     before = {
@@ -146,8 +146,8 @@ def update_duty_type(
         duty_type.is_external = is_external
     if requires_weapon is not None:
         duty_type.requires_weapon = requires_weapon
-    if required_range_type is not None:
-        duty_type.required_range_type = required_range_type
+    if required_range_type is not ...:
+        duty_type.required_range_type = required_range_type  # type: ignore[assignment]
     if eligible_node_ids is not ...:
         duty_type.eligible_node_ids = eligible_node_ids  # type: ignore[assignment]  # None means clear
     write_audit(

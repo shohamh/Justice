@@ -172,10 +172,13 @@ def update_duty_type(
     if dt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     old_required_range_type = dt.required_range_type
+    required_range_type_supplied = "required_range_type" in body.model_fields_set
     try:
         extra: dict = {}
         if "eligible_node_ids" in body.model_fields_set:
             extra["eligible_node_ids"] = body.eligible_node_ids
+        if required_range_type_supplied:
+            extra["required_range_type"] = body.required_range_type
         svc.update_duty_type(
             session,
             duty_type=dt,
@@ -193,7 +196,6 @@ def update_duty_type(
             instructions=body.instructions,
             is_external=body.is_external,
             requires_weapon=body.requires_weapon,
-            required_range_type=body.required_range_type,
             **extra,
         )
         if body.active is not None:
@@ -202,7 +204,7 @@ def update_duty_type(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     session.commit()
 
-    if body.required_range_type is not None and body.required_range_type != old_required_range_type:
+    if required_range_type_supplied and body.required_range_type != old_required_range_type:
         from app.services.duty_eligibility_watch import recheck_assignments
 
         affected_ids = session.execute(

@@ -427,6 +427,42 @@ def test_effective_spans_split_on_override(admin_session):
     ]
     assert repl_ranges == [(date(2026, 12, 3), date(2026, 12, 4))]
 
+def test_effective_spans_do_not_copy_weapon_ineligibility_to_replacement(admin_session):
+    s = create_soldier(admin_session, personal_number="8600004")
+    repl = create_soldier(admin_session, personal_number="8600005")
+    dt = _dt(admin_session, "שמירה-sp-weapon", "1.00")
+    loc = _loc(admin_session, "מוצב-sp-weapon")
+    a = create_assignment(
+        admin_session,
+        soldier_id=s.id,
+        duty_type_id=dt.id,
+        duty_location_id=loc.id,
+        start_date=date(2026, 12, 20),
+        end_date=date(2026, 12, 23),
+        notes=None,
+        actor_id=None,
+    )
+    a.weapon_ineligible = True
+    a.weapon_ineligible_reason = "stale ineligibility for original owner"
+    admin_session.flush()
+    set_day_override(
+        admin_session,
+        assignment=a,
+        date=date(2026, 12, 21),
+        effective_soldier_id=repl.id,
+        reason="replacement",
+        actor_id=None,
+    )
+    admin_session.flush()
+
+    spans = effective_duty_spans(admin_session)
+    original = next(sp for sp in spans if sp["soldier_id"] == s.id and sp["start_date"] == date(2026, 12, 20))
+    replacement = next(sp for sp in spans if sp["soldier_id"] == repl.id)
+    assert original["weapon_ineligible"] is True
+    assert original["weapon_ineligible_reason"] == "stale ineligibility for original owner"
+    assert replacement["weapon_ineligible"] is False
+    assert replacement["weapon_ineligible_reason"] is None
+
 
 def test_effort_scores_by_soldier_matches_transparency_rows(admin_session):
     from tests.helpers import create_node

@@ -68,8 +68,24 @@ def test_update_duty_type_sets_required_range_type(app_session) -> None:
     app_session.refresh(updated)
     assert updated.required_range_type == "alal"
 
+def test_update_duty_type_clears_required_range_type_when_explicitly_none(app_session) -> None:
+    dt = DutyType(
+        name="dc-weapon-clear", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser,
+    )
+    app_session.add(dt)
+    app_session.commit()
 
-def test_update_duty_type_leaves_required_range_type_untouched_when_none(app_session) -> None:
+    updated = update_duty_type(
+        app_session, duty_type=dt, name=None, score_per_day=None, description=None,
+        required_range_type=None,
+    )
+    app_session.commit()
+    app_session.refresh(updated)
+    assert updated.required_range_type is None
+
+
+def test_update_duty_type_leaves_required_range_type_untouched_when_omitted(app_session) -> None:
     dt = DutyType(
         name="dc-weapon-3", score_per_day=Decimal("1.00"),
         requires_weapon=True, required_range_type=RangeType.laser,

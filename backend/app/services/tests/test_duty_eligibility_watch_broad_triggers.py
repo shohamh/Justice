@@ -94,6 +94,55 @@ def test_update_duty_type_route_triggers_recheck_automatically(app_session: Sess
     assert assignment.weapon_ineligible is True
 
 
+
+def test_update_duty_type_route_clears_required_range_type_and_stale_cache(app_session: Session) -> None:
+    from app.routes.duty_config import UpdateDutyTypeRequest, update_duty_type as route_update_duty_type
+
+    set_setting(app_session, "mitvachim.enabled", True, actor_id=None)
+    node = create_node(app_session, level="branch", name="broad-node-clear")
+    user = create_soldier(app_session, personal_number="broad-admin-clear", role="admin", hierarchy_node_id=node.id)
+    soldier = create_soldier(app_session, personal_number="broad-sol-clear", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="broad-weapon-clear", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    app_session.add(dt)
+    app_session.commit()
+
+    assignment = _make_weapon_assignment(
+        app_session, soldier_id=soldier.id, duty_type=dt, start_date=date.today() + timedelta(days=5),
+    )
+    assignment.weapon_ineligible = True
+    assignment.weapon_ineligible_reason = "stale"
+    app_session.commit()
+
+    body = UpdateDutyTypeRequest(required_range_type=None)
+    route_update_duty_type(dt.id, body, session=app_session, user=user)
+
+    app_session.refresh(dt)
+    app_session.refresh(assignment)
+    assert dt.required_range_type is None
+    assert assignment.weapon_ineligible is False
+    assert assignment.weapon_ineligible_reason is None
+
+
+def test_update_duty_type_route_omitted_range_type_preserves_value(app_session: Session) -> None:
+    from app.routes.duty_config import UpdateDutyTypeRequest, update_duty_type as route_update_duty_type
+
+    node = create_node(app_session, level="branch", name="broad-node-omitted")
+    user = create_soldier(app_session, personal_number="broad-admin-omitted", role="admin", hierarchy_node_id=node.id)
+    dt = DutyType(
+        name="broad-weapon-omitted", score_per_day=Decimal("1.00"),
+        requires_weapon=True, required_range_type=RangeType.laser, eligible_node_ids=[node.id],
+    )
+    app_session.add(dt)
+    app_session.commit()
+
+    body = UpdateDutyTypeRequest(name="broad-weapon-omitted-renamed")
+    route_update_duty_type(dt.id, body, session=app_session, user=user)
+
+    app_session.refresh(dt)
+    assert dt.required_range_type == RangeType.laser
 def test_update_duty_type_route_no_op_when_range_type_unchanged(app_session: Session) -> None:
     """The hook must not fire (and must not error) when required_range_type is
     omitted or set to the same value it already had."""

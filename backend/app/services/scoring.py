@@ -142,6 +142,7 @@ def effective_duty_spans(
             # time of its own, so it degrades to a full calendar day there.
             start_time = a.start_time if run_start == a.start_date else "00:00"
             end_time = a.end_time if run_end == last_assignment_day else "23:59"
+            original_owner = cur == a.soldier_id
             return {
                 "assignment_id": a.id,
                 "soldier_id": cur,
@@ -157,8 +158,8 @@ def effective_duty_spans(
                 "end_at": combine_date_time(run_end, end_time),
                 "shift_id": a.duty_shift_id,
                 "is_reserve": a.is_reserve,
-                "weapon_ineligible": a.weapon_ineligible,
-                "weapon_ineligible_reason": a.weapon_ineligible_reason,
+                "weapon_ineligible": a.weapon_ineligible if original_owner else False,
+                "weapon_ineligible_reason": a.weapon_ineligible_reason if original_owner else None,
             }
 
         cur: object = _UNSET
