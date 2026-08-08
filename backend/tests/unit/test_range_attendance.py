@@ -330,8 +330,6 @@ def test_pending_to_present_still_does_not_require_note(app_session: Session) ->
 
 
 def test_no_show_notifies_direct_commander(app_session: Session) -> None:
-    from app.db.models import HierarchyNode
-
     apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
     past_date = date.today() - timedelta(days=1)
     commander = create_soldier(app_session, personal_number="5900010", role="commander")
@@ -364,8 +362,6 @@ def test_no_show_notifies_direct_commander(app_session: Session) -> None:
 
 
 def test_correcting_to_present_notifies_soldier_and_commander(app_session: Session) -> None:
-    from app.db.models import HierarchyNode
-
     apply_settings(app_session, {}, {"mitvachim.enabled": True}, actor_id=None)
     past_date = date.today() - timedelta(days=1)
     commander = create_soldier(app_session, personal_number="5900012", role="commander")

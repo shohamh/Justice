@@ -40,8 +40,6 @@ def test_auto_marks_non_reserve_non_draft_assignment_present(app_session: Sessio
     count = auto_mark_present_for_elapsed_events(app_session)
 
     assert count == 1
-    app_session.refresh(event)
-    assignment = event.assignments[0] if hasattr(event, "assignments") else None
     qualification = app_session.execute(
         select(SoldierRangeQualification).where(SoldierRangeQualification.soldier_id == soldier.id)
     ).scalar_one()
