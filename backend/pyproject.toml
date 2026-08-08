@@ -44,7 +44,7 @@ dev = [
 
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "app/services/tests"]
 # Default run is the fast suite, parallel across a fixed worker count (~1.5 min;
 # see pg_container in conftest.py for the fsync/full_page_writes tuning that
 # brought this down from ~8 min by making the per-test TRUNCATE nearly free).
