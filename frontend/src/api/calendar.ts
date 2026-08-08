@@ -45,6 +45,8 @@ export interface CalendarShiftAssignee {
   called_up_to: string | null;
   primary_assignment_ids: string[];
   hierarchy_path_ids: string[];
+  weapon_ineligible: boolean;
+  weapon_ineligible_reason: string | null;
 }
 
 export async function dismissReserve(

@@ -50,6 +50,8 @@ const primary: CalendarShiftAssignee = {
   called_up_to: null,
   primary_assignment_ids: [],
   hierarchy_path_ids: [],
+  weapon_ineligible: false,
+  weapon_ineligible_reason: null,
 };
 
 function renderModal() {

@@ -688,6 +688,9 @@
     "requires_military_driving_license": "נדרש רשנ\"צ",
     "save": "שמור דרישות"
   },
+  "weapon_ineligible": {
+    "replace": "החלף"
+  },
   "shifts": {
     "title": "ניהול משמרות",
     "create": "משמרת חדשה",
